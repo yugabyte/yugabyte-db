@@ -71,9 +71,9 @@ Note that when managing universes using YugabyteDB Anywhere, do not set connecti
 
 **Connect**
 
-To connect to the YSQL Connection Manager, use the [ysqlsh](../../../api/ysqlsh/) command with the [`-h <IP>`](../../../api/ysqlsh/#h-hostname-host-hostname) flag, instead of specifying the Unix-domain socket directory.
+To connect to YSQL Connection Manager, use the [ysqlsh](../../../api/ysqlsh/) command with the [`-h <IP>`](../../../api/ysqlsh/#h-hostname-host-hostname) flag, instead of specifying the Unix-domain socket directory.
 
-Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-port) (custom PostgreSQL port or default 6433) will connect you to the PostgreSQL process, not the YSQL connection manager process.
+Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-port) (custom PostgreSQL port or default 6433) will connect you to the PostgreSQL process, not the YSQL Connection Manager process.
 
   </div>
   <div id="aeon" class="tab-pane fade" role="tabpanel" aria-labelledby="aeon-tab">
@@ -104,7 +104,7 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_max_client_connections | Maximum number of concurrent client connections allowed.<br>Default: 10000 |
 | ysql_conn_mgr_min_conns_per_db | Minimum number of server connections that is present in the pool. This limit is not considered while closing a broken server connection.<br>Default: 1 |
 | ysql_conn_mgr_num_workers | Number of worker threads used by YSQL Connection Manager. If set to 0, the number of worker threads will be half of the number of CPU cores.<br>Default: 0 |
-| ysql_conn_mgr_stats_interval | Interval (in seconds) for updating the YSQL Connection Manager statistics.<br>Default: 1 |
+| ysql_conn_mgr_stats_interval | Interval (in seconds) for updating YSQL Connection Manager statistics.<br>Default: 1 |
 | ysql_conn_mgr_superuser_sticky | Make superuser connections sticky.<br>Default: true |
 | ysql_conn_mgr_port | YSQL Connection Manager port to which clients can connect. This must be different from the PostgreSQL port set via `pgsql_proxy_bind_address`.<br>Default: 5433 |
 | ysql_conn_mgr_server_lifetime | The maximum duration (in seconds) that a backend PostgreSQL connection managed by YSQL Connection Manager can remain open after creation.<br>Default: 3600 |
@@ -116,15 +116,15 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_tcp_keepalive_probes | Number of TCP keepalive probes in YSQL Connection Manager. Only applicable if `ysql_conn_mgr_tcp_keepalive` is enabled.<br>Default: 9 |
 | ysql_conn_mgr_tcp_keepalive_usr_timeout | TCP user timeout (in milliseconds) in YSQL Connection Manager. Only applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled.<br>Default: 9 |
 | ysql_conn_mgr_pool_timeout | Server pool wait timeout (in milliseconds) in YSQL Connection Manager. This is the time clients wait for an available server, after which they are disconnected. If set to zero, clients wait for server connections indefinitely.<br>Default: 0 |
-| ysql_conn_mgr_sequence_support_mode | Sequence support mode when YSQL connection manager is enabled. When set to  `pooled_without_curval_lastval`, the currval() and lastval() functions are not supported. When set to `pooled_with_curval_lastval`, the currval() and lastval() functions are supported. For both settings, monotonic sequence order is not guaranteed if `ysql_sequence_cache_method` is set to `connection`. To also support monotonic order, set this flag to `session`.<br>Default: pooled_without_curval_lastval |
+| ysql_conn_mgr_sequence_support_mode | Sequence support mode when YSQL Connection Manager is enabled. When set to  `pooled_without_curval_lastval`, the currval() and lastval() functions are not supported. When set to `pooled_with_curval_lastval`, the currval() and lastval() functions are supported. For both settings, monotonic sequence order is not guaranteed if `ysql_sequence_cache_method` is set to `connection`. To also support monotonic order, set this flag to `session`.<br>Default: pooled_without_curval_lastval |
 | ysql_conn_mgr_optimized_extended_query_protocol | Enables optimization of [extended-query protocol](https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-QUERY-CONCEPTS) to provide better performance; note that while optimization is enabled, you may have correctness issues if you alter the schema of objects used in prepared statements. If set to false, extended-query protocol handling is always fully correct but unoptimized.<br>Default: true |
 | ysql_conn_mgr_optimized_session_parameters | Optimize usage of session parameters in YSQL Connection Manager. If set to false, all applied session parameters are replayed at transaction boundaries for each client connection.<br>Default: true |
-| ysql_conn_mgr_max_phy_conn_percent | Deprecated in v2025.2.1.0. Use `ysql_conn_mgr_reserve_internal_conns` instead.<br>Maximum percentage of `ysql_max_connections` that the YSQL Connection Manager can use for its server connections. A value of 85 establishes a soft limit of 0.85 * `ysql_max_connections` on server connections.<br>Default: 85 |
-| ysql_conn_mgr_reserve_internal_conns | The number of physical connections to reserve for internal operations, out of the total number of connections (per node) as set using [ysql_max_connections](../../../reference/configuration/yb-tserver/#ysql-max-connections). The reserved connections bypass YSQL Connection Manager; the remaining connections are available for the connection manager pool. For example, if `ysql_max_connections` is 300 and this flag is set to 15, YSQL Connection Manager will have a physical connection limit of 285 (300 - 15) per node.<br>Default: 15. v2025.2.1.0 and later only. |
+| ysql_conn_mgr_max_phy_conn_percent | Deprecated in v2025.2.1.0. Use `ysql_conn_mgr_reserve_internal_conns` instead.<br>Maximum percentage of `ysql_max_connections` that YSQL Connection Manager can use for its server connections. A value of 85 establishes a soft limit of 0.85 * `ysql_max_connections` on server connections.<br>Default: 85 |
+| ysql_conn_mgr_reserve_internal_conns | The number of physical connections to reserve for internal operations, out of the total number of connections (per node) as set using [ysql_max_connections](../../../reference/configuration/yb-tserver/#ysql-max-connections). The reserved connections bypass YSQL Connection Manager; the remaining connections are available for the Connection Manager pool. For example, if `ysql_max_connections` is 300 and this flag is set to 15, YSQL Connection Manager will have a physical connection limit of 285 (300 - 15) per node.<br>Default: 15. v2025.2.1.0 and later only. |
 
 ## Authentication methods
 
-The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with the YSQL Connection Manager when a connection matches an HBA (Host-Based Authentication) record.
+The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with YSQL Connection Manager when a connection matches an HBA (Host-Based Authentication) record.
 
 | | Auth Method | Description |
 |:--| :---------------------| :------------ | :---- |
@@ -155,11 +155,11 @@ Client connection behavior and server-side policy are handled separately as foll
 
 ### Connection Manager SSL modes
 
-YSQL Connection Manager can be configured with universes with or without encryption in transit enabled. The mode is determined by the settings in the connection manager configuration file (which is the Odyssey configuration that the Connection Manager process reads at startup). (You can review the default settings in the [template configuration file](https://github.com/yugabyte/yugabyte-db/blob/2025.2.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf)).
+YSQL Connection Manager can be configured for universes with or without encryption in transit enabled. The mode is determined by the settings in the Connection Manager configuration file (which is the Odyssey configuration that the Connection Manager process reads at startup). (You can review the default settings in the [template configuration file](https://github.com/yugabyte/yugabyte-db/blob/2025.2.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf)).
 
 #### Encryption in transit disabled
 
-When encryption in transit is not enabled, TLS is not enabled in the connection manager configuration file either.
+When encryption in transit is not enabled, TLS is not enabled in the Connection Manager configuration file either.
 
 The default HBA configuration allows unencrypted connections as follows:
 
@@ -173,20 +173,20 @@ local all yugabyte trust
 
 The following table describes how each client SSL mode behaves when connecting via YSQL Connection Manager with the default HBA configuration and encryption in transit disabled.
 
-| Client SSL mode | Description | Same as PostgreSQL? | Authentication mechanism followed? |
+| Client SSL mode | Description | Same as PostgreSQL? | Connection succeeds? |
 | :-- | :-- | :-- | :-- |
 | disable | Client attempts a non-SSL connection | Yes. Unencrypted connection is established. | Yes |
 | allow | Tries unencrypted connection first, then secure (encrypted) | Yes. Unencrypted connection is established. | Yes (first non-SSL attempt succeeds) |
-| prefer (default in PostgreSQL) | Tries secure connection first, then unencrypted | Yes. Unencrypted connection is established. | Partially. First SSL attempt is rejected by connection manager, second non-SSL attempt follows connection manager authentication. |
-| require | Uses secure connection, fails if not available | Yes. If connection fails, PostgreSQL or connection manager sends 'N' (not supported) message to the client; client reports: "server does not support SSL, but SSL was required" | No. Client's SSL attempt is rejected by connection manager. |
-| verify-ca | Behaves like require. Additionally, verifies server cert against CA, or fails if no valid matching CA certificates are found. | Yes. If connection fails, PostgreSQL or connection manager sends 'N' (not supported) message to the client; client reports: "server does not support SSL, but SSL was required" | No. Client's SSL attempt is rejected by connection manager. |
-| verify-full | Behaves like verify-ca. Additionally, verifies that the server cert matches the host. | Yes. If connection fails, PostgreSQL or connection manager sends 'N' (not supported) message to the client; client reports: "server does not support SSL, but SSL was required" | No. Client's SSL attempt is rejected by connection manager. |
+| prefer (default in PostgreSQL) | Tries secure connection first, then unencrypted | Yes. Unencrypted connection is established. | Partially. First SSL attempt is rejected by Connection Manager, second non-SSL attempt follows Connection Manager authentication. |
+| require | Uses secure connection, fails if not available | Yes. If connection fails, PostgreSQL or Connection Manager sends 'N' (not supported) message to the client; client reports: "server does not support SSL, but SSL was required" | No. Client's SSL attempt is rejected by Connection Manager. |
+| verify-ca | Behaves like require. Additionally, verifies server cert against CA, or fails if no valid matching CA certificates are found. | Yes. If connection fails, PostgreSQL or Connection Manager sends 'N' (not supported) message to the client; client reports: "server does not support SSL, but SSL was required" | No. Client's SSL attempt is rejected by Connection Manager. |
+| verify-full | Behaves like verify-ca. Additionally, verifies that the server cert matches the host. | Yes. If connection fails, PostgreSQL or Connection Manager sends 'N' (not supported) message to the client; client reports: "server does not support SSL, but SSL was required" | No. Client's SSL attempt is rejected by Connection Manager. |
 
-With the default HBA configuration above, customizing the HBA file does not change behavior for any of these client SSL modes.
+Adding entries to the default configuration does not change behavior for any of these client SSL modes.
 
 #### Encryption in transit enabled
 
-When encryption in transit is enabled for the cluster (by setting the `use_client_to_server_encryption` and `certs_for_client_dir` flags), Connection Manager automatically switches to require mode (that is, it starts with Odyssey `tls "require"` by reading the TLS-related flags and overwriting the connection manager configuration file).
+When encryption in transit is enabled for the cluster (by setting the `use_client_to_server_encryption` and `certs_for_client_dir` flags), Connection Manager automatically switches to require mode (that is, it starts with Odyssey `tls "require"` by reading the TLS-related flags and overwriting the Connection Manager configuration file).
 
 The default HBA file in this mode is as follows:
 
@@ -200,14 +200,14 @@ local all yugabyte trust
 
 The following table describes how each client SSL mode behaves when connecting via YSQL Connection Manager with the default HBA configuration and encryption in transit enabled.
 
-| Client SSL mode | Description | Same as PostgreSQL? | Authentication mechanism followed? | HBA customization changes behavior? |
+| Client SSL mode | Description | Same as PostgreSQL? | Connection succeeds? |
 | :-- | :-- | :-- | :-- | :-- |
-| disable | Client attempts a non-SSL connection. | Yes, but error messages differ. | No. Non-SSL attempt is rejected by connection manager. | Yes. If you add `host all all all trust` to the HBA file, connection fails with connection manager, but succeeds with PostgreSQL. |
-| allow | Tries unencrypted connection first, then secure | Yes. Encrypted connection is established. | Partial. First non-SSL attempt is rejected by connection manager; second SSL attempt follows connection manager authentication. | Yes. If you add `host all all all trust` to the HBA file, an encrypted connection is created with connection manager; unencrypted with PostgreSQL. |
-| prefer (default in PostgreSQL) | Tries secure connection first, then unencrypted. | Yes. Encrypted connection is established. | Yes. First SSL attempt establishes connection with connection manager. | No |
-| require | Uses secure connection, fails if not available. | Yes. Encrypted connection is established. | Yes. An SSL attempt establishes connection with connection manager. | No |
-| verify-ca | Behaves like require. Additionally, verifies server cert against CA, or fails if no valid matching CA certificates are found. | Yes. Encrypted connection is established and client verifies the TLS certificate. | Yes. An SSL attempt establishes connection with connection manager. | No |
-| verify-full | Behaves like verify-ca. Additionally, verifies that the server cert matches the host. | Yes. Encrypted connection is established and client verifies the TLS certificate and hostname. | Yes. An SSL attempt establishes connection with connection manager. | No |
+| disable | Client attempts a non-SSL connection. | Mostly. Error messages differ. If you add `host all all all trust` to the HBA file, connection fails with Connection Manager, but succeeds with PostgreSQL. | No. Non-SSL attempt is rejected by Connection Manager. |
+| allow | Tries unencrypted connection first, then secure | Mostly. Encrypted connection is established. But if you add `host all all all trust` to the HBA file, an encrypted connection is created with Connection Manager, and unencrypted with PostgreSQL. | Partial. First non-SSL attempt is rejected by Connection Manager; second SSL attempt follows Connection Manager authentication. |
+| prefer (default in PostgreSQL) | Tries secure connection first, then unencrypted. | Yes. Encrypted connection is established. | Yes. First SSL attempt establishes connection with Connection Manager. |
+| require | Uses secure connection, fails if not available. | Yes. Encrypted connection is established. | Yes. An SSL attempt establishes connection with Connection Manager. |
+| verify-ca | Behaves like require. Additionally, verifies server cert against CA, or fails if no valid matching CA certificates are found. | Yes. Encrypted connection is established and client verifies the TLS certificate. | Yes. An SSL attempt establishes connection with Connection Manager. |
+| verify-full | Behaves like verify-ca. Additionally, verifies that the server cert matches the host. | Yes. Encrypted connection is established and client verifies the TLS certificate and hostname. | Yes. An SSL attempt establishes connection with Connection Manager. |
 
 ### Certificate verification (verify-full)
 
