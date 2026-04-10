@@ -2252,6 +2252,52 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
   *output << "</table>\n";
 }
 
+void MasterPathHandlers::HandleTasksJSON(const Webserver::WebRequest& req,
+                                         Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  jw.StartObject();
+
+  // Active tasks from tables
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
+  jw.String("active_tasks");
+  jw.StartArray();
+  for (const auto& table : tables) {
+    for (const auto& task : table->GetTasks()) {
+      jw.StartObject();
+      JsonOutputTask(task, &jw);
+      jw.EndObject();
+    }
+  }
+  jw.EndArray();
+
+  // Recent user-initiated jobs
+  std::vector<std::shared_ptr<MonitoredTask>> jobs =
+      master_->catalog_manager()->GetRecentJobs();
+  jw.String("recent_jobs");
+  jw.StartArray();
+  for (auto iter = jobs.rbegin(); iter != jobs.rend(); ++iter) {
+    jw.StartObject();
+    JsonOutputTask(*iter, &jw);
+    jw.EndObject();
+  }
+  jw.EndArray();
+
+  // Recent tasks
+  std::vector<std::shared_ptr<MonitoredTask>> tasks =
+      master_->catalog_manager()->GetRecentTasks();
+  jw.String("recent_tasks");
+  jw.StartArray();
+  for (auto iter = tasks.rbegin(); iter != tasks.rend(); ++iter) {
+    jw.StartObject();
+    JsonOutputTask(*iter, &jw);
+    jw.EndObject();
+  }
+  jw.EndArray();
+
+  jw.EndObject();
+}
+
 Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetNonSystemTablets() {
   std::vector<TabletInfoPtr> nonsystem_tablets;
 
@@ -3457,6 +3503,9 @@ Status MasterPathHandlers::Register(Webserver* server) {
 
   RegisterLeaderOrRedirect(
       server, "/api/v1/xcluster", "xCluster", &MasterPathHandlers::HandleGetXClusterJSON);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/tasks", "Tasks", &MasterPathHandlers::HandleTasksJSON);
 
   server->RegisterPathHandler(
       "/api/v1/meta-cache", "MetaCache",
