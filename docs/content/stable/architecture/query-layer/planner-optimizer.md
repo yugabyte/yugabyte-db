@@ -48,7 +48,7 @@ Even with the Auto Analyze service, for the CBO to create optimal execution plan
 For each potential execution plan, the optimizer calculates costs in terms of storage layer lookups (both cache and disk), number of network round trips, and other factors. These costs help the optimizer compare which plan is likely be the most efficient to execute given the current database state and query context.
 
 {{<tip>}}
-You can see these estimates when using the DEBUG option in the [EXPLAIN](../../../api/ysql/the-sql-language/statements/perf_explain) command, as in EXPLAIN (ANALYZE, DEBUG).
+You can see these estimates when using the DEBUG option in the [EXPLAIN](../../../api/ysql/the-sql-language/statements/perf_explain/) command, as in EXPLAIN (ANALYZE, DEBUG).
 {{</tip>}}
 
 Some of the factors that the CBO considers in the cost estimation are as follows:

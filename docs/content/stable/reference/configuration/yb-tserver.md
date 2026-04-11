@@ -2207,7 +2207,7 @@ For information on using this parameter to configure CBO, refer to [Enable cost-
 
 ### Auto Analyze service flags
 
-To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 Auto analyze is automatically enabled when the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (CBO) is enabled ([yb_enable_cbo](#yb_enable_cbo) is set to `on`).
 
@@ -2233,7 +2233,7 @@ In v2025.2 and later, Auto Analyze is enabled by default in new universes when y
 Default: `50`
 {{% /tags/wrap %}}
 
-The minimum number of mutations needed to run ANALYZE on a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+The minimum number of mutations needed to run ANALYZE on a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 ##### --ysql_auto_analyze_scale_factor
 
@@ -2242,7 +2242,7 @@ The minimum number of mutations needed to run ANALYZE on a table. For more detai
 Default: `0.1`
 {{% /tags/wrap %}}
 
-The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 ##### --ysql_auto_analyze_min_cooldown_per_table
 
@@ -2251,7 +2251,7 @@ The fraction defining when sufficient mutations have been accumulated to run ANA
 Default: `10000` (10 seconds)
 {{% /tags/wrap %}}
 
-The minimum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+The minimum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 ##### --ysql_auto_analyze_max_cooldown_per_table
 
@@ -2260,7 +2260,7 @@ The minimum duration (in milliseconds) for the cooldown period between successiv
 Default: `86400000` (24 hours)
 {{% /tags/wrap %}}
 
-The maximum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+The maximum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 ##### --ysql_auto_analyze_cooldown_per_table_scale_factor
 
@@ -2269,7 +2269,7 @@ The maximum duration (in milliseconds) for the cooldown period between successiv
 Default: `2`
 {{% /tags/wrap %}}
 
-The exponential factor by which the per table cooldown period is scaled up each time from the value ysql_auto_analyze_min_cooldown_per_table to the value ysql_auto_analyze_max_cooldown_per_table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+The exponential factor by which the per table cooldown period is scaled up each time from the value ysql_auto_analyze_min_cooldown_per_table to the value ysql_auto_analyze_max_cooldown_per_table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 ##### --ysql_auto_analyze_batch_size
 
@@ -3004,13 +3004,13 @@ Specifies if YCQL tables are created with transactions enabled by default.
 Default: `false`
 {{% /tags/wrap %}}
 
-Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table) privileges.
+Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate/) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table/) privileges.
 
 ##### --ycql_enable_audit_log
 
 Set this flag to `true` to enable audit logging for the universe.
 
-For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
+For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql/).
 
 ##### --ycql_allow_non_authenticated_password_reset
 

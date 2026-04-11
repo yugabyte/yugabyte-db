@@ -20,16 +20,16 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 
 |                |   Category   |                                            Types                                             |
 | :------------: | ------------ | :------------------------------------------------------------------------------------------- |
-| {{<icon/yes>}} | Integers     | [BIGINT, COUNTER, INT, INTEGER, SMALLINT, TINYINT, VARINT](../../../api/ycql/type_int)      |
-| {{<icon/yes>}} | Numbers      | [DECIMAL, DOUBLE, FLOAT](../../../api/ycql/type_number)                                      |
-| {{<icon/yes>}} | Binary data  | [BLOB](../../../api/ycql/type_blob)                                                          |
-| {{<icon/yes>}} | Boolean      | [BOOLEAN](../../../api/ycql/type_bool)                                                       |
+| {{<icon/yes>}} | Integers     | [BIGINT, COUNTER, INT, INTEGER, SMALLINT, TINYINT, VARINT](../../../api/ycql/type_int/)      |
+| {{<icon/yes>}} | Numbers      | [DECIMAL, DOUBLE, FLOAT](../../../api/ycql/type_number/)                                      |
+| {{<icon/yes>}} | Binary data  | [BLOB](../../../api/ycql/type_blob/)                                                          |
+| {{<icon/yes>}} | Boolean      | [BOOLEAN](../../../api/ycql/type_bool/)                                                       |
 | {{<icon/yes>}} | Date/Time    | [DATE, TIME, TIMESTAMP](../../../api/ycql/type_datetime/)                                    |
-| {{<icon/yes>}} | Collections  | [FROZEN](../../../api/ycql/type_frozen), [LIST, MAP, SET](../../../api/ycql/type_collection) |
-| {{<icon/yes>}} | IP Addresses | [INET](../../../api/ycql/type_inet)                                                          |
-| {{<icon/yes>}} | JSON         | [JSONB](../../../api/ycql/type_jsonb)                                                        |
-| {{<icon/yes>}} | String       | [TEXT, VARCHAR](../../../api/ycql/type_text)                                                 |
-| {{<icon/yes>}} | UUID         | [TIMEUUID, UUID](../../../api/ycql/type_uuid)                                                |
+| {{<icon/yes>}} | Collections  | [FROZEN](../../../api/ycql/type_frozen), [LIST, MAP, SET](../../../api/ycql/type_collection/) |
+| {{<icon/yes>}} | IP Addresses | [INET](../../../api/ycql/type_inet/)                                                          |
+| {{<icon/yes>}} | JSON         | [JSONB](../../../api/ycql/type_jsonb/)                                                        |
+| {{<icon/yes>}} | String       | [TEXT, VARCHAR](../../../api/ycql/type_text/)                                                 |
+| {{<icon/yes>}} | UUID         | [TIMEUUID, UUID](../../../api/ycql/type_uuid/)                                                |
 | {{<icon/no>}}  | TUPLE        |                                                                                              |
 {.sno-1}
 
@@ -37,8 +37,8 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 
 |                |    Operation    |                     Details                      |
 | :------------: | :-------------- | ------------------------------------------------ |
-| {{<icon/yes>}} | Create new type | [CREATE TYPE](../../../api/ycql/ddl_create_type) |
-| {{<icon/yes>}} | Delete types    | [DROP TYPE](../../../api/ycql/ddl_drop_type)   |
+| {{<icon/yes>}} | Create new type | [CREATE TYPE](../../../api/ycql/ddl_create_type/) |
+| {{<icon/yes>}} | Delete types    | [DROP TYPE](../../../api/ycql/ddl_drop_type/)   |
 | {{<icon/no>}}  | Alter types     |                                                  |
 {.sno-1}
 
@@ -59,7 +59,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 
 |                |          Operation           |                                    Details                                     |
 | :------------: | :--------------------------- | :----------------------------------------------------------------------------- |
-| {{<icon/yes>}} | Adding columns               | [ADD COLUMN](../../../api/ycql/ddl_alter_table#add-a-column-to-a-table)        |
+| {{<icon/yes>}} | Adding columns               | [ADD COLUMN](../../../api/ycql/ddl_alter_table/#add-a-column-to-a-table)        |
 | {{<icon/yes>}} | Altering tables              | [ALTER TABLE](../../../api/ycql/ddl_alter_table/)                              |
 | {{<icon/yes>}} | Removing columns             | [DROP COLUMN](../../../api/ycql/ddl_alter_table/#remove-a-column-from-a-table) |
 | {{<icon/yes>}} | Rename column's name         | [RENAME COLUMN](../../../api/ycql/ddl_alter_table/#rename-a-column-in-a-table) |
@@ -72,9 +72,9 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | :------------: | :--------------------------- | :------------------------------------------------------------------------------------------------ |
 | {{<icon/yes>}} | Adding indexes               | [CREATE INDEX](../../../api/ycql/ddl_create_index/)                                               |
 | {{<icon/yes>}} | Removing indexes             | [DROP INDEX](../../../api/ycql/ddl_drop_index/)                                                   |
-| {{<icon/yes>}} | Partial indexes              | [Partial indexes](../../../api/ycql/ddl_create_index#partial-index)                               |
-| {{<icon/yes>}} | Covering indexes             | [Covering indexes](../../../api/ycql/ddl_create_index#included-columns)                           |
-| {{<icon/yes>}} | Unique indexes               | [Unique indexes](../../../api/ycql/ddl_create_index#unique-index)                                 |
+| {{<icon/yes>}} | Partial indexes              | [Partial indexes](../../../api/ycql/ddl_create_index/#partial-index)                               |
+| {{<icon/yes>}} | Covering indexes             | [Covering indexes](../../../api/ycql/ddl_create_index/#included-columns)                           |
+| {{<icon/yes>}} | Unique indexes               | [Unique indexes](../../../api/ycql/ddl_create_index/#unique-index)                                 |
 | {{<icon/no>}}  | Adding indexes on Collection | Cannot create index on `map/list/set/full jsonb/udt` and the keys,values,entries of a collection |
 {.sno-1}
 
@@ -85,8 +85,8 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 |                |                 Operation                 |                                 Details                                  |
 | :------------: | :---------------------------------------- | :----------------------------------------------------------------------- |
 | {{<icon/yes>}} | Select columns                            | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
-| {{<icon/yes>}} | Conditional select with `[NOT] IN` clause | [SELECT ... WHERE key IN ...](../../../api/ycql/dml_select#where-clause) |
-| {{<icon/yes>}} | Conditional select with `IF` clause       | [SELECT ... IF ...](../../../api/ycql/dml_select#if-clause)              |
+| {{<icon/yes>}} | Conditional select with `[NOT] IN` clause | [SELECT ... WHERE key IN ...](../../../api/ycql/dml_select/#where-clause) |
+| {{<icon/yes>}} | Conditional select with `IF` clause       | [SELECT ... IF ...](../../../api/ycql/dml_select/#if-clause)              |
 | {{<icon/yes>}}  | Select using `CONTAINS [KEY]`            | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
 | {{<icon/no>}}  | `SELECT JSON`                             | [JSONB](../../../api/ycql/type_jsonb/) is supported as a native type     |
 | {{<icon/no>}}  | Select with `PER PARTITION LIMIT`         |                                                                          |
@@ -99,8 +99,8 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | :----------------: | :---------------------------------------- | :---------------------------------------------------------------- |
 | {{<icon/partial>}} | Update columns                            | [UPDATE](../../../api/ycql/dml_update/) - Only single row updates |
 | {{<icon/partial>}} | Conditional update with `[NOT] IN` clause | Only single row updates                                           |
-|   {{<icon/yes>}}   | Conditional update with `IF` clause       | [UPDATE ... IF](../../../api/ycql/dml_update#if-clause)           |
-|   {{<icon/yes>}}   | Update with `USING` clause                | [UPDATE ... USING](../../../api/ycql/dml_update#using-clause)     |
+|   {{<icon/yes>}}   | Conditional update with `IF` clause       | [UPDATE ... IF](../../../api/ycql/dml_update/#if-clause)           |
+|   {{<icon/yes>}}   | Update with `USING` clause                | [UPDATE ... USING](../../../api/ycql/dml_update/#using-clause)     |
 | {{<icon/no>}}      | Conditional Update using `CONTAINS [KEY]` | `UPDATE ... WHERE <col> CONTAINS ...`                             |
 {.sno-1}
 
@@ -109,9 +109,9 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 |                    |                 Operation                 |                               Details                                |
 | :----------------: | :---------------------------------------- | :------------------------------------------------------------------- |
 | {{<icon/partial>}} | Delete rows                               | [DELETE](../../../api/ycql/dml_delete/)  - Only single row deletes   |
-|   {{<icon/yes>}}   | Conditional delete with `IF` clause       | [DELETE ... IF](../../../api/ycql/dml_update#if-clause)              |
-|   {{<icon/yes>}}   | Delete with `USING` clause                | [DELETE ... USING](../../../api/ycql/dml_delete#using-clause)        |
-| {{<icon/partial>}} | Conditional delete with `[NOT] IN` clause | [Only single row deletes](../../../api/ycql/dml_delete#where-clause) |
+|   {{<icon/yes>}}   | Conditional delete with `IF` clause       | [DELETE ... IF](../../../api/ycql/dml_update/#if-clause)              |
+|   {{<icon/yes>}}   | Delete with `USING` clause                | [DELETE ... USING](../../../api/ycql/dml_delete//#using-clause)        |
+| {{<icon/partial>}} | Conditional delete with `[NOT] IN` clause | [Only single row deletes](../../../api/ycql/dml_delete/#where-clause) |
 |   {{<icon/no>}}    | Conditional delete using `CONTAINS [KEY]` | `DELETE ... WHERE <col> CONTAINS ...`                                |
 {.sno-1}
 
@@ -140,7 +140,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Roles        | [Manage users and roles](../../../secure/authorization/create-roles-ycql/)     |
 | {{<icon/yes>}} | Permissions  | [Grant privileges](../../../secure/authorization/ycql-grant-permissions/)      |
 | {{<icon/no>}}  | Users        | Legacy Cassandra feature (_CREATE, DROP, ALTER, LIST_)                          |
-| {{<icon/no>}}  | `LIST ROLES` | But can be done using [query](../../../secure/authorization/create-roles-ycql) |
+| {{<icon/no>}}  | `LIST ROLES` | But can be done using [query](../../../secure/authorization/create-roles-ycql/) |
 | {{<icon/no>}}  | `LIST PERMISSIONS` | But can be done using [query](../../../secure/authorization/ycql-grant-permissions/#2-list-permissions-for-roles) |
 {.sno-1}
 
@@ -160,5 +160,5 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 
 ## Learn more
 
-- [Comparison with Apache Cassandra](/stable/faq/comparisons/cassandra)
+- [Comparison with Apache Cassandra](/stable/faq/comparisons/cassandra/)
 - [YCQL command reference](../../../api/ycql/)
