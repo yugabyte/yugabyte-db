@@ -87,7 +87,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Select columns                            | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
 | {{<icon/yes>}} | Conditional select with `[NOT] IN` clause | [SELECT ... WHERE key IN ...](../../../api/ycql/dml_select/#where-clause) |
 | {{<icon/yes>}} | Conditional select with `IF` clause       | [SELECT ... IF ...](../../../api/ycql/dml_select/#if-clause)              |
-| {{<icon/yes>}}  | Select using `CONTAINS [KEY]`            | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
+| {{<icon/yes>}} | Select using `CONTAINS [KEY]`             | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
 | {{<icon/no>}}  | `SELECT JSON`                             | [JSONB](../../../api/ycql/type_jsonb/) is supported as a native type     |
 | {{<icon/no>}}  | Select with `PER PARTITION LIMIT`         |                                                                          |
 | {{<icon/no>}}  | Grouping results with `GROUP BY`          |                                                                          |
@@ -109,7 +109,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 |                    |                 Operation                 |                               Details                                |
 | :----------------: | :---------------------------------------- | :------------------------------------------------------------------- |
 | {{<icon/partial>}} | Delete rows                               | [DELETE](../../../api/ycql/dml_delete/)  - Only single row deletes   |
-|   {{<icon/yes>}}   | Conditional delete with `IF` clause       | [DELETE ... IF](../../../api/ycql/dml_update/#if-clause)              |
+|   {{<icon/yes>}}   | Conditional delete with `IF` clause       | [DELETE ... IF](../../../api/ycql/dml_delete/#if-clause)              |
 |   {{<icon/yes>}}   | Delete with `USING` clause                | [DELETE ... USING](../../../api/ycql/dml_delete/#using-clause)        |
 | {{<icon/partial>}} | Conditional delete with `[NOT] IN` clause | [Only single row deletes](../../../api/ycql/dml_delete/#where-clause) |
 |   {{<icon/no>}}    | Conditional delete using `CONTAINS [KEY]` | `DELETE ... WHERE <col> CONTAINS ...`                                |
