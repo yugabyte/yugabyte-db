@@ -143,4 +143,4 @@ For additional options, refer to [cassandra-loader options](https://github.com/y
 
 ## Verify migration
 
-After the data and schema have been migrated, follow the steps in [Verify migration](../verify-migration-ycql) to ensure the migration was successful.
+After the data and schema have been migrated, follow the steps in [Verify migration](../verify-migration-ycql/) to ensure the migration was successful.

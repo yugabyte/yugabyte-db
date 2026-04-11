@@ -16,8 +16,8 @@ block_indexing = true
 | YugabyteDB R2DBC Smart Driver | [1.1.0-yb-1-ea](https://mvnrepository.com/artifact/com.yugabyte/r2dbc-postgresql) | Full | [CRUD](/stable/develop/drivers-orms/java/yb-r2dbc/) |
 | PostgreSQL JDBC Driver  | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.3.4) | Full | [CRUD](/stable/develop/drivers-orms/java/postgres-jdbc/) |
 | Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) | Full | [CRUD](/stable/develop/drivers-orms/java/ysql-vertx-pg-client/) |
-| YugabyteDB Java Driver for YCQL | [3.10.3-yb-2](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql) |
-| YugabyteDB Java Driver for YCQL | [4.15.0-yb-1](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.15.0-yb-1) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql-4.x) |
+| YugabyteDB Java Driver for YCQL | [3.10.3-yb-2](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql/) |
+| YugabyteDB Java Driver for YCQL | [4.15.0-yb-1](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.15.0-yb-1) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql-4.x/) |
 | **ORMs** | | | |
 | Ebean                   | 13.23.0 | Full | [CRUD](/stable/develop/drivers-orms/java/ebean/) |
 | Hibernate               | 5.4.19  | Full | [CRUD](/stable/develop/drivers-orms/java/hibernate/) |
@@ -37,7 +37,7 @@ block_indexing = true
 | YugabyteDB PGX Smart Driver<br/>[Recommended] | [v4](https://pkg.go.dev/github.com/yugabyte/pgx/) | Full | [CRUD](/stable/develop/drivers-orms/go/yb-pgx/) |
 | PGX Driver | [v4](https://pkg.go.dev/github.com/jackc/pgx/) | Full | [CRUD](/stable/develop/drivers-orms/go/pgx/) |
 | PQ Driver  | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2/) | Full | [CRUD](/stable/develop/drivers-orms/go/pq/) |
-| YugabyteDB Go Driver for YCQL | [3.16.3](https://github.com/yugabyte/gocql) | Full | [CRUD](/stable/develop/drivers-orms/go/ycql) |
+| YugabyteDB Go Driver for YCQL | [3.16.3](https://github.com/yugabyte/gocql) | Full | [CRUD](/stable/develop/drivers-orms/go/ycql/) |
 | **ORMs** | | | |
 | GORM       | [1.9.16](https://github.com/go-gorm/gorm) | Full | [CRUD](/stable/develop/drivers-orms/go/gorm/) |
 | PG         | [10](https://github.com/go-pg/pg) | Full | [CRUD](/stable/develop/drivers-orms/go/pg/) |

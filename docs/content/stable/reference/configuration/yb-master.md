@@ -1064,7 +1064,7 @@ Default: `true`
 
 ## Auto Analyze service flags
 
-To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 Auto analyze is automatically enabled when the [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO) is enabled by setting the [yb_enable_cbo](../yb-tserver/#yb_enable_cbo) flag to `on`.
 

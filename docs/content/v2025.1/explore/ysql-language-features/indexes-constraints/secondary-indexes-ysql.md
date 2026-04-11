@@ -24,7 +24,7 @@ CREATE INDEX idx_name ON table_name
 --  [SHARDING]    [CLUSTERING]         [COVERING]
 ```
 
-The columns that are specified in the [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index) statement are of three kinds:
+The columns that are specified in the [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) statement are of three kinds:
 
 - **Sharding** - Columns that determine how the index data is distributed.
 - **Clustering** - Optional columns that determine how index rows that match the same sharding key are ordered.
@@ -156,7 +156,7 @@ Now only one row is scanned to retrieve one row.
 
 ## Learn more
 
-- [Designing secondary indexes](/stable/develop/data-modeling/secondary-indexes-ysql)
+- [Designing secondary indexes](/stable/develop/data-modeling/secondary-indexes-ysql/)
 - [Benefits of Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
 - Blog on [Pushdown #3: Filtering using index predicates](https://www.yugabyte.com/blog/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.
 - [How To Design Distributed Indexes for Optimal Query Performance](https://www.yugabyte.com/blog/design-indexes-query-performance-distributed-database/)
