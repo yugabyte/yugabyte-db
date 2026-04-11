@@ -25,7 +25,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Binary data  | [BLOB](../../../api/ycql/type_blob/)                                                          |
 | {{<icon/yes>}} | Boolean      | [BOOLEAN](../../../api/ycql/type_bool/)                                                       |
 | {{<icon/yes>}} | Date/Time    | [DATE, TIME, TIMESTAMP](../../../api/ycql/type_datetime/)                                    |
-| {{<icon/yes>}} | Collections  | [FROZEN](../../../api/ycql/type_frozen), [LIST, MAP, SET](../../../api/ycql/type_collection/) |
+| {{<icon/yes>}} | Collections  | [FROZEN](../../../api/ycql/type_frozen/), [LIST, MAP, SET](../../../api/ycql/type_collection/) |
 | {{<icon/yes>}} | IP Addresses | [INET](../../../api/ycql/type_inet/)                                                          |
 | {{<icon/yes>}} | JSON         | [JSONB](../../../api/ycql/type_jsonb/)                                                        |
 | {{<icon/yes>}} | String       | [TEXT, VARCHAR](../../../api/ycql/type_text/)                                                 |
@@ -87,7 +87,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Select columns                            | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
 | {{<icon/yes>}} | Conditional select with `[NOT] IN` clause | [SELECT ... WHERE key IN ...](../../../api/ycql/dml_select/#where-clause) |
 | {{<icon/yes>}} | Conditional select with `IF` clause       | [SELECT ... IF ...](../../../api/ycql/dml_select/#if-clause)              |
-| {{<icon/yes>}}  | Select using `CONTAINS [KEY]`            | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
+| {{<icon/yes>}} | Select using `CONTAINS [KEY]`             | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
 | {{<icon/no>}}  | `SELECT JSON`                             | [JSONB](../../../api/ycql/type_jsonb/) is supported as a native type     |
 | {{<icon/no>}}  | Select with `PER PARTITION LIMIT`         |                                                                          |
 | {{<icon/no>}}  | Grouping results with `GROUP BY`          |                                                                          |
@@ -110,7 +110,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | :----------------: | :---------------------------------------- | :------------------------------------------------------------------- |
 | {{<icon/partial>}} | Delete rows                               | [DELETE](../../../api/ycql/dml_delete/)  - Only single row deletes   |
 |   {{<icon/yes>}}   | Conditional delete with `IF` clause       | [DELETE ... IF](../../../api/ycql/dml_update/#if-clause)              |
-|   {{<icon/yes>}}   | Delete with `USING` clause                | [DELETE ... USING](../../../api/ycql/dml_delete//#using-clause)        |
+|   {{<icon/yes>}}   | Delete with `USING` clause                | [DELETE ... USING](../../../api/ycql/dml_delete/#using-clause)        |
 | {{<icon/partial>}} | Conditional delete with `[NOT] IN` clause | [Only single row deletes](../../../api/ycql/dml_delete/#where-clause) |
 |   {{<icon/no>}}    | Conditional delete using `CONTAINS [KEY]` | `DELETE ... WHERE <col> CONTAINS ...`                                |
 {.sno-1}
@@ -127,10 +127,10 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 
 |                |           Feature            |                              Details                              |
 | :------------: | :--------------------------- | :---------------------------------------------------------------- |
-| {{<icon/yes>}} | Begin a transaction          | [BEGIN TRANSACTION](../../../api/ycql/dml_transaction)            |
-| {{<icon/yes>}} | End a transaction            | [END TRANSACTION](../../../api/ycql/dml_transaction)              |
-| {{<icon/yes>}} | SQL style transaction start  | [START TRANSACTION](../../../api/ycql/dml_transaction#sql-syntax) |
-| {{<icon/yes>}} | SQL style transaction commit | [COMMIT](../../../api/ycql/dml_transaction#sql-syntax)            |
+| {{<icon/yes>}} | Begin a transaction          | [BEGIN TRANSACTION](../../../api/ycql/dml_transaction/)            |
+| {{<icon/yes>}} | End a transaction            | [END TRANSACTION](../../../api/ycql/dml_transaction/)              |
+| {{<icon/yes>}} | SQL style transaction start  | [START TRANSACTION](../../../api/ycql/dml_transaction/#sql-syntax) |
+| {{<icon/yes>}} | SQL style transaction commit | [COMMIT](../../../api/ycql/dml_transaction/#sql-syntax)            |
 {.sno-1}
 
 ## Security
