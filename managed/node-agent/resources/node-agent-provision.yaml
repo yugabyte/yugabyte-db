@@ -50,7 +50,7 @@ yba:
   url: <url>
 
   # Skip TLS certificate verification.
-  skip_tls_verify: false
+  skip_tls_verify: true
 
   # The UUID of the customer in Yugabyte Anywhere.
   # This is a unique identifier provided by YBA.

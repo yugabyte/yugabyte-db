@@ -27,7 +27,9 @@ import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -112,9 +114,36 @@ public class YNPProvisioningTest extends FakeDBApplication {
   protected Application provideApplication() {
     // Set up mocks before building the application (provideApplication is called before @Before)
     // Use lenient() to avoid strict stubbing issues during application initialization
-    // Mock getConfForScope calls
-    lenient().when(confGetter.getConfForScope(any(Provider.class), any())).thenReturn("/tmp");
-    lenient().when(confGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    // Mock getConfForScope calls - typed per key since getConfForScope is generic and a blanket
+    // any() stub would return the wrong type for Boolean/Integer-typed keys.
+    lenient()
+        .when(
+            confGetter.getConfForScope(
+                any(Provider.class), eq(ProviderConfKeys.enableCgroupConfiguration)))
+        .thenReturn(false);
+    lenient()
+        .when(
+            confGetter.getConfForScope(
+                any(Provider.class), eq(ProviderConfKeys.remoteTmpDirectory)))
+        .thenReturn("/tmp");
+    lenient()
+        .when(
+            confGetter.getConfForScope(any(Provider.class), eq(ProviderConfKeys.minHomeDirSpaceGb)))
+        .thenReturn(5);
+    lenient()
+        .when(
+            confGetter.getConfForScope(
+                any(Provider.class), eq(ProviderConfKeys.minMountPointDirSpaceGb)))
+        .thenReturn(5);
+    lenient()
+        .when(
+            confGetter.getConfForScope(any(Provider.class), eq(ProviderConfKeys.minTempDirSpaceGb)))
+        .thenReturn(5);
+    lenient()
+        .when(
+            confGetter.getConfForScope(
+                any(Customer.class), eq(CustomerConfKeys.enableEarlyoomFeature)))
+        .thenReturn(false);
 
     // Mock getGlobalConf calls needed by NodeAgentClient and other classes
     lenient()

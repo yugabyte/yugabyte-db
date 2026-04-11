@@ -219,7 +219,7 @@ func (m *InstallNodeAgent) getProvider(
 ) (*model.Provider, error) {
 	ybaURL := values["url"].(string)
 	apiKey := values["api_key"].(string)
-	skipTlsVerify := config.GetBool(values, "skip_tls_verify", false)
+	skipTlsVerify := config.GetBool(values, "skip_tls_verify", true)
 	customerUUID := values["customer_uuid"].(string)
 	providerName := values["provider_name"].(string)
 	return yba.GetProviderByName(ctx, ybaURL, apiKey, skipTlsVerify, customerUUID, providerName)
@@ -232,7 +232,7 @@ func (m *InstallNodeAgent) createInstanceIfNotExists(
 ) error {
 	ybaUrl := values["url"].(string)
 	apiKey := values["api_key"].(string)
-	skipTlsVerify := config.GetBool(values, "skip_tls_verify", false)
+	skipTlsVerify := config.GetBool(values, "skip_tls_verify", true)
 	customerUuid := values["customer_uuid"].(string)
 	instanceTypeName := values["instance_type_name"].(string)
 	_, err := yba.GetInstanceType(ctx,
@@ -277,7 +277,7 @@ func (m *InstallNodeAgent) getProviderNodeInstances(
 	apiKey := values["api_key"].(string)
 	customerUUID := values["customer_uuid"].(string)
 	providerUUID := values["provider_id"].(string)
-	skipTlsVerify := config.GetBool(values, "skip_tls_verify", false)
+	skipTlsVerify := config.GetBool(values, "skip_tls_verify", true)
 	return yba.GetProviderNodeInstances(
 		ctx,
 		ybaURL,

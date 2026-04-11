@@ -76,7 +76,7 @@ configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound | default(fa
 is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default(false) }}
 is_ybcontroller_disabled = {{ ynp_config['ynp'].is_ybcontroller_disabled | default(false) }}
 configure_cgroup = {{ ynp_config['ynp'].configure_cgroup | default(true) }}
-skip_tls_verify = {{ ynp_config['yba'].skip_tls_verify | default(false) }}
+skip_tls_verify = {{ ynp_config['yba'].skip_tls_verify | default(true) }}
 
 {%- if is_noroot_mode is false %}
 {%- if ynp_config['extra'].is_cloud is true %}

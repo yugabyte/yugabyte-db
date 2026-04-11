@@ -30,7 +30,7 @@ class InstallNodeAgent(BaseYnpModule):
         return (f'{yba_url}/api/v1/customers/{customer_uuid}/providers/'
                 f'{p_uuid}/instance_types/{code}')
 
-    def _make_request(self, url, headers=None, method='GET', data=None, verify_ssl=True):
+    def _make_request(self, url, headers=None, method='GET', data=None, skip_tls_verify=True):
         """Make HTTP request using urllib"""
         if headers is None:
             headers = {}
@@ -44,7 +44,7 @@ class InstallNodeAgent(BaseYnpModule):
 
         # Create SSL context
         ssl_context = ssl.create_default_context()
-        if not verify_ssl:
+        if skip_tls_verify:
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
 
@@ -204,23 +204,23 @@ class InstallNodeAgent(BaseYnpModule):
         provider_url = self._get_provider_url(context)
         yba_url = context.get('url')
         skip_tls_verify = not yba_url.lower().startswith('https') or \
-            context.get('skip_tls_verify', False)
+            context.get('skip_tls_verify', True)
         response = self._make_request(provider_url,
                                       headers=self._get_headers(context.get('api_key')),
-                                      verify_ssl=skip_tls_verify)
+                                      skip_tls_verify=skip_tls_verify)
         return response
 
     def _create_instance_if_not_exists(self, context, provider):
         yba_url = context.get('url')
         skip_tls_verify = not yba_url.lower().startswith('https') or \
-            context.get('skip_tls_verify', False)
+            context.get('skip_tls_verify', True)
         get_instance_type_url = self._get_instance_type(context.get('url'), context.get(
             'customer_uuid'), provider.get('uuid'), context.get('instance_type_name'))
 
         try:
             response = self._make_request(get_instance_type_url,
                                           headers=self._get_headers(context.get('api_key')),
-                                          verify_ssl=skip_tls_verify)
+                                          skip_tls_verify=skip_tls_verify)
             data = response['json']()
             if not data:  # If the instance type does not exist
                 raise ValueError("Instance type does not exist")
