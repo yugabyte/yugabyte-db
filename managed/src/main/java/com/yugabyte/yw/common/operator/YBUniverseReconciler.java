@@ -1354,6 +1354,12 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         userIntent.masterDeviceInfo =
             operatorUtils.mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
       }
+      if (userIntent.deviceInfo == null) {
+        userIntent.deviceInfo = operatorUtils.defaultDeviceInfo();
+      }
+      if (userIntent.masterDeviceInfo == null) {
+        userIntent.masterDeviceInfo = operatorUtils.defaultMasterDeviceInfo();
+      }
 
       userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
       userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
