@@ -18,6 +18,9 @@
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <boost/assign.hpp>
 
 #include "yb/cdc/cdc_service.pb.h"
