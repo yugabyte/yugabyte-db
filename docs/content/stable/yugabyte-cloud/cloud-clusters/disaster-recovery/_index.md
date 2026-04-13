@@ -66,8 +66,8 @@ DR further allows for the role of each cluster to switch during planned switchov
 
 - Currently in YugabyteDB Aeon, you cannot use xCluster Disaster Recovery with point-in-time recovery (PITR) on the same database. If you have PITR configured for a database and want to set up xCluster Disaster Recovery, [disable PITR](../aeon-pitr/#disable-pitr) first.
 
-- You can't perform DDL operations on databases while they are in the process of being added to replication.
+- You cannot perform DDL operations on databases while they are in the process of being added to replication.
 
-- You can't use xCluster Disaster Recovery with Partition by Region clusters.
+- You cannot use xCluster Disaster Recovery with Partition by Region clusters.
 
 xCluster Disaster Recovery in YugabyteDB Aeon uses YugabyteDB's [transactional xCluster](../../../architecture/docdb-replication/async-replication/#transactional-replication) automatic mode. For information on limitations in transactional xCluster in YugabyteDB, refer to [Limitations](../../../architecture/docdb-replication/async-replication/#limitations).

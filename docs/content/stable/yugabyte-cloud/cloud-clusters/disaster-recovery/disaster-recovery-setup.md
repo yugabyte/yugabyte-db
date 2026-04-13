@@ -31,7 +31,7 @@ Ensure the clusters have the following characteristics:
 
     PITR is used by DR during failover to restore the database to a consistent state. Note that if the Target cluster already has PITR configured, that configuration is replaced by the PITR configuration set during DR setup.
 
-Prepare your database and tables on the Source. Make sure the database and tables aren't already being used for xCluster replication; databases and tables can only be used in one replication at a time. The Source must have at least one table, but tables can be empty or have data. If the Source tables have a lot of data, the DR setup will take longer because the data must be copied in full to the Target before on-going asynchronous replication starts.
+Prepare your database and tables on the Source. Make sure the database and tables aren't already being used for xCluster replication; databases and tables can only be used in one replication at a time. The Source must have at least one table, but tables can be empty or have data. If the Source tables have a lot of data, the DR setup will take longer because the data must be copied in full to the Target before ongoing asynchronous replication starts.
 
 DR performs a full copy of the data to be replicated on the Source, and restores the data to the Target.
 
@@ -102,7 +102,7 @@ The state of the system at time t = 50 ms is as follows:
 - Safe time is the time at which T1 was replicated, namely t = 0.001 ms.
 - Safe time lag is the difference between the current time and the safe time. As of t = 50 ms, the safe time lag is 49.999 ms (50 ms - 0.001 ms).
 
-If a failover were to occur at this moment (t = 50 ms) the Target will be restored to its state as of the safe time (that is, t = .001 ms), meaning that T1 will be visible, but T3 will be hidden. T2 (which is still in transit) is currently not available on the Target, and will be ignored when it arrives.
+If a failover were to occur at this moment (t = 50 ms) the Target will be restored to its state as of the safe time (that is, t = 0.001 ms), meaning that T1 will be visible, but T3 will be hidden. T2 (which is still in transit) is currently not available on the Target, and will be ignored when it arrives.
 
 In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1) and Repl_Lag(T2) (the transaction that is lagging the most).
 
