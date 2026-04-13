@@ -1205,6 +1205,7 @@
           "status": {
             "Initializing": "Initializing",
             "Replicating": "Replicating",
+            "Paused": "Paused",
             "Switchover in Progress": "Switchover in Progress",
             "Failover in Progress": "Failover in Progress",
             "Halted": {
@@ -1219,6 +1220,7 @@
             "Ready to replicate": "Ready to replicate",
             "Waiting for DR": "Waiting for DR",
             "Replicating data": "Replicating data",
+            "Replication paused": "Replication paused",
             "Preparing for switchover": "Preparing for switchover",
             "Switching to DR replica": "Switching to DR replica",
             "Universe marked as DR failed": "Marked as DR failed",
@@ -1228,6 +1230,7 @@
             "Unconfigured for DR": "Unconfigured",
             "Bootstrapping": "Bootstrapping",
             "Receiving data, Ready for reads": "Receiving data, Ready for reads",
+            "Replication paused": "Replication paused",
             "Switching to DR primary": "Switching to DR primary",
             "Universe marked as DR failed": "Marked as DR failed",
             "undefined": "Undefined"
