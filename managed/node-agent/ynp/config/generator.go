@@ -330,6 +330,6 @@ func (gen *YNPConfigGenerator) registerResolvers() error {
 	}
 	gen.resolvers["ynp_configure_cgroup"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
 		return true, nil
-	}	
+	}
 	return nil
 }
