@@ -50,8 +50,9 @@ DEFINE_RUNTIME_bool(enable_global_load_balancing, true,
     "global load. Note that global balancing only occurs after all tables are balanced.");
 
 DEFINE_RUNTIME_int32(leader_balance_threshold, 0,
-    "Number of leaders per each tablet server to balance below. If this is configured to "
+    "Number of leaders per each tablet server per table to balance below. If this is configured to "
     "0 (the default), the leaders will be balanced optimally at extra cost.");
+TAG_FLAG(leader_balance_threshold, advanced);
 
 DEFINE_RUNTIME_int32(leader_balance_unresponsive_timeout_ms, 3 * 1000,
     "The period of time that a master can go without receiving a heartbeat from a "
