@@ -32,6 +32,7 @@
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/client/client.h"
+#include "yb/client/client_error.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
@@ -1059,11 +1060,35 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       const PgPollVectorIndexReadyRequestPB& req, CoarseTimePoint deadline) {
     // TODO(vector_index) Move method implementation to the place where actual polling could be
     // implemented. So method could wait until deadline of index is ready.
+    LOG_WITH_FUNC(INFO) << "Table id: " << req.table_id();
     auto& client = this->client();
     bool ready = false;
     for (;;) {
+      VLOG_WITH_FUNC(2) << "Checking vector index " << req.table_id();
       auto table = VERIFY_RESULT(client.OpenTable(req.table_id()));
-      auto tablets = VERIFY_RESULT(client.LookupAllTabletsFuture(table, deadline).get());
+      auto lookup_result = client.LookupAllTabletsFuture(table, deadline).get();
+      while (!lookup_result.ok() &&
+              client::ClientError(lookup_result.status()) ==
+                client::ClientErrorCode::kTablePartitionListIsStale) {
+        VLOG_WITH_FUNC(2) << "Retrying stale table partition lookup: " << lookup_result.status();
+
+        auto wait_time = 100ms;
+        if (CoarseMonoClock::Now() + wait_time * 2 > deadline) {
+          break;
+        }
+        std::this_thread::sleep_for(wait_time);
+        table->MarkPartitionsAsStale();
+        lookup_result = client.LookupAllTabletsFuture(table, deadline).get();
+      }
+
+      if (!lookup_result.ok()) {
+        VLOG_WITH_FUNC(2) << "Lookup failed: " << lookup_result.status();
+        return MoveStatus(std::move(lookup_result));
+      }
+
+      auto tablets = *lookup_result;
+      VLOG_WITH_FUNC(2) << "num tablets: " << tablets.size();
+
       ready = true;
       for (const auto& tablet : tablets) {
         auto* leader = tablet->LeaderTServer();
@@ -1108,6 +1133,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       }
       std::this_thread::sleep_for(wait_time);
     }
+    LOG_WITH_FUNC(INFO) << "Table id: " << req.table_id() << " done, ready = " << ready;
     PgPollVectorIndexReadyResponsePB result;
     result.set_ready(ready);
     return result;
@@ -2334,7 +2360,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       tserver::WaitStatesPB* resp, int sample_size, int& samples_considered) {
     for (const auto& call : conn.calls_in_flight()) {
       if (ShouldIgnoreCall(req, call)) {
-        VLOG(3) << "Ignoring " << call.wait_state().DebugString();
+        VLOG(3) << "Ignoring " << call.wait_state().ShortDebugString();
         continue;
       }
       MaybeIncludeSample(resp, call.wait_state(), sample_size, samples_considered);
@@ -2392,7 +2418,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       }
       MaybeIncludeSample(resp, wait_state_pb, sample_size, samples_considered);
     }
-    VLOG_IF(2, resp->wait_states_size() > 0) << "Tracker call sending " << resp->DebugString();
+    VLOG_IF(2, resp->wait_states_size() > 0) << "Tracker call sending " << resp->ShortDebugString();
   }
 
   Status ActiveSessionHistory(

@@ -853,16 +853,14 @@ class YBClient {
       RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
       master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
-  Status GetTabletsAndUpdateCache(
-      const YBTableName& table_name,
-      int32_t max_tablets,
-      std::vector<TabletId>* tablet_uuids,
-      std::vector<std::string>* ranges = nullptr,
-      std::vector<master::TabletLocationsPB>* locations = nullptr);
+  Status GetLocationsByTableIdAndUpdateCache(
+      const TableId& table_id,
+      std::vector<master::TabletLocationsPB>& locations);
 
   Status GetTabletsFromTableId(
       const TableId& table_id, int32_t max_tablets,
-      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
+      PartitionListVersion* partition_list_version = nullptr);
 
   Status GetTabletsFromTableId(
       const TableId& table_id,
@@ -1039,6 +1037,10 @@ class YBClient {
 
   Result<bool> CheckIfPitrActive();
 
+  // Returns table id from the table name or lookups the table id from the master and returns it,
+  // putting the result into the scratch.
+  Result<const TableId&> LookupTableId(const YBTableName& table_name, TableId& scratch);
+
   void LookupTabletByKey(
       const YBTablePtr& table,
       const PartitionKey& partition_key,
@@ -1166,6 +1168,9 @@ class YBClient {
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
+  FRIEND_TEST(ClientTest, MetaCacheIgnoreNonTargetTable);
+  FRIEND_TEST(ClientTest, MetaCacheAllowsMissingTargetTableForDeletedLocation);
+  FRIEND_TEST(ClientTest, MetaCacheVectorLookupKeepsMainTableLookupUsable);
   FRIEND_TEST(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader);
   FRIEND_TEST(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);

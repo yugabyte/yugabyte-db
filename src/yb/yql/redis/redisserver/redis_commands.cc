@@ -316,20 +316,26 @@ class LocalCommandData {
 };
 
 void GetTabletLocations(LocalCommandData data, LWRedisArrayPB* array_response) {
-  vector<string> tablets, partitions;
-  vector<master::TabletLocationsPB> locations;
+  std::vector<master::TabletLocationsPB> locations;
   const auto table_name = RedisServiceData::GetYBTableNameForRedisDatabase(
       data.call()->connection_context().redis_db_to_use());
-  auto s = data.client()->GetTabletsAndUpdateCache(
-      table_name, 0, &tablets, &partitions, &locations);
+
+  TableId scratch_table_id;
+  auto lookup_table_id = data.client()->LookupTableId(table_name, scratch_table_id);
+  if (!lookup_table_id.ok()) {
+    LOG(DFATAL) << "Error looking up table id: " << lookup_table_id.status().message();
+    return;
+  }
+
+  auto s = data.client()->GetLocationsByTableIdAndUpdateCache(*lookup_table_id, locations);
   if (!s.ok()) {
     LOG(DFATAL) << "Error getting tablets: " << s.message();
     return;
   }
-  vector<string> response, ts_info;
+  std::vector<string> response, ts_info;
   response.reserve(3);
   ts_info.reserve(2);
-  for (master::TabletLocationsPB &location : locations) {
+  for (const auto& location : locations) {
     response.clear();
     ts_info.clear();
 
@@ -352,7 +358,7 @@ void GetTabletLocations(LocalCommandData data, LWRedisArrayPB* array_response) {
     response.push_back(redisserver::EncodeAsInteger(start_key).ToBuffer());
     response.push_back(redisserver::EncodeAsInteger(end_key_exclusive - 1).ToBuffer());
 
-    for (const auto &replica : location.replicas()) {
+    for (const auto& replica : location.replicas()) {
       if (replica.role() == PeerRole::LEADER) {
         auto host = DesiredHostPort(replica.ts_info(), CloudInfoPB()).host();
         ts_info.push_back(redisserver::EncodeAsBulkString(host).ToBuffer());

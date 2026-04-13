@@ -2308,7 +2308,8 @@ Status YBClient::AddTransactionStatusTablet(const TableId& table_id) {
 Status YBClient::GetTabletsFromTableId(
     const TableId& table_id,
     const int32_t max_tablets,
-    RepeatedPtrField<TabletLocationsPB>* tablets) {
+    RepeatedPtrField<TabletLocationsPB>* tablets,
+    PartitionListVersion* partition_list_version) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   req.mutable_table()->set_table_id(table_id);
@@ -2320,6 +2321,9 @@ Status YBClient::GetTabletsFromTableId(
   }
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetTableLocations);
   *tablets = resp.tablet_locations();
+  if (partition_list_version) {
+    *partition_list_version = resp.partition_list_version();
+  }
   return Status::OK();
 }
 
@@ -2484,22 +2488,30 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   return Status::OK();
 }
 
-Status YBClient::GetTabletsAndUpdateCache(
-    const YBTableName& table_name,
-    const int32_t max_tablets,
-    vector<TabletId>* tablet_uuids,
-    vector<string>* ranges,
-    std::vector<master::TabletLocationsPB>* locations) {
+Result<const TableId&> YBClient::LookupTableId(const YBTableName& table_name, TableId& scratch) {
+  if (table_name.has_table_id()) {
+    return table_name.table_id();
+  }
+
+  scratch = VERIFY_RESULT(GetYBTableInfo(table_name)).table_id;
+  return scratch;
+}
+
+Status YBClient::GetLocationsByTableIdAndUpdateCache(
+    const TableId& table_id,
+    std::vector<master::TabletLocationsPB>& locations) {
   RepeatedPtrField<TabletLocationsPB> tablets;
   PartitionListVersion partition_list_version;
-  RETURN_NOT_OK(GetTablets(
-      table_name, max_tablets, &tablets, &partition_list_version, RequireTabletsRunning::kFalse));
-  FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
-  RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
-      tablets, partition_list_version, /* lookup_rpc = */ nullptr, AllowSplitTablet::kFalse));
+  RETURN_NOT_OK(GetTabletsFromTableId(
+      table_id, /* max_tablets = */ 0, &tablets, &partition_list_version));
 
-  return Status::OK();
+  std::vector<TabletId> tablet_uuids;
+  FillFromRepeatedTabletLocations(tablets, &tablet_uuids, /* ranges = */ nullptr, &locations);
+  return data_->meta_cache_->ProcessTabletLocations(
+      tablets,
+      AllowSplitTablet::kFalse,
+      internal::LookupContext{ table_id, partition_list_version });
 }
 
 rpc::Messenger* YBClient::messenger() const {

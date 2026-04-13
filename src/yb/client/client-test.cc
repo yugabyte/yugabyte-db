@@ -44,6 +44,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/error.h"
+#include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
@@ -1257,7 +1258,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_TRUE(std::regex_match(
         error->status().ToString(),
-        std::regex(".*GetTableLocations \\{.*\\} timed out after deadline expired, passed.*")))
+        std::regex(".*LookupByKeyRpc \\{.*\\} timed out after deadline expired, passed.*")))
         << error->status().ToString();
   }
 
@@ -3086,6 +3087,112 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
 
   const auto lookup_serial_stop = client::internal::TEST_GetLookupSerial();
   ASSERT_EQ(lookup_serial_stop, lookup_serial_start + 1);
+}
+
+namespace {
+
+auto MakePartitionList(PartitionListVersion version) -> VersionedTablePartitionListPtr {
+  auto partition_list = std::make_shared<VersionedTablePartitionList>();
+  partition_list->version = version;
+  return partition_list;
+}
+
+} // namespace
+
+TEST_F(ClientTest, MetaCacheIgnoreNonTargetTable) {
+  const TableId kMainTableId = "main_table";
+  const TableId kVectorTableId = "vector_table";
+  const TabletId kTabletId = "tablet_1";
+  constexpr PartitionListVersion kMainTableVersion = 100;
+  constexpr PartitionListVersion kVectorTableVersion = 200;
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  meta_cache.InvalidateTableCache(kMainTableId, MakePartitionList(kMainTableVersion));
+  meta_cache.InvalidateTableCache(kVectorTableId, MakePartitionList(kVectorTableVersion));
+
+  master::TabletLocationsPB location;
+  location.set_tablet_id(kTabletId);
+  location.mutable_partition()->set_partition_key_start("");
+  location.mutable_partition()->set_partition_key_end("");
+  location.add_table_ids(kMainTableId);
+  location.add_table_ids(kVectorTableId);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+  *locations.Add() = location;
+
+  // Process tablet locations should ignore non-target tables.
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext { kVectorTableId, kVectorTableVersion }));
+
+  // Standard read path.
+  const auto stale_status = meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext { kMainTableId, kVectorTableVersion });
+  ASSERT_NOK(stale_status);
+  ASSERT_EQ(ClientError(stale_status), ClientErrorCode::kTablePartitionListIsStale);
+}
+
+TEST_F(ClientTest, MetaCacheAllowsMissingTargetTableForDeletedLocation) {
+  const TableId kTargetTableId = "target_table";
+  const TableId kOtherTableId = "other_table";
+  constexpr PartitionListVersion kTargetTableVersion = 100;
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  meta_cache.InvalidateTableCache(kTargetTableId, MakePartitionList(kTargetTableVersion));
+  meta_cache.InvalidateTableCache(kOtherTableId, MakePartitionList(kTargetTableVersion));
+
+  master::TabletLocationsPB location;
+  location.set_tablet_id("tablet_1");
+  location.mutable_partition()->set_partition_key_start("");
+  location.mutable_partition()->set_partition_key_end("");
+  location.set_stale(false);
+  location.set_is_deleted(true);
+  location.add_table_ids(kOtherTableId);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+  *locations.Add() = location;
+
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kTargetTableId, kTargetTableVersion}));
+}
+
+TEST_F(ClientTest, MetaCacheVectorLookupKeepsMainTableLookupUsable) {
+  const TableId kMainTableId = "main_table";
+  const TableId kVectorTableId = "vector_table";
+  const TabletId kTabletId = "tablet_1";
+  constexpr PartitionListVersion kMainTableVersion = 100;
+  constexpr PartitionListVersion kVectorTableVersion = 200;
+
+  auto& meta_cache = *client_->data_->meta_cache_;
+  meta_cache.InvalidateTableCache(kMainTableId, MakePartitionList(kMainTableVersion));
+  meta_cache.InvalidateTableCache(kVectorTableId, MakePartitionList(kVectorTableVersion));
+
+  master::TabletLocationsPB location;
+  location.set_tablet_id(kTabletId);
+  location.mutable_partition()->set_partition_key_start("");
+  location.mutable_partition()->set_partition_key_end("");
+  location.add_table_ids(kMainTableId);
+  location.add_table_ids(kVectorTableId);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+  *locations.Add() = location;
+
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kVectorTableId, kVectorTableVersion}));
+
+  // Main table should still use its own partition list version and process successfully.
+  ASSERT_OK(meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kMainTableId, kMainTableVersion}));
+
+  const auto stale_status = meta_cache.ProcessTabletLocations(
+      locations, internal::AllowSplitTablet::kFalse,
+      internal::LookupContext{kMainTableId, kVectorTableVersion});
+  ASSERT_NOK(stale_status);
+  ASSERT_EQ(ClientError(stale_status), ClientErrorCode::kTablePartitionListIsStale);
 }
 
 class ClientTestWithHashAndRangePk : public ClientTest {
