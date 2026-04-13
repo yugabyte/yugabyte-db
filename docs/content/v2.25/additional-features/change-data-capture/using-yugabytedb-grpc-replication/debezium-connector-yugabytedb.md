@@ -559,7 +559,7 @@ The following example shows the value portion of a change event that the connect
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8898156066356,
+      "ts_ms": 1775704405230,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:4::0:0\"]",
@@ -570,7 +570,7 @@ The following example shows the value portion of a change event that the connect
       "xmin": null
     },
     "op": "c", --> 7
-    "ts_ms": 1646145062480, --> 8
+    "ts_ms": 1775704405236, --> 8
     "transaction": null
   }
 }
@@ -627,7 +627,7 @@ The update event is as follows:
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8881476960074,
+      "ts_ms": 1775704408457,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:5::0:0\"]",
@@ -638,7 +638,7 @@ The update event is as follows:
       "xmin": null
     },
     "op": "u", --> 4
-    "ts_ms": 1646149134341,
+    "ts_ms": 1775704408463,
     "transaction": null
   }
 }
@@ -685,7 +685,7 @@ DELETE FROM customers WHERE id = 1;
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8876894517738,
+      "ts_ms": 1775704411532,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:6::0:0\"]",
@@ -696,7 +696,7 @@ DELETE FROM customers WHERE id = 1;
       "xmin": null
     },
     "op": "d", --> 3
-    "ts_ms": 1646150253203,
+    "ts_ms": 1775704411538,
     "transaction": null
   }
 }
