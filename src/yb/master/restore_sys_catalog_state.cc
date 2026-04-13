@@ -69,10 +69,12 @@ Status ApplyWriteRequest(
   };
   qlexpr::IndexMap index_map;
   docdb::QLWriteOperation operation(
-      write_request, write_request.schema_version(), doc_read_context, index_map, nullptr,
+      write_request,
+      write_request.schema_version(), doc_read_context, index_map,
+      /* unique_index_key_projection= */ nullptr,
       TransactionOperationContext());
-  QLResponsePB response;
-  RETURN_NOT_OK(operation.Init(&response));
+  auto response = write_request.arena().NewArenaObject<LWQLResponsePB>();
+  RETURN_NOT_OK(operation.Init(response));
   return operation.Apply(apply_data);
 }
 
@@ -80,12 +82,13 @@ Status WriteEntry(
     int8_t type, const std::string& item_id, const Slice& data,
     QLWriteRequestPB::QLStmtType op_type, const docdb::DocReadContextPtr& doc_read_context,
     docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch) {
-  QLWriteRequestPB write_request;
+  auto arena = SharedThreadSafeArena();
+  auto write_request = arena->NewArenaObject<LWQLWriteRequestPB>();
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       type, item_id, data, op_type, doc_read_context->schema(),
-      &write_request));
-  write_request.set_schema_version(kSysCatalogSchemaVersion);
-  return ApplyWriteRequest(doc_read_context, schema_packing_provider, write_request, write_batch);
+      write_request));
+  write_request->set_schema_version(kSysCatalogSchemaVersion);
+  return ApplyWriteRequest(doc_read_context, schema_packing_provider, *write_request, write_batch);
 }
 
 bool TableDeletedOrHidden(const SysTablesEntryPB& table) {
@@ -197,7 +200,7 @@ class PgCatalogRestorePatch : public RestorePatch {
     }
     auto column_id = VERIFY_RESULT(
         table_info_->schema().ColumnIdByName(kCurrentVersionColumnName));
-    QLValuePB value_pb;
+    LWQLValuePB value_pb(nullptr);
     value_pb.set_int64_value(catalog_version_);
     auto doc_path = dockv::DocPath(
         catalog_version_key_.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));

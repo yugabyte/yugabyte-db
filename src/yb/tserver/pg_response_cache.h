@@ -54,14 +54,14 @@ class PgResponseCache {
   struct Response {
     Response(const PgPerformResponseMsg& response_, std::vector<RefCntSlice> rows_data_);
 
-    PgPerformResponsePB response;
+    std::shared_ptr<LWPgPerformResponsePB> response;
     std::vector<RefCntSlice> rows_data;
   };
 
   using Setter = std::function<void(Response&&)>;
 
   Result<Setter> Get(
-      PgPerformOptionsPB::CachingInfoPB* cache_info, CoarseTimePoint deadline,
+      LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
       const PgResponseCacheWaiterPtr& waiter);
 
   struct DisablerType;

@@ -441,7 +441,7 @@ void YBSession::SetObjectLockingTxnMeta(const TransactionMetadata& object_lockin
 
 const ThreadSafeArenaPtr& YBSession::arena() {
   if (!batcher_config_.arena) {
-    // batcher_config_.arena = SharedThreadSafeArena();
+    batcher_config_.arena = SharedThreadSafeArena();
   }
   return batcher_config_.arena;
 }

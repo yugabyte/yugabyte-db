@@ -365,7 +365,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
       CollectOpsErrors();
 
   void HandleAsyncWriteResponse(
-      const OpIdPB& async_write_op_id, const RemoteTablet& tablet,
+      const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
       std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy);
 
   BatcherState state_ = BatcherState::kGatheringOps;

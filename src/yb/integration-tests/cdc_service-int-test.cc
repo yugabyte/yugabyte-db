@@ -402,7 +402,11 @@ Status CDCServiceTest::WriteToProxyWithRetries(
     RpcController* rpc) {
   return LoggedWaitFor(
       [&req, resp, rpc, proxy]() -> Result<bool> {
-        auto s = proxy->Write(req, resp, rpc);
+        auto arena = SharedThreadSafeArena();
+        auto lw_req = arena->NewArenaObject<tserver::LWWriteRequestPB>(req);
+        auto lw_resp = arena->NewArenaObject<tserver::LWWriteResponsePB>();
+        auto s = proxy->Write(*lw_req, lw_resp, rpc);
+        lw_resp->ToGoogleProtobuf(resp);
         if (s.IsTryAgain() ||
             (resp->has_error() && StatusFromPB(resp->error().status()).IsTryAgain())) {
           rpc->Reset();

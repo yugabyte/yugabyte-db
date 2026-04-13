@@ -1131,6 +1131,9 @@ class YBClient {
   bool RefreshTabletInfoWithConsensusInfo(
       const tserver::TabletConsensusInfoPB& newly_received_info);
 
+  bool RefreshTabletInfoWithConsensusInfo(
+      const tserver::LWTabletConsensusInfoPB& newly_received_info);
+
   int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
 
   void RequestAbortAllRpcs();
@@ -1200,6 +1203,9 @@ class YBClient {
   YBClient();
 
   ThreadPool* callback_threadpool();
+
+  template <class PB>
+  bool DoRefreshTabletInfoWithConsensusInfo(const PB& newly_received_info);
 
   std::unique_ptr<Data> data_;
 

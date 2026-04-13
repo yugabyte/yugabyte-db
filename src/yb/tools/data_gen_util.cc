@@ -69,7 +69,7 @@ void WriteValueToColumn(const client::YBSchema& schema,
       out->set_double_value(value / 123.0);
       return;
     case DataType::STRING:
-      out->set_string_value(FastHex64ToBuffer(value, buf));
+      out->dup_string_value(FastHex64ToBuffer(value, buf));
       return;
     case DataType::BOOL:
       out->set_bool_value(value);

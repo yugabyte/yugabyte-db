@@ -441,7 +441,7 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
 
   // Insert a bunch of rows with the current schema
   for (int i = start_row; i < start_row + num_rows; i++) {
-    auto op = table.NewInsertOp();
+    auto op = table.NewInsertOp(session->arena());
     // Endian-swap the key so that we spew inserts randomly
     // instead of just a sequential write pattern. This way
     // compactions may actually be triggered.
@@ -472,7 +472,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
   client::TableHandle table;
   ASSERT_OK(table.Open(kTableName, client_.get()));
 
-  auto update = table.NewUpdateOp();
+  auto update = table.NewUpdateOp(session->arena());
   int32_t key = bswap_32(row_key); // endian swap to match 'InsertRows'
   QLAddInt32HashValue(update->mutable_request(), key);
   for (const auto& e : updates) {
@@ -754,7 +754,7 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
   for (;;) {
     bool should_stop = stop_threads_.Load();
     if (!should_stop) {
-      auto op = table.NewWriteOp(type);
+      auto op = table.NewWriteOp(session->arena(), type);
       auto req = op->mutable_request();
       // Endian-swap the key so that we spew inserts randomly
       // instead of just a sequential write pattern. This way
@@ -885,12 +885,12 @@ TEST_P(AlterTableTest, TestInsertAfterAlterTable) {
   ASSERT_OK(AddNewI32Column(kSplitTableName, "new-i32"));
   client::TableHandle table;
   ASSERT_OK(table.Open(kSplitTableName, client_.get()));
-  auto insert = table.NewInsertOp();
+  auto session = client_->NewSession(15s);
+  auto insert = table.NewInsertOp(session->arena());
   auto req = insert->mutable_request();
   QLAddInt32HashValue(req, 1);
   table.AddInt32ColumnValue(req, "c1", 1);
   table.AddInt32ColumnValue(req, "new-i32", 1);
-  auto session = client_->NewSession(15s);
   session->Apply(insert);
   auto flush_status = session->TEST_FlushAndGetOpsErrors();
   const auto& s = flush_status.status;

@@ -26,6 +26,7 @@
 
 #include "yb/tserver/tserver_fwd.h"
 
+#include "yb/util/memory/arena.h"
 #include "yb/util/status.h"
 #include "yb/util/type_traits.h"
 
@@ -143,7 +144,8 @@ class SysCatalogWriter {
       bool skip_if_clean);
 
   const Schema& schema_with_ids_;
-  std::unique_ptr<tserver::WriteRequestPB> req_;
+  ThreadSafeArenaPtr arena_;
+  tserver::LWWriteRequestPB* req_;
   const int64_t leader_term_;
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogWriter);

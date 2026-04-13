@@ -170,7 +170,8 @@ Status XClusterYcqlTestBase::WriteWorkload(
   LOG(INFO) << (delete_op ? "Deleting" : "Inserting") << " rows of key range [" << start << ", "
             << end << ") into" << table->name().ToString();
   for (uint32_t i = start; i < end; i++) {
-    auto op = delete_op ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
+    auto op = delete_op ? table_handle.NewDeleteOp(session->arena())
+                        : table_handle.NewInsertOp(session->arena());
     int32_t key = i;
     QLAddInt32HashValue(op->mutable_request(), key);
     ops.push_back(std::move(op));

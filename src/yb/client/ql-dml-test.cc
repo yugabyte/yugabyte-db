@@ -160,7 +160,7 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
       const int32 h1, const string& h2,
       const int32 r1, const string& r2,
       const int32 c1, const string& c2) {
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, h1);
     QLAddStringHashValue(req, h2);
@@ -204,7 +204,7 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
       const vector<string>& columns,
       const int32 h1, const string& h2,
       const int32 r1, const string& r2) {
-    const YBqlReadOpPtr op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, h1);
     QLAddStringHashValue(req, h2);
@@ -272,7 +272,7 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
     return testing::AssertionSuccess();
   }
 
-  void AddAllColumns(QLReadRequestPB* req) {
+  void AddAllColumns(LWQLReadRequestPB* req) {
     table_.AddColumns(kAllColumns, req);
   }
 
@@ -293,6 +293,7 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     // Test selecting a row.
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const YBqlReadOpPtr op = SelectRow();
+    LOG(INFO) << "Response: " << AsString(op->response());
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK) << AsString(op->response());
@@ -302,9 +303,10 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
   }
 
   {
+    const YBSessionPtr session = NewSession();
     // Test updating the row.
     // update t set c1 = 4, c2 = 'd' where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -312,7 +314,6 @@ TEST_F(QLDmlTest, TestInsertUpdateAndSelect) {
     QLAddStringRangeValue(req, "b");
     table_.AddInt32ColumnValue(req, "c1", 4);
     table_.AddStringColumnValue(req, "c2", "d");
-    const YBSessionPtr session(NewSession());
     ASSERT_OK(session->TEST_ApplyAndFlush(op));
 
     ASSERT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -476,9 +477,10 @@ TEST_F(QLDmlTest, TestInsertMultipleRows) {
   }
 
   {
+    const YBSessionPtr session = NewSession();
     // Test selecting the first row back.
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const YBqlReadOpPtr op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -488,7 +490,6 @@ TEST_F(QLDmlTest, TestInsertMultipleRows) {
     table_.AddStringCondition(condition, "r2", QL_OP_EQUAL, "b");
     AddAllColumns(req);
 
-    const YBSessionPtr session(NewSession());
     CHECK_OK(session->TEST_ApplyAndFlush(op));
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
@@ -533,7 +534,7 @@ TEST_F(QLDmlTest, TestSelectMultipleRows) {
   {
     // Test selecting 2 rows with an OR condition.
     // select * from t where h1 = 1 and h2 = 'a' and r2 = 'b' or r2 = 'd';
-    const YBqlReadOpPtr op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -556,7 +557,7 @@ TEST_F(QLDmlTest, TestSelectMultipleRows) {
   {
     // Test selecting 2 rows with AND + OR column conditions.
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and (r2 = 'b' or r2 = 'd');
-    const YBqlReadOpPtr op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -600,16 +601,16 @@ TEST_F(QLDmlTest, TestSelectWithoutConditionWithLimit) {
   }
 
   {
+    const YBSessionPtr session = NewSession();
     // Test selecting multiple rows with a row limit.
     // select * from t where h1 = 1 and h2 = 'a' limit 5;
-    const YBqlReadOpPtr op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
     AddAllColumns(req);
 
     req->set_limit(5);
-    const YBSessionPtr session(NewSession());
     CHECK_OK(session->TEST_ApplyAndFlush(op));
 
     // Expect 5 rows:
@@ -632,7 +633,7 @@ TEST_F(QLDmlTest, TestUpsert) {
   {
     // Test upserting a row (update as insert).
     // update t set c1 = 3 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const YBqlWriteOpPtr op(table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT));
+    const YBqlWriteOpPtr op(table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT));
     auto* const req = op->mutable_request();
     req->set_hash_code(0);
     QLAddInt32HashValue(req, 1);
@@ -665,7 +666,7 @@ TEST_F(QLDmlTest, TestUpsert) {
   {
     // Test upsert to "insert" an additional column ("c2").
     // update t set c2 = 'c' where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -701,7 +702,7 @@ TEST_F(QLDmlTest, TestDelete) {
   {
     // Test deleting a column ("c1").
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -730,7 +731,7 @@ TEST_F(QLDmlTest, TestDelete) {
   {
     // Test deleting the whole row.
     // delete from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -776,7 +777,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
   {
     // Test IF NOT EXISTS when the row exists
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists;
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -812,7 +813,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
   {
     // Test IF NOT EXISTS AND a column condition when the row exists and column value is different.
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists or c2 = 'd';
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -870,7 +871,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
   {
     // Test IF NOT EXISTS AND a column condition when the row exists and column value matches.
     // insert into t values (1, 'a', 2, 'b', 4, 'd') if not exists or c2 = 'c';
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -949,7 +950,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
   {
     // Test IF NOT EXISTS when the row exists.
     // update t set c1 = 6 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if not exists;
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -984,7 +985,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
   {
     // Test IF EXISTS when the row exists.
     // update t set c1 = 6 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if exists;
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1040,7 +1041,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
   {
     // Test IF with a column condition when the column value is different.
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if c1 = 4;
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1093,7 +1094,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
   {
     // Test IF EXISTS AND a column condition when the row exists and the column value matches.
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b' if exists and c1 = 3;
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1137,7 +1138,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
   {
     // Test deleting the whole row with IF EXISTS when the row does not exist (wrong "r1").
     // delete from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'c' if exists;
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1162,7 +1163,7 @@ TEST_F(QLDmlTest, TestError) {
   const YBSessionPtr session(NewSession());
   {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1177,7 +1178,7 @@ TEST_F(QLDmlTest, TestError) {
   {
     // Test selecting with incomparable column condition (int32 column "r1" with a string value).
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 <> '2' and r2 <> 'b';
-    const YBqlReadOpPtr op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     QLAddStringHashValue(req, "a");
@@ -1243,7 +1244,7 @@ TEST_F(QLDmlTest, OpenRecentlyCreatedTable) {
     }
     auto session = NewSession();
     for (int k = 0; k != kNumKeys; ++k) {
-      auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      auto op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, k);
       table.AddInt32ColumnValue(req, "v", -k);
@@ -1316,7 +1317,7 @@ TEST_F(QLDmlTest, DeletePartialRangeKey) {
   }
 
   {
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, row_key.h1);
     QLAddStringHashValue(req, row_key.h2);

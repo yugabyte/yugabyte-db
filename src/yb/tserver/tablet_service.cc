@@ -555,7 +555,7 @@ class WriteQueryCompletionCallback {
       }
 
       if (include_trace_ && trace_) {
-        response_->set_trace_buffer(trace_->DumpToString(true));
+        response_->dup_trace_buffer(trace_->DumpToString(true));
       }
       SetupErrorAndRespond(get_error(), status, context_.get());
       return;
@@ -575,7 +575,7 @@ class WriteQueryCompletionCallback {
     }
 
     if (include_trace_ && trace_) {
-      response_->set_trace_buffer(trace_->DumpToString(true));
+      response_->dup_trace_buffer(trace_->DumpToString(true));
     }
     response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
     FillTabletConsensusInfoIfRequestOpIdStale(tablet_peer_, query_->client_request(), response_);
@@ -2600,9 +2600,8 @@ Status TabletServiceImpl::PerformWrite(
   }
   ADOPT_TRACE(context->trace());
   TRACE("Start Write");
-  TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
-               "tablet_id", req->tablet_id());
-  VLOG(2) << "Received Write RPC: " << req->DebugString();
+  TRACE_EVENT1("tserver", "TabletServiceImpl::Write", "tablet_id", std::string(req->tablet_id()));
+  VLOG(2) << "Received Write RPC: " << AsString(*req);
 
   UpdateClock(*req, server_->Clock());
   TEST_SYNC_POINT_CALLBACK("TabletServiceImpl::PerformWrite", const_cast<WriteRequestMsg*>(req));

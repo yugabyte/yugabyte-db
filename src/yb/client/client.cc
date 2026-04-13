@@ -3196,14 +3196,24 @@ Status YBClient::ClearMetacache(const std::string& namespace_id) {
   return data_->meta_cache_->ClearCacheEntries(namespace_id);
 }
 
-bool YBClient::RefreshTabletInfoWithConsensusInfo(
-    const tserver::TabletConsensusInfoPB& newly_received_info) {
+template <class PB>
+bool YBClient::DoRefreshTabletInfoWithConsensusInfo(const PB& newly_received_info) {
   auto status = data_->meta_cache_->RefreshTabletInfoWithConsensusInfo(newly_received_info);
   if(!status.ok()) {
     VLOG(1) << "Partially refreshing meta-cache for tablet failed because " << status;
     return false;
   }
   return true;
+}
+
+bool YBClient::RefreshTabletInfoWithConsensusInfo(
+    const tserver::TabletConsensusInfoPB& newly_received_info) {
+  return DoRefreshTabletInfoWithConsensusInfo(newly_received_info);
+}
+
+bool YBClient::RefreshTabletInfoWithConsensusInfo(
+    const tserver::LWTabletConsensusInfoPB& newly_received_info) {
+  return DoRefreshTabletInfoWithConsensusInfo(newly_received_info);
 }
 
 int64_t YBClient::GetRaftConfigOpidIndex(const TabletId& tablet_id) {

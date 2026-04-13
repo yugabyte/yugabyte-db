@@ -107,7 +107,7 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestMsg *req) 
 
   const MCVector<JsonColumnArg>& jsoncol_args = tnode->json_col_args();
   for (const JsonColumnArg& col : jsoncol_args) {
-    QLExpressionPB expr_pb;
+    LWQLExpressionPB expr_pb(&req->arena());
     RETURN_NOT_OK(PTExprToPB(col.expr(), &expr_pb));
 
     if (tnode->opcode() == TreeNodeOpcode::kPTUpdateStmt) {

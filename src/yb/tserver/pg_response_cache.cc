@@ -115,7 +115,7 @@ void TEST_UpdateCatalogReadTime(
 }
 
 [[nodiscard]] bool IsOk(const PgResponseCache::Response& resp) {
-  return !resp.response.has_status();
+  return !resp.response->has_status();
 }
 
 class MetricContext {
@@ -188,9 +188,9 @@ class Data {
 
   void Set(PgResponseCache::Response&& value) {
     if (PREDICT_FALSE(FLAGS_TEST_pg_response_cache_catalog_read_time_usec > 0) &&
-        value.response.has_catalog_read_time()) {
+        value.response->has_catalog_read_time()) {
       TEST_UpdateCatalogReadTime(
-          &value.response,
+          value.response.get(),
           ReadHybridTime::SingleTime(HybridTime::FromMicros(
               FLAGS_TEST_pg_response_cache_catalog_read_time_usec)));
     }
@@ -357,7 +357,8 @@ class PgResponseCache::Impl : private GarbageCollector {
   }
 
   [[nodiscard]] std::shared_ptr<Data> GetEntryData(
-      PgPerformOptionsPB::CachingInfoPB* cache_info, CoarseTimePoint deadline) EXCLUDES(mutex_) {
+      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info,
+      CoarseTimePoint deadline) EXCLUDES(mutex_) {
     auto now = CoarseMonoClock::Now();
     Counter* renew_metric = nullptr;
     auto metric_updater = ScopeExit([&renew_metric] {
@@ -386,7 +387,7 @@ class PgResponseCache::Impl : private GarbageCollector {
 
  public:
   Result<Setter> Get(
-      PgPerformOptionsPB::CachingInfoPB* cache_info, CoarseTimePoint deadline,
+      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
       const PgResponseCacheWaiterPtr& waiter) EXCLUDES(mutex_) {
     auto data = GetEntryData(cache_info, deadline);
     queries_->Increment();
@@ -476,7 +477,7 @@ class PgResponseCache::Impl : private GarbageCollector {
 
   [[nodiscard]] bool IsRenewRequired(
       CoarseTimePoint creation_time, CoarseTimePoint now,
-      const PgPerformOptionsPB::CachingInfoPB& cache_info, Counter** renew_metric) const {
+      const LWPgPerformOptionsPB::LWCachingInfoPB& cache_info, Counter** renew_metric) const {
     if (!cache_info.has_lifetime_threshold_ms()) {
       return false;
     }
@@ -522,7 +523,7 @@ PgResponseCache::PgResponseCache(
 PgResponseCache::~PgResponseCache() = default;
 
 Result<PgResponseCache::Setter> PgResponseCache::Get(
-    PgPerformOptionsPB::CachingInfoPB* cache_info,
+    LWPgPerformOptionsPB::LWCachingInfoPB* cache_info,
     CoarseTimePoint deadline,
     const PgResponseCacheWaiterPtr& waiter) {
   return impl_->Get(cache_info, deadline, waiter);
@@ -534,9 +535,9 @@ PgResponseCache::Disabler PgResponseCache::Disable(KeyGroup key_group) {
 
 PgResponseCache::Response::Response(
     const PgPerformResponseMsg& response_, std::vector<RefCntSlice> rows_data_)
-    : response(response_),
+    : response(rpc::SharedMessage<PgPerformResponseMsg>(response_)),
       rows_data(std::move(rows_data_)) {
-  DCHECK_EQ(response.responses().size(), rows_data.size());
+  DCHECK_EQ(response->responses().size(), rows_data.size());
 }
 
 } // namespace yb::tserver

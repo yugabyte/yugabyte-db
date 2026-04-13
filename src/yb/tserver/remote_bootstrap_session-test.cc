@@ -25,7 +25,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/write_query.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/backoff_waiter.h"
 
@@ -183,19 +183,20 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
     req.set_tablet_id(tablet_peer_->tablet_id());
     AddTestRowInsert(i, i * 2, Substitute("key$0", i), &req);
 
-    WriteResponsePB resp;
+    auto arena = SharedThreadSafeArena();
+    auto* resp = arena->NewArenaObject<LWWriteResponsePB>();
     CountDownLatch latch(1);
 
     auto query = std::make_unique<tablet::WriteQuery>(
         kLeaderTerm, CoarseTimePoint::max() /* deadline */, tablet_peer_.get(),
-        tablet_ptr, nullptr, &resp);
-    query->set_client_request(req);
-    query->set_callback(tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
+        tablet_ptr, /* rpc_context= */ nullptr, resp);
+    query->set_client_request(*arena->NewArenaObject<LWWriteRequestPB>(req));
+    query->set_callback(tablet::MakeLatchOperationCompletionCallback(&latch, resp));
     tablet_peer_->WriteAsync(std::move(query));
     latch.Wait();
-    ASSERT_FALSE(resp.has_error()) << "Request failed: " << resp.error().ShortDebugString();
-    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, resp.ql_response_batch(0).status()) <<
-        "Insert error: " << resp.ShortDebugString();
+    ASSERT_FALSE(resp->has_error()) << "Request failed: " << resp->error().ShortDebugString();
+    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, resp->ql_response_batch().front().status()) <<
+        "Insert error: " << resp->ShortDebugString();
   }
   ASSERT_OK(tablet()->Flush(tablet::FlushMode::kSync));
 }

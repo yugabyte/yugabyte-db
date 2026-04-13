@@ -673,12 +673,13 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   // levels the read algorithm would differ.
 
   AsyncRpcData data{
-      .batcher = self,
-      .tablet = tablet,
-      .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
-      .need_consistent_read = need_consistent_read,
-      .ops = InFlightOps(group.begin, group.end),
-      .need_metadata = group.need_metadata
+    .batcher = self,
+    .tablet = tablet,
+    .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
+    .need_consistent_read = need_consistent_read,
+    .arena = arena_,
+    .ops = InFlightOps(group.begin, group.end),
+    .need_metadata = group.need_metadata
   };
 
   const auto& first_op = group.begin->yb_op;
@@ -883,7 +884,7 @@ void Batcher::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& 
 }
 
 void Batcher::HandleAsyncWriteResponse(
-    const OpIdPB& async_write_op_id, const RemoteTablet& tablet,
+    const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
     std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy) {
   // We have a async write. Record the OpId, and send a async RPC to track its completion.
   // At time of final commit, we will wait for all these async writes to complete.

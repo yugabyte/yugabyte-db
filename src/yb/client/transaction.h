@@ -50,6 +50,7 @@ struct ChildTransactionData {
   ConsistentReadPoint::HybridTimeMap local_limits;
 
   static Result<ChildTransactionData> FromPB(const ChildTransactionDataPB& data);
+  static Result<ChildTransactionData> FromPB(const LWChildTransactionDataPB& data);
 };
 
 template<class T>
@@ -167,6 +168,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Apply results from child to this parent transaction.
   // `result` should be prepared with FinishChild of child transaction.
   Status ApplyChildResult(const ChildTransactionResultPB& result);
+  Status ApplyChildResult(const LWChildTransactionResultPB& result);
 
   std::shared_future<Result<TransactionMetadata>> GetMetadata(CoarseTimePoint deadline) const;
 

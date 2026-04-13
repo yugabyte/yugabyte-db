@@ -217,9 +217,9 @@ class Operation {
   RedisResponseMsg& response() {
     switch (type_) {
       case OperationType::kRead:
-        return *down_cast<YBRedisReadOp*>(operation_.get())->mutable_response();
+        return down_cast<YBRedisReadOp*>(operation_.get())->response();
       case OperationType::kWrite:
-        return *down_cast<YBRedisWriteOp*>(operation_.get())->mutable_response();
+        return down_cast<YBRedisWriteOp*>(operation_.get())->response();
       case OperationType::kNone: FALLTHROUGH_INTENDED;
       case OperationType::kLocal:
         FATAL_INVALID_ENUM_VALUE(OperationType, type_);
@@ -292,14 +292,14 @@ class Operation {
 
     if (status.ok()) {
       if (operation_) {
-        call_->RespondSuccess(index_, metrics_, &response());
+        call_->RespondSuccess(
+            index_, metrics_, std::shared_ptr<LWRedisResponsePB>(operation_, &response()));
       } else {
-        RedisResponsePB resp;
-        call_->RespondSuccess(index_, metrics_, &resp);
+        call_->RespondSuccess(index_, metrics_, rpc::MakeSharedMessage<LWRedisResponsePB>());
       }
     } else if ((type_ == OperationType::kRead || type_ == OperationType::kWrite) &&
                response().code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
-      call_->Respond(index_, false, &response());
+      call_->Respond(index_, false, std::shared_ptr<LWRedisResponsePB>(operation_, &response()));
     } else {
       call_->RespondFailure(index_, status);
     }
@@ -912,6 +912,10 @@ class BatchContextImpl : public BatchContext {
   std::string ToString() const {
     return Format("{ tablets: $0 }", tablets_);
   }
+
+  const ThreadSafeArenaPtr& arena() const override {
+    return thread_safe_arena_;
+  };
 
  private:
   template <class... Args>

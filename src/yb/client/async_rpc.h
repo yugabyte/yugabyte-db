@@ -27,6 +27,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/metrics_fwd.h"
 
 namespace yb {
@@ -62,6 +63,7 @@ struct AsyncRpcData {
   RemoteTablet* tablet = nullptr;
   bool allow_local_calls_in_curr_thread = false;
   bool need_consistent_read = false;
+  ThreadSafeArenaPtr arena;
   InFlightOps ops;
   bool need_metadata = false;
   bool use_async_write = false;
@@ -102,7 +104,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
  protected:
   void Finished(const Status& status) override;
 
-  void HandleFinished(const Status& status);
+  void HandleFinished(RefCntBuffer data_holder, const Status& status);
 
   void SendRpcToTserver(int attempt_num) override;
 
@@ -110,12 +112,12 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   // This is the last step where errors and responses are collected from the response and
   // stored in batcher. If there's a callback from the user, it is done in this step.
-  virtual void ProcessResponseFromTserver(const Status& status) = 0;
+  virtual void ProcessResponseFromTserver(RefCntBuffer data_holder, const Status& status) = 0;
 
   // See FlushExtraResult for details.
   virtual FlushExtraResult MakeFlushExtraResult() = 0;
 
-  virtual Status SwapResponses() = 0;
+  virtual Status SwapResponses(RefCntBuffer data_holder) = 0;
 
   void Failed(const Status& status) override;
 
@@ -123,11 +125,11 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   bool IsLocalCall() const;
 
   Status CheckResponseCount(
-      const char* op, const char* name, int found, int expected);
+      const char* op, const char* name, size_t found, size_t expected);
 
   Status CheckResponseCount(
-      const char* op, int redis_found, int redis_expected, int ql_found, int ql_expected,
-      int pgsql_found, int pgsql_expected);
+      const char* op, size_t redis_found, size_t redis_expected, size_t ql_found,
+      size_t ql_expected, size_t pgsql_found, size_t pgsql_expected);
 
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
@@ -168,20 +170,18 @@ class AsyncRpcBase : public AsyncRpc {
 
   virtual void NotifyBatcher(const Status& status) = 0;
 
-  void ProcessResponseFromTserver(const Status& status) override;
+  void ProcessResponseFromTserver(RefCntBuffer data_holder, const Status& status) override;
 
  protected: // TODO replace with private
-  TabletServerErrorPtr response_error() const override {
-    return TabletServerErrorPtr(resp_.has_error() ? &resp_.error() : nullptr);
-  }
+  TabletServerErrorPtr response_error() const override;
 
   FlushExtraResult MakeFlushExtraResult() override;
 
-  Req req_;
-  Resp resp_;
+  Req& req_;
+  Resp& resp_;
 };
 
-class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResponsePB> {
+class WriteRpc : public AsyncRpcBase<tserver::LWWriteRequestPB, tserver::LWWriteResponsePB> {
  public:
   // Relies on ops requests to be not on arena.
   explicit WriteRpc(const AsyncRpcData& data);
@@ -191,12 +191,12 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
   std::string GetRpcName() override { return "Write"; }
 
  private:
-  Status SwapResponses() override;
+  Status SwapResponses(RefCntBuffer data_holder) override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
 };
 
-class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {
+class ReadRpc : public AsyncRpcBase<tserver::LWReadRequestPB, tserver::LWReadResponsePB> {
  public:
   // Relies on ops requests to be not on arena.
   explicit ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level);
@@ -206,7 +206,7 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
   std::string GetRpcName() override { return "Read"; }
 
  private:
-  Status SwapResponses() override;
+  Status SwapResponses(RefCntBuffer data_holder) override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
 };

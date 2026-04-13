@@ -52,6 +52,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
@@ -188,8 +189,8 @@ std::shared_ptr<YBqlReadOp> CreateReadOp(
   req->add_selected_exprs()->set_column_id(value_column_id);
   req->mutable_column_refs()->add_ids(value_column_id);
 
-  QLRSColDescPB *rscol_desc = req->mutable_rsrow_desc()->add_rscol_descs();
-  rscol_desc->set_name(value_column);
+  auto *rscol_desc = req->mutable_rsrow_desc()->add_rscol_descs();
+  rscol_desc->dup_name(value_column);
   table.ColumnType(value_column)->ToQLTypePB(rscol_desc->mutable_ql_type());
   return op;
 }

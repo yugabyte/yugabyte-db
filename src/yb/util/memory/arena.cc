@@ -331,6 +331,18 @@ size_t ArenaBase<Traits>::UsedBytes() {
   return arena_footprint_ - AcquireLoadCurrent()->free_bytes();
 }
 
+template <class Traits>
+bool ArenaBase<Traits>::Contains(const void* ptr) {
+  auto component = AcquireLoadCurrent();
+  while (component) {
+    if (component->Contains(ptr)) {
+      return true;
+    }
+    component = component->next();
+  }
+  return false;
+}
+
 // Explicit instantiation.
 template class ArenaBase<ThreadSafeArenaTraits>;
 template class ArenaBase<ArenaTraits>;
