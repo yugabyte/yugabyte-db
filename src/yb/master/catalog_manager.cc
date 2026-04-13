@@ -12409,8 +12409,6 @@ Status CatalogManager::BuildLocationsForTablet(
     if (partitions_only) {
       return Status::OK();
     }
-    const auto& tablet_pb = l_tablet->pb;
-    locs_pb->set_table_id(l_tablet->pb.table_id());
     if (l_tablet->pb.hosted_tables_mapped_by_parent_id()) {
       for (auto& table_id : tablet->GetTableIds()) {
         locs_pb->add_table_ids(std::move(table_id));
@@ -12421,8 +12419,8 @@ Status CatalogManager::BuildLocationsForTablet(
     if (locs->empty() && l_tablet->pb.has_committed_consensus_state()) {
       cstate = l_tablet->pb.committed_consensus_state();
     }
-    locs_pb->mutable_split_tablet_ids()->Reserve(tablet_pb.split_tablet_ids().size());
-    for (const auto& split_tablet_id : tablet_pb.split_tablet_ids()) {
+    locs_pb->mutable_split_tablet_ids()->Reserve(l_tablet->pb.split_tablet_ids().size());
+    for (const auto& split_tablet_id : l_tablet->pb.split_tablet_ids()) {
       *locs_pb->add_split_tablet_ids() = split_tablet_id;
     }
   }
