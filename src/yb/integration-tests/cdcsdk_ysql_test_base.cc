@@ -2843,6 +2843,12 @@ void CDCSDKYsqlTest::PollUntilTabletSplit(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
     GetChangesResponsePB* change_resp,
     int tablet_idx) {
+  GetChangesResponsePB local_resp;
+  if (change_resp == nullptr) {
+    int idx = (tablet_idx >= 0) ? tablet_idx : 0;
+    local_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, nullptr, idx));
+    change_resp = &local_resp;
+  }
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto result = (tablet_idx >= 0)
