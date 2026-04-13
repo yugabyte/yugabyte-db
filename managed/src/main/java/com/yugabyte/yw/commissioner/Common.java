@@ -13,6 +13,7 @@ public class Common {
     aws("aws", true, true, true, ConfigHelper.ConfigType.AWSRegionMetadata, "ec2-user"),
     gcp("gcp", true, true, true, ConfigHelper.ConfigType.GCPRegionMetadata, "centos"),
     azu("azu", true, true, true, ConfigHelper.ConfigType.AZURegionMetadata, "centos"),
+    oci("oci", true, true, true, ConfigHelper.ConfigType.OCIRegionMetadata, "opc"),
     docker("docker", false, false, false, ConfigHelper.ConfigType.DockerRegionMetadata),
     onprem("onprem", true, false, true, null),
     kubernetes("kubernetes", true, false, true, null),
@@ -93,7 +94,7 @@ public class Common {
     }
 
     public boolean isHostedZoneEnabled() {
-      return this == aws || this == azu || this == local;
+      return this == aws || this == azu || this == oci || this == local;
     }
 
     public String getSshUser() {
@@ -101,19 +102,19 @@ public class Common {
     }
 
     public boolean enforceInstanceTags() {
-      return this == aws || this == azu || this == gcp;
+      return this == aws || this == azu || this == gcp || this == oci;
     }
 
     public boolean imageBundleSupported() {
-      return this == aws || this == azu || this == gcp;
+      return this == aws || this == azu || this == gcp || this == oci;
     }
 
     public boolean regionBootstrapSupported() {
-      return this == aws || this == azu || this == gcp;
+      return this == aws || this == azu || this == gcp || this == oci;
     }
 
     public boolean isPublicCloud() {
-      return this == aws || this == azu || this == gcp;
+      return this == aws || this == azu || this == gcp || this == oci;
     }
   }
 }

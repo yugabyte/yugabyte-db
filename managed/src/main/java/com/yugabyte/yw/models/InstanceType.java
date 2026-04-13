@@ -507,6 +507,7 @@ public class InstanceType extends Model {
     public static final int DEFAULT_VOLUME_COUNT = 1;
     public static final int DEFAULT_GCP_VOLUME_SIZE_GB = 375;
     public static final int DEFAULT_AZU_VOLUME_SIZE_GB = 250;
+    public static final int DEFAULT_OCI_VOLUME_SIZE_GB = 250;
 
     // These instance type codes are typically the ones provided by the cloud vendor.
     @ApiModelProperty(
@@ -552,6 +553,13 @@ public class InstanceType extends Model {
       InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
       instanceTypeDetails.setVolumeDetailsList(
           DEFAULT_VOLUME_COUNT, DEFAULT_AZU_VOLUME_SIZE_GB, VolumeType.SSD);
+      return instanceTypeDetails;
+    }
+
+    public static InstanceTypeDetails createOCIDefault() {
+      InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
+      instanceTypeDetails.setVolumeDetailsList(
+          DEFAULT_VOLUME_COUNT, DEFAULT_OCI_VOLUME_SIZE_GB, VolumeType.SSD);
       return instanceTypeDetails;
     }
 
