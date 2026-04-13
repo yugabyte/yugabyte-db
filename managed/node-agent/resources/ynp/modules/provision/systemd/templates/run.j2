@@ -36,8 +36,6 @@ check_root_systemd_services() {
     else
         mkdir -p "${systemd_dir}"
     fi
-{% endif %}
-
 # Configure the systemd unit files
 {% for service_file in service_files | split_string %}
     tmp_file=$(mktemp)
@@ -51,6 +49,7 @@ check_root_systemd_services() {
         chmod 644 "${systemd_dir}/{{ service_file }}"
     fi
 {% endfor %}
+{% endif %}
 
 {% if configure_cgroup == 'True' %}
 # Root-only: v1 boot oneshot (yb-cgroup-v1-setup.service) or v2 user@ template drop-in (Delegate=pids memory cpu).

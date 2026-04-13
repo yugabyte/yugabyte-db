@@ -35,6 +35,8 @@ ynp_dir = {{ ynp_dir }}
 execution_start_time = {{ start_time }}
 yb_home_dir = {{ ynp_config['ynp'].yb_home_dir }}
 yb_user = yugabyte
+# User name is used in systemd unit files.
+user_name = yugabyte
 is_install_node_agent = {{ ynp_config['ynp'].is_install_node_agent }}
 tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
 # empty is null in ini, hence that syntax

@@ -642,6 +642,10 @@ public class NodeAgentRpcPayload {
     AnsibleClusterServerCtl.Params taskParams = null;
     if (nodeTaskParams instanceof AnsibleClusterServerCtl.Params) {
       taskParams = (AnsibleClusterServerCtl.Params) nodeTaskParams;
+    } else {
+      throw new RuntimeException(
+          "Expected AnsibleClusterServerCtl.Params for setupServerControlBits, but found "
+              + nodeTaskParams.getClass());
     }
     String serverName = "yb-" + taskParams.process;
     String serverHome =

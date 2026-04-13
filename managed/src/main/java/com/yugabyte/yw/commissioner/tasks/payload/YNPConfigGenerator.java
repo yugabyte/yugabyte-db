@@ -102,6 +102,9 @@ public class YNPConfigGenerator {
     if (!provider.getYbHome().isEmpty()) {
       ynpNode.put("yb_home_dir", provider.getYbHome());
     }
+    if (confGetter.getConfForScope(provider, ProviderConfKeys.useSystemLevelSystemd)) {
+      ynpNode.put("use_system_level_systemd", true);
+    }
     ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
     ynpNode.put("check_available_ports", provider.isManualOnprem());
     ynpNode.put("check_clean_dirs", provider.isManualOnprem());

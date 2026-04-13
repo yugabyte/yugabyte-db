@@ -591,4 +591,12 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
               + " configure-server. Only effective when user-level systemd is in use.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useSystemLevelSystemd =
+      new ConfKeyInfo<>(
+          "yb.node_agent.use_system_level_systemd",
+          ScopeType.PROVIDER,
+          "Use System Level Systemd",
+          "Use system-level systemd instead of user-level systemd for service management",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
