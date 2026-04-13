@@ -1,0 +1,212 @@
+# Copyright (c) YugabyteDB, Inc.
+# OCI (Oracle Cloud Infrastructure) Instance Type Metadata
+# Shapes from: https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm
+
+# Standard E4 Flex (AMD) - Flexible shapes where you choose OCPUs and memory
+VM.Standard.E4.Flex:
+  numCores: 2
+  memSizeGB: 32
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 50
+        volumeType: SSD
+      - volumeSizeGB: 50
+        volumeType: SSD
+
+# Standard E5 Flex (AMD) - Latest generation flexible shapes
+VM.Standard.E5.Flex:
+  numCores: 2
+  memSizeGB: 32
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 50
+        volumeType: SSD
+      - volumeSizeGB: 50
+        volumeType: SSD
+
+# Standard3 Flex (Intel) - Flexible shapes
+VM.Standard3.Flex:
+  numCores: 2
+  memSizeGB: 32
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 50
+        volumeType: SSD
+      - volumeSizeGB: 50
+        volumeType: SSD
+
+# Optimized3 Flex (Intel) - High frequency shapes
+VM.Optimized3.Flex:
+  numCores: 2
+  memSizeGB: 32
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 50
+        volumeType: SSD
+      - volumeSizeGB: 50
+        volumeType: SSD
+
+# Standard A1 Flex (Arm/Ampere) - Arm-based flexible shapes
+VM.Standard.A1.Flex:
+  numCores: 2
+  memSizeGB: 12
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 50
+        volumeType: SSD
+      - volumeSizeGB: 50
+        volumeType: SSD
+
+# Standard E2 Flex (AMD)
+VM.Standard.E2.Flex:
+  numCores: 2
+  memSizeGB: 32
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 50
+        volumeType: SSD
+      - volumeSizeGB: 50
+        volumeType: SSD
+
+# Fixed Standard Shapes - E2 Series (AMD)
+VM.Standard.E2.1:
+  numCores: 1
+  memSizeGB: 8
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 50
+        volumeType: SSD
+
+VM.Standard.E2.2:
+  numCores: 2
+  memSizeGB: 16
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 50
+        volumeType: SSD
+      - volumeSizeGB: 50
+        volumeType: SSD
+
+VM.Standard.E2.4:
+  numCores: 4
+  memSizeGB: 32
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 50
+        volumeType: SSD
+      - volumeSizeGB: 50
+        volumeType: SSD
+
+VM.Standard.E2.8:
+  numCores: 8
+  memSizeGB: 64
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 100
+        volumeType: SSD
+      - volumeSizeGB: 100
+        volumeType: SSD
+
+# Fixed Standard Shapes - E3 Series (AMD)
+VM.Standard.E3.Flex:
+  numCores: 2
+  memSizeGB: 32
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 50
+        volumeType: SSD
+      - volumeSizeGB: 50
+        volumeType: SSD
+
+# Dense I/O Shapes - For high storage and I/O workloads
+VM.DenseIO.E4.Flex:
+  numCores: 8
+  memSizeGB: 128
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 6400
+        volumeType: NVME
+
+VM.DenseIO2.8:
+  numCores: 8
+  memSizeGB: 120
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 6400
+        volumeType: NVME
+
+VM.DenseIO2.16:
+  numCores: 16
+  memSizeGB: 240
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 12800
+        volumeType: NVME
+
+VM.DenseIO2.24:
+  numCores: 24
+  memSizeGB: 320
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 25600
+        volumeType: NVME
+
+# GPU Shapes
+VM.GPU.A10.1:
+  numCores: 15
+  memSizeGB: 240
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 100
+        volumeType: SSD
+      - volumeSizeGB: 100
+        volumeType: SSD
+
+VM.GPU.A10.2:
+  numCores: 30
+  memSizeGB: 480
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 100
+        volumeType: SSD
+      - volumeSizeGB: 100
+        volumeType: SSD
+
+# Bare Metal Shapes
+BM.Standard.E4.128:
+  numCores: 128
+  memSizeGB: 2048
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 100
+        volumeType: SSD
+      - volumeSizeGB: 100
+        volumeType: SSD
+
+BM.Standard.E5.192:
+  numCores: 192
+  memSizeGB: 2304
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 100
+        volumeType: SSD
+      - volumeSizeGB: 100
+        volumeType: SSD
+
+BM.Standard3.64:
+  numCores: 64
+  memSizeGB: 1024
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 100
+        volumeType: SSD
+      - volumeSizeGB: 100
+        volumeType: SSD
+
+BM.DenseIO.E4.128:
+  numCores: 128
+  memSizeGB: 2048
+  instanceTypeDetails:
+    volumeDetailsList:
+      - volumeSizeGB: 54400
+        volumeType: NVME

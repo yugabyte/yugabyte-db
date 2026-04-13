@@ -92,7 +92,11 @@ public class Provider extends Model {
 
   public static final Set<Common.CloudType> InstanceTagsEnabledProviders =
       ImmutableSet.of(
-          Common.CloudType.aws, Common.CloudType.azu, Common.CloudType.gcp, Common.CloudType.local);
+          Common.CloudType.aws,
+          Common.CloudType.azu,
+          Common.CloudType.gcp,
+          Common.CloudType.oci,
+          Common.CloudType.local);
   public static final Set<Common.CloudType> InstanceTagsModificationEnabledProviders =
       ImmutableSet.of(Common.CloudType.aws, Common.CloudType.gcp, Common.CloudType.local);
 
