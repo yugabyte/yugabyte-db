@@ -13,4 +13,10 @@ public class CustomerConfigStorageData extends CustomerConfigData {
   @NotNull
   @BackupLocationLengthConstraint
   public String backupLocation;
+
+  @ApiModelProperty(
+      value =
+          "Immutable storage. If true, backup deletion only results in deletion of YBA metadata")
+  @JsonProperty("IMMUTABLE STORAGE")
+  public boolean immutableStorage;
 }
