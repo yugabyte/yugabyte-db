@@ -103,9 +103,9 @@ DEFINE_UNKNOWN_int32(rocksdb_universal_compaction_min_merge_width, 4,
 DEFINE_RUNTIME_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 1_GB,
     "Use to control write rate of flush and compaction.");
 DEFINE_NON_RUNTIME_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserver",
-    "Allows to control rate limit sharing/calculation across RocksDB instances\n"
-    "  tserver - rate limit is shared across all RocksDB instances at tabset server level\n"
-    "  none - rate limit is calculated independently for every RocksDB instance");
+    "Controls rate limit sharing across RocksDB instances: "
+    "tserver - rate limit is shared across all instances at the tserver level; "
+    "none - rate limit is calculated independently for every instance.");
 DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
     "Threshold beyond which compaction is considered large.");
 DEFINE_RUNTIME_uint64(rocksdb_max_file_size_for_compaction, 0,
