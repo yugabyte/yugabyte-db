@@ -14,15 +14,15 @@ menu:
 type: docs
 ---
 
-You can add multiple accounts under your organization's umbrella account. For example, you might create separate accounts for for different products, or departments in your organization.
+You can add multiple accounts under your organization's umbrella account. For example, you might create separate accounts for different products, or departments in your organization.
 
 {{<tip title="Early Access">}}
 This feature is Early Access; to try it, contact {{% support-cloud %}}.
 {{</tip>}}
 
-Each account can have its own users, and can create and manage their own clusters. Accounts are broken out separately in your billing summary.
+Each account can have its own users, and can create and manage its own clusters. Accounts are broken out separately in your billing summary.
 
-To manage accounts, click the the Profile icon in the top right corner and choose **Manage Accounts** to display the **Manage Account** page.
+To manage accounts, click the Profile icon in the top right corner and choose **Manage Accounts** to display the **Manage Account** page.
 
 You must be an admin user to add and manage accounts.
 
