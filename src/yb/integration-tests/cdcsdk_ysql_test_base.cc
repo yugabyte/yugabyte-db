@@ -2794,31 +2794,37 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         MonoDelta::FromSeconds(120), "Tablet Split not succesful"));
   }
 
-  void CDCSDKYsqlTest::PollUntilTabletSplit(
-      const xrepl::StreamId& stream_id,
-      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      GetChangesResponsePB* change_resp,
-      int tablet_idx) {
-    ASSERT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          auto result = (tablet_idx >= 0)
-              ? GetChangesFromCDCWithExplictCheckpoint(
-                    stream_id, tablets, &change_resp->cdc_sdk_checkpoint(),
-                    &change_resp->cdc_sdk_checkpoint(), "", tablet_idx)
-              : GetChangesFromCDC(
-                    stream_id, tablets, &change_resp->cdc_sdk_checkpoint());
-          if (!result.ok()) return true;
-          if (result->has_error()) {
-            SCHECK_EQ(
-                result->error().code(), CDCErrorPB::TABLET_SPLIT,
-                IllegalState, "Expected TABLET_SPLIT error");
-            return true;
-          }
-          *change_resp = *result;
-          return false;
-        },
-        MonoDelta::FromSeconds(90), "Waiting for TABLET_SPLIT error"));
+void CDCSDKYsqlTest::PollUntilTabletSplit(
+    const xrepl::StreamId& stream_id,
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+    GetChangesResponsePB* change_resp,
+    int tablet_idx) {
+  GetChangesResponsePB local_resp;
+  if (change_resp == nullptr) {
+    int idx = (tablet_idx >= 0) ? tablet_idx : 0;
+    local_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, nullptr, idx));
+    change_resp = &local_resp;
   }
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto result = (tablet_idx >= 0)
+            ? GetChangesFromCDCWithExplictCheckpoint(
+                  stream_id, tablets, &change_resp->cdc_sdk_checkpoint(),
+                  &change_resp->cdc_sdk_checkpoint(), "", tablet_idx)
+            : GetChangesFromCDC(
+                  stream_id, tablets, &change_resp->cdc_sdk_checkpoint());
+        if (!result.ok()) return true;
+        if (result->has_error()) {
+          SCHECK_EQ(
+              result->error().code(), CDCErrorPB::TABLET_SPLIT,
+              IllegalState, "Expected TABLET_SPLIT error");
+          return true;
+        }
+        *change_resp = *result;
+        return false;
+      },
+      MonoDelta::FromSeconds(90), "Waiting for TABLET_SPLIT error"));
+}
 
   void CDCSDKYsqlTest::VerifyTabletList(
       const xrepl::StreamId& stream_id,

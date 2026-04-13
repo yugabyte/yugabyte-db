@@ -4885,14 +4885,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
   ASSERT_OK(conn.Execute("END"));
 
-  // We should get BEGIN + COMMIT (0 DMLs, all rolled back).
-  ASSERT_OK(WaitFor(
-    [&]() -> Result<bool> {
-      auto change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
-      return change_resp.cdc_sdk_proto_records_size() == 2;
-    },
-    MonoDelta::FromSeconds(10), "Expected 2 records (BEGIN + COMMIT)"));
-
   // The entire transaction is rolled back, so CDC should see no data records.
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Fetch("SELECT * FROM test_table"));

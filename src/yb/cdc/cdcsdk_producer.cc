@@ -1858,6 +1858,15 @@ Status ProcessIntents(
 
   if (end_of_transaction) {
     if (FLAGS_cdc_populate_end_markers_transactions) {
+      if (keyValueIntents->empty() && !resp->mutable_cdc_sdk_proto_records()->empty()) {
+        VLOG(2) << "Removing the added BEGIN record because there are no intents to add";
+        auto size = resp->cdc_sdk_proto_records_size();
+        auto& last_record = resp->cdc_sdk_proto_records(size - 1);
+        if (last_record.has_row_message() && last_record.row_message().op() == RowMessage::BEGIN) {
+          resp->mutable_cdc_sdk_proto_records()->RemoveLast();
+          return Status::OK();
+        }
+      }
       FillCommitRecord(
           op_id, transaction_id, commit_time, checkpoint, resp, throughput_metrics);
     }
