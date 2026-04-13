@@ -5345,7 +5345,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/F")));
 
         // Second txn.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/19"), 8));
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/15"), 6));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
             Arrays.asList(
                 new PgOutputMessageTupleColumnValue("2"),
@@ -5360,7 +5360,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                 new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/19"), LogSequenceNumber.valueOf("0/1A")));
+            LogSequenceNumber.valueOf("0/15"), LogSequenceNumber.valueOf("0/16")));
       }
     };
     assertEquals(expectedResult, result);
