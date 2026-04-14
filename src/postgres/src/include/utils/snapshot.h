@@ -122,6 +122,7 @@ typedef struct SnapshotData
 	XLogRecPtr	lsn;			/* position in the WAL stream when taken */
 	YbOptionalReadPointHandle yb_read_point_handle;
 	bool yb_is_built_for_export;
+	bool yb_is_catalog_snapshot;
 } SnapshotData;
 
 /*

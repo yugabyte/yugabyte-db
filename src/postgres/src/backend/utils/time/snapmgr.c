@@ -377,8 +377,9 @@ void
 YbLogSnapshotData(const char *msg, SnapshotData *snap, bool log_stack_trace)
 {
 	elog(YbSnapshotMgmtLogLevel(),
-		"%s read point: %" PRIu64 ", effective isolation level: %d. %s",
+		"%s %s read point: %" PRIu64 ", effective isolation level: %d. %s",
 		msg,
+		snap->yb_is_catalog_snapshot ? "(catalog)" : "(regular)",
 		snap->yb_read_point_handle.has_value ? snap->yb_read_point_handle.value : 0,
 		YBGetEffectivePggateIsolationLevel(),
 		log_stack_trace ? YBCGetStackTrace() : "");
@@ -582,6 +583,7 @@ GetNonHistoricCatalogSnapshot(Oid relid)
 	if (CatalogSnapshot == NULL)
 	{
 		/* Get new snapshot. */
+		CatalogSnapshotData.yb_is_catalog_snapshot = true;
 		CatalogSnapshot = GetSnapshotData(&CatalogSnapshotData);
 
 		/*

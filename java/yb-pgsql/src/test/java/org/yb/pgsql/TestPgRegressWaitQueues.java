@@ -18,6 +18,7 @@ import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import org.yb.util.BuildTypeUtil;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressWaitQueues extends BasePgRegressTest {
@@ -37,7 +38,7 @@ public class TestPgRegressWaitQueues extends BasePgRegressTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 1800;
+    return (int) BuildTypeUtil.adjustTimeout(1800);
   }
 
   @Test

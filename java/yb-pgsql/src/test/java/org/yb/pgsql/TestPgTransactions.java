@@ -1291,4 +1291,62 @@ public class TestPgTransactions extends BasePgSQLTest {
 
     restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
   }
+
+  // Test for #30739.
+  @Test
+  public void testCatalogSnapshotDoesNotCorruptReadPoint() throws Exception {
+    try (Statement setup = connection.createStatement()) {
+      setup.execute("CREATE TYPE test_mood AS ENUM ('sad', 'ok', 'happy')");
+      setup.execute("CREATE TABLE test (id INT PRIMARY KEY, val INT, " +
+                    "m test_mood DEFAULT 'happy')");
+      setup.execute("INSERT INTO test VALUES (1, 0, 'happy')");
+    }
+
+    AtomicBoolean stop = new AtomicBoolean(false);
+    AtomicBoolean writerFailed = new AtomicBoolean(false);
+
+    Thread writer = new Thread(() -> {
+      try (Connection wConn = getConnectionBuilder().connect();
+           Statement wStmt = wConn.createStatement()) {
+        int i = 0;
+        while (!stop.get()) {
+          wStmt.execute(
+            String.format("UPDATE test SET val = %d WHERE id = 1", ++i));
+        }
+      } catch (Exception e) {
+        LOG.error("Writer thread failed", e);
+        writerFailed.set(true);
+      }
+    });
+    writer.start();
+
+    try {
+      try (Connection rConn = getConnectionBuilder().connect();
+           Statement rStmt = rConn.createStatement()) {
+        for (int attempt = 0; attempt < 20; attempt++) {
+          ResultSet rs = rStmt.executeQuery(
+              "SELECT t.val AS val_before, " +
+              "       (SELECT val FROM test WHERE id = t.id) AS val_after " +
+              "FROM test t " +
+              "WHERE t.id = 1 " +
+              "  AND pg_sleep(1) IS NOT NULL " +
+              "  AND enum_range(t.m) IS NOT NULL");
+          assertTrue(rs.next());
+          int valBefore = rs.getInt("val_before");
+          int valAfter = rs.getInt("val_after");
+          LOG.info("Attempt " + attempt + ": val_before=" + valBefore +
+                   ", val_after=" + valAfter);
+          assertEquals(
+              "Read point corrupted by GetCatalogSnapshot mid-statement: " +
+              "val_before=" + valBefore + " val_after=" + valAfter,
+              valBefore, valAfter);
+        }
+      }
+    } finally {
+      stop.set(true);
+      writer.join(5000);
+    }
+
+    assertFalse("Writer thread failed unexpectedly", writerFailed.get());
+  }
 }

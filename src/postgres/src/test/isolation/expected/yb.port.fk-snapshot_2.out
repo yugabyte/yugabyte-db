@@ -18,7 +18,7 @@ a
 
 1              
 step s1ifp2: INSERT INTO fk_parted_pk VALUES (2);
-ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  current transaction is expired or aborted (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
 step s1c: COMMIT;
 step s1sfp: SELECT * FROM fk_parted_pk;
 a              

@@ -1829,7 +1829,8 @@ GetSnapshotData(Snapshot snapshot)
 		MaintainOldSnapshotTimeMapping(snapshot->whenTaken, xmin);
 	}
 
-	snapshot->yb_read_point_handle = YbResetTransactionReadPoint();
+	if (!snapshot->yb_is_catalog_snapshot)
+		snapshot->yb_read_point_handle = YbResetTransactionReadPoint();
 	YbLogSnapshotData("Fetched new snapshot", snapshot,
 		yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
 	return snapshot;
