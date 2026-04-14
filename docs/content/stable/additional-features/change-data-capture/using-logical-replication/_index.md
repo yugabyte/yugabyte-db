@@ -128,4 +128,4 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - Currently, to use [replication origins](./advanced-topic/#replication-origins), you must create the replication origin before you start streaming changes from a replication slot. Tracked in issue {{<issue 30068>}}.
 
-- Adding an expired or not-of-interest table to a publication renders the replication slot polling this publication unusable. In such a scenario, the slot must be dropped and new slot should be created to proceed. Tracked in issue {{<issue 28310>}}.
+- Adding an expired or not-of-interest table to a publication renders the replication slot associated with this publication unusable. In such a scenario, the slot must be dropped and a new slot must be created to proceed. Tracked in issue {{<issue 28310>}}.
