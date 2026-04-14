@@ -4091,8 +4091,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             serverType,
             (node, params) -> {
               params.force = true;
-              params.gflags =
-                  ImmutableMap.of(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
+              Map<String, String> gflags = new HashMap<>();
+              gflags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
+              Cluster cluster = Universe.getCluster(universe, node.nodeName);
+              Map<String, String> nodeGFlags =
+                  GFlagsUtil.getGFlagsForNode(
+                      node, serverType, cluster, universe.getUniverseDetails().clusters);
+              String userYsqlPgConfCsv = nodeGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
+              if (StringUtils.isNotBlank(userYsqlPgConfCsv)) {
+                gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, userYsqlPgConfCsv);
+              }
+              params.gflags = gflags;
             })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
