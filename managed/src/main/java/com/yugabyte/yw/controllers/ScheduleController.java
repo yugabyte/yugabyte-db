@@ -37,7 +37,6 @@ import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
-import com.yugabyte.yw.models.paging.SchedulePagedResponse;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -108,7 +107,7 @@ public class ScheduleController extends AuthenticatedController {
 
   @ApiOperation(
       value = "List schedules V2",
-      response = SchedulePagedResponse.class,
+      response = SchedulePagedApiResponse.class,
       nickname = "listSchedulesV2")
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -353,7 +352,7 @@ public class ScheduleController extends AuthenticatedController {
   @ApiOperation(
       notes = "WARNING: This is a preview API that could change. Edit a backup schedule async.",
       value = "Edit a backup schedule async",
-      response = Schedule.class,
+      response = YBPTask.class,
       nickname = "editBackupScheduleAsync")
   @ApiImplicitParams({
     @ApiImplicitParam(
@@ -409,7 +408,7 @@ public class ScheduleController extends AuthenticatedController {
   @ApiOperation(
       notes = "WARNING: This is a preview API that could change. Delete a backup schedule async.",
       value = "Delete a backup schedule async",
-      response = Schedule.class,
+      response = YBPTask.class,
       nickname = "deleteBackupScheduleAsync")
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -437,7 +436,7 @@ public class ScheduleController extends AuthenticatedController {
           "WARNING: This is a preview API that could change. Toggle a backup schedule. Only allowed"
               + " to toggle backup schedule state between Active and Stopped.",
       value = "Toggle a backup schedule",
-      response = Schedule.class,
+      response = YBPSuccess.class,
       nickname = "toggleBackupSchedule")
   @ApiImplicitParams({
     @ApiImplicitParam(
