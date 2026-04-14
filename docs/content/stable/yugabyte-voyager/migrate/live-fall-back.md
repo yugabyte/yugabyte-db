@@ -1774,7 +1774,7 @@ Add the following to your configuration file:
 
 ```yaml
 ...
-inititate-cutover-to-source:
+initiate-cutover-to-source:
   restart-data-migration-source-target: true
 ...
 ```
@@ -1829,7 +1829,7 @@ The `end migration` command handles iterative migrations by ending each iteratio
 
 - Ends the parent migration (iteration 0), cleaning up source and target database state.
 
-- if `--save-migration-reports` is enabled, saves all reports. This includes a consolidated data migration report with detailed iteration statistics.
+- If `--save-migration-reports` is enabled, saves all reports. This includes a consolidated data migration report with detailed iteration statistics.
 
     The consolidated report is saved to `{BACKUP-DIR}/reports/data-migration-report.json`. Backup data for each iteration is saved in a subdirectory of the backup directory (`{BACKUP-DIR}/live-data-migration-iterations/live-data-migration-iteration-N/`), with data, schema, and logs subfolders. 
 

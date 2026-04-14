@@ -21,13 +21,13 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### Enhancements
 
-- Improved the [archive changes](../reference/cutover-archive/archive-changes/#arguments) command for live migration fall-back workflows with multiple iterations. When run from the parent migration export directory, the command now continues archiving change segments across all iterations.
+- Improved the [archive changes](../reference/cutover-archive/archive-changes/#arguments) command for live migration fallback workflows with multiple iterations. When run from the parent migration export directory, the command now continues archiving change segments across all iterations.
 
-- Improved `import-data` error reporting when a batch fails with unique-constraint (SQLSTATE 23505) or foreign-key (SQLSTATE 23503) errors. Voyager now classifies these failures and suggests a more appropriate next step (for example, distinguishing primary-key conflicts, other unique violations, and foreign-key failures that often relate to permissions such as session_replication_role) instead of defaulting to generic error reporting.
+- Improved [import data](../reference/data-migration/import-data/) error reporting when a batch fails with unique-constraint (SQLSTATE 23505) or foreign-key (SQLSTATE 23503) errors. Voyager now classifies these failures and suggests a more appropriate next step (for example, distinguishing primary-key conflicts, other unique violations, and foreign-key failures that often relate to permissions such as session_replication_role) instead of defaulting to generic error reporting.
 
 ### Bug fix
 
-- Fixed an issue where `end-migration` was not reliably resumable in the live-migration fall-back workflow with multiple iterations. You can now re-run the command to complete shutdown if it stops before completion.
+- Fixed an issue where [end migration](../reference/end-migration/) did not reliably resumae in the live migration fallback workflow with multiple iterations. You can now re-run the command to complete shutdown if it stops before completion.
 
 ## v2026.3.3 - March 31, 2026
 
