@@ -675,6 +675,7 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // TLS.
   DisplayIconTile(output, "fa-lock", "TLS", "/tls");
   DisplayIconTile(output, "fa-times", "xCluster", "/xcluster");
+  DisplayIconTile(output, "fa-area-chart", "CPU Profile", "/perf");
 }
 
 void RpcAndWebServerBase::DisplayMemoryIcons(std::stringstream* output) {
