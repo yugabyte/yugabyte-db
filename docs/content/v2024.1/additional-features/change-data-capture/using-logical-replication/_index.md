@@ -116,4 +116,4 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - Support for tablet splitting with logical replication is disabled from v2024.1.4 and v2024.2.1. Tracked in issue {{<issue 24918>}}.
 
-- Adding an expired or not-of-interest table to a publication renders the replication slot polling this publication unusable. In such a scenario, the slot must be dropped and new slot should be created to proceed. Tracked in issue {{<issue 28310>}}.
+- Adding an expired or not-of-interest table to a publication renders the replication slot associated with this publication unusable. In such a scenario, the slot must be dropped and a new slot must be created to proceed. Tracked in issue {{<issue 28310>}}.
