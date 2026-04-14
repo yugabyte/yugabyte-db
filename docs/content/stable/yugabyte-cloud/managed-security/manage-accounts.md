@@ -14,17 +14,19 @@ menu:
 type: docs
 ---
 
-You can add multiple accounts under your organization's umbrella account. For example, you might create separate accounts for different products, or departments in your organization.
+You can add multiple accounts for your organization. For example, you might create separate accounts for different products, or departments in your organization, or for different environments, such as development staging and production. Each account has its own access control.
 
 {{<tip title="Early Access">}}
 This feature is Early Access; to try it, contact {{% support-cloud %}}.
 {{</tip>}}
 
-Each account can have its own users, and can create and manage its own clusters. Accounts are broken out separately in your billing summary.
+Each account can have its own users, and can create and manage its own clusters. A single user can be added to multiple accounts, with different roles and permissions in each.
+
+Accounts are broken out separately in your billing summary.
+
+You must be a superadmin user to add and manage accounts.
 
 To manage accounts, click the Profile icon in the top right corner and choose **Manage Accounts** to display the **Manage Account** page.
-
-You must be an admin user to add and manage accounts.
 
 ![Accounts page](/images/yb-cloud/managed-accounts.png)
 
@@ -34,7 +36,7 @@ Keep in mind the following when using multiple accounts:
 
 - When [adding users](../manage-access/), be sure to [switch to the account](#switch-accounts) where you want to add them first.
 - To add users to multiple accounts, you must sign in to each account and send an invitation.
-- If multiple accounts are enabled, non-admin users must choose the account to sign into when they sign in.
+- If multiple accounts are enabled, all users must choose the account to sign into when they sign in.
 
 ## Add accounts
 
