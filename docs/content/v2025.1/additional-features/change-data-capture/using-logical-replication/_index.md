@@ -124,4 +124,4 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
     To handle updates/deletes with a non-CHANGE replica identity, set the YB-TServer flag `cdc_send_null_before_image_if_not_exists` to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
 
-- Adding an expired or not-of-interest table to a publication renders the replication slot polling this publication unusable. In such a scenario, the slot must be dropped and new slot should be created to proceed. Tracked in issue {{<issue 28310>}}.
+- Adding an expired or not-of-interest table to a publication renders the replication slot associated with this publication unusable. In such a scenario, the slot must be dropped and a new slot must be created to proceed. Tracked in issue {{<issue 28310>}}.
