@@ -21,7 +21,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### Enhancements
 
-- Improved the [archive changes](../reference/cutover-archive/archive-changes/#arguments) command for live migration fallback workflows with multiple iterations. When run from the parent migration export directory, the command now continues archiving change segments across all iterations.
+- Improved the [archive changes](../reference/cutover-archive/archive-changes/#arguments) command for live migration fallback workflows with [multiple iterations](../reference/iterative-cutover/). When run from the parent migration export directory, the command now continues archiving change segments across all iterations.
 
 - Improved [import data](../reference/data-migration/import-data/) error reporting when a batch fails with unique-constraint (SQLSTATE 23505) or foreign-key (SQLSTATE 23503) errors. Voyager now classifies these failures and suggests a more appropriate next step (for example, distinguishing primary-key conflicts, other unique violations, and foreign-key failures that often relate to permissions such as session_replication_role) instead of defaulting to generic error reporting.
 
