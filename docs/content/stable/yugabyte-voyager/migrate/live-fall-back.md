@@ -10,6 +10,8 @@ menu:
     parent: migration-types
     weight: 104
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 When migrating a database, it's prudent to have a backup strategy in case the new database doesn't work as expected. A fall-back approach involves streaming changes from the YugabyteDB (target) database back to the source database after the cutover operation, enabling you to cutover to the source database at any point.
@@ -1739,6 +1741,97 @@ REASSIGN OWNED BY ybvoyager TO yugabyte;
 DROP OWNED BY ybvoyager;
 DROP USER ybvoyager;
 ```
+
+## Iterative cutover
+
+Iterative cutover extends live migration with fallback by allowing multiple rounds of cutover between a PostgreSQL source and YugabyteDB target. Instead of treating a fallback (cutover to source) as a terminal event, you can restart source-to-target data migration, creating a new CDC-only streaming iteration without re-importing the initial snapshot.
+
+This is useful in the following cases:
+
+- Validate your application on YugabyteDB with production traffic. If you find issues after cutover, fall back to the source, address the problems, and cut over to the target again without restarting the migration from scratch.
+- Reduce migration risk by retaining the ability to retry the cutover multiple times. You can keep iterating until the cutover succeeds.
+- Avoid repeating expensive initial snapshot export and import. Each new iteration only streams CDC changes from the point the previous iteration left off.
+
+Iterative cutover only works with live migration with fallback (that is, cutover to target was run with `--prepare-for-fall-back true`) running on a PostgreSQL source.
+
+Iterative cutover is not supported for fall forward or Oracle/MySQL sources. 
+
+### Perform iterative cutover
+
+To perform iterative cutovers, do the following:
+
+1. Start live migration with fallback, and follow the standard live migration with fallback steps.
+
+1. [Cut over to target](#cutover-to-the-target) using `prepare-for-fall-back` as usual.
+
+1. When performing a [cutover to source](#cutover-to-the-source-optional), add the restart flag.
+
+    <br/>{{< tabpane text=true >}}
+
+{{% tab header="Config file" lang="config" %}}
+
+Add the following to your configuration file:
+
+```yaml
+...
+inititate-cutover-to-source:
+  restart-data-migration-source-target: true
+...
+```
+
+Then run the following command:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager initiate cutover to source --config-file <path-to-config-file>
+```
+
+{{% /tab %}}
+
+{{% tab header="CLI" lang="cli" %}}
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager initiate cutover to source --export-dir <EXPORT_DIR> --restart-data-migration-source-target true
+```
+
+{{% /tab %}}
+
+    {{< /tabpane >}}
+
+    This tells Voyager to start a new forward iteration after the fallback completes. If you omit this flag or set it to false, the fallback is terminal and no new iteration is created.
+
+1. [Monitor the new iteration](#monitor-iteration). After fallback completes, Voyager automatically starts the next iteration.
+
+1. Cut over to target again. When the new iteration has caught up, initiate cutover to target with `--prepare-for-fall-back` true.
+
+1. Repeat steps 2-5 as many times as needed.
+
+1. Final cutover. When satisfied, cut over to target without `--prepare-for-fall-back`, or cut over to target with `--prepare-for-fall-back` and then run `end migration`.
+
+### Monitor iteration
+
+When iterations exist, the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) includes rows for each iteration.
+
+By default, the [data migration report](#get-data-migration-report) aggregates event counts (inserts, updates, deletes) across all iterations into a single view per table.
+
+For detailed per-iteration data migration reporting, add the `--include-detailed-iterations-stats` flag. This adds an ITERATION NUMBER column showing per-iteration statistics and a CUMULATIVE FINAL_ROW_COUNT (row count up to that iteration). Iteration 0 includes snapshot rows; subsequent iterations show only change events.
+
+### Archive changes with iterations
+
+The [archive changes](#archive-changes-optional) command supports iterative migrations. When iterations are present, the command processes the parent export directory and, at the end, provides the directory location for archiving the next iteration. Use the `--archive-dir` flag to specify the directory location.
+
+### End migration with iterations
+
+The `end migration` command handles iterative migrations by ending each iteration in sequence (1 through N), then ending the parent migration (iteration 0). Specifically, the command does the following:
+
+- Iterates through each iteration (1 through N), ending each one and cleaning up its migration state.
+
+- Ends the parent migration (iteration 0), cleaning up source and target database state.
+
+- if `--save-migration-reports` is enabled, saves all reports. This includes a consolidated data migration report with detailed iteration statistics.
+
+    The consolidated report is saved to `{BACKUP-DIR}/reports/data-migration-report.json`. Backup data for each iteration is saved in a subdirectory of the backup directory (`{BACKUP-DIR}/live-data-migration-iterations/live-data-migration-iteration-N/`), with data, schema, and logs subfolders. 
 
 ## Limitations
 
