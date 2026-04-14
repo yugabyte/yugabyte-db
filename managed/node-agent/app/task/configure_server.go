@@ -187,33 +187,39 @@ func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context) erro
 			}
 		}
 	}
-
-	info, err := helpers.GetOSInfo()
+	enabled, err := module.IsUserSystemdEnabled(ctx, h.username, h.logOut)
 	if err != nil {
-		util.FileLogger().Errorf(ctx, "Error retreiving OS information %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 		return err
 	}
-
-	unitDir := "/lib/systemd/system"
-	if strings.Contains(info.ID, "suse") || strings.Contains(info.Family, "suse") {
-		unitDir = "/usr/lib/systemd/system"
+	if enabled {
+		info, err := helpers.GetOSInfo()
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error retreiving OS information %s", err.Error())
+			return err
+		}
+		unitDir := "/lib/systemd/system"
+		if strings.Contains(info.ID, "suse") || strings.Contains(info.Family, "suse") {
+			unitDir = "/usr/lib/systemd/system"
+		}
+		// Link network-online.target if required
+		linkCmd := fmt.Sprintf("systemctl --user link %s/network-online.target", unitDir)
+		h.logOut.WriteLine("Running configure server phase: %s", linkCmd)
+		_, err = module.RunShellCmdWithRetry(
+			ctx,
+			module.SystemdBackOff,
+			h.username,
+			"LinkNetworkOnlineTarget",
+			linkCmd,
+			h.logOut,
+		)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Configure server failed in %v - %s", linkCmd, err.Error())
+			return err
+		}
 	}
 
-	// Link network-online.target if required
-	linkCmd := fmt.Sprintf("systemctl --user link %s/network-online.target", unitDir)
-	h.logOut.WriteLine("Running configure server phase: %s", linkCmd)
-	_, err = module.RunShellCmdWithRetry(
-		ctx,
-		module.SystemdBackOff,
-		h.username,
-		"LinkNetworkOnlineTarget",
-		linkCmd,
-		h.logOut,
-	)
-	if err != nil {
-		util.FileLogger().Errorf(ctx, "Configure server failed in %v - %s", linkCmd, err.Error())
-		return err
-	}
 	return nil
 }
 

@@ -15,6 +15,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static java.util.stream.Collectors.toList;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -338,8 +340,11 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     JsonNode body = Json.newObject().put("backup_file", "backup_26-03-04-19-46.tgz");
     Result promoteResult =
         assertPlatformException(() -> doRequestWithAuthTokenAndBody("POST", uri, authToken, body));
-    assertBadRequest(
-        promoteResult, "Could not connect to current leader and force parameter not set.");
+    assertThat(
+        contentAsString(promoteResult),
+        containsString(
+            "Backup may be too old. Force parameter can be set to true to bypass this check, but it"
+                + " is not recommended"));
   }
 
   @Test
