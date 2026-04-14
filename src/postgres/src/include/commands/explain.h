@@ -87,6 +87,7 @@ typedef struct ExplainState
 	bool		ybShowUniqueIds;	/* show unique Path/Plan ids */
 	bool		ybShowPlanId;	/* display plan id */
 	bool		ybShowQueryId;	/* display query id */
+	bool		ybMaskConstants; /* mask constants in Explain text? */
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */

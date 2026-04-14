@@ -96,7 +96,8 @@
 #define PRETTYFLAG_PAREN		0x0001
 #define PRETTYFLAG_INDENT		0x0002
 #define PRETTYFLAG_SCHEMA		0x0004
-#define YB_PRETTYFLAG_ARRAY	0x0008
+#define YB_PRETTYFLAG_ARRAY				0x0008
+#define YB_PRETTYFLAG_MASK_CONSTANTS	0x0010
 
 /* Standard conversion of a "bool pretty" option to detailed flags */
 #define GET_PRETTY_FLAGS(pretty) \
@@ -112,6 +113,8 @@
 #define PRETTY_SCHEMA(context)	((context)->prettyFlags & PRETTYFLAG_SCHEMA)
 #define YB_PRETTY_ARRAY(context) ((context)->prettyFlags & \
 									YB_PRETTYFLAG_ARRAY)
+#define YB_MASK_CONSTANTS(context) ((context)->prettyFlags & \
+									YB_PRETTYFLAG_MASK_CONSTANTS)
 
 #define YB_TRUNC_ARRAY_LIMIT 3
 
@@ -2324,7 +2327,8 @@ pg_get_partconstrdef_string(Oid partitionId, char *aliasname)
 	constr_expr = get_partition_qual_relid(partitionId);
 	context = deparse_context_for(aliasname, partitionId);
 
-	return deparse_expression((Node *) constr_expr, context, true, false);
+	return deparse_expression((Node *) constr_expr, context, true, false,
+							  false, false); /* yb_pretty, yb_maskconstants */
 }
 
 /*
@@ -3648,8 +3652,9 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 			expr = (Node *) lfirst(nextargdefault);
 			nextargdefault = lnext(argdefaults, nextargdefault);
 
-			appendStringInfo(buf, " DEFAULT %s",
-							 deparse_expression(expr, NIL, false, false));
+		appendStringInfo(buf, " DEFAULT %s",
+						 deparse_expression(expr, NIL, false, false,
+											false, false)); /* yb_pretty, yb_maskconstants */
 		}
 		argsprinted++;
 
@@ -3768,7 +3773,8 @@ pg_get_function_arg_default(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	}
 	node = list_nth(argdefaults, nth_default);
-	str = deparse_expression(node, NIL, false, false);
+	str = deparse_expression(node, NIL, false, false,
+							 false, false); /* yb_pretty, yb_maskconstants */
 
 	ReleaseSysCache(proctup);
 
@@ -3868,20 +3874,21 @@ pg_get_function_sqlbody(PG_FUNCTION_ARGS)
  */
 char *
 deparse_expression(Node *expr, List *dpcontext,
-				   bool forceprefix, bool showimplicit)
+				   bool forceprefix, bool showimplicit,
+				   bool yb_pretty, bool yb_maskconstants)
 {
-	return deparse_expression_pretty(expr, dpcontext, forceprefix,
-									 showimplicit, 0, 0);
-}
+	int			yb_extra_flags = 0;
 
-char *
-yb_deparse_expression(Node *expr, List *dpcontext,
-					  bool forceprefix, bool showimplicit,
-					  bool verbose)
-{
+	if (IsYugaByteEnabled())
+	{
+		if (yb_pretty)
+			yb_extra_flags |= YB_PRETTYFLAG_ARRAY;
+		if (yb_maskconstants)
+			yb_extra_flags |= YB_PRETTYFLAG_MASK_CONSTANTS;
+	}
+
 	return deparse_expression_pretty(expr, dpcontext, forceprefix,
-									 showimplicit,
-									 verbose ? 0 : YB_PRETTYFLAG_ARRAY, 0);
+									 showimplicit, yb_extra_flags, 0);
 }
 
 /* ----------
@@ -10974,7 +10981,10 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 		 * Always label the type of a NULL constant to prevent misdecisions
 		 * about type when reparsing.
 		 */
-		appendStringInfoString(buf, "NULL");
+		if (!YB_MASK_CONSTANTS(context))
+			appendStringInfoString(buf, "NULL");
+		else
+			appendStringInfoChar(buf, '?');
 		if (showtype >= 0)
 		{
 			appendStringInfo(buf, "::%s",
@@ -10985,10 +10995,17 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 		return;
 	}
 
+	char *yb_extval_mask;
 	getTypeOutputInfo(constval->consttype,
 					  &typoutput, &typIsVarlena);
-
 	extval = OidOutputFunctionCall(typoutput, constval->constvalue);
+
+	if (YB_MASK_CONSTANTS(context))
+	{
+		yb_extval_mask = "?";
+	}
+	else
+		yb_extval_mask = NULL;
 
 	switch (constval->consttype)
 	{
@@ -11004,10 +11021,10 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 			 * seem that much prettier anyway.
 			 */
 			if (extval[0] != '-')
-				appendStringInfoString(buf, extval);
+				appendStringInfoString(buf, yb_extval_mask ? yb_extval_mask : extval);
 			else
 			{
-				appendStringInfo(buf, "'%s'", extval);
+				appendStringInfo(buf, "'%s'", yb_extval_mask ? yb_extval_mask : extval);
 				needlabel = true;	/* we must attach a cast */
 			}
 			break;
@@ -11022,24 +11039,24 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 			if (isdigit((unsigned char) extval[0]) &&
 				strcspn(extval, "eE.") != strlen(extval))
 			{
-				appendStringInfoString(buf, extval);
+				appendStringInfoString(buf, yb_extval_mask ? yb_extval_mask : extval);
 			}
 			else
 			{
-				appendStringInfo(buf, "'%s'", extval);
+				appendStringInfo(buf, "'%s'", yb_extval_mask ? yb_extval_mask : extval);
 				needlabel = true;	/* we must attach a cast */
 			}
 			break;
 
 		case BOOLOID:
 			if (strcmp(extval, "t") == 0)
-				appendStringInfoString(buf, "true");
+				appendStringInfoString(buf, yb_extval_mask ? yb_extval_mask : "true");
 			else
-				appendStringInfoString(buf, "false");
+				appendStringInfoString(buf, yb_extval_mask ? yb_extval_mask : "false");
 			break;
 
 		default:
-			simple_quote_literal(buf, extval);
+			simple_quote_literal(buf, yb_extval_mask ? yb_extval_mask : extval);
 			break;
 	}
 
