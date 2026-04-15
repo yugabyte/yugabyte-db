@@ -12,6 +12,8 @@ menu:
 type: docs
 ---
 
+## Upgrade limitations
+
 Before starting an upgrade, note the following:
 
 - It is strongly recommended to upgrade to the latest minor version of every release.
@@ -20,7 +22,7 @@ Before starting an upgrade, note the following:
 
     To view and download releases, refer to [Releases](/stable/releases/).
 
-- Upgrades must be to a chronologically later release - you cannot upgrade to a release that was released before the release you are currently running. For example, if you are running v2024.2.8.0 (released February 23, 2026), you cannot upgrade to v2025.2.1.0 (released February 12, 2026).
+- Upgrades must be to a chronologically later release - you cannot upgrade to a version that was released before the one you are currently running. For example, if you are running v2024.2.8.0 (released February 23, 2026), you cannot upgrade to v2025.2.1.0 (released February 12, 2026).
 
 - Upgrades are not supported between preview and stable versions.
 
