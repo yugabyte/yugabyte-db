@@ -2888,6 +2888,27 @@ FlushBuffer(BufferDesc *buf, SMgrRelation reln)
 	if (reln == NULL)
 		reln = smgropen(buf->tag.rnode, InvalidBackendId);
 
+	/*
+	 * YB: YugabyteDB user relations store data in DocDB rather than in
+	 * on-disk heap files.  The checkpointer has no catalog access, so we
+	 * cannot call IsYBRelation() here.  Instead, use smgrexists() (which
+	 * calls mdopenfork with EXTENSION_RETURN_NULL and never errors out) to
+	 * detect whether a physical file is present.  For YB user relations no
+	 * file is ever created, so smgrexists returns false; for PostgreSQL
+	 * system-catalog tables that YugabyteDB still stores on disk it returns
+	 * true and we proceed normally.
+	 *
+	 * When the file is absent we mark the buffer clean and return so that
+	 * the checkpointer does not spam "could not write block N of base/..."
+	 * errors for every dirty buffer belonging to a YB relation.
+	 */
+	if (IsYugaByteEnabled() && !smgrexists(reln, buf->tag.forkNum))
+	{
+		TerminateBufferIO(buf, true, 0);
+		error_context_stack = errcallback.previous;
+		return;
+	}
+
 	TRACE_POSTGRESQL_BUFFER_FLUSH_START(buf->tag.forkNum,
 										buf->tag.blockNum,
 										reln->smgr_rnode.node.spcNode,
