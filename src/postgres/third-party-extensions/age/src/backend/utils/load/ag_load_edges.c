@@ -22,11 +22,6 @@
 #include "utils/load/ag_load_edges.h"
 #include "utils/load/csv.h"
 
-void init_edge_batch_insert(batch_insert_state **batch_state,
-                            char *label_name, Oid graph_oid);
-void finish_edge_batch_insert(batch_insert_state **batch_state,
-                              char *label_name, Oid graph_oid);
-
 void edge_field_cb(void *field, size_t field_len, void *data)
 {
 
@@ -131,7 +126,7 @@ void edge_row_cb(int delim __attribute__((unused)), void *data)
         if (batch_state->num_tuples >= batch_state->max_tuples)
         {
             /* Insert the batch when it is full (i.e. BATCH_SIZE) */
-            insert_batch(batch_state, cr->label_name, cr->graph_oid);
+            insert_batch(batch_state);
             batch_state->num_tuples = 0;
         }
     }
@@ -223,7 +218,7 @@ int create_edges_from_csv_file(char *file_path,
     cr.load_as_agtype = load_as_agtype;
 
     /* Initialize the batch insert state */
-    init_edge_batch_insert(&cr.batch_state, label_name, graph_oid);
+    init_batch_insert(&cr.batch_state, label_name, graph_oid);
 
     while ((bytes_read=fread(buf, 1, 1024, fp)) > 0)
     {
@@ -238,7 +233,7 @@ int create_edges_from_csv_file(char *file_path,
     csv_fini(&p, edge_field_cb, edge_row_cb, &cr);
 
     /* Finish any remaining batch inserts */
-    finish_edge_batch_insert(&cr.batch_state, label_name, graph_oid);
+    finish_batch_insert(&cr.batch_state);
 
     if (ferror(fp))
     {
@@ -250,66 +245,4 @@ int create_edges_from_csv_file(char *file_path,
     free(cr.fields);
     csv_free(&p);
     return EXIT_SUCCESS;
-}
-
-/*
- * Initialize the batch insert state for edges.
- */
-void init_edge_batch_insert(batch_insert_state **batch_state,
-                            char *label_name, Oid graph_oid)
-{
-    Relation relation;
-    int i;
-
-    // Open a temporary relation to get the tuple descriptor
-    relation = table_open(get_label_relation(label_name, graph_oid), AccessShareLock);
-
-    // Initialize the batch insert state
-    *batch_state = (batch_insert_state *) palloc0(sizeof(batch_insert_state));
-    (*batch_state)->max_tuples = BATCH_SIZE;
-    (*batch_state)->slots = palloc(sizeof(TupleTableSlot *) * BATCH_SIZE);
-    (*batch_state)->num_tuples = 0;
-
-    // Create slots
-    for (i = 0; i < BATCH_SIZE; i++)
-    {
-        (*batch_state)->slots[i] = MakeSingleTupleTableSlot(
-                                            RelationGetDescr(relation),
-                                            &TTSOpsHeapTuple);
-    }
-
-    table_close(relation, AccessShareLock);
-}
-
-/*
- * Finish the batch insert for edges. Insert the
- * remaining tuples in the batch state and clean up.
- */
-void finish_edge_batch_insert(batch_insert_state **batch_state,
-                              char *label_name, Oid graph_oid)
-{
-    int i;
-    Relation relation;
-
-    if ((*batch_state)->num_tuples > 0)
-    {
-        insert_batch(*batch_state, label_name, graph_oid);
-        (*batch_state)->num_tuples = 0;
-    }
-
-    // Open a temporary relation to ensure resources are properly cleaned up
-    relation = table_open(get_label_relation(label_name, graph_oid), AccessShareLock);
-
-    // Free slots
-    for (i = 0; i < BATCH_SIZE; i++)
-    {
-        ExecDropSingleTupleTableSlot((*batch_state)->slots[i]);
-    }
-
-    // Clean up batch state
-    pfree_if_not_null((*batch_state)->slots);
-    pfree_if_not_null(*batch_state);
-    *batch_state = NULL;
-
-    table_close(relation, AccessShareLock);
 }
