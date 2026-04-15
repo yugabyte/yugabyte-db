@@ -216,8 +216,6 @@ The following PostgreSQL features are not supported in YugabyteDB:
 
 | Unsupported PostgreSQL feature      | Track feature request GitHub issue |
 | ----------- | ----------- |
-| LOCK TABLE to obtain a table-level lock | {{<issue 5384>}}|
-| Table inheritance    | {{<issue 5956>}}|
 | Exclusion constraints | {{<issue 3944>}}|
 | Deferrable constraints | {{<issue 1709>}}|
 | Constraint Triggers|{{<issue 4700>}}|
@@ -225,10 +223,9 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Events (Listen/Notify) | {{<issue 1872>}}|
 | XML Functions | {{<issue 1043>}}|
 | XA syntax | {{<issue 11084>}}|
-| ALTER TYPE | {{<issue 1893>}}|
+| Some ALTER TYPE variants | {{<issue 1893>}}|
 | CREATE CONVERSION | {{<issue 10866>}}|
 | Primary/Foreign key constraints on foreign tables | {{<issue 10698>}}, {{<issue 10699>}} |
-| GENERATED ALWAYS AS STORED columns | {{<issue 10695>}}|
 | Multi-column GIN indexes| {{<issue 10652>}}|
 | CREATE ACCESS METHOD | {{<issue 10693>}}|
 | DESC/HASH on GIN indexes (ASC supported) | {{<issue 10653>}}|
