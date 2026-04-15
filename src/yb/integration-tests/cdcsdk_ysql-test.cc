@@ -42,6 +42,7 @@ DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_mark_update_packed_row);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_bool(ysql_yb_skip_redundant_update_ops);
 
 namespace yb {
 
@@ -765,11 +766,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
   CheckCount(expected_count, count);
 }
 
-// Test that an upsert (INSERT ON CONFLICT DO UPDATE) on an existing row produces a DELETE
-// followed by an INSERT in CDC output.
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertOnExistingRowProducesDeleteThenInsert)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+// Test that an upsert (INSERT ON CONFLICT DO UPDATE) that touches a primary key column
+// produces DELETE + INSERT in the CDC stream, not DELETE + DELETE.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndInsert)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_skip_redundant_update_ops) = false;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -779,41 +779,36 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertOnExistingRowProducesDelete
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(set_resp.has_error());
 
-  // Insert a row (key=1, value_1=2) and consume its CDC records.
+  // Insert a row and consume its CDC records so the next GetChanges only returns upsert records.
   ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
   GetChangesResponsePB change_resp;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 1));
 
-  // Upsert the same row with a new value (value_1=10). Internally generates a tombstone
-  // (DELETE) followed by a packed row (INSERT) for the same key.
+  // Upsert with PK column in SET clause — triggers YBCExecuteUpdateReplace (DELETE + INSERT).
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0($1, $2) VALUES (1, 10) ON CONFLICT ($1) DO UPDATE SET $2 = 10",
-      kTableName, kKeyColumnName, kValueColumnName));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test_table VALUES (1, 10) "
+      "ON CONFLICT (key) DO UPDATE SET key = EXCLUDED.key, value_1 = EXCLUDED.value_1"));
 
   // Expect DELETE(key=1) + INSERT(key=1, value_1=10), no UPDATEs.
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {0, 1, 0, 1, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
-  ExpectedRecord expected_records[] = {{1, 0}, {1, 10}};
+  // Expected records: BEGIN, DELETE(key=1), INSERT(key=1, value_1=10), COMMIT.
+  ExpectedRecord expected_records[] = {{0, 0}, {1, 0}, {1, 10}, {0, 0}};
 
   GetChangesResponsePB upsert_resp;
   ASSERT_OK(WaitForGetChangesToFetchRecords(
       &upsert_resp, stream_id, tablets, 2, /* is_explicit_checkpoint */ false,
       &change_resp.cdc_sdk_checkpoint()));
 
-  uint32_t seen_dml_records = 0;
-  for (const auto& record : upsert_resp.cdc_sdk_proto_records()) {
-    if (record.row_message().op() == RowMessage::BEGIN ||
-        record.row_message().op() == RowMessage::COMMIT) {
-      continue;
-    }
-    ASSERT_LT(seen_dml_records, 2);
-    CheckRecord(record, expected_records[seen_dml_records], count);
-    seen_dml_records++;
+  uint32_t record_size = upsert_resp.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_size, 4);  // BEGIN, DELETE, INSERT, COMMIT
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const CDCSDKProtoRecordPB record = upsert_resp.cdc_sdk_proto_records(i);
+    CheckRecord(record, expected_records[i], count);
   }
-  LOG(INFO) << "Got " << count[1] << " insert record and " << count[3] << " delete record";
   CheckCount(expected_count, count);
 }
 
