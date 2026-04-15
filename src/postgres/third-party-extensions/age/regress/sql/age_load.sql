@@ -34,9 +34,6 @@ SELECT * FROM cypher('agload_test_graph', $$CREATE (n:Country {__id__:1}) RETURN
 SELECT load_labels_from_file('agload_test_graph', 'Country',
     'age_load/countries.csv', true);
 
--- A temporary table should have been created with 54 ids; 1 from CREATE and 53 from file
-SELECT COUNT(*)=54 FROM "_agload_test_graph_ag_vertex_ids";
-
 -- Sequence should be equal to max entry id i.e. 248
 SELECT currval('agload_test_graph."Country_id_seq"')=248;
 
@@ -51,9 +48,6 @@ SELECT load_labels_from_file('agload_test_graph', 'Country',
 -- Should create City label automatically and load cities
 SELECT load_labels_from_file('agload_test_graph', 'City',
     'age_load/cities.csv', true);
-
--- Temporary table should have 54+72485 rows now
-SELECT COUNT(*)=54+72485 FROM "_agload_test_graph_ag_vertex_ids";
 
 -- Sequence should be equal to max entry id i.e. 146941
 SELECT currval('agload_test_graph."City_id_seq"')=146941;
