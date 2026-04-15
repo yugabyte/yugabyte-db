@@ -340,6 +340,10 @@ static void delete_entity(EState *estate, ResultRelInfo *resultRelInfo,
         }
         /* increment the command counter */
         CommandCounterIncrement();
+
+        /* Update command id in estate */
+        estate->es_snapshot->curcid = GetCurrentCommandId(false);
+        estate->es_output_cid = GetCurrentCommandId(false);
     }
     else if (lock_result != TM_Invisible && lock_result != TM_SelfModified)
     {

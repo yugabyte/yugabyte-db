@@ -166,26 +166,8 @@ SELECT * FROM cypher('cypher_index', $$
         (mx)<-[:has_city]-(:City {city_id: 10, name:"Tijuana", west_coast: false, country_code:"MX"})
 $$) as (n agtype);
 
-ALTER TABLE cypher_index."Country" ADD PRIMARY KEY (id);
-
-CREATE UNIQUE INDEX CONCURRENTLY cntry_id_idx ON cypher_index."Country" (id);
-ALTER TABLE cypher_index."Country"  CLUSTER ON cntry_id_idx;
-
-ALTER TABLE cypher_index."City" ADD PRIMARY KEY (id);
-
-CREATE UNIQUE INDEX city_id_idx ON cypher_index."City" (id);
-
-ALTER TABLE cypher_index."City" CLUSTER ON city_id_idx;
-
-ALTER TABLE cypher_index.has_city
-ADD CONSTRAINT has_city_end_fk FOREIGN KEY (end_id)
-REFERENCES cypher_index."Country"(id) MATCH FULL;
-
-CREATE INDEX load_has_city_eid_idx ON cypher_index.has_city (end_id);
-
-CREATE INDEX load_has_city_sid_idx ON cypher_index.has_city (start_id);
-
-ALTER TABLE cypher_index."has_city" CLUSTER ON load_has_city_eid_idx;
+-- Verify that the incices are created on id columns
+SELECT indexname, indexdef FROM pg_indexes WHERE schemaname= 'cypher_index';
 
 SET enable_mergejoin = ON;
 SET enable_hashjoin = OFF;
@@ -193,6 +175,11 @@ SET enable_nestloop = OFF;
 
 SELECT COUNT(*) FROM cypher('cypher_index', $$
     MATCH (a:Country)<-[e:has_city]-()
+    RETURN e
+$$) as (n agtype);
+
+SELECT COUNT(*) FROM cypher('cypher_index', $$
+    EXPLAIN (costs off) MATCH (a:Country)<-[e:has_city]-()
     RETURN e
 $$) as (n agtype);
 
@@ -205,12 +192,17 @@ SELECT COUNT(*) FROM cypher('cypher_index', $$
     RETURN e
 $$) as (n agtype);
 
+SELECT COUNT(*) FROM cypher('cypher_index', $$
+    EXPLAIN (costs off) MATCH (a:Country)<-[e:has_city]-()
+    RETURN e
+$$) as (n agtype);
+
 SET enable_mergejoin = OFF;
 SET enable_hashjoin = OFF;
 SET enable_nestloop = ON;
 
 SELECT COUNT(*) FROM cypher('cypher_index', $$
-    MATCH (a:Country)<-[e:has_city]-()
+    EXPLAIN (costs off) MATCH (a:Country)<-[e:has_city]-()
     RETURN e
 $$) as (n agtype);
 

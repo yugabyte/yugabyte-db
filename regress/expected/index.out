@@ -264,18 +264,22 @@ $$) as (n agtype);
 ---
 (0 rows)
 
-ALTER TABLE cypher_index."Country" ADD PRIMARY KEY (id);
-CREATE UNIQUE INDEX CONCURRENTLY cntry_id_idx ON cypher_index."Country" (id);
-ALTER TABLE cypher_index."Country"  CLUSTER ON cntry_id_idx;
-ALTER TABLE cypher_index."City" ADD PRIMARY KEY (id);
-CREATE UNIQUE INDEX city_id_idx ON cypher_index."City" (id);
-ALTER TABLE cypher_index."City" CLUSTER ON city_id_idx;
-ALTER TABLE cypher_index.has_city
-ADD CONSTRAINT has_city_end_fk FOREIGN KEY (end_id)
-REFERENCES cypher_index."Country"(id) MATCH FULL;
-CREATE INDEX load_has_city_eid_idx ON cypher_index.has_city (end_id);
-CREATE INDEX load_has_city_sid_idx ON cypher_index.has_city (start_id);
-ALTER TABLE cypher_index."has_city" CLUSTER ON load_has_city_eid_idx;
+-- Verify that the incices are created on id columns
+SELECT indexname, indexdef FROM pg_indexes WHERE schemaname= 'cypher_index';
+          indexname          |                                            indexdef                                            
+-----------------------------+------------------------------------------------------------------------------------------------
+ _ag_label_edge_pkey         | CREATE UNIQUE INDEX _ag_label_edge_pkey ON cypher_index._ag_label_edge USING btree (id)
+ _ag_label_edge_start_id_idx | CREATE INDEX _ag_label_edge_start_id_idx ON cypher_index._ag_label_edge USING btree (start_id)
+ _ag_label_edge_end_id_idx   | CREATE INDEX _ag_label_edge_end_id_idx ON cypher_index._ag_label_edge USING btree (end_id)
+ _ag_label_vertex_pkey       | CREATE UNIQUE INDEX _ag_label_vertex_pkey ON cypher_index._ag_label_vertex USING btree (id)
+ idx_pkey                    | CREATE UNIQUE INDEX idx_pkey ON cypher_index.idx USING btree (id)
+ cypher_index_idx_props_uq   | CREATE UNIQUE INDEX cypher_index_idx_props_uq ON cypher_index.idx USING btree (properties)
+ Country_pkey                | CREATE UNIQUE INDEX "Country_pkey" ON cypher_index."Country" USING btree (id)
+ has_city_start_id_idx       | CREATE INDEX has_city_start_id_idx ON cypher_index.has_city USING btree (start_id)
+ has_city_end_id_idx         | CREATE INDEX has_city_end_id_idx ON cypher_index.has_city USING btree (end_id)
+ City_pkey                   | CREATE UNIQUE INDEX "City_pkey" ON cypher_index."City" USING btree (id)
+(10 rows)
+
 SET enable_mergejoin = ON;
 SET enable_hashjoin = OFF;
 SET enable_nestloop = OFF;
@@ -287,6 +291,29 @@ $$) as (n agtype);
 -------
     10
 (1 row)
+
+SELECT COUNT(*) FROM cypher('cypher_index', $$
+    EXPLAIN (costs off) MATCH (a:Country)<-[e:has_city]-()
+    RETURN e
+$$) as (n agtype);
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Merge Join
+         Merge Cond: (_age_default_alias_0.id = e.start_id)
+         ->  Merge Append
+               Sort Key: _age_default_alias_0.id
+               ->  Index Only Scan using _ag_label_vertex_pkey on _ag_label_vertex _age_default_alias_0_1
+               ->  Index Only Scan using idx_pkey on idx _age_default_alias_0_2
+               ->  Index Only Scan using "Country_pkey" on "Country" _age_default_alias_0_3
+               ->  Index Only Scan using "City_pkey" on "City" _age_default_alias_0_4
+         ->  Sort
+               Sort Key: e.start_id
+               ->  Merge Join
+                     Merge Cond: (a.id = e.end_id)
+                     ->  Index Only Scan using "Country_pkey" on "Country" a
+                     ->  Index Scan using has_city_end_id_idx on has_city e
+(15 rows)
 
 SET enable_mergejoin = OFF;
 SET enable_hashjoin = ON;
@@ -300,17 +327,53 @@ $$) as (n agtype);
     10
 (1 row)
 
+SELECT COUNT(*) FROM cypher('cypher_index', $$
+    EXPLAIN (costs off) MATCH (a:Country)<-[e:has_city]-()
+    RETURN e
+$$) as (n agtype);
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Hash Join
+         Hash Cond: (_age_default_alias_0.id = e.start_id)
+         ->  Append
+               ->  Index Only Scan using _ag_label_vertex_pkey on _ag_label_vertex _age_default_alias_0_1
+               ->  Index Only Scan using idx_pkey on idx _age_default_alias_0_2
+               ->  Index Only Scan using "Country_pkey" on "Country" _age_default_alias_0_3
+               ->  Index Only Scan using "City_pkey" on "City" _age_default_alias_0_4
+         ->  Hash
+               ->  Hash Join
+                     Hash Cond: (e.end_id = a.id)
+                     ->  Index Scan using has_city_end_id_idx on has_city e
+                     ->  Hash
+                           ->  Index Only Scan using "Country_pkey" on "Country" a
+(14 rows)
+
 SET enable_mergejoin = OFF;
 SET enable_hashjoin = OFF;
 SET enable_nestloop = ON;
 SELECT COUNT(*) FROM cypher('cypher_index', $$
-    MATCH (a:Country)<-[e:has_city]-()
+    EXPLAIN (costs off) MATCH (a:Country)<-[e:has_city]-()
     RETURN e
 $$) as (n agtype);
- count 
--------
-    10
-(1 row)
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Index Scan using has_city_start_id_idx on has_city e
+               ->  Index Only Scan using "Country_pkey" on "Country" a
+                     Index Cond: (id = e.end_id)
+         ->  Append
+               ->  Index Only Scan using _ag_label_vertex_pkey on _ag_label_vertex _age_default_alias_0_1
+                     Index Cond: (id = e.start_id)
+               ->  Index Only Scan using idx_pkey on idx _age_default_alias_0_2
+                     Index Cond: (id = e.start_id)
+               ->  Index Only Scan using "Country_pkey" on "Country" _age_default_alias_0_3
+                     Index Cond: (id = e.start_id)
+               ->  Index Only Scan using "City_pkey" on "City" _age_default_alias_0_4
+                     Index Cond: (id = e.start_id)
+(15 rows)
 
 SET enable_mergejoin = ON;
 SET enable_hashjoin = ON;

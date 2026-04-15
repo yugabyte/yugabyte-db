@@ -152,7 +152,7 @@ $$
 $$) as (a agtype);
                                                                                                       a                                                                                                       
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- [{"name": "Christian Bale", "movies": [{"title": "The Prestige"}, {"title": "The Dark Knight"}]}, {"name": "Tom Hanks", "movies": [{"title": "Forrest Gump"}, {"title": "Finch"}, {"title": "The Circle"}]}]
+ [{"name": "Tom Hanks", "movies": [{"title": "Forrest Gump"}, {"title": "Finch"}, {"title": "The Circle"}]}, {"name": "Christian Bale", "movies": [{"title": "The Prestige"}, {"title": "The Dark Knight"}]}]
 (1 row)
 
 -- drop

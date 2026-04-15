@@ -93,6 +93,10 @@ static void range_var_callback_for_remove_relation(const RangeVar *rel,
                                                    Oid rel_oid,
                                                    Oid odl_rel_oid,
                                                    void *arg);
+static void create_index_on_column(char *schema_name,
+                                   char *rel_name,
+                                   char *colname,
+                                   bool unique);
 
 PG_FUNCTION_INFO_V1(age_is_valid_label_name);
 
@@ -393,16 +397,24 @@ static void create_table_for_label(char *graph_name, char *label_name,
      * inheritance system.
      */
     if (list_length(parents) != 0)
+    {
         create_stmt->tableElts = NIL;
+    }
     else if (label_type == LABEL_TYPE_EDGE)
+    {
         create_stmt->tableElts = create_edge_table_elements(
             graph_name, label_name, schema_name, rel_name, seq_name);
+    }
     else if (label_type == LABEL_TYPE_VERTEX)
+    {
         create_stmt->tableElts = create_vertex_table_elements(
             graph_name, label_name, schema_name, rel_name, seq_name);
+    }
     else
+    {
         ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
                         errmsg("undefined label type \'%c\'", label_type)));
+    }
 
     create_stmt->inhRelations = parents;
     create_stmt->partbound = NULL;
@@ -423,7 +435,69 @@ static void create_table_for_label(char *graph_name, char *label_name,
     ProcessUtility(wrapper, "(generated CREATE TABLE command)", false,
                    PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
                    NULL);
-    /* CommandCounterIncrement() is called in ProcessUtility() */
+    
+    /* Create index on id columns */
+    if (label_type == LABEL_TYPE_VERTEX)
+    {
+        create_index_on_column(schema_name, rel_name, "id", true);
+    }
+    else if (label_type == LABEL_TYPE_EDGE)
+    {
+        create_index_on_column(schema_name, rel_name, "start_id", false);
+        create_index_on_column(schema_name, rel_name, "end_id", false);
+    }
+}
+
+static void create_index_on_column(char *schema_name,
+                                   char *rel_name,
+                                   char *colname,
+                                   bool unique)
+{
+    IndexStmt *index_stmt;
+    IndexElem *index_col;
+    PlannedStmt *index_wrapper;
+
+    index_stmt = makeNode(IndexStmt);
+    index_col = makeNode(IndexElem);
+    index_col->name = colname;
+    index_col->expr = NULL;
+    index_col->indexcolname = NULL;
+    index_col->collation = InvalidOid;
+    index_col->opclass = list_make1(makeString("graphid_ops"));
+    index_col->opclassopts = NIL;
+    index_col->ordering = SORTBY_DEFAULT;
+    index_col->nulls_ordering = SORTBY_NULLS_DEFAULT;
+
+    index_stmt->relation = makeRangeVar(schema_name, rel_name, -1);
+    index_stmt->accessMethod = "btree";
+    index_stmt->tableSpace = NULL;
+    index_stmt->indexParams = list_make1(index_col);
+    index_stmt->options = NIL;
+    index_stmt->whereClause = NULL;
+    index_stmt->excludeOpNames = NIL;
+    index_stmt->idxcomment = NULL;
+    index_stmt->indexOid = InvalidOid;
+    index_stmt->unique = unique;
+    index_stmt->nulls_not_distinct = false;
+    index_stmt->primary = unique;
+    index_stmt->isconstraint = unique;
+    index_stmt->deferrable = false;
+    index_stmt->initdeferred = false;
+    index_stmt->transformed = false;
+    index_stmt->concurrent = false;
+    index_stmt->if_not_exists = false;
+    index_stmt->reset_default_tblspc = false;
+
+    index_wrapper = makeNode(PlannedStmt);
+    index_wrapper->commandType = CMD_UTILITY;
+    index_wrapper->canSetTag = false;
+    index_wrapper->utilityStmt = (Node *)index_stmt;
+    index_wrapper->stmt_location = -1;
+    index_wrapper->stmt_len = 0;
+
+    ProcessUtility(index_wrapper, "(generated CREATE INDEX command)", false,
+                   PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
+                   NULL);
 }
 
 /* 
@@ -482,7 +556,7 @@ static List *create_vertex_table_elements(char *graph_name, char *label_name,
 
     /* "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...) */
     id = makeColumnDef(AG_VERTEX_COLNAME_ID, GRAPHIDOID, -1, InvalidOid);
-    id->constraints = list_make2(build_pk_constraint(),
+    id->constraints = list_make2(build_not_null_constraint(),
                                  build_id_default(graph_name, label_name,
                                                   schema_name, seq_name));
 
