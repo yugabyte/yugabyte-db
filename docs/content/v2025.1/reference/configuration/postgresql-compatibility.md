@@ -191,7 +191,7 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Events (Listen/Notify) | {{<issue 1872>}}|
 | XML Functions | {{<issue 1043>}}|
 | XA syntax | {{<issue 11084>}}|
-| ALTER TYPE | {{<issue 1893>}}|
+| Some ALTER TYPE variants | {{<issue 1893>}}|
 | CREATE CONVERSION | {{<issue 10866>}}|
 | Primary/Foreign key constraints on foreign tables | {{<issue 10698>}}, {{<issue 10699>}} |
 | Multi-column GIN indexes| {{<issue 10652>}}|
