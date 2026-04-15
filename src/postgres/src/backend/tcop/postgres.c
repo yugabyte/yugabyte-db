@@ -7088,6 +7088,7 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					int			close_type;
 					const char *close_target;
+					bool yb_report_prep_stmt_closed = false;
 
 					forbidden_in_wal_sender(firstchar);
 
@@ -7099,7 +7100,17 @@ PostgresMain(const char *dbname, const char *username)
 					{
 						case 'S':
 							if (close_target[0] != '\0')
-								DropPreparedStatement(close_target, false);
+							{
+								if (YbIsClientYsqlConnMgr())
+								{
+									yb_report_prep_stmt_closed =
+										YbDropPreparedStatement(close_target, false);
+								}
+								else
+								{
+									DropPreparedStatement(close_target, false);
+								}
+							} /* YB: CLOSE for named prepared statement is supported by conn mgr */
 							else
 							{
 								/* special-case the unnamed statement */
@@ -7115,6 +7126,12 @@ PostgresMain(const char *dbname, const char *username)
 									PortalDrop(portal, false);
 							}
 							break;
+						case 's':
+							{
+								if (YbIsClientYsqlConnMgr())
+									break;	/* YB: No-op only return CloseComplete. */
+								yb_switch_fallthrough();
+							}
 						default:
 							ereport(ERROR,
 									(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -7124,7 +7141,11 @@ PostgresMain(const char *dbname, const char *username)
 					}
 
 					if (whereToSendOutput == DestRemote)
+					{
+						if (yb_report_prep_stmt_closed)
+							pq_puttextmessage('5', close_target);
 						pq_putemptymessage('3');	/* CloseComplete */
+					} /* YB: With Conn mgr, send name of deallocated prep stmt */
 				}
 				break;
 

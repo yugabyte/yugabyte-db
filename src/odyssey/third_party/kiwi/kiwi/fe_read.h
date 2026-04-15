@@ -253,24 +253,25 @@ kiwi_fe_read_error_or_notice(char *data, uint32_t size, kiwi_fe_error_t *error,
 	return 0;
 }
 
-KIWI_API static inline int kiwi_fe_read_parse_error_yb(char *data, uint32_t size, char **stmt_name,
-						uint32_t *stmt_name_len)
+KIWI_API static inline int kiwi_fe_read_yb_server_keyhash(char *data, uint32_t size, char **keyhash,
+						uint32_t *keyhash_len)
 {
 	kiwi_header_t *header = (kiwi_header_t *)data;
 	uint32_t len;
 	int rc = kiwi_read(&len, &data, &size);
 	if (kiwi_unlikely(rc != 0))
 		return -1;
-	if (kiwi_unlikely(header->type != YB_BE_PARSE_PREPARE_ERROR_RESPONSE))
+	if (kiwi_unlikely(header->type != YB_BE_PARSE_PREPARE_ERROR_RESPONSE) &&
+		kiwi_unlikely(header->type != YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME))
 		return -1;
 	uint32_t pos_size = len;
 	char *pos = kiwi_header_data(header);
-	/* stmt_name */
-	*stmt_name = pos;
+	/* keyhash */
+	*keyhash = pos;
 	rc = kiwi_readsz(&pos, &pos_size);
 	if (kiwi_unlikely(rc == -1))
 		return -1;
-	*stmt_name_len = pos - *stmt_name;
+	*keyhash_len = pos - *keyhash;
 	return 0;
 }
 

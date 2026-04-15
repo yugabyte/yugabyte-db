@@ -87,6 +87,7 @@ struct od_config {
 	int yb_enable_multi_route_pool;
 	int yb_optimized_session_parameters;
 	int yb_max_pools;
+	int yb_deallocate_if_invalid_prep_stmt;
 	int TEST_yb_auth_delay_ms;
 };
 

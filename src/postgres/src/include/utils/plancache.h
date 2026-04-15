@@ -215,6 +215,7 @@ extern CachedPlanSource *CreateCachedPlan(struct RawStmt *raw_parse_tree,
 extern CachedPlanSource *CreateOneShotCachedPlan(struct RawStmt *raw_parse_tree,
 												 const char *query_string,
 												 CommandTag commandTag);
+extern bool YbIsCachedQueryValid(CachedPlanSource *plansource);
 extern void CompleteCachedPlan(CachedPlanSource *plansource,
 							   List *querytree_list,
 							   MemoryContext querytree_context,
