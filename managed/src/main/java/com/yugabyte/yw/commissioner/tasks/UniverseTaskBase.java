@@ -35,6 +35,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCpuCgroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
@@ -1970,6 +1971,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           CheckGlibc.Params params = new CheckGlibc.Params();
           params.setUniverseUUID(taskParams().getUniverseUUID());
           params.ybSoftwareVersion = ybSoftwareVersion;
+          params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
+  }
+
+  /**
+   * Creates a task to verify that the CPU cgroup required for YugabyteDB is configured on the given
+   * on-prem nodes. No-op for non-onprem providers; the subtask itself also guards on provider type.
+   */
+  public SubTaskGroup createCheckCpuCgroupTask(Collection<NodeDetails> nodes) {
+    return doInPrecheckSubTaskGroup(
+        "CheckCpuCgroup",
+        subTaskGroup -> {
+          CheckCpuCgroup task = createTask(CheckCpuCgroup.class);
+          CheckCpuCgroup.Params params = new CheckCpuCgroup.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
           params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
           task.initialize(params);
           subTaskGroup.addSubTask(task);

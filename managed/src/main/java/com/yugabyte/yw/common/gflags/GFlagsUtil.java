@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
@@ -155,6 +156,9 @@ public class GFlagsUtil {
       "leader_failure_max_missed_heartbeat_periods";
   public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
   public static final String TIME_SOURCE = "time_source";
+  public static final String ENABLE_QOS = "enable_qos";
+  public static final String QOS_MAX_DB_CPU_PERCENT = "qos_max_db_cpu_percent";
+  public static final String QOS_MAX_DB_COUNT = "qos_max_db_count";
 
   public static final String TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC =
       "timestamp_history_retention_interval_sec";
@@ -347,6 +351,18 @@ public class GFlagsUtil {
 
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound()) {
       extra_gflags.put(TIME_SOURCE, "clockbound");
+    }
+
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.getMultiTenancy() != null) {
+      MultiTenancyConfig mTConfig =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.getMultiTenancy();
+      extra_gflags.put(ENABLE_QOS, mTConfig.isEnableQos() ? "true" : "false");
+      if (mTConfig.getQosMaxDbCount() != null) {
+        extra_gflags.put(QOS_MAX_DB_COUNT, mTConfig.getQosMaxDbCount().toString());
+      }
+      if (mTConfig.getQosMaxDbCpuPercent() != null) {
+        extra_gflags.put(QOS_MAX_DB_CPU_PERCENT, mTConfig.getQosMaxDbCpuPercent().toString());
+      }
     }
 
     String processType = taskParam.getProperty("processType");

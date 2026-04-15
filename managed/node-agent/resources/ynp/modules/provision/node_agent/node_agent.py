@@ -76,7 +76,8 @@ class InstallNodeAgent(BaseYnpModule):
                 "cloudInfo": {
                     "onprem": {
                         "ybHomeDir": context.get("yb_home_dir", "/home/yugabyte"),
-                        "useClockbound": context.get("configure_clockbound", "false")
+                        "useClockbound": context.get("configure_clockbound", "false"),
+                        "enableMultiTenancy": context.get("configure_cgroup", "true")
                     }
                 }
             },
@@ -125,6 +126,12 @@ class InstallNodeAgent(BaseYnpModule):
         return provider_data
 
     def _generate_provider_update_payload(self, context, provider):
+        # Patch enableMultiTenancy onto existing on-prem cloudInfo so reprovision propagates the
+        # toggled configure_cgroup value to YBA.
+        onprem = provider.setdefault('details', {}).setdefault('cloudInfo', {}).setdefault(
+            'onprem', {})
+        onprem['enableMultiTenancy'] = context.get("configure_cgroup", "true")
+
         regions = provider.get('regions', [])
         region_exist = False
         for region in regions:
@@ -283,7 +290,14 @@ class InstallNodeAgent(BaseYnpModule):
                             for zone in zones:
                                 if zone['code'] == context.get('provider_region_zone_name'):
                                     zone_exist = True
-                    if not region_exists or not zone_exist:
+                    # Also write the update payload when configure_cgroup diverges from what YBA
+                    # has, so toggling it on reprovision actually reaches the provider.
+                    onprem_info = provider_details.get('cloudInfo', {}).get('onprem', {})
+                    multi_tenancy_diff = (
+                        str(onprem_info.get('enableMultiTenancy', False)).lower()
+                        != str(context.get('configure_cgroup', 'true')).lower()
+                    )
+                    if not region_exists or not zone_exist or multi_tenancy_diff:
                         update_provider_data = self._generate_provider_update_payload(
                             context, provider_data)
                         update_provider_data_file = os.path.join(

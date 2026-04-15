@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Schedule;
@@ -25,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 
@@ -47,6 +49,8 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
   public String ycqlPassword;
 
   public ServerType configureServer;
+
+  @Nullable public MultiTenancyConfig multiTenancy;
 
   public Map<UUID, SpecificGFlags> connectionPoolingGflags = new HashMap<>();
 
@@ -146,6 +150,7 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
               BAD_REQUEST, "Cannot disable YSQL if connection pooling is enabled");
         }
       }
+      validateMultiTenancy(universe, enableYSQL);
     } else if (configureServer.equals(ServerType.YQLSERVER)) {
       if (changeInYsql) {
         throw new PlatformServiceException(
@@ -251,6 +256,59 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
     if (tables.stream().anyMatch(t -> t.tableType.equals(TableType.YQL_TABLE_TYPE))) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot disable YCQL if any tables exists");
     }
+  }
+
+  private void validateMultiTenancy(Universe universe, boolean enableYSQL) {
+    if (multiTenancy == null) {
+      return;
+    }
+    if (multiTenancy.isEnableQos()) {
+      if (!enableYSQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Universe %s will undergo disable YSQL, cannot enable multi-tenancy",
+                universe.getName()));
+      }
+      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYCQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Universe %s has YCQL endpoint enabled, cannot enable multi-tenancy",
+                universe.getName()));
+      }
+      if (com.yugabyte.yw.common.Util.compareYBVersions(
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+              com.yugabyte.yw.common.Util.MULTITENANCY_SUPPORTED_DB_VERSION_STABLE,
+              com.yugabyte.yw.common.Util.MULTITENANCY_SUPPORTED_DB_VERSION_PREVIEW,
+              true)
+          < 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Current software version is below minimum supported DB version for multi-tenancy.");
+      }
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        if (cluster.userIntent.providerType == CloudType.kubernetes) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Multi-tenancy QoS is not supported for Kubernetes universes.");
+        }
+        if (cluster.userIntent.providerType != CloudType.onprem
+            && !cluster.userIntent.isCpuCgroupConfigured()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "CPU cgroup must be configured on the universe before enabling QoS. "
+                  + "Ensure cgroup provisioning is completed first.");
+        }
+      }
+    }
+  }
+
+  public boolean hasMultiTenancyChange(Universe universe) {
+    if (multiTenancy == null) {
+      return false;
+    }
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return !multiTenancy.equals(userIntent.getMultiTenancy());
   }
 
   public static class Converter extends BaseConverter<ConfigureDBApiParams> {}

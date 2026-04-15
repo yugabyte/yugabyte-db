@@ -4,22 +4,30 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Abortable
 public class ConfigureDBApis extends UpgradeTaskBase {
 
@@ -47,6 +55,36 @@ public class ConfigureDBApis extends UpgradeTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+    // When enabling multi-tenancy QoS on an on-prem universe, verify at precheck time that the
+    // yugabyte-db CPU cgroup has been configured on each node. For non-onprem providers the same
+    // condition is enforced up-front via userIntent.isCpuCgroupConfigured() in verifyParams.
+    MultiTenancyConfig mtConfig = taskParams().multiTenancy;
+    if (mtConfig != null
+        && mtConfig.isEnableQos()
+        && taskParams().hasMultiTenancyChange(universe)
+        && !universe.getUniverseDetails().getPrimaryCluster().userIntent.isQosEnabled()) {
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.skipCpuCgroupCheck)) {
+        log.debug(
+            "Skipping CPU cgroup precheck; yb.universe.skip_cpu_cgroup_check is true for "
+                + "universe {}",
+            universe.getUniverseUUID());
+      } else {
+        List<NodeDetails> onpremNodes =
+            universe.getNodes().stream()
+                .filter(node -> node.placementUuid != null && node.isTserver)
+                .filter(
+                    node -> {
+                      Cluster cluster =
+                          universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+                      return cluster != null && cluster.userIntent.providerType == CloudType.onprem;
+                    })
+                .collect(Collectors.toList());
+        if (!onpremNodes.isEmpty()) {
+          createCheckCpuCgroupTask(onpremNodes)
+              .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+        }
+      }
+    }
   }
 
   @Override
@@ -85,6 +123,44 @@ public class ConfigureDBApis extends UpgradeTaskBase {
 
           // update password from default to new custom password.
           createUpdateAPIPasswordTask(taskParams(), getTaskSubGroupType());
+
+          // Handle multi-tenancy change.
+          MultiTenancyConfig mtConfig = taskParams().multiTenancy;
+          if (mtConfig != null && taskParams().hasMultiTenancyChange(universe)) {
+            log.info(
+                "Configuring multi-tenancy QoS for universe {}", taskParams().getUniverseUUID());
+            LinkedHashSet<NodeDetails> nodesToUpdate =
+                toOrderedSet(getNodesToBeRestarted().asPair());
+            createRollingNodesUpgradeTaskFlow(
+                (nodes, processTypes) -> {
+                  for (ServerType processType : processTypes) {
+                    if (processType.equals(ServerType.MASTER)
+                        || processType.equals(ServerType.TSERVER)) {
+                      createGFlagsOverrideTasks(
+                          nodes,
+                          processType,
+                          params -> {
+                            params.gflags.put(
+                                GFlagsUtil.ENABLE_QOS, mtConfig.isEnableQos() ? "true" : "false");
+                            if (mtConfig.getQosMaxDbCount() != null) {
+                              params.gflags.put(
+                                  GFlagsUtil.QOS_MAX_DB_COUNT,
+                                  mtConfig.getQosMaxDbCount().toString());
+                            }
+                            if (mtConfig.getQosMaxDbCpuPercent() != null) {
+                              params.gflags.put(
+                                  GFlagsUtil.QOS_MAX_DB_CPU_PERCENT,
+                                  mtConfig.getQosMaxDbCpuPercent().toString());
+                            }
+                          });
+                    }
+                  }
+                },
+                nodesToUpdate,
+                DEFAULT_CONTEXT,
+                taskParams().isYbcInstalled());
+            createPersistMultiTenancyTask(mtConfig).setSubTaskGroupType(getTaskSubGroupType());
+          }
         });
   }
 

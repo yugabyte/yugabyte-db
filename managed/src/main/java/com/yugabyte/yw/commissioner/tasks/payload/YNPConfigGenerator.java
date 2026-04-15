@@ -124,6 +124,7 @@ public class YNPConfigGenerator {
         String.valueOf(confGetter.getConfForScope(provider, ProviderConfKeys.minHomeDirSpaceGb)));
     extraNode.put("is_cloud", !provider.isManualOnprem());
     extraNode.put("cloud_type", provider.getCode());
+    ynpNode.put("configure_cgroup", Util.configureCgroup(provider, true, confGetter));
     // Set package path
     extraNode.put("package_path", params.getNodeAgentHome().resolve("thirdparty").toString());
     if (CollectionUtils.isNotEmpty(params.getProvider().getDetails().getNtpServers())) {
@@ -165,6 +166,7 @@ public class YNPConfigGenerator {
       ynpNode.put("node_ip", node.cloudInfo.private_ip);
     }
     ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
+    ynpNode.put("configure_cgroup", Util.configureCgroup(userIntent, provider, true, confGetter));
     DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(node);
     if (deviceInfo.mountPoints != null) {
       extraNode.put("mount_paths", deviceInfo.mountPoints);
@@ -267,10 +269,6 @@ public class YNPConfigGenerator {
     ynpNode.put("is_install_node_agent", false);
     ynpNode.put("yb_user_id", "1994");
     ynpNode.put("is_yb_prebuilt_image", params.isYbPrebuiltImage());
-    boolean cgroupEnabled =
-        confGetter.getConfForScope(
-            params.getProvider(), ProviderConfKeys.enableCgroupConfiguration);
-    ynpNode.put("configure_cgroup", cgroupEnabled);
     loggingNode.put("level", "INFO");
     loggingNode.put("directory", params.getNodeAgentHome().resolve("logs").toString());
 

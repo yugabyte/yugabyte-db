@@ -826,6 +826,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout for memory check in secs",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> checkCpuCgroupTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.checks.cpu_cgroup.timeout",
+          ScopeType.UNIVERSE,
+          "CPU cgroup precheck timeout",
+          "Timeout (in seconds) for the CPU cgroup precheck script executed on each on-prem node",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> sleepTimeBeforeRestoreXClusterSetup =
       new ConfKeyInfo<>(
           "yb.xcluster.sleep_time_before_restore",
@@ -1576,6 +1584,17 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Skip OpenTelemetry Operator Check",
           "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipCpuCgroupCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.skip_cpu_cgroup_check",
+          ScopeType.UNIVERSE,
+          "Skip CPU Cgroup Precheck",
+          "If true, YBA will skip the on-prem CPU cgroup precheck that verifies the yb-tserver "
+              + "is in the yugabyte-db cgroup and that the yugabyte user can create child "
+              + "cgroups. This precheck runs during ConfigureDBApis when enabling multi-tenancy "
+              + "QoS on an on-prem universe.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> otelCollectorMaxMemory =

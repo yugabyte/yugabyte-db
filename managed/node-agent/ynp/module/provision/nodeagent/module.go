@@ -39,6 +39,7 @@ func (m *InstallNodeAgent) generateProviderPayload(
 		ybHomeDir = v
 	}
 	useClockbound := config.GetBool(values, "configure_clockbound", false)
+	enableMultiTenancy := config.GetBool(values, "configure_cgroup", true)
 	regionName := values["provider_region_name"].(string)
 	zoneName := values["provider_region_zone_name"].(string)
 	region := model.Region{
@@ -84,8 +85,9 @@ func (m *InstallNodeAgent) generateProviderPayload(
 			NodeExporterPort:    int(nodeExporterPort),
 			CloudInfo: model.CloudInfo{
 				Onprem: model.OnPremCloudInfo{
-					YbHomeDir:     ybHomeDir,
-					UseClockbound: useClockbound,
+					YbHomeDir:          ybHomeDir,
+					UseClockbound:      useClockbound,
+					EnableMultiTenancy: enableMultiTenancy,
 				},
 			},
 		},
@@ -117,6 +119,11 @@ func (m *InstallNodeAgent) generateProviderUpdatePayload(
 	values map[string]any,
 	provider *model.Provider,
 ) *model.Provider {
+	// Patch enableMultiTenancy onto existing on-prem cloudInfo so reprovision propagates the
+	// toggled configure_cgroup value to YBA.
+	provider.Details.CloudInfo.Onprem.EnableMultiTenancy = config.GetBool(
+		values, "configure_cgroup", true)
+
 	regionExist := false
 	regionName := values["provider_region_name"].(string)
 	zoneName := values["provider_region_zone_name"].(string)
@@ -402,7 +409,11 @@ func (m *InstallNodeAgent) RenderTemplates(
 				break
 			}
 		}
-		if !regionExists || !zoneExists {
+		// Also write the update payload when configure_cgroup diverges from what YBA has,
+		// so toggling it on reprovision actually reaches the provider.
+		multiTenancyDiff := provider.Details.CloudInfo.Onprem.EnableMultiTenancy !=
+			config.GetBool(values, "configure_cgroup", true)
+		if !regionExists || !zoneExists || multiTenancyDiff {
 			updateProviderData := m.generateProviderUpdatePayload(values, provider)
 			updateProviderDataFile := filepath.Join(
 				values["tmp_directory"].(string),

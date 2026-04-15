@@ -206,6 +206,13 @@ func (gen *YNPConfigGenerator) registerResolvers() error {
 		}
 		return provider.Details.CloudInfo.Onprem.UseClockbound, nil
 	}
+	gen.resolvers["ynp_configure_cgroup"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
+		provider, err := dataProvider.GetProvider(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return provider.Details.CloudInfo.Onprem.EnableMultiTenancy, nil
+	}
 	gen.resolvers["ynp_configure_thp_settings"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
 		return true, nil
 	}
@@ -327,9 +334,6 @@ func (gen *YNPConfigGenerator) registerResolvers() error {
 	}
 	gen.resolvers["yba_provider_region_longitude"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
 		return 360, nil
-	}
-	gen.resolvers["ynp_configure_cgroup"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
-		return true, nil
 	}
 	return nil
 }

@@ -80,6 +80,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -432,7 +433,11 @@ public class NodeAgentRpcPayload {
   }
 
   public ConfigureServerInput setUpConfigureServerBits(
-      Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
+      Universe universe,
+      NodeDetails nodeDetails,
+      NodeTaskParams taskParams,
+      NodeAgent nodeAgent,
+      @Nullable Boolean configureCgroupOverride) {
     ConfigureServerInput.Builder configureServerInputBuilder = ConfigureServerInput.newBuilder();
     Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
@@ -454,9 +459,11 @@ public class NodeAgentRpcPayload {
     Integer num_cores_to_keep =
         confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
     configureServerInputBuilder.setNumCoresToKeep(num_cores_to_keep);
-    boolean cgroupEnabled =
-        confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration);
-    configureServerInputBuilder.setConfigureCgroup(cgroupEnabled);
+    boolean configureCgroup =
+        configureCgroupOverride != null
+            ? configureCgroupOverride
+            : Util.configureCgroup(cluster.userIntent, provider, false, confGetter);
+    configureServerInputBuilder.setConfigureCgroup(configureCgroup);
     return configureServerInputBuilder.build();
   }
 

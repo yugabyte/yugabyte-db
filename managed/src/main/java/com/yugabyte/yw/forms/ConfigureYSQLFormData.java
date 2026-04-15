@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
@@ -12,6 +13,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import play.data.validation.Constraints;
 
 @ApiModel(value = "ConfigureYSQLFormData", description = "YSQL properties")
@@ -42,6 +44,15 @@ public class ConfigureYSQLFormData {
   public UniverseTaskParams.CommunicationPorts communicationPorts =
       new UniverseTaskParams.CommunicationPorts();
 
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Multi-tenancy configuration for QoS. "
+              + "Cgroup provisioning must already be completed on the nodes before enabling.")
+  @Nullable
+  public MultiTenancyConfig multiTenancy;
+
   @JsonIgnore
   public void mergeWithConfigureDBApiParams(ConfigureDBApiParams params) {
     params.enableYSQL = this.enableYSQL;
@@ -53,6 +64,7 @@ public class ConfigureYSQLFormData {
     params.communicationPorts.ysqlServerRpcPort = this.communicationPorts.ysqlServerRpcPort;
     params.communicationPorts.internalYsqlServerRpcPort =
         this.communicationPorts.internalYsqlServerRpcPort;
+    params.multiTenancy = this.multiTenancy;
     params.configureServer = UniverseTaskBase.ServerType.YSQLSERVER;
   }
 }

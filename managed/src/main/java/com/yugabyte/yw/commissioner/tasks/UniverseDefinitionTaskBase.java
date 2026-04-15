@@ -48,6 +48,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PersistEnableMultiTenancy;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress;
@@ -4152,6 +4153,47 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subtask.initialize(params);
     persistClockboundSubtaskGroup.addSubTask(subtask);
     getRunnableTask().addSubTaskGroup(persistClockboundSubtaskGroup);
+  }
+
+  protected void createPersistCpuCgroupConfiguredTask(Universe universe) {
+    createUpdateUniverseFieldsTask(
+            u -> {
+              boolean configureCgroup = true;
+              // If any cluster cannot configure cgroup, set it to false.
+              for (Cluster c : u.getUniverseDetails().clusters) {
+                Provider provider =
+                    Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+                boolean configure = Util.configureCgroup(c.userIntent, provider, true, confGetter);
+                configureCgroup = configure && configureCgroup;
+              }
+              u.getUniverseDetails()
+                  .getPrimaryCluster()
+                  .userIntent
+                  .setCpuCgroupConfigured(configureCgroup);
+              if (CollectionUtils.isNotEmpty(u.getUniverseDetails().getReadOnlyClusters())) {
+                u.getUniverseDetails()
+                    .getReadOnlyClusters()
+                    .get(0)
+                    .userIntent
+                    .setCpuCgroupConfigured(configureCgroup);
+              }
+            })
+        .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+  }
+
+  protected SubTaskGroup createPersistMultiTenancyTask(
+      UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig multiTenancy) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("PersistEnableMultiTenancy", SubTaskGroupType.PersistEnableMultiTenancy);
+    PersistEnableMultiTenancy.Params params = new PersistEnableMultiTenancy.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.multiTenancy = multiTenancy;
+    PersistEnableMultiTenancy subtask = createTask(PersistEnableMultiTenancy.class);
+    subtask.initialize(params);
+    subtask.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(subtask);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   protected void updateUniverseHttpsEnabledUI(int nodeToNodeChange) {

@@ -1016,6 +1016,54 @@ public class UniverseCRUDHandler {
         throw new PlatformServiceException(
             BAD_REQUEST, "DB release " + userIntent.ybSoftwareVersion + " does not support FIPS");
       }
+
+      UserIntent.MultiTenancyConfig mtConfig = userIntent.getMultiTenancy();
+      if (mtConfig != null && mtConfig.isEnableQos()) {
+        if (Util.compareYBVersions(
+                userIntent.ybSoftwareVersion,
+                Util.MULTITENANCY_SUPPORTED_DB_VERSION_STABLE,
+                Util.MULTITENANCY_SUPPORTED_DB_VERSION_PREVIEW,
+                true)
+            < 0) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Current software version is below minimum supported DB version for"
+                  + " multi-tenancy.");
+        }
+        if (!(userIntent.enableYSQL && !userIntent.enableYCQL)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "YSQL API should be enabled and YCQL api disabled to enable multi-tenancy");
+        }
+        for (Cluster cluster : taskParams.clusters) {
+          if (cluster.userIntent.providerType == Common.CloudType.kubernetes) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Multi-tenancy QoS is not supported for Kubernetes universes.");
+          }
+          Provider provider =
+              Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+          if (cluster.userIntent.providerType == Common.CloudType.onprem) {
+            Provider clusterProvider =
+                Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+            if (!clusterProvider.getDetails().getCloudInfo().getOnprem().isEnableMultiTenancy()) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  "Multi-tenancy must be enabled on the on-premises provider '"
+                      + clusterProvider.getName()
+                      + "' before it can be enabled on the universe. "
+                      + "Ensure cgroup provisioning is completed first.");
+            }
+          } else if (!confGetter.getConfForScope(
+              provider, ProviderConfKeys.enableCgroupConfiguration)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "Cgroup configuration runtime flag 'yb.node_agent.enable_cgroup_configuration' for"
+                    + " provider '"
+                    + provider.getName()
+                    + "' before it can be enabled on the universe.");
+          }
+        }
+      }
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
@@ -2708,6 +2756,16 @@ public class UniverseCRUDHandler {
                     nodeDetails.nodeName,
                     curIntent.isUseYbdbInbuiltYbc(),
                     newIntent.isUseYbdbInbuiltYbc()));
+          }
+          if (!Objects.equals(curIntent.getMultiTenancy(), newIntent.getMultiTenancy())) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change multi-tenancy config for existing node %s"
+                        + " through EditUniverse",
+                    nodeDetails.nodeName,
+                    curIntent.getMultiTenancy(),
+                    newIntent.getMultiTenancy()));
           }
         }
       }

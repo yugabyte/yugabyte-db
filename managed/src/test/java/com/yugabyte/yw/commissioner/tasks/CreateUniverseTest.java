@@ -69,6 +69,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.FreezeUniverse,
           TaskType.PersistUseClockbound,
           TaskType.InstanceExistCheck,
+          TaskType.UpdateUniverseFields,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
@@ -110,6 +111,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.FreezeUniverse,
           TaskType.PersistUseClockbound,
           TaskType.InstanceExistCheck,
+          TaskType.UpdateUniverseFields,
           TaskType.ValidateGFlags,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // master

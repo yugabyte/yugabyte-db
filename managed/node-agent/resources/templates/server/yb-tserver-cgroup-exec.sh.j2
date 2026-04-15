@@ -30,11 +30,19 @@ setup_v2() {
   local self_cg
   self_cg=$(grep -m1 '^0:' /proc/$$/cgroup | cut -d: -f3)
 
+  local fs="/sys/fs/cgroup"
+
   # DelegateSubgroup=yugabyte-db (systemd >= 254) handles process placement
   # inside the sub-cgroup — nothing to do.
-  [ "${self_cg##*/}" = "$CG_NAME" ] && return 0
+  if [[ "${self_cg##*/}" == "$CG_NAME" ]]; then
+    local parent_cg="${self_cg%/*}"
+    # We turn on the cpu control in the parent
+    if ! grep -q "cpu" "${fs}${parent_cg}/cgroup.subtree_control"; then
+      echo "+cpu" > "${fs}${parent_cg}/cgroup.subtree_control" 2>/dev/null || true
+    fi
+    return 0
+  fi
 
-  local fs="/sys/fs/cgroup"
   local subgroup="${self_cg}/${CG_NAME}"
   mkdir -p "${fs}${subgroup}"
   echo $$ > "${fs}${subgroup}/cgroup.procs"

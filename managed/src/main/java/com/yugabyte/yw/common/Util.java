@@ -21,6 +21,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.logging.LogUtil;
@@ -170,6 +171,9 @@ public class Util {
   // "allowed_preview_flags_csv".
   public static final String CONNECTION_POOLING_DB_PREVIEW_FLAG_PREVIEW_VERSION = "2.25.1.0-b184";
   public static final String CONNECTION_POOLING_DB_PREVIEW_FLAG_STABLE_VERSION = "2024.2.1.0-b185";
+
+  public static final String MULTITENANCY_SUPPORTED_DB_VERSION_PREVIEW = "2.29.0.0-b650";
+  public static final String MULTITENANCY_SUPPORTED_DB_VERSION_STABLE = "2026.1.0.0-b0";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
@@ -994,6 +998,32 @@ public class Util {
           "Cannot specify custom linux_user for manual on-prem provisioned universes. "
               + "Node agent runs as yugabyte user and cannot switch users.");
     }
+  }
+
+  public static boolean configureCgroup(
+      Provider provider, boolean isForProvision, RuntimeConfGetter confGetter) {
+    return configureCgroup(null, provider, isForProvision, confGetter);
+  }
+
+  public static boolean configureCgroup(
+      @Nullable UserIntent userIntent,
+      Provider provider,
+      boolean isForProvision,
+      RuntimeConfGetter confGetter) {
+    if (userIntent != null && userIntent.isCpuCgroupConfigured()) {
+      return true;
+    }
+    if (provider.getCloudCode().equals(CloudType.onprem)
+        && provider.getDetails().getCloudInfo().onprem.enableMultiTenancy) {
+      return true;
+    }
+    if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+      return false;
+    }
+    if (isForProvision && !(provider.getCloudCode().equals(CloudType.onprem))) {
+      return confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration);
+    }
+    return false;
   }
 
   /**

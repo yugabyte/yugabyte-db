@@ -281,6 +281,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
     // Last task is DeleteRootVolumes.
     assertEquals(
+        TaskType.UpdateUniverseFields, subTasksByPosition.get(position++).get(0).getTaskType());
+    assertEquals(
         TaskType.DeleteRootVolumes, subTasksByPosition.get(position++).get(0).getTaskType());
     assertEquals(createVolumeOutput.keySet(), replaceRootVolumeParams.keySet());
     createVolumeOutput.forEach(
@@ -488,6 +490,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
       }
     }
 
+    assertEquals(
+        TaskType.UpdateUniverseFields, subTasksByPosition.get(position++).get(0).getTaskType());
     assertEquals(
         TaskType.UpdateClusterUserIntent, subTasksByPosition.get(position++).get(0).getTaskType());
     // Last task is DeleteRootVolumes.
