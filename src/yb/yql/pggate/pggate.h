@@ -48,7 +48,6 @@
 #include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_fk_reference_cache.h"
 #include "yb/yql/pggate/pg_function.h"
@@ -68,6 +67,7 @@ namespace yb::pggate {
 class PgDmlRead;
 class PgFlushDebugContext;
 class PgGlobalViewRead;
+class ExplicitRowLockBuffer;
 
 struct PgMemctxComparator {
   using is_transparent = void;
@@ -953,6 +953,9 @@ class PgApiImpl {
 
   PgMemctx& GetCurrentYbMemctx();
 
+  [[nodiscard]] ExplicitRowLockBuffer& explicit_row_lock_buffer();
+  Result<SetupPerformOptionsAccessorTag> FlushBufferedEntities(const PgFlushDebugContext& dbg_ctx);
+
   class Interrupter;
 
   class TupleIdBuilder {
@@ -1019,7 +1022,6 @@ class PgApiImpl {
   BufferingSettings buffering_settings_;
   PgSessionPtr pg_session_;
   PgFKReferenceCache fk_reference_cache_;
-  ExplicitRowLockBuffer explicit_row_lock_buffer_;
 
   ash::WaitStateInfoPtr wait_state_;
 
