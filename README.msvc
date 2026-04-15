@@ -1,6 +1,6 @@
 Build on Microsoft Windows with Microsoft Visual Studio
 
-1. For Postgres 12 and higher you need libicu headers
+1. For Postgres 12 and higher you need libicu headers - you need libicu headers. It is a part of Windows since [Windows 10 Creators Update](https://learn.microsoft.com/en-us/windows/win32/intl/international-components-for-unicode--icu-)
 
 2. Orafce library is linked with runtime library - this library should to use
    same platform toolset like Postgres server.
