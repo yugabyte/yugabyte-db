@@ -100,6 +100,16 @@ Typically, the signing region is the AWS region where the S3 bucket is located (
 
 By default, the **Signing region** field is not available in the UI. To make it available, set the **Enable Signing Region** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_signing_region`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
+### Using a proxy
+
+By default, **Proxy Configuration** for S3 storage is not available in the UI. To make it available (v2025.2.3.0 and later), set the **Enable S3 Backup Proxy** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_s3_backup_proxy`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags. (To make the feature available in versions prior to v2025.2.3.0, navigate to `https://<my-yugabytedb-anywhere-ip>/features` and enable the **enableS3BackupProxy** option.)
+
+Configure a proxy for your S3 backup configuration by setting the following options under **Proxy Configuration**:
+
+- **Host**: The full URL or IP address of the HTTP/HTTPS proxy server.
+- **Port**: The port used by the HTTP/HTTPS proxy server.
+- **Username** and **Password**: If your proxy requires authentication, enter the Username and Password.
+
 ## Google Cloud Storage
 
 You can configure Google Cloud Storage (GCS) as your backup target.
