@@ -3252,7 +3252,7 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
   Status iteration_status;
   // Filter the cdc_state scan by stream_id to avoid reading all rows.
   // Without this filter, the full table (87K+ rows on large clusters) is scanned
-  // on every call, causing 30-60s latencies.
+  // on every call.
   auto entries = VERIFY_RESULT(cdc_state_table_->GetTableRange(
       CDCStateTableEntrySelector()
           .IncludeCheckpoint()
