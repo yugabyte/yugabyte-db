@@ -53,7 +53,7 @@ A consistently high `avg_wait_time_ns` metric for the `control_connection` pool 
 
 - TCP IPv6 client connections. Connection Manager assumes all client connections use IPv4. If any IPv6 client connection tries to connect, Connection Manager will still authenticate against IPv4 in the host column of the HBA file.
 
-- [Host-based authentication](../../../secure/authentication/host-based-authentication) (HBA). Connection Manager does not support the _server-side_ HBA auth-method `cert`, where the server authenticates users via the client's certificate (CN/DN mapping). Supporting server-side cert-based authentication would require forwarding client certificates to the database over Unix socket backend connections, which is not yet implemented. YSQL Connection Manager does support client SSL modes `verify-ca` and `verify-full`, where the _client_ verifies the _server's_ certificate. 
+- [Host-based authentication](../../../secure/authentication/host-based-authentication) (HBA). Connection Manager does not support the _server-side_ HBA auth-method `cert`, where the server authenticates users via the client's certificate (CN/DN mapping). Supporting server-side cert-based authentication would require forwarding client certificates to the database over Unix socket backend connections, which is not yet implemented. YSQL Connection Manager does support client SSL modes `verify-ca` and `verify-full`, where the _client_ verifies the _server's_ certificate. For more information, refer to [Authentication methods](../ycm-setup/#authentication-methods).
 
 ## SSL behaviour
 

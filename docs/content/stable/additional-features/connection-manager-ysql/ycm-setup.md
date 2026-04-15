@@ -10,6 +10,8 @@ menu:
     parent: connection-manager
     weight: 10
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 ## Start YSQL Connection Manager
@@ -137,27 +139,27 @@ The following table outlines the various authentication methods supported by Yug
 | {{<icon/yes>}} | SCRAM-SHA-256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
 | {{<icon/no>}} | SCRAM-SHA-256-PLUS  | A variant of SCRAM-SHA-256 over TLS channels that performs TLS channel-binding as part of authentication. |
 | {{<icon/yes>}} | MD5 | Password-based authentication where the user's password is by default stored in MD5 encryption format in the database. |
-| {{<icon/partial>}} | Cert  | Currently, Connection Manager does not support the HBA auth-method `cert`, where the server authenticates users via the client certificate (for example, CN/DN mapping). Client-side `sslmode` (such as verify-ca, verify-full), where the client verifies the *server* certificate, is a different layer and is supported. See [Client SSL modes and TLS](#client-ssl-modes-and-tls). |
+| {{<icon/partial>}} | Cert  | Currently, Connection Manager does not support the HBA auth-method `cert`, where the server authenticates users via the client certificate (for example, CN/DN mapping). Client-side `sslmode` (such as verify-ca, verify-full), where the client verifies the *server* certificate, is a different layer and is supported (see [SSL modes and encryption in transit](#ssl-modes-and-encryption-in-transit)). |
 
-## Client SSL modes and TLS
-
-To enable encrypted connections (TLS/SSL) between your client application and YugabyteDB via YSQL Connection Manager, enable client-to-server encryption in transit on your universe by configuring the following [yb-tserver](../../../reference/configuration/yb-tserver/) flags:
-
-- Set [use_client_to_server_encryption](../../../reference/configuration/yb-tserver/#use-client-to-server-encryption) to true.
-- Set [certs_for_client_dir](../../../reference/configuration/yb-tserver/#certs-for-client-dir) to the path containing the server TLS certificates.
-
-**Client and server connection handling**
+## SSL modes and encryption in transit
 
 Client connection behavior and server-side policy are handled separately as follows:
 
 - **SSL mode** (client-side connection behavior): controls whether the client uses TLS and how it verifies the server (disable, allow, prefer, require, verify-ca, verify-full). Connection Manager supports all of these client SSL modes.
 - **ysql_hba.conf** (host-based authentication settings): controls whether the connection must be over TLS, if the client must present a certificate, and whether the server authenticates the client via that certificate. Currently, Connection Manager does not support HBA certificate authentication.
 
-### Connection Manager SSL modes
+### Encryption in transit
 
 YSQL Connection Manager can be configured for universes with or without encryption in transit enabled. The mode is determined by the settings in the Connection Manager configuration file (which is the Odyssey configuration that the Connection Manager process reads at startup). (You can review the default settings in the [template configuration file](https://github.com/yugabyte/yugabyte-db/blob/2025.2.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf)).
 
-#### Encryption in transit disabled
+To enable encrypted connections (TLS/SSL) between your client application and YugabyteDB via YSQL Connection Manager, enable client-to-server encryption in transit on your universe by configuring the following [yb-tserver](../../../reference/configuration/yb-tserver/) flags:
+
+- Set [use_client_to_server_encryption](../../../reference/configuration/yb-tserver/#use-client-to-server-encryption) to true.
+- Set [certs_for_client_dir](../../../reference/configuration/yb-tserver/#certs-for-client-dir) to the path containing the server TLS certificates.
+
+For more information on encryption in transit in YugabyteDB, refer to [Encryption in transit](../../../secure/tls-encryption/).
+
+#### Disabled
 
 When encryption in transit is not enabled, TLS is not enabled in the Connection Manager configuration file either.
 
@@ -184,7 +186,7 @@ The following table describes how each client SSL mode behaves when connecting v
 
 Adding entries to the default configuration does not change behavior for any of these client SSL modes.
 
-#### Encryption in transit enabled
+#### Enabled
 
 When encryption in transit is enabled for the cluster (by setting the `use_client_to_server_encryption` and `certs_for_client_dir` flags), Connection Manager automatically switches to require mode (that is, it starts with Odyssey `tls "require"` by reading the TLS-related flags and overwriting the Connection Manager configuration file).
 
