@@ -53,7 +53,9 @@ static constexpr auto kOtelBatchScheduleDelayMs = 100;
 
 YB_DEFINE_ENUM(QueryExecMode, (kFetch)(kExecute));
 YB_STRONGLY_TYPED_BOOL(IsUtility);
-YB_DEFINE_ENUM(SpanType, (kRoot)(kParse)(kRewrite)(kExecute)(kPlan)(kCommit)(kAbort));
+YB_DEFINE_ENUM(SpanType,
+    (kRoot)(kParse)(kRewrite)(kExecute)(kPlan)(kCommit)(kAbort)
+    (kExtParse)(kExtBind)(kExtExecute)(kExtSync)(kExtDescribe)(kExtFlush));
 
 struct ExpectedSpan {
   SpanType type;
@@ -253,6 +255,12 @@ class OtlpHttpCollector {
     }
 
     return Status::OK();
+  }
+
+  void ClearTraces() EXCLUDES(mutex_) {
+    SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 5ms);
+    std::lock_guard lock(mutex_);
+    traces_.clear();
   }
 
   Status VerifyNoTracesEmitted() const EXCLUDES(mutex_) {
@@ -525,6 +533,24 @@ class DistTraceTest : public LibPqTestBase {
             break;
           case SpanType::kAbort:
             trace.spans.push_back(GetSpan("abort", trace_id));
+            break;
+          case SpanType::kExtParse:
+            trace.spans.push_back(GetSpan("ext.parse", trace_id));
+            break;
+          case SpanType::kExtBind:
+            trace.spans.push_back(GetSpan("ext.bind", trace_id));
+            break;
+          case SpanType::kExtExecute:
+            trace.spans.push_back(GetSpan("ext.execute", trace_id));
+            break;
+          case SpanType::kExtSync:
+            trace.spans.push_back(GetSpan("ext.sync", trace_id));
+            break;
+          case SpanType::kExtDescribe:
+            trace.spans.push_back(GetSpan("ext.describe", trace_id));
+            break;
+          case SpanType::kExtFlush:
+            trace.spans.push_back(GetSpan("ext.flush", trace_id));
             break;
         }
       }
@@ -1030,6 +1056,55 @@ TEST_F(DistTraceTest, TestNodeSpans) {
   ASSERT_OK(conn_->Execute("RESET enable_hashjoin"));
   ASSERT_OK(conn_->Execute("RESET enable_mergejoin"));
   ASSERT_OK(conn_->Execute("RESET enable_material"));
+}
+
+TEST_F(DistTraceTest, TestExtendedQueryProtocolComment) {
+  auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
+  auto tp = GenerateTraceparent();
+
+  auto query = Format("/*traceparent='$0'*/ SELECT 1", tp.full);
+  ASSERT_OK(ext_conn.Fetch(query));
+
+  ASSERT_OK(collector_.VerifyAgainstCollectorTraces({
+      MakeExpectedTrace(query, tp.trace_id,
+          {{SpanType::kRoot, 1},
+           {SpanType::kExtParse, 1},
+           {SpanType::kParse, 2},
+           {SpanType::kRewrite, 1},
+           {SpanType::kExtBind, 1},
+           {SpanType::kPlan, 1},
+           {SpanType::kExtDescribe, 1},
+           {SpanType::kExtExecute, 1},
+           {SpanType::kExecute, 1},
+           {SpanType::kExtSync, 1},
+           {SpanType::kCommit, 1}}),
+  }));
+}
+
+TEST_F(DistTraceTest, TestExtendedQueryProtocolGuc) {
+  auto ext_conn = ASSERT_RESULT(Connect(false /* simple_query_protocol */));
+  auto tp = GenerateTraceparent();
+
+  ASSERT_OK(ext_conn.Execute(
+      Format("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full)));
+
+  auto query = "SELECT 1";
+  ASSERT_OK(ext_conn.Fetch(query));
+
+  ASSERT_OK(collector_.VerifyAgainstCollectorTraces({
+      MakeExpectedTrace(query, tp.trace_id,
+          {{SpanType::kRoot, 1},
+           {SpanType::kExtParse, 1},
+           {SpanType::kParse, 2},
+           {SpanType::kRewrite, 1},
+           {SpanType::kExtBind, 1},
+           {SpanType::kPlan, 1},
+           {SpanType::kExtDescribe, 1},
+           {SpanType::kExtExecute, 1},
+           {SpanType::kExecute, 1},
+           {SpanType::kExtSync, 1},
+           {SpanType::kCommit, 1}}),
+  }));
 }
 
 }  // namespace yb::pgwrapper
