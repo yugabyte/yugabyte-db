@@ -1440,6 +1440,7 @@ void AsyncChangeConfigTask::HandleResponse(int attempt) {
     case TabletServerErrorPB::CAS_FAILED:
     case TabletServerErrorPB::ADD_CHANGE_CONFIG_ALREADY_PRESENT:
     case TabletServerErrorPB::REMOVE_CHANGE_CONFIG_NOT_PRESENT:
+    case TabletServerErrorPB::LEADER_NEEDS_STEP_DOWN:
     case TabletServerErrorPB::NOT_THE_LEADER:
       LOG_WITH_PREFIX(WARNING) << "ChangeConfig() failed on leader " << permanent_uuid()
                                << ". No further retry: " << status.ToString();
@@ -1600,9 +1601,9 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
                                stepdown_resp_.error().status().code() != AppStatusPB::OK;
   LOG_WITH_PREFIX(INFO) << Format(
       "Leader step down done attempt=$0, leader_uuid=$1, change_uuid=$2, "
-      "error=$3, failed=$4, should_remove=$5 for tablet $6.",
+      "error=$3, failed=$4, also_remove_replica=$5 for tablet $6.",
       attempt, permanent_uuid(), change_config_ts_uuid_, stepdown_resp_.error(),
-      stepdown_failed, should_remove_, tablet_->tablet_id());
+      stepdown_failed, also_remove_replica_, tablet_->tablet_id());
 
   if (stepdown_failed) {
     tablet_->RegisterLeaderStepDownFailure(change_config_ts_uuid_,
@@ -1610,7 +1611,7 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
                                     stepdown_resp_.time_since_election_failure_ms() : 0));
   }
 
-  if (should_remove_) {
+  if (also_remove_replica_) {
     auto task = std::make_shared<AsyncRemoveServerTask>(
         master_, callback_pool_, tablet_, cstate_, change_config_ts_uuid_, epoch(),
         Format("Done stepping down leader. Now removing replica as requested: $0", reason_));

@@ -10622,11 +10622,11 @@ void CatalogManager::UpdateTabletReplicaLocations(
 
 Result<std::shared_ptr<AsyncTryStepDown>> CatalogManager::ScheduleTryStepDownTask(
     const TabletInfoPtr& tablet, const ConsensusStatePB& cstate,
-    const string& change_config_ts_uuid, bool should_remove, const LeaderEpoch& epoch,
+    const string& change_config_ts_uuid, bool also_remove_replica, const LeaderEpoch& epoch,
     const string& reason, const string& new_leader_uuid) {
   auto task = std::make_shared<AsyncTryStepDown>(
-      master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid, should_remove, epoch, reason,
-      new_leader_uuid);
+      master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid, also_remove_replica, epoch,
+      reason, new_leader_uuid);
   tablet->table()->AddTask(task);
   RETURN_NOT_OK(ScheduleTask(task));
   return task;
