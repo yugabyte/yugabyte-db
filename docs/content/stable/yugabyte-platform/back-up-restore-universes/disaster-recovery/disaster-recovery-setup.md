@@ -151,8 +151,6 @@ The **xCluster Disaster Recovery** tab also lists all the tables in replication 
 
 - Use the search bar to filter the view by table name, database, size, and more.
 
-For information on managing tables in DR, refer to [Manage tables and indexes](../disaster-recovery-tables/).
-
 #### Status
 
 To check if the replication has been properly configured for a table, check the status. If properly configured, the table's replication status is shown as _Operational_.
