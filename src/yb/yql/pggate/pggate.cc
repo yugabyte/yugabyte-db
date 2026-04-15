@@ -689,16 +689,15 @@ PgApiImpl::PgApiImpl(
               ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
             return PgWaitEventWatcher{starter, wait_event, pggate_rpc};
       }),
-      pg_shared_data_(
-          *init_postgres_info.shared_data, !init_postgres_info.parallel_leader_session_id),
+      is_parallel_worker_(init_postgres_info.parallel_leader_session_id != nullptr),
+      pg_shared_data_(*init_postgres_info.shared_data, !is_parallel_worker_),
       pg_client_(
           wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no, tablespace_map_),
       clock_(new server::HybridClock()),
       // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
-      enable_table_locking_(
-          ShouldEnableTableLocks() && !init_postgres_info.parallel_leader_session_id),
+      enable_table_locking_(ShouldEnableTableLocks() && !is_parallel_worker_),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
       ybctid_reader_providers_{YbctidReaderProvider{pg_session_},
                                YbctidReaderProvider{pg_session_}},
@@ -2384,6 +2383,10 @@ void PgApiImpl::StopSysTablePrefetching() {
 
 bool PgApiImpl::IsSysTablePrefetchingStarted() const {
   return static_cast<bool>(pg_sys_table_prefetcher_);
+}
+
+bool PgApiImpl::IsParallelWorker() const {
+  return is_parallel_worker_;
 }
 
 Status PgApiImpl::PrefetchRegisteredSysTables() {
