@@ -12,6 +12,8 @@ menu:
 aliases:
   - /stable/develop/best-practices/administration/
 type: docs
+rightNav:
+  hideH3: true
 ---
 
 Database administrators can fine-tune YugabyteDB deployments for better reliability, performance, and operational efficiency by following targeted best practices. This guide outlines key recommendations for configuring single-AZ environments, optimizing memory use, accelerating CI/CD tests, and safely managing concurrent DML and DDL operations. These tips are designed to help DBAs maintain stable, scalable YSQL clusters in real-world and test scenarios alike.
@@ -64,7 +66,7 @@ Most DDL statements complete quickly, so this is typically not a significant iss
 
 Concurrent Data Definition Language (DDL) operations can cause inconsistencies or temporary unavailability. Potential outcomes include catalog inconsistencies, tables not registered in the schema, issues with restoring from backups taken during an inconsistent state, and occasional column modification issues.
 
-YugabyteDB provides [table-level locking](../../architecture/transactions/concurrency-control/#table-level-locks) {{<tags/feature/ea idea="1114">}} for DDL operations, which queues conflicting DDL instead of allowing concurrent execution. However, if table-level locking is not enabled (the default), concurrent DDL statements can proceed simultaneously and race against each other, potentially leaving the two metadata layers out of sync. As a result, all DDL serialization must be enforced at the application and operational level.
+YugabyteDB provides [table-level locking](../../architecture/transactions/concurrency-control/#table-level-locks) {{<tags/feature/ea idea="1114">}} for DDL operations, which queues conflicting DDL instead of allowing concurrent execution. However, if table-level locking is not enabled (the default), concurrent DDL statements can proceed simultaneously and race against each other, potentially leaving the YSQL system catalog and the YB-Master catalog out of sync. As a result, all DDL serialization must be enforced at the application and operational level.
 
 All DDL statements targeting the same database must be executed sequentially, one at a time, from a single database connection. DDL statements that operate on shared objects (roles, tablespaces) affect all databases in the cluster and must also be serialized. DDL statements that affect entities in different databases can be run concurrently.
 
@@ -77,6 +79,7 @@ All DDL statements targeting the same database must be executed sequentially, on
 - Run DDL and backup jobs separately. DDL verification states can block backup and restore operations. 
 - Monitor YB-Master logs (or universe Health in YugabyteDB Anywhere) for DDL verification states and DDL atomicity alerts.
 - Enable Point-in-Time Recovery (PITR) as a safety net before performing schema changes, to allow [rollback if DDL operations](../../explore/cluster-management/point-in-time-recovery-ysql/#undo-metadata-changes) leave the database in an inconsistent state.
+- ANALYZE is treated as a DDL operation in YugabyteDB and will conflict with other concurrent DDLs. Run ANALYZE on individual tables.
 
 ## Preload PostgreSQL system catalog entries into the local catalog cache
 
