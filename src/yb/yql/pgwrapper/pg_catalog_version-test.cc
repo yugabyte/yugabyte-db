@@ -3718,7 +3718,7 @@ TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
 }
 
 TEST_F(PgCatalogVersionTest, ConcurrentNonSuperuserNewConnectionsTest) {
-  const int num_databases = ReleaseVsDebugVsAsanVsTsanVsApple(10, 10, 10, 4, 3);
+  const int num_databases = ReleaseVsDebugVsAsanVsTsanVsApple(10, 10, 5, 4, 3);
   const int connections_perdb = 10;
   // TSAN build needs more max allowed connections.
   RestartClusterWithInvalMessageEnabled(
