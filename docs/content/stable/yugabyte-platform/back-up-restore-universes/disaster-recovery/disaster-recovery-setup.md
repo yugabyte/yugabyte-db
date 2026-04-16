@@ -10,6 +10,8 @@ menu:
     identifier: disaster-recovery-setup
     weight: 10
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 ## Prerequisites
@@ -70,6 +72,8 @@ To set up disaster recovery for a universe, do the following:
 1. Select the databases to be copied to the DR replica for disaster recovery.
 
     You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup. Refer to [xCluster and colocation](../../../../additional-features/colocation/#xcluster-and-colocation).
+
+    Note that all tables in the database are added to replication; you cannot select a subset of tables.
 
     YugabyteDB Anywhere checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
 
@@ -181,8 +185,8 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | Dropped From Source | The table was in replication, but dropped from the DR primary without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
 | Dropped From Target | The table was in replication, but was dropped from the DR replica without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
 | Dropped From Database | The table was in replication, but doesn't exist on either the DR primary or DR replica. If you are using Manual mode, you need to remove it manually from the configuration. |
-| Extra Table On Source | The table is newly created on the DR primary but is not in replication yet. |
-| Extra Table On Target | The table is newly created on the DR replica but it is not in replication yet. |
+| Extra Table On Source | There is a table on the DR primary that is not in replication. Either the table is newly created, or it was removed from replication. You need to add the table to replication, or drop it from the database. |
+| Extra Table On Target | There is a table on the DR replica that is not in replication. Either the table is newly created, or it was removed from replication. You need to add the table to replication, or drop it from the database. |
 | Table Info Missing | The system is unable to fetch table info from either the DR primary or the DR replica. |
 | Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
@@ -197,7 +201,8 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 When DR is set up, YugabyteDB Anywhere automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
 
 - There is a table schema mismatch between DR primary and replica.
-- Tables are in a bad state, such as added or dropped from either DR primary or replica, but not added or dropped from the other.
+- A table was added or dropped from either DR primary or replica, but not added or dropped from the other.
+- A table was removed from replication, but not dropped from the database in the DR primary and replica.
 
 A [Consumer safe time lag](#metrics) alert with a threshold of 180 seconds is also set up for DR configurations. It triggers when the replica universe safe time lags behind the configured threshold from the physical time; that is, when the Consumer Safe Time Lag goes beyond the threshold. In this case, the read data on the replica universe can be stale even if the replication lag for other tables is not very high.
 
