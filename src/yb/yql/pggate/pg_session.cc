@@ -1198,7 +1198,7 @@ Status PgSession::AcquireAdvisoryLock(
   SCHECK(
       yb_read_time == 0, IllegalState,
       "Advisory lock acquisition can not be performed while yb_read_time is set to nonzero.");
-  RETURN_NOT_OK(FlushBufferedEntities(PgFlushDebugContext::AcquireLock(ToString(lock_id))));
+  RETURN_NOT_OK(FlushBufferedEntities(PgFlushDebugContext::AcquireLock(lock_id)));
   tserver::PgAcquireAdvisoryLockRequestPB req;
   AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
   req.set_wait(wait);
@@ -1252,7 +1252,7 @@ Status PgSession::AcquireObjectLock(
   }
   VLOG(1) << "Lock acquisition via shared memory not available";
   return pg_txn_manager_->AcquireObjectLock(
-      VERIFY_RESULT(FlushBufferedEntities(PgFlushDebugContext::AcquireLock(ToString(lock_id)))),
+      VERIFY_RESULT(FlushBufferedEntities(PgFlushDebugContext::AcquireLock(lock_id))),
       lock_id, mode, is_session_lock,
       tablespace_cache_.Get({lock_id.db_oid, lock_id.relation_oid}));
 }
@@ -1268,8 +1268,7 @@ Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
       pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
       IsLocalObjectLockOp(false)));
   RETURN_NOT_OK(SetupPerformOptions(
-      VERIFY_RESULT(FlushBufferedEntities(PgFlushDebugContext::ReleaseLock(ToString(lock_id)))),
-      &options));
+      VERIFY_RESULT(FlushBufferedEntities(PgFlushDebugContext::ReleaseLock(lock_id))), &options));
   if (release_all) {
     options.clear_active_sub_transaction_id();
   } else {
