@@ -60,25 +60,21 @@ using GFLAGS::ParseCommandLineFlags;
 using GFLAGS::SetUsageMessage;
 
 DEFINE_UNKNOWN_string(benchmarks, "fillrandom",
-              "Comma-separated list of benchmarks to run. Options:\n"
-              "\tfillrandom             -- write N random values\n"
-              "\tfillseq                -- write N values in sequential order\n"
-              "\treadrandom             -- read N values in random order\n"
-              "\treadseq                -- scan the DB\n"
-              "\treadwrite              -- 1 thread writes while N - 1 threads "
-              "do random\n"
-              "\t                          reads\n"
-              "\tseqreadwrite           -- 1 thread writes while N - 1 threads "
-              "do scans\n");
+              "Comma-separated list of benchmarks to run. Options: "
+              "fillrandom -- write N random values; "
+              "fillseq -- write N values in sequential order; "
+              "readrandom -- read N values in random order; "
+              "readseq -- scan the DB; "
+              "readwrite -- 1 thread writes while N - 1 threads do random reads; "
+              "seqreadwrite -- 1 thread writes while N - 1 threads do scans.");
 
 DEFINE_UNKNOWN_string(memtablerep, "skiplist",
               "Which implementation of memtablerep to use. See "
-              "include/memtablerep.h for\n"
-              "  more details. Options:\n"
-              "\tskiplist            -- backed by a skiplist\n"
-              "\tvector              -- backed by an std::vector\n"
-              "\thashskiplist        -- backed by a hash skip list\n"
-              "\thashlinklist        -- backed by a hash linked list\n");
+              "include/memtablerep.h for more details. Options: "
+              "skiplist -- backed by a skiplist; "
+              "vector -- backed by an std::vector; "
+              "hashskiplist -- backed by a hash skip list; "
+              "hashlinklist -- backed by a hash linked list.");
 
 DEFINE_UNKNOWN_int64(bucket_count, 1000000,
              "bucket_count parameter to pass into NewHashSkiplistRepFactory or "
@@ -110,8 +106,8 @@ DEFINE_UNKNOWN_int32(
 
 DEFINE_UNKNOWN_int32(
     num_threads, 1,
-    "Number of concurrent threads to run. If the benchmark includes writes,\n"
-    "then at most one thread will be a writer");
+    "Number of concurrent threads to run. If the benchmark includes writes, "
+    "then at most one thread will be a writer.");
 
 DEFINE_UNKNOWN_int32(num_operations, 1000000,
              "Number of operations to do for write and random read benchmarks");
