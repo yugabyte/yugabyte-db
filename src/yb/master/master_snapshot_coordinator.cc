@@ -678,18 +678,18 @@ class MasterSnapshotCoordinator::Impl {
     // Get the validated table from the request.
     const auto& table = VERIFY_RESULT(ParseCreateSnapshotScheduleRequest(req));
 
-    // Fail the request if at least one keyspace in the requested snapshot schedules already exists.
-    const std::string& namespace_name = table.get().namespace_().name();
-    const YQLDatabase namespace_type = table.get().namespace_().database_type();
+    // Fail the request if there is already a snapshot schedule on the namespace.
+    std::string_view ns_id{table.get().namespace_().id()};
     {
       std::lock_guard lock(mutex_);
-      const auto& existing_schedule = FindSnapshotSchedule(namespace_name, namespace_type);
-      if (existing_schedule.ok()) {
-        return STATUS(AlreadyPresent,
-                      Format("Snapshot schedule $0 already exists for the given keyspace $1.$2",
-                             existing_schedule->id(), DatabaseTypeName(namespace_type),
-                             namespace_name),
-                      MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+      const auto& existing_schedule = FindSnapshotScheduleByNamespaceId(ns_id);
+      if (existing_schedule.has_value()) {
+        return STATUS(
+            AlreadyPresent,
+            Format(
+                "Snapshot schedule $0 already exists for the namespace $1",
+                existing_schedule->get().id(), ns_id),
+            MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
       }
     }
 
@@ -703,30 +703,27 @@ class MasterSnapshotCoordinator::Impl {
   Result<const TableIdentifierPB&> ParseCreateSnapshotScheduleRequest(
       const CreateSnapshotScheduleRequestPB& req) {
     if (req.options().filter().tables().tables_size() == 0) {
-      return STATUS(InvalidArgument, "Request must contain a keyspace",
+      return STATUS(InvalidArgument, "Request must contain a namespace",
                     MasterError(MasterErrorPB::INVALID_REQUEST));
     }
 
     if (req.options().filter().tables().tables_size() > 1) {
-      return STATUS(InvalidArgument, "Request cannot contain more than one keyspace",
+      return STATUS(InvalidArgument, "Request cannot contain more than one namespace",
                     MasterError(MasterErrorPB::INVALID_REQUEST));
     }
 
-    const auto& table = req.options().filter().tables().tables()[0];
+    const auto& table = req.options().filter().tables().tables(0);
 
     if (!table.has_namespace_()) {
-      return STATUS(InvalidArgument, "Request does not contain a keyspace. Snapshot schedules must "
-                    "be created at the db level", MasterError(MasterErrorPB::INVALID_REQUEST));
+      return STATUS(
+          InvalidArgument,
+          "Request does not contain a namespace. Snapshot schedules must be created at the db "
+          "level",
+          MasterError(MasterErrorPB::INVALID_REQUEST));
     }
 
-    if (table.namespace_().database_type() != YQLDatabase::YQL_DATABASE_CQL &&
-        table.namespace_().database_type() != YQLDatabase::YQL_DATABASE_PGSQL) {
-      return STATUS(InvalidArgument, "The keyspace must be of type YSQL or YCQL",
-                    MasterError(MasterErrorPB::INVALID_REQUEST));
-    }
-
-    if (table.namespace_().name().empty()) {
-      return STATUS(InvalidArgument, "The keyspace name must be non-empty",
+    if (!table.namespace_().has_id()) {
+      return STATUS(InvalidArgument, "The namespace must have an id",
                     MasterError(MasterErrorPB::INVALID_REQUEST));
     }
 
@@ -1422,10 +1419,8 @@ class MasterSnapshotCoordinator::Impl {
     return **it;
   }
 
-  Result<SnapshotScheduleState&> FindSnapshotSchedule(
-      const std::string& namespace_name,
-      const YQLDatabase namespace_type,
-      const bool ignore_deleted = true) REQUIRES(mutex_) {
+  std::optional<std::reference_wrapper<SnapshotScheduleState>> FindSnapshotScheduleByNamespaceId(
+      std::string_view ns_id, const bool ignore_deleted = true) REQUIRES(mutex_) {
     for (const auto& schedule : schedules_) {
       if (ignore_deleted && schedule->deleted()) {
         continue;
@@ -1438,15 +1433,12 @@ class MasterSnapshotCoordinator::Impl {
       }
 
       for (const auto& table : schedule->options().filter().tables().tables()) {
-        if (table.namespace_().name() == namespace_name &&
-            table.namespace_().database_type() == namespace_type) {
+        if (table.namespace_().id() == ns_id) {
           return *schedule;
         }
       }
     }
-
-    return STATUS(NotFound, "Could not find snapshot schedule", namespace_name,
-                    MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
+    return std::nullopt;
   }
 
   template <class Operations>
