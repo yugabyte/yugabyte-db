@@ -201,7 +201,7 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 When DR is set up, YugabyteDB Anywhere automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
 
 - There is a table schema mismatch between DR primary and replica.
-- A table was added or dropped from either DR primary or replica, but not added or dropped from the other.
+- A table was added to or dropped from either DR primary or replica, but not added to or dropped from the other.
 - A table was removed from replication, but not dropped from the database in the DR primary and replica.
 
 [Table status](#tables) will be set to Extra Table On Source/Target. Either add the table to replication, or drop the table from the database. DR requires all tables in a database to be in replication, and you cannot selectively remove database tables from replication except to drop them.  

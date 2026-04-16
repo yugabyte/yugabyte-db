@@ -232,10 +232,10 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 
 ### Set up replication lag alerts
 
-When replication is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
+When replication is set up, YugabyteDB Anywhere automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
 
 - There is a table schema mismatch between Source and Target.
-- A table was added or dropped from either Source or Target, but have not been added or dropped from the other.
+- A table was added to or dropped from either Source or Target, but has not been added to or dropped from the other.
 - A table was removed from replication, but not dropped from the database in the Source and Target.
 
 [Table status](#tables) will be set to Extra Table On Source/Target. Either add the table to replication, or drop the table from the database. For YSQL, xCluster requires all tables in a database to be in replication, and you cannot selectively remove database tables from replication except to drop them.
