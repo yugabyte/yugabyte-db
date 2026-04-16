@@ -44,7 +44,7 @@ Ensure the universes have the following characteristics:
 
     In addition, during an outage, you will need enough disk space to retain the WALs, so determine the data change rate for your workload, and size your disk accordingly.
 
-- [Set a replication lag alert](#set-up-replication-lag-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
+- [Set a replication lag alert](#set-up-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
 
 ## Set up disaster recovery
@@ -87,7 +87,7 @@ To set up disaster recovery for a universe, do the following:
 
 1. Click **Next: Confirm Alert Threshold**.
 
-    If you have [set an alert for replication lag](#set-up-replication-lag-alerts) on the universe, the threshold for alerting is displayed.
+    If you have [set an alert for replication lag](#set-up-alerts) on the universe, the threshold for alerting is displayed.
 
 1. Click **Confirm and Enable Disaster Recovery**.
 
@@ -163,7 +163,7 @@ To check if the replication has been properly configured for a table, check the 
 
 The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
 
-If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
+If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
 
 If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe), the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
 
@@ -176,12 +176,12 @@ The table statuses are described in the following table.
 | Validated | The table passes pre-checks and is eligible to be added to replication. |
 | Operational | The table is being replicated. |
 
-The following statuses [trigger an alert](#set-up-replication-lag-alerts).
+The following statuses [trigger an alert](#set-up-alerts).
 
 | Status | Description |
 | :--- | :--- |
 | Failed | The table failed to be added to replication. |
-| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
+| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-alerts), or the lag is not being reported. |
 | Dropped From Source | The table was in replication, but dropped from the DR primary without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
 | Dropped From Target | The table was in replication, but was dropped from the DR replica without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
 | Dropped From Database | The table was in replication, but doesn't exist on either the DR primary or DR replica. If you are using Manual mode, you need to remove it manually from the configuration. |
