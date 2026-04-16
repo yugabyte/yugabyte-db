@@ -29,6 +29,9 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_types.pb.h"
+
+#include "yb/consensus/consensus.h"
+
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -39,8 +42,11 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/master-path-handlers.h"
+#include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_fwd.h"
@@ -65,6 +71,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
@@ -1597,7 +1604,41 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
   auto table = CreateTestTable(10);
   auto dead_uuid = cluster_->mini_tablet_server(0)->server()->permanent_uuid();
   ASSERT_OK(WaitAllReplicasReady(cluster_.get(), 20s * kTimeMultiplier, UserTabletsOnly::kFalse));
+  auto* load_balancer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())
+                            ->master()
+                            ->catalog_manager_impl()
+                            ->load_balancer();
+  ASSERT_OK(WaitFor(
+      [load_balancer] -> Result<bool> { return load_balancer->GetLatestActivityInfo().IsIdle(); },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for load balancer to become idle"));
+  // Prevent the load balancer from adding new PRE_VOTERs between our check and Shutdown(). Without
+  // this, the load balancer can add a PRE_VOTER right after the check passes, creating a config
+  // with only 2 VOTERs + 1 PRE_VOTER. If one VOTER dies before promotion, the surviving single
+  // VOTER cannot form majority and the tablet becomes permanently leaderless.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  // ASSERT_OK(WaitForBackgroundTaskRun());
+  // Wait for any in-flight PRE_VOTER promotions to complete before killing a tserver.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto peers =
+            ListTabletPeers(cluster_.get(), ListPeersFilter::kAll, UserTabletsOnly::kFalse);
+        for (const auto& peer : peers) {
+          auto consensus = VERIFY_RESULT(peer->GetConsensus());
+          auto config = consensus->CommittedConfig();
+          for (const auto& member : config.peers()) {
+            if (member.member_type() == consensus::PeerMemberType::PRE_VOTER) {
+              LOG(INFO) << "Tablet " << peer->tablet_id() << " still has PRE_VOTER "
+                        << member.permanent_uuid();
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+      20s * kTimeMultiplier, "Wait for all PRE_VOTER promotions to complete"));
   cluster_->mini_tablet_server(0)->Shutdown();
+  // Re-enable load balancing so the load balancer can remove dead tserver replicas.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = true;
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         // Fetch the sys catalog and verify no tablets have a replica on the downed node.
@@ -1631,7 +1672,7 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
         }
         return true;
       },
-      20s * kTimeMultiplier, "Downed server still assigned tablet replicas"));
+      60s * kTimeMultiplier, "Downed server still assigned tablet replicas"));
   faststring out;
   ASSERT_OK(GetUrl("/load-distribution", &out));
 }
