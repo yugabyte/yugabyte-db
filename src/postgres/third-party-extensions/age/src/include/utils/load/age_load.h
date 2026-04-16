@@ -30,16 +30,13 @@
 #ifndef AGE_ENTITY_CREATOR_H
 #define AGE_ENTITY_CREATOR_H
 
-#define TEMP_VERTEX_ID_TABLE_SUFFIX "_ag_vertex_ids"
-#define GET_TEMP_VERTEX_ID_TABLE(graph_name) \
-    psprintf("_%s%s", graph_name, TEMP_VERTEX_ID_TABLE_SUFFIX)
-
 #define BATCH_SIZE 1000
 
-typedef struct
+typedef struct batch_insert_state
 {
+    EState *estate;
+    ResultRelInfo *resultRelInfo;
     TupleTableSlot **slots;
-    TupleTableSlot **temp_id_slots;
     int num_tuples;
     int max_tuples;
 } batch_insert_state;
@@ -57,7 +54,10 @@ void insert_vertex_simple(Oid graph_oid, char *label_name, graphid vertex_id,
 void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
                         graphid start_id, graphid end_id,
                         agtype* end_properties);
-void insert_batch(batch_insert_state *batch_state, char *label_name,
-                  Oid graph_oid);
+void insert_batch(batch_insert_state *batch_state);
+
+void init_batch_insert(batch_insert_state **batch_state,
+                       char *label_name, Oid graph_oid);
+void finish_batch_insert(batch_insert_state **batch_state);
 
 #endif /* AGE_ENTITY_CREATOR_H */
