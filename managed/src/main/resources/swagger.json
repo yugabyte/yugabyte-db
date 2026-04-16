@@ -7388,6 +7388,10 @@
           "description" : "Customer task retryable",
           "type" : "boolean"
         },
+        "softwareUpgradeProgress" : {
+          "$ref" : "#/definitions/SoftwareUpgradeProgress",
+          "description" : "Software upgrade progress (canary / per-AZ) when applicable"
+        },
         "status" : {
           "description" : "Customer task status",
           "example" : "Complete",
@@ -23342,6 +23346,41 @@
         "upgradeOption",
         "upgradeSystemCatalog",
         "ybSoftwareVersion"
+      ],
+      "type" : "object"
+    },
+    "SoftwareUpgradeProgress" : {
+      "description" : "Software upgrade progress by availability zone",
+      "properties" : {
+        "canaryPauseState" : {
+          "description" : "WARNING: This is a preview API that could change. Current canary pause state, if applicable",
+          "enum" : [
+            "NOT_PAUSED",
+            "PAUSED_AFTER_MASTERS",
+            "PAUSED_AFTER_TSERVERS_AZ"
+          ],
+          "type" : "string"
+        },
+        "canaryUpgrade" : {
+          "type" : "boolean"
+        },
+        "masterAZUpgradeStatesList" : {
+          "description" : "WARNING: This is a preview API that could change. Master upgrade state per availability zone",
+          "items" : {
+            "$ref" : "#/definitions/AZUpgradeState"
+          },
+          "type" : "array"
+        },
+        "tserverAZUpgradeStatesList" : {
+          "description" : "WARNING: This is a preview API that could change. Tserver upgrade state per availability zone",
+          "items" : {
+            "$ref" : "#/definitions/AZUpgradeState"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [
+        "canaryUpgrade"
       ],
       "type" : "object"
     },

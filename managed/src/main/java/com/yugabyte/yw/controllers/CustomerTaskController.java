@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.filters.TaskApiFilter;
 import com.yugabyte.yw.forms.paging.TaskPagedApiQuery;
@@ -170,6 +171,11 @@ public class CustomerTaskController extends AuthenticatedController {
           details.set("versionNumbers", versionNumbers);
           taskData.details = details;
         }
+      }
+      if (taskProgress.hasNonNull("softwareUpgradeProgress")) {
+        taskData.softwareUpgradeProgress =
+            Json.fromJson(
+                taskProgress.get("softwareUpgradeProgress"), SoftwareUpgradeProgress.class);
       }
       String correlationId = task.getCorrelationId();
       if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
