@@ -659,11 +659,10 @@ void RegisterGlobalFlagsCallbacksOnce() {
 // single-line text. Embedded newlines break that rendering, so reject them at startup.
 void ValidateFlagDescriptions(const std::vector<google::CommandLineFlagInfo>& flag_infos) {
   for (const auto& flag_info : flag_infos) {
-    if (flag_info.description.find('\n') != std::string::npos) {
-      LOG(FATAL) << "Flag '" << flag_info.name
-                 << "' description contains a newline character, which is not allowed. "
-                 << "Description: " << flag_info.description;
-    }
+    LOG_IF(FATAL, flag_info.description.find('\n') != std::string::npos)
+        << "Flag '" << flag_info.name
+        << "' description contains a newline character, which is not allowed. "
+        << "Description: " << flag_info.description;
   }
 }
 
