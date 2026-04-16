@@ -34,8 +34,6 @@ import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
-import com.yugabyte.yw.commissioner.TaskExecutorTest.AbortableTask;
-import com.yugabyte.yw.commissioner.TaskExecutorTest.NonAbortableTask;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -935,7 +933,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(taskUUID);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-    List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     verify(subTask1, times(1)).run();
     verify(subTask2, times(1)).run();
     // 1 parent and 2 subtasks.
@@ -982,7 +979,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(taskUUID);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-    List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     verify(subTask1, times(1)).run();
     verify(subTask2, times(1)).run();
     assertEquals(1, listenerCounter1.get());
