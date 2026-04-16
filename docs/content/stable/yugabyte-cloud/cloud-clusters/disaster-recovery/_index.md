@@ -68,6 +68,6 @@ DR further allows for the role of each cluster to switch during planned switchov
 
 - You cannot perform DDL operations on databases while they are in the process of being added to replication.
 
-- You cannot use xCluster Disaster Recovery with Partition by Region clusters.
+- You cannot use xCluster Disaster Recovery with [Partition by Region](../../cloud-basics/create-clusters/create-clusters-geopartition/) clusters.
 
 xCluster Disaster Recovery in YugabyteDB Aeon uses YugabyteDB's [transactional xCluster](../../../architecture/docdb-replication/async-replication/#transactional-replication) automatic mode. For information on limitations in transactional xCluster in YugabyteDB, refer to [Limitations](../../../architecture/docdb-replication/async-replication/#limitations).
