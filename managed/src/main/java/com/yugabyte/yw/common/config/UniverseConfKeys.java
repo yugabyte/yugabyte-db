@@ -1188,6 +1188,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xclusterStreamRunningStatusWaitTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.stream_running_status_wait_timeout",
+          ScopeType.UNIVERSE,
+          "Maximum timeout for xCluster streams to reach Running status",
+          "Maximum timeout to wait for stream statuses associated with xCluster setup tables to "
+              + "reach Running before failing the task.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xclusterPauseRpcTimeout =
       new ConfKeyInfo<>(
           "yb.xcluster.pause_rpc_timeout",
