@@ -209,14 +209,10 @@ void RunningTransaction::Abort(client::YBClient* client,
           nullptr /* tablet */,
           client,
           &req,
-          [status_tablet, shared_self](
+          GuardedByWeak(weak_context_, [status_tablet, shared_self](
               const Status& status, const tserver::AbortTransactionResponsePB& response) {
-            auto context_lock = shared_self->weak_context_.lock();
-            if (!context_lock) {
-              return;
-            }
             shared_self->AbortReceived(status_tablet, status, response);
-          }),
+          })),
       &abort_handle_);
 }
 
@@ -298,8 +294,11 @@ void RunningTransaction::SendStatusRequest(
           nullptr /* tablet */,
           client,
           &req,
-          std::bind(&RunningTransaction::StatusReceived, this, status_tablet, _1, _2, serial_no,
-                    shared_self)),
+          GuardedByWeak(weak_context_, [status_tablet, serial_no, shared_self](
+              const Status& status,
+              const tserver::GetTransactionStatusResponsePB& response) {
+            shared_self->StatusReceived(status_tablet, status, response, serial_no, shared_self);
+          })),
       &get_status_handle_);
 }
 

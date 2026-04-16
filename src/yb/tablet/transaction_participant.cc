@@ -1102,13 +1102,14 @@ class TransactionParticipant::Impl
           nullptr /* remote_tablet */,
           client,
           &req,
-          [this, handle](const Status& status,
-                         const tserver::UpdateTransactionRequestPB& req,
-                         const tserver::UpdateTransactionResponsePB& resp) {
+          GuardedByWeak(weak_from_this(), [this, handle](
+              const Status& status,
+              const tserver::UpdateTransactionRequestPB& req,
+              const tserver::UpdateTransactionResponsePB& resp) {
             client::UpdateClock(resp, &participant_context_);
             rpcs_.Unregister(handle);
             LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
-          });
+          }));
       (**handle).SendRpc();
     }
   }
@@ -1626,7 +1627,7 @@ class TransactionParticipant::Impl
   }
 
   std::weak_ptr<void> RetainWeak() override {
-    return shared_from_this();
+    return weak_from_this();
   }
 
   void ForceRefreshWaitersForBlocker(const TransactionId& txn_id) {
