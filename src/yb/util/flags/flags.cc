@@ -658,8 +658,9 @@ void RegisterGlobalFlagsCallbacksOnce() {
 // Flag descriptions are surfaced in the YugabyteDB documentation portal, which renders them as
 // single-line text. Embedded newlines break that rendering, so reject them at startup.
 void ValidateFlagDescriptions(const std::vector<google::CommandLineFlagInfo>& flag_infos) {
+  static const auto kDisallowedSubstrings = {"\n"};
   for (const auto& flag_info : flag_infos) {
-    if (flag_info.description.contains('\n')) {
+    if (HasSubstring(flag_info.description, kDisallowedSubstrings)) {
       LOG(FATAL) << "Flag '" << flag_info.name
                  << "' description contains a newline character, which is not allowed. "
                  << "Description: " << flag_info.description;
