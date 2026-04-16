@@ -1,0 +1,4 @@
+{
+  "username" : "Slack Bot",
+  "text" : "alertConfiguration alert with severity level 'SEVERE' for customer 'test@customer.com' is firing.\n\nUniverse on fire!"
+}

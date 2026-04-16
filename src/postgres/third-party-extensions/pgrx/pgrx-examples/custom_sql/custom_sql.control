@@ -1,0 +1,5 @@
+comment = 'custom_sql:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/custom_sql'
+relocatable = false
+superuser = false

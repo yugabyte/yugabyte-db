@@ -1,0 +1,67 @@
+error[E0277]: the trait bound `BrokenType: std::cmp::Eq` is not satisfied
+ --> tests/compile-fail/eq-for-postgres_hash.rs:4:48
+  |
+4 | #[derive(Serialize, Deserialize, PostgresType, PostgresHash)]
+  |                                                ^^^^^^^^^^^^ the trait `std::cmp::Eq` is not implemented for `BrokenType`
+  |
+  = help: see issue #48214
+  = note: this error originates in the derive macro `PostgresHash` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `BrokenType` with `#[derive(Eq)]`
+  |
+5 + #[derive(Eq)]
+6 | pub struct BrokenType {
+  |
+
+error[E0277]: the trait bound `BrokenType: std::hash::Hash` is not satisfied
+ --> tests/compile-fail/eq-for-postgres_hash.rs:4:48
+  |
+4 | #[derive(Serialize, Deserialize, PostgresType, PostgresHash)]
+  |                                                ^^^^^^^^^^^^ the trait `std::hash::Hash` is not implemented for `BrokenType`
+  |
+  = help: see issue #48214
+  = note: this error originates in the derive macro `PostgresHash` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `BrokenType` with `#[derive(Hash)]`
+  |
+5 + #[derive(Hash)]
+6 | pub struct BrokenType {
+  |
+
+error[E0277]: the trait bound `BrokenType: std::hash::Hash` is not satisfied
+ --> tests/compile-fail/eq-for-postgres_hash.rs:4:48
+  |
+4 | #[derive(Serialize, Deserialize, PostgresType, PostgresHash)]
+  |                                                ^^^^^^^^^^^^ the trait `std::hash::Hash` is not implemented for `BrokenType`
+  |
+note: required by a bound in `brokentype_hash`
+ --> tests/compile-fail/eq-for-postgres_hash.rs:4:48
+  |
+4 | #[derive(Serialize, Deserialize, PostgresType, PostgresHash)]
+  |                                                ^^^^^^^^^^^^ required by this bound in `brokentype_hash`
+5 | pub struct BrokenType {
+  |            ---------- required by a bound in this function
+  = note: this error originates in the attribute macro `::pgrx::pgrx_macros::pg_extern` which comes from the expansion of the derive macro `PostgresHash` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `BrokenType` with `#[derive(Hash)]`
+  |
+5 + #[derive(Hash)]
+6 | pub struct BrokenType {
+  |
+
+error[E0277]: the trait bound `BrokenType: std::cmp::Eq` is not satisfied
+ --> tests/compile-fail/eq-for-postgres_hash.rs:4:48
+  |
+4 | #[derive(Serialize, Deserialize, PostgresType, PostgresHash)]
+  |                                                ^^^^^^^^^^^^ the trait `std::cmp::Eq` is not implemented for `BrokenType`
+  |
+note: required by a bound in `brokentype_hash`
+ --> tests/compile-fail/eq-for-postgres_hash.rs:4:48
+  |
+4 | #[derive(Serialize, Deserialize, PostgresType, PostgresHash)]
+  |                                                ^^^^^^^^^^^^ required by this bound in `brokentype_hash`
+5 | pub struct BrokenType {
+  |            ---------- required by a bound in this function
+  = note: this error originates in the attribute macro `::pgrx::pgrx_macros::pg_extern` which comes from the expansion of the derive macro `PostgresHash` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `BrokenType` with `#[derive(Eq)]`
+  |
+5 + #[derive(Eq)]
+6 | pub struct BrokenType {
+  |

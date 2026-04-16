@@ -1,0 +1,65 @@
+Parsed test spec with 3 sessions
+
+starting permutation: b1 b2 insert_11_row_in_test insert_22_row_in_test s1_add_column_a s2_add_column_b c2 c1 select_test
+step b1: BEGIN ISOLATION LEVEL READ COMMITTED;
+step b2: BEGIN ISOLATION LEVEL READ COMMITTED;
+step insert_11_row_in_test: insert into test values (1, 1);
+step insert_22_row_in_test: insert into test values (2, 2);
+step s1_add_column_a: alter table test add column a int;
+step s2_add_column_b: alter table test add column b int;
+ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because retrying DDL statements are not supported in READ COMMITTED isolation level when transactional DDL is enabled. If object locking is enabled, kConflict and kReadRestart errors won't occur.)
+step c2: commit;
+step c1: commit;
+step select_test: select * from test;
+k|v|a
+-+-+-
+1|1| 
+(1 row)
+
+
+starting permutation: b1 b2 insert_11_row_in_test s1_add_column_a s2_add_column_b c1 c2 select_test
+step b1: BEGIN ISOLATION LEVEL READ COMMITTED;
+step b2: BEGIN ISOLATION LEVEL READ COMMITTED;
+step insert_11_row_in_test: insert into test values (1, 1);
+step s1_add_column_a: alter table test add column a int;
+step s2_add_column_b: alter table test add column b int;
+ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because retrying DDL statements are not supported in READ COMMITTED isolation level when transactional DDL is enabled. If object locking is enabled, kConflict and kReadRestart errors won't occur.)
+step c1: commit;
+step c2: commit;
+step select_test: select * from test;
+k|v|a
+-+-+-
+1|1| 
+(1 row)
+
+
+starting permutation: b1 insert_11_row_in_test s1_add_column_a s2_add_column_b c1 select_test
+step b1: BEGIN ISOLATION LEVEL READ COMMITTED;
+step insert_11_row_in_test: insert into test values (1, 1);
+step s1_add_column_a: alter table test add column a int;
+step s2_add_column_b: alter table test add column b int;
+ERROR:  could not serialize access due to concurrent update
+step c1: commit;
+step select_test: select * from test;
+k|v|a
+-+-+-
+1|1| 
+(1 row)
+
+
+starting permutation: insert_11_row_in_test b1 b2 s1_add_column_a update_11_row_in_s2 update_11_row_in_s1 c2 c1 select_test
+step insert_11_row_in_test: insert into test values (1, 1);
+step b1: BEGIN ISOLATION LEVEL READ COMMITTED;
+step b2: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_add_column_a: alter table test add column a int;
+step update_11_row_in_s2: update test set v = 150 where k = 1;
+step update_11_row_in_s1: update test set v = 100 where k = 1; <waiting ...>
+step c2: commit;
+step update_11_row_in_s1: <... completed>
+step c1: commit;
+step select_test: select * from test;
+k|  v|a
+-+---+-
+1|100| 
+(1 row)
+

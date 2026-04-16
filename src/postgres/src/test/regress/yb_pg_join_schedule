@@ -1,0 +1,16 @@
+# src/test/regress/yb_pg_join_schedule
+#
+####################################################################################################
+# This includes tests for Join Clause
+####################################################################################################
+# Dependencies for `yb.port.join`
+test: yb.depd.float8_tbl
+test: yb.depd.int4_tbl
+test: yb.depd.tenk1
+test: yb.depd.tenk2
+
+test: yb.port.join
+
+test: yb.orig.join_batching
+test: yb.orig.join_batching_plans
+test: yb.orig.legacy_join_plan

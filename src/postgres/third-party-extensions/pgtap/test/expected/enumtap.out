@@ -1,0 +1,110 @@
+\unset ECHO
+1..108
+ok 1 - has_type(enum) should pass
+ok 2 - has_type(enum) should have the proper description
+ok 3 - has_type(enum) should have the proper diagnostics
+ok 4 - has_enum(enum) should pass
+ok 5 - has_enum(enum) should have the proper description
+ok 6 - has_enum(enum) should have the proper diagnostics
+ok 7 - has_enum(enum, desc) should pass
+ok 8 - has_enum(enum, desc) should have the proper description
+ok 9 - has_enum(enum, desc) should have the proper diagnostics
+ok 10 - has_enum(scheam, enum) should pass
+ok 11 - has_enum(scheam, enum) should have the proper description
+ok 12 - has_enum(scheam, enum) should have the proper diagnostics
+ok 13 - has_enum(schema, enum, desc) should pass
+ok 14 - has_enum(schema, enum, desc) should have the proper description
+ok 15 - has_enum(schema, enum, desc) should have the proper diagnostics
+ok 16 - has_enum(enum) should fail
+ok 17 - has_enum(enum) should have the proper description
+ok 18 - has_enum(enum) should have the proper diagnostics
+ok 19 - has_enum(enum, desc) should fail
+ok 20 - has_enum(enum, desc) should have the proper description
+ok 21 - has_enum(enum, desc) should have the proper diagnostics
+ok 22 - has_enum(scheam, enum) should fail
+ok 23 - has_enum(scheam, enum) should have the proper description
+ok 24 - has_enum(scheam, enum) should have the proper diagnostics
+ok 25 - has_enum(schema, enum, desc) should fail
+ok 26 - has_enum(schema, enum, desc) should have the proper description
+ok 27 - has_enum(schema, enum, desc) should have the proper diagnostics
+ok 28 - hasnt_enum(enum) should pass
+ok 29 - hasnt_enum(enum) should have the proper description
+ok 30 - hasnt_enum(enum) should have the proper diagnostics
+ok 31 - hasnt_enum(enum, desc) should pass
+ok 32 - hasnt_enum(enum, desc) should have the proper description
+ok 33 - hasnt_enum(enum, desc) should have the proper diagnostics
+ok 34 - hasnt_enum(scheam, enum) should pass
+ok 35 - hasnt_enum(scheam, enum) should have the proper description
+ok 36 - hasnt_enum(scheam, enum) should have the proper diagnostics
+ok 37 - hasnt_enum(schema, enum, desc) should pass
+ok 38 - hasnt_enum(schema, enum, desc) should have the proper description
+ok 39 - hasnt_enum(schema, enum, desc) should have the proper diagnostics
+ok 40 - hasnt_enum(enum) should fail
+ok 41 - hasnt_enum(enum) should have the proper description
+ok 42 - hasnt_enum(enum) should have the proper diagnostics
+ok 43 - hasnt_enum(enum, desc) should fail
+ok 44 - hasnt_enum(enum, desc) should have the proper description
+ok 45 - hasnt_enum(enum, desc) should have the proper diagnostics
+ok 46 - hasnt_enum(scheam, enum) should fail
+ok 47 - hasnt_enum(scheam, enum) should have the proper description
+ok 48 - hasnt_enum(scheam, enum) should have the proper diagnostics
+ok 49 - hasnt_enum(schema, enum, desc) should fail
+ok 50 - hasnt_enum(schema, enum, desc) should have the proper description
+ok 51 - hasnt_enum(schema, enum, desc) should have the proper diagnostics
+ok 52 - enum_has_labels(schema, enum, labels, desc) should pass
+ok 53 - enum_has_labels(schema, enum, labels, desc) should have the proper description
+ok 54 - enum_has_labels(schema, enum, labels, desc) should have the proper diagnostics
+ok 55 - enum_has_labels(schema, enum, labels) should pass
+ok 56 - enum_has_labels(schema, enum, labels) should have the proper description
+ok 57 - enum_has_labels(schema, enum, labels) should have the proper diagnostics
+ok 58 - enum_has_labels(enum, labels, desc) should pass
+ok 59 - enum_has_labels(enum, labels, desc) should have the proper description
+ok 60 - enum_has_labels(enum, labels, desc) should have the proper diagnostics
+ok 61 - enum_has_labels(enum, labels) should pass
+ok 62 - enum_has_labels(enum, labels) should have the proper description
+ok 63 - enum_has_labels(enum, labels) should have the proper diagnostics
+ok 64 - enum_has_labels(schema, enum, labels, desc) fail should fail
+ok 65 - enum_has_labels(schema, enum, labels, desc) fail should have the proper description
+ok 66 - enum_has_labels(schema, enum, labels, desc) fail should have the proper diagnostics
+ok 67 - enum_has_labels(schema, enum, labels, desc) fail should fail
+ok 68 - enum_has_labels(schema, enum, labels, desc) fail should have the proper description
+ok 69 - enum_has_labels(schema, enum, labels, desc) fail should have the proper diagnostics
+ok 70 - enum_has_labels(enum, labels, desc) fail should fail
+ok 71 - enum_has_labels(enum, labels, desc) fail should have the proper description
+ok 72 - enum_has_labels(enum, labels, desc) fail should have the proper diagnostics
+ok 73 - enums_are(schema, enums, desc) should pass
+ok 74 - enums_are(schema, enums, desc) should have the proper description
+ok 75 - enums_are(schema, enums, desc) should have the proper diagnostics
+ok 76 - enums_are(schema, enums) should pass
+ok 77 - enums_are(schema, enums) should have the proper description
+ok 78 - enums_are(schema, enums) should have the proper diagnostics
+ok 79 - enums_are(schema, enums, desc) fail should fail
+ok 80 - enums_are(schema, enums, desc) fail should have the proper description
+ok 81 - enums_are(schema, enums, desc) fail should have the proper diagnostics
+ok 82 - enums_are(schema, enums) fail should fail
+ok 83 - enums_are(schema, enums) fail should have the proper description
+ok 84 - enums_are(schema, enums) fail should have the proper diagnostics
+ok 85 - enums_are(enums, desc) should pass
+ok 86 - enums_are(enums, desc) should have the proper description
+ok 87 - enums_are(enums, desc) should have the proper diagnostics
+ok 88 - enums_are(enums) should pass
+ok 89 - enums_are(enums) should have the proper description
+ok 90 - enums_are(enums) should have the proper diagnostics
+ok 91 - enums_are(enums, desc) fail should fail
+ok 92 - enums_are(enums, desc) fail should have the proper description
+ok 93 - enums_are(enums, desc) fail should have the proper diagnostics
+ok 94 - enums_are(enums) fail should fail
+ok 95 - enums_are(enums) fail should have the proper description
+ok 96 - enums_are(enums) fail should have the proper diagnostics
+ok 97 - enum_has_labels(schema, altered_enum, labels, desc) should pass
+ok 98 - enum_has_labels(schema, altered_enum, labels, desc) should have the proper description
+ok 99 - enum_has_labels(schema, altered_enum, labels, desc) should have the proper diagnostics
+ok 100 - enum_has_labels(schema, altered_enum, labels) should pass
+ok 101 - enum_has_labels(schema, altered_enum, labels) should have the proper description
+ok 102 - enum_has_labels(schema, altered_enum, labels) should have the proper diagnostics
+ok 103 - enum_has_labels(altered_enum, labels, desc) should pass
+ok 104 - enum_has_labels(altered_enum, labels, desc) should have the proper description
+ok 105 - enum_has_labels(altered_enum, labels, desc) should have the proper diagnostics
+ok 106 - enum_has_labels(altered_enum, labels) should pass
+ok 107 - enum_has_labels(altered_enum, labels) should have the proper description
+ok 108 - enum_has_labels(altered_enum, labels) should have the proper diagnostics

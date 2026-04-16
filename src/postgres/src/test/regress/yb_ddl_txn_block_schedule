@@ -1,0 +1,6 @@
+# src/test/regress/yb_ddl_txn_block_schedule
+#
+###############################################################################
+# This testsuite contains testcases related to DDL Transaction Blocks.
+###############################################################################
+test: yb.orig.ddl_txn_block

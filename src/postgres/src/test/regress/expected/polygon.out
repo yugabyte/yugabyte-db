@@ -1,0 +1,308 @@
+--
+-- POLYGON
+--
+-- polygon logic
+--
+CREATE TABLE POLYGON_TBL(f1 polygon);
+INSERT INTO POLYGON_TBL(f1) VALUES ('(2.0,0.0),(2.0,4.0),(0.0,0.0)');
+INSERT INTO POLYGON_TBL(f1) VALUES ('(3.0,1.0),(3.0,3.0),(1.0,0.0)');
+INSERT INTO POLYGON_TBL(f1) VALUES ('(1,2),(3,4),(5,6),(7,8)');
+INSERT INTO POLYGON_TBL(f1) VALUES ('(7,8),(5,6),(3,4),(1,2)'); -- Reverse
+INSERT INTO POLYGON_TBL(f1) VALUES ('(1,2),(7,8),(5,6),(3,-4)');
+-- degenerate polygons
+INSERT INTO POLYGON_TBL(f1) VALUES ('(0.0,0.0)');
+INSERT INTO POLYGON_TBL(f1) VALUES ('(0.0,1.0),(0.0,1.0)');
+-- bad polygon input strings
+INSERT INTO POLYGON_TBL(f1) VALUES ('0.0');
+ERROR:  invalid input syntax for type polygon: "0.0"
+LINE 1: INSERT INTO POLYGON_TBL(f1) VALUES ('0.0');
+                                            ^
+INSERT INTO POLYGON_TBL(f1) VALUES ('(0.0 0.0');
+ERROR:  invalid input syntax for type polygon: "(0.0 0.0"
+LINE 1: INSERT INTO POLYGON_TBL(f1) VALUES ('(0.0 0.0');
+                                            ^
+INSERT INTO POLYGON_TBL(f1) VALUES ('(0,1,2)');
+ERROR:  invalid input syntax for type polygon: "(0,1,2)"
+LINE 1: INSERT INTO POLYGON_TBL(f1) VALUES ('(0,1,2)');
+                                            ^
+INSERT INTO POLYGON_TBL(f1) VALUES ('(0,1,2,3');
+ERROR:  invalid input syntax for type polygon: "(0,1,2,3"
+LINE 1: INSERT INTO POLYGON_TBL(f1) VALUES ('(0,1,2,3');
+                                            ^
+INSERT INTO POLYGON_TBL(f1) VALUES ('asdf');
+ERROR:  invalid input syntax for type polygon: "asdf"
+LINE 1: INSERT INTO POLYGON_TBL(f1) VALUES ('asdf');
+                                            ^
+SELECT * FROM POLYGON_TBL;
+             f1             
+----------------------------
+ ((2,0),(2,4),(0,0))
+ ((3,1),(3,3),(1,0))
+ ((1,2),(3,4),(5,6),(7,8))
+ ((7,8),(5,6),(3,4),(1,2))
+ ((1,2),(7,8),(5,6),(3,-4))
+ ((0,0))
+ ((0,1),(0,1))
+(7 rows)
+
+--
+-- Test the SP-GiST index
+--
+CREATE TABLE quad_poly_tbl (id int, p polygon);
+INSERT INTO quad_poly_tbl
+	SELECT (x - 1) * 100 + y, polygon(circle(point(x * 10, y * 10), 1 + (x + y) % 10))
+	FROM generate_series(1, 100) x,
+		 generate_series(1, 100) y;
+INSERT INTO quad_poly_tbl
+	SELECT i, polygon '((200, 300),(210, 310),(230, 290))'
+	FROM generate_series(10001, 11000) AS i;
+INSERT INTO quad_poly_tbl
+	VALUES
+		(11001, NULL),
+		(11002, NULL),
+		(11003, NULL);
+CREATE INDEX quad_poly_tbl_idx ON quad_poly_tbl USING spgist(p);
+-- get reference results for ORDER BY distance from seq scan
+SET enable_seqscan = ON;
+SET enable_indexscan = OFF;
+SET enable_bitmapscan = OFF;
+CREATE TEMP TABLE quad_poly_tbl_ord_seq2 AS
+SELECT rank() OVER (ORDER BY p <-> point '123,456') n, p <-> point '123,456' dist, id
+FROM quad_poly_tbl WHERE p <@ polygon '((300,300),(400,600),(600,500),(700,200))';
+-- check results from index scan
+SET enable_seqscan = OFF;
+SET enable_indexscan = OFF;
+SET enable_bitmapscan = ON;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p << polygon '((300,300),(400,600),(600,500),(700,200))';
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p << '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p << '((300,300),(400,600),(600,500),(700,200))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p << polygon '((300,300),(400,600),(600,500),(700,200))';
+ count 
+-------
+  3890
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p &< polygon '((300,300),(400,600),(600,500),(700,200))';
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p &< '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p &< '((300,300),(400,600),(600,500),(700,200))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p &< polygon '((300,300),(400,600),(600,500),(700,200))';
+ count 
+-------
+  7900
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p && polygon '((300,300),(400,600),(600,500),(700,200))';
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p && '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p && '((300,300),(400,600),(600,500),(700,200))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p && polygon '((300,300),(400,600),(600,500),(700,200))';
+ count 
+-------
+   977
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p &> polygon '((300,300),(400,600),(600,500),(700,200))';
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p &> '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p &> '((300,300),(400,600),(600,500),(700,200))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p &> polygon '((300,300),(400,600),(600,500),(700,200))';
+ count 
+-------
+  7000
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p >> polygon '((300,300),(400,600),(600,500),(700,200))';
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p >> '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p >> '((300,300),(400,600),(600,500),(700,200))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p >> polygon '((300,300),(400,600),(600,500),(700,200))';
+ count 
+-------
+  2990
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p <<| polygon '((300,300),(400,600),(600,500),(700,200))';
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p <<| '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p <<| '((300,300),(400,600),(600,500),(700,200))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p <<| polygon '((300,300),(400,600),(600,500),(700,200))';
+ count 
+-------
+  1890
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p &<| polygon '((300,300),(400,600),(600,500),(700,200))';
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p &<| '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p &<| '((300,300),(400,600),(600,500),(700,200))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p &<| polygon '((300,300),(400,600),(600,500),(700,200))';
+ count 
+-------
+  6900
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p |&> polygon '((300,300),(400,600),(600,500),(700,200))';
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p |&> '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p |&> '((300,300),(400,600),(600,500),(700,200))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p |&> polygon '((300,300),(400,600),(600,500),(700,200))';
+ count 
+-------
+  9000
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p |>> polygon '((300,300),(400,600),(600,500),(700,200))';
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p |>> '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p |>> '((300,300),(400,600),(600,500),(700,200))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p |>> polygon '((300,300),(400,600),(600,500),(700,200))';
+ count 
+-------
+  3990
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p <@ polygon '((300,300),(400,600),(600,500),(700,200))';
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p <@ '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p <@ '((300,300),(400,600),(600,500),(700,200))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p <@ polygon '((300,300),(400,600),(600,500),(700,200))';
+ count 
+-------
+   831
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p @> polygon '((340,550),(343,552),(341,553))';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p @> '((340,550),(343,552),(341,553))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p @> '((340,550),(343,552),(341,553))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p @> polygon '((340,550),(343,552),(341,553))';
+ count 
+-------
+     1
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM quad_poly_tbl WHERE p ~= polygon '((200, 300),(210, 310),(230, 290))';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on quad_poly_tbl
+         Recheck Cond: (p ~= '((200,300),(210,310),(230,290))'::polygon)
+         ->  Bitmap Index Scan on quad_poly_tbl_idx
+               Index Cond: (p ~= '((200,300),(210,310),(230,290))'::polygon)
+(5 rows)
+
+SELECT count(*) FROM quad_poly_tbl WHERE p ~= polygon '((200, 300),(210, 310),(230, 290))';
+ count 
+-------
+  1000
+(1 row)
+
+-- test ORDER BY distance
+SET enable_indexscan = ON;
+SET enable_bitmapscan = OFF;
+EXPLAIN (COSTS OFF)
+SELECT rank() OVER (ORDER BY p <-> point '123,456') n, p <-> point '123,456' dist, id
+FROM quad_poly_tbl WHERE p <@ polygon '((300,300),(400,600),(600,500),(700,200))';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ WindowAgg
+   ->  Index Scan using quad_poly_tbl_idx on quad_poly_tbl
+         Index Cond: (p <@ '((300,300),(400,600),(600,500),(700,200))'::polygon)
+         Order By: (p <-> '(123,456)'::point)
+(4 rows)
+
+CREATE TEMP TABLE quad_poly_tbl_ord_idx2 AS
+SELECT rank() OVER (ORDER BY p <-> point '123,456') n, p <-> point '123,456' dist, id
+FROM quad_poly_tbl WHERE p <@ polygon '((300,300),(400,600),(600,500),(700,200))';
+SELECT *
+FROM quad_poly_tbl_ord_seq2 seq FULL JOIN quad_poly_tbl_ord_idx2 idx
+	ON seq.n = idx.n AND seq.id = idx.id AND
+		(seq.dist = idx.dist OR seq.dist IS NULL AND idx.dist IS NULL)
+WHERE seq.id IS NULL OR idx.id IS NULL;
+ n | dist | id | n | dist | id 
+---+------+----+---+------+----
+(0 rows)
+
+RESET enable_seqscan;
+RESET enable_indexscan;
+RESET enable_bitmapscan;

@@ -1,0 +1,91 @@
+set search_path to documentdb_core;
+-- show all functions exported in documentdb_core.
+\df documentdb_core.*
+                                               List of functions
+     Schema      |           Name            | Result data type |          Argument data types           | Type 
+-----------------+---------------------------+------------------+----------------------------------------+------
+ documentdb_core | bson_compare              | integer          | bson, bson                             | func
+ documentdb_core | bson_equal                | boolean          | bson, bson                             | func
+ documentdb_core | bson_from_bytea           | bson             | bytea                                  | func
+ documentdb_core | bson_get_value            | bson             | bson, text                             | func
+ documentdb_core | bson_get_value_text       | text             | bson, text                             | func
+ documentdb_core | bson_gt                   | boolean          | bson, bson                             | func
+ documentdb_core | bson_gte                  | boolean          | bson, bson                             | func
+ documentdb_core | bson_hash_int4            | integer          | bson                                   | func
+ documentdb_core | bson_hash_int8            | bigint           | bson, bigint                           | func
+ documentdb_core | bson_hex_to_bson          | bson             | cstring                                | func
+ documentdb_core | bson_in                   | bson             | cstring                                | func
+ documentdb_core | bson_in_range_interval    | boolean          | bson, bson, interval, boolean, boolean | func
+ documentdb_core | bson_in_range_numeric     | boolean          | bson, bson, bson, boolean, boolean     | func
+ documentdb_core | bson_json_to_bson         | bson             | text                                   | func
+ documentdb_core | bson_lt                   | boolean          | bson, bson                             | func
+ documentdb_core | bson_lte                  | boolean          | bson, bson                             | func
+ documentdb_core | bson_not_equal            | boolean          | bson, bson                             | func
+ documentdb_core | bson_object_keys          | SETOF text       | bson                                   | func
+ documentdb_core | bson_operator_selectivity | double precision | internal, oid, internal, integer       | func
+ documentdb_core | bson_out                  | cstring          | bson                                   | func
+ documentdb_core | bson_recv                 | bson             | internal                               | func
+ documentdb_core | bson_repath_and_build     | bson             | VARIADIC "any"                         | func
+ documentdb_core | bson_send                 | bytea            | bson                                   | func
+ documentdb_core | bson_to_bson_hex          | cstring          | bson                                   | func
+ documentdb_core | bson_to_bsonsequence      | bsonsequence     | bson                                   | func
+ documentdb_core | bson_to_bytea             | bytea            | bson                                   | func
+ documentdb_core | bson_to_json_string       | cstring          | bson                                   | func
+ documentdb_core | bson_typanalyze           | boolean          | internal                               | func
+ documentdb_core | bson_unique_index_equal   | boolean          | bson, bson                             | func
+ documentdb_core | bsonquery_compare         | integer          | bson, bsonquery                        | func
+ documentdb_core | bsonquery_compare         | integer          | bsonquery, bsonquery                   | func
+ documentdb_core | bsonquery_equal           | boolean          | bsonquery, bsonquery                   | func
+ documentdb_core | bsonquery_gt              | boolean          | bsonquery, bsonquery                   | func
+ documentdb_core | bsonquery_gte             | boolean          | bsonquery, bsonquery                   | func
+ documentdb_core | bsonquery_in              | bsonquery        | cstring                                | func
+ documentdb_core | bsonquery_lt              | boolean          | bsonquery, bsonquery                   | func
+ documentdb_core | bsonquery_lte             | boolean          | bsonquery, bsonquery                   | func
+ documentdb_core | bsonquery_not_equal       | boolean          | bsonquery, bsonquery                   | func
+ documentdb_core | bsonquery_out             | cstring          | bsonquery                              | func
+ documentdb_core | bsonquery_recv            | bsonquery        | internal                               | func
+ documentdb_core | bsonquery_send            | bytea            | bsonquery                              | func
+ documentdb_core | bsonsequence_from_bytea   | bsonsequence     | bytea                                  | func
+ documentdb_core | bsonsequence_get_bson     | SETOF bson       | bsonsequence                           | func
+ documentdb_core | bsonsequence_in           | bsonsequence     | cstring                                | func
+ documentdb_core | bsonsequence_out          | cstring          | bsonsequence                           | func
+ documentdb_core | bsonsequence_recv         | bsonsequence     | internal                               | func
+ documentdb_core | bsonsequence_send         | bytea            | bsonsequence                           | func
+ documentdb_core | bsonsequence_to_bytea     | bytea            | bsonsequence                           | func
+ documentdb_core | row_get_bson              | bson             | record                                 | func
+(49 rows)
+
+-- show all aggregates exported
+\da+ documentdb_core.*
+                     List of aggregate functions
+ Schema | Name | Result data type | Argument data types | Description 
+--------+------+------------------+---------------------+-------------
+(0 rows)
+
+-- Access methods + Operator families
+\dA *documentdb*
+List of access methods
+ Name | Type 
+------+------
+(0 rows)
+
+\dAc * *documentdb*
+                  List of operator classes
+ AM | Input type | Storage type | Operator class | Default? 
+----+------------+--------------+----------------+----------
+(0 rows)
+
+\dAf * *documentdb*
+        List of operator families
+ AM | Operator family | Applicable types 
+----+-----------------+------------------
+(0 rows)
+
+\dX *documentdb*
+                 List of extended statistics
+ Schema | Name | Definition | Ndistinct | Dependencies | MCV 
+--------+------+------------+-----------+--------------+-----
+(0 rows)
+
+-- This is last (Tables/indexes)
+\d documentdb_core.*

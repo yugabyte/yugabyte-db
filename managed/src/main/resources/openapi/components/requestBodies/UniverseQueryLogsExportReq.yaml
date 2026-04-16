@@ -1,0 +1,11 @@
+description: |
+  UniverseQueryLogsExportReq
+
+  Payload to configure export of query logs. Part of
+  UniverseQueryLogsExportReq
+x-yba-api-visibility: internal
+required: false
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/UniverseQueryLogsExport.yaml"

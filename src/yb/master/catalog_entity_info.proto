@@ -1,0 +1,1058 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/cdc/cdc_consumer.proto";
+import "yb/cdc/xcluster_producer.proto";
+import "yb/common/common.proto";
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
+import "yb/common/version_info.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/consensus/metadata.proto";
+import "yb/docdb/docdb.proto";
+import "yb/dockv/dockv.proto";
+import "yb/master/master_types.proto";
+import "yb/tserver/tserver.proto";
+
+message BackfillJobPB {
+  repeated IndexInfoPB indexes = 1;
+
+  enum State {
+    IN_PROGRESS = 0;
+    FAILED = 1;
+    SUCCESS = 2;
+  }
+  // Index's TableId -> State for each index.
+  map<string, State> backfill_state = 2;
+
+  // Number of rows processed for this backfill task (the same for all indexes)
+  optional uint64 num_rows_read_from_table_for_backfill = 4 [ default = 0 ];
+
+  // Number of rows inserted for each index in this backfill task
+  // In case of rolling upgrade, an older tserver may not report rows inserted
+  // in the index for the tablets hosted on that node. This could lead to
+  // this value being inaccurate for backfills being carried out during
+  // upgrades.
+  map<string, double> num_rows_backfilled_in_index = 5;
+
+  optional uint64 backfilling_timestamp = 3;
+}
+
+  message YsqlDdlTxnVerifierStatePB {
+    optional bool contains_create_table_op = 1;
+    optional bool contains_alter_table_op = 2;
+    optional bool contains_drop_table_op = 3;
+
+    optional SchemaPB previous_schema = 4;
+    optional string previous_table_name = 5;
+    optional int32 previous_next_column_id = 6;
+
+    optional uint32 sub_transaction_id = 7;
+  }
+
+// The on-disk entry in the sys.catalog table ("metadata" column) for
+// tables entries.
+message SysTablesEntryPB {
+  enum State {
+    UNKNOWN = 0;
+    PREPARING = 1;
+    RUNNING = 2;
+    ALTERING = 3;
+    DELETING = 4;
+    DELETED = 5;
+  }
+
+  enum HideState {
+    VISIBLE = 0;
+    HIDING = 1;
+    HIDDEN = 2;
+  }
+
+  // Table name
+  required bytes name = 1;
+
+  // Table type
+  optional TableType table_type = 10 [ default = DEFAULT_TABLE_TYPE ];
+
+  // The table namespace ID.
+  optional bytes namespace_id = 11;
+  // The table namespace name.
+  optional bytes namespace_name = 30;
+
+  // sequence-id for the table metadata.
+  // Used on tablet-report to avoid sending "alter-table" notifications.
+  required uint32 version = 2;
+
+  // Newest table schema (every TS will eventually have it).
+  required SchemaPB schema = 3;
+
+  // Last table schema that is guaranteed to have reached every TS, though
+  // not necessarily the newest schema.
+  //
+  // This is the schema provided to the user on client->GetSchema(tableName).
+  optional SchemaPB fully_applied_schema = 4;
+
+  // The table's partitioning schema.
+  optional PartitionSchemaPB partition_schema = 9;
+
+  // The table's partitions version. Incremented each time partitions change.
+  optional uint32 partition_list_version = 28;
+
+  // The next column ID to assign to newly added columns in this table.
+  // This prevents column ID reuse.
+  optional int32 next_column_id = 8;
+
+  // Replication information for this table. If set, this overrides cluster-level replication info
+  // and tablespaces. This is only expected to be set for YCQL tables; YSQL tables should use
+  // tablespaces.
+  optional ReplicationInfoPB replication_info = 5;
+
+  // Debug state for the table.
+  optional State state = 6 [ default = UNKNOWN ];
+  optional bytes state_msg = 7;
+
+  // TODO(neil) OLDER INDEXes will always have the deprecated fields. To remove the old format, we
+  // first need to come up with a way to convert existing catalog content to new format.
+  // Secondary indexes of the table.
+  repeated IndexInfoPB indexes = 12;
+
+  // For index table: [to be deprecated and replaced by "index_info"]
+  optional bytes indexed_table_id = 13; // Indexed table id of this index.
+  optional bool is_local_index = 14 [ default = false ];  // Whether this is a local index.
+  optional bool is_unique_index = 15 [ default = false ]; // Whether this is a unique index.
+
+  // For index table: information about this index.
+  optional IndexInfoPB index_info = 22;
+
+  // For Postgres:
+  optional bool is_pg_shared_table = 16 [ default = false ]; // Is this a shared table?
+
+  optional uint32 wal_retention_secs = 24;
+
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
+  optional bool colocated = 25 [ default = false ];
+  // If the table is colocated and is not the parent table of the colocated tablet,
+  // contains the table id of the parent table.
+  optional bytes parent_table_id = 40;
+
+  // For materialized views:
+  optional bool is_matview = 37 [ default = false ]; // True if the table is a materialized view.
+
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional bytes pg_table_id = 36;
+
+  optional uint32 fully_applied_schema_version = 23;
+  repeated IndexInfoPB fully_applied_indexes = 26;
+  optional IndexInfoPB fully_applied_index_info = 27;
+
+  // During an alter table, which involves no schema change but only updating
+  // a permission, is it sometimes acceptable for a client's request (which is
+  // prepared with the current schema) to be accepted by a tserver which is
+  // still running the previous version.
+  // This is typically set during alters that are caused due to index
+  // permissions being changed, when the table is backfilled.
+  optional bool updates_only_index_permissions = 31 [ default = false ];
+  // Keeps track of in-progress backfill jobs.
+  // As of Apr 2021, we only have at most one outstanding backfill job, but
+  // this restriction may be removed later on. Hence repeated.
+  repeated BackfillJobPB backfill_jobs = 32;
+
+  optional HideState hide_state = 33;
+
+  // Tablespace ID for use with transaction tables only. Normal YSQL tables do not set this field,
+  // and tablespace information for such tables are instead fetched by scanning the pg catalog.
+  optional bytes transaction_table_tablespace_id = 34;
+  // Time when the table was hidden.
+  optional fixed64 hide_hybrid_time = 35;
+
+  // State that indicates that this table is being changed by a YSQL transaction.
+  // When a new savepoint (sub_transaction) modifies this table, a new entry is added to this field.
+  // If the savepoint is rolled back, the state is used to rollback to the previous schema and the
+  // corresponding entries are cleared out from this field.
+  //
+  // As a result, this field contains one element for every **active** sub-transaction modifying
+  // this table in increasing order of sub-transaction id. In other words, if there are N active
+  // sub-transactions modifying this table, there will be N elements in this state. Note that the
+  // overall transaction is also counted as an implicit sub-transaction here. See example below.
+  //
+  // Example:
+  // BEGIN;
+  //  DDL 1;                # part of implicit sub-transaction
+  //  DDL 2;                # part of implicit sub-transaction
+  //  SAVEPOINT a;
+  //  DDL 3;                # part of sub-transaction 2 or savepoint a.
+  //  SAVEPOINT b;
+  //  DDL 4;                # part of sub-transaction 3 or savepoint b.
+  // The ysql_ddl_txn_verifier_state will contain 3 entries - [DDL 1 & 2, DDL 3, DDL 4].
+  repeated YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state = 38;
+
+  // YSQL transaction that is currently modifying this table state. The changes being performed by
+  // it are detailed in 'ysql_ddl_txn_state' above.
+  optional TransactionMetadataPB transaction = 29;
+
+  repeated StatefulServiceKind hosted_stateful_services = 39;
+
+  // Time when an admin compaction was last requested. Raw representation of a HybridTime.
+  optional fixed64 last_full_compaction_request_time = 41;
+
+  message XClusterTableInfo {
+    // Set by DDL Replication to link the table to the original table in the source cluster.
+    // Cleared after table creation completes.
+    optional bytes xcluster_source_table_id = 1;
+
+    // Stores a list of old schema packings for automatic mode xCluster target colocated tables.
+    // These tables are processed before being created and require a source->target packed schema
+    // mapping.
+    // To handle this, we store processed schemas and insert them as old_schema_packings when the
+    // table is created. This allows us to have schema versions to use for the mapping that persists
+    // before and after the table is created.
+    // This is cleaned up after the table is created.
+    repeated dockv.SchemaPackingPB xcluster_colocated_old_schema_packings = 2;
+
+    // If set, use this time for the index backfill time.
+    optional fixed64 xcluster_backfill_hybrid_time = 3;
+  }
+
+  optional XClusterTableInfo xcluster_table_info = 42;
+}
+
+// The on-disk entry in the sys.catalog table ("metadata" column) for
+// tablets entries.
+message SysTabletsEntryPB {
+  reserved 15;
+
+  enum State {
+    UNKNOWN = 999;
+    PREPARING = 0;
+    CREATING = 1;
+    RUNNING = 2;
+    REPLACED = 3;
+    DELETED = 4;
+  }
+
+  // DEPRECATED. Replaced by 'partition'.
+  optional bytes OBSOLETE_start_key = 1;
+  optional bytes OBSOLETE_end_key = 2;
+
+  // Tablet partition.
+  optional PartitionPB partition = 7;
+
+  // The latest committed consensus configuration reported to the Master.
+  optional consensus.ConsensusStatePB committed_consensus_state = 3;
+
+  // Debug state for the tablet.
+  optional State state = 4 [ default = UNKNOWN ];
+  optional bytes state_msg = 5;
+
+  // The table id for the tablet.
+  required bytes table_id = 6;
+  // Table ids for all the tables on this tablet.
+  repeated bytes table_ids = 8;
+
+  // True if the tablet is colocated.
+  optional bool colocated = 9 [ default = false ];
+
+  // Replaced by the map below.
+  optional bytes DEPRECATED_backfilled_until = 10;
+
+  // For tablets that are results of splitting we set this to split parent split_depth + 1.
+  optional uint64 split_depth = 11;
+
+  optional bytes split_parent_tablet_id = 13;
+
+  // If the tablet is in the backfilling state, this is used to keep track
+  // of how far along backfill has completed.
+  // Key corresponds to the table_id for the index table. Value is encoded as
+  // the DocKey for the next row to be backfilled.
+  map<string, bytes> backfilled_until = 12;
+
+  // Tablet IDs for the children of this tablet after splitting. It is possible for a tablet to
+  // temporarily exist in this field but not be registered as part of the table or the catalog
+  // manager's tablet map.
+  repeated bytes split_tablet_ids = 14;
+
+  // Time when tablet was hidden.
+  optional fixed64 hide_hybrid_time = 16;
+
+  // If tablet was hidden instead of deleting, here we keep list of schedule ids that prevented
+  // actual deletion.
+  repeated bytes retained_by_snapshot_schedules = 17;
+
+  // Describes the persisted mapping scheme for colocated tablets. If set, the table_ids field of
+  // this tablet is empty and child tables on this tablet have their parent_table_id field
+  // filled. The table_id field of all tablets is filled with the parent table id. So the list of
+  // tables hosted on this tablet is computed at load time by finding all child tables of the
+  // parent table of this tablet.
+  optional bool hosted_tables_mapped_by_parent_id = 18;
+
+  // Whether this tablet was created by DB cloning. If true, we should not try to send
+  // CreateTablet requests for this tablet (it should be created by tservers applying the clone op).
+  optional bool created_by_clone = 19 [ default = false ];
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a namespace.
+message SysNamespaceEntryPB {
+  // There are significant differences between the state machines for YSQL vs non-YSQL.
+  // The additional complexity for YSQL is due to the amount of work required for
+  // database creation and deletion, requiring async tasks and additional states.
+
+  // For YSQL:
+  // PREPARING is the initial state.
+  // PREPARING -> RUNNING - happy path of creation.
+  // PREPARING -> FAILED  - unhappy path of creation.
+  // RUNNING -> DELETING  - deletion requested.
+  // DELETING -> DELETED  - happy path of deletion.
+  // DELETING -> FAILED   - unhappy path of deletion.
+  // FAILED -> DELETING   - deletion requested.
+
+  // For non-YSQL:
+  // PREPARING is the initial state.
+  // PREPARING -> RUNNING - happy path of database creation.
+  // PREPARING -> FAILED  - unhappy path of database creation.
+
+  // During the deletion flow a non-YSQL namespace is removed from the maps and sys catalog table
+  // directly instead of transitioning to any deletion states.
+  enum State {
+    UNKNOWN = 0;
+    PREPARING = 1;
+    FAILED = 2;
+    RUNNING = 3;
+    DELETING = 4;
+    DELETED = 5;
+  }
+  // Note: The id of the namespace is not stored here as it is already part of
+  // SysRowEntry's id component.
+
+  // Namespace name.
+  optional bytes name = 1;
+
+  // Namespace/Database type.
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
+
+  // For Postgres:
+  optional uint32 next_normal_pg_oid = 3; // Next normal space oid to assign.
+
+  // True if the namespace is colocated.
+  optional bool colocated = 4 [ default = false ];
+
+  // Optional: Namespace dependent upon transaction success (abort removes NS). Used by YSQL.
+  optional TransactionMetadataPB transaction = 6;
+
+  optional State state = 5 [ default = UNKNOWN ];
+
+  // During a YSQL major version upgrade, for example from PG11 to PG15, we use the existing
+  // namespace entry for both the old and new versions' namespace. However, PG's upgrade process is
+  // normally run on a clean unused system, and it does DROP DATABASE and CREATE DATABASE there in
+  // order to fully restore the properties of the database. In YB, we simulate PG's environment, by
+  // using a separate state for the new major version.
+  // NEXT_VER_RUNNING is the initial state.
+  // NEXT_VER_RUNNING -> NEXT_VER_DELETING  - deletion requested.
+  // NEXT_VER_DELETING -> NEXT_VER_DELETED  - happy path of deletion.
+  // NEXT_VER_DELETING -> NEXT_VER_FAILED   - unhappy path of deletion.
+  // NEXT_VER_DELETED -> NEXT_VER_RUNNING   - re-populated.
+  //
+  // TODO: Change the initial state to something other than NEXT_VER_RUNNING. Be sure it makes sense
+  // for multiple upgrades (e.g., a system that went from PG11 -> PG15 -> PG17). Therefore it may
+  // need to be changed from NEXT_VER_RUNNING at some point after the upgrade.
+  enum YsqlNextMajorVersionState {
+    NEXT_VER_UNKNOWN = 0;
+    NEXT_VER_FAILED = 1;
+    NEXT_VER_RUNNING = 2;
+    NEXT_VER_DELETING = 3;
+    NEXT_VER_DELETED = 4;
+  }
+  optional YsqlNextMajorVersionState ysql_next_major_version_state = 8
+      [ default = NEXT_VER_RUNNING ];
+
+  optional uint32 clone_request_seq_no = 7;
+
+  optional uint32 next_secondary_pg_oid = 9; // Next secondary space oid to assign.
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
+message SysUDTypeEntryPB {
+  optional string namespace_id = 1;
+  optional string name = 2;
+  repeated string field_names = 3;
+  repeated QLTypePB field_types = 4;
+}
+
+// This is used to mark servers in the load balancer that should be considered
+// for immediate removal of load and also prevented from being assigned any
+// new load.
+message BlacklistPB {
+  repeated HostPortPB hosts = 1;
+
+  // Fields to track the number of replicas/leaders in current set of tablets which have a
+  // blacklist server/leader. Client should not set this. Set by server side when persisting
+  // the blacklist load.
+  optional int32 initial_replica_load = 2;
+  optional int32 initial_leader_load = 3;
+}
+
+message EncryptionInfoPB {
+  optional bool encryption_enabled = 1;
+  optional bytes universe_key_registry_encoded = 2;
+  optional string key_path = 3;
+  optional string latest_version_id = 4;
+  optional bool key_in_memory = 5;
+}
+
+// The on-disk entry in the sys.catalog table for configuration information
+// that are relevant to the entire cluster. This has a version entry that is
+// used for ensuring that client read-modify-writes are valid.
+message SysClusterConfigEntryPB {
+  optional int32 version = 1;
+  optional string cluster_uuid = 4;
+  optional ReplicationInfoPB replication_info = 2;
+  optional BlacklistPB server_blacklist = 3;
+  optional BlacklistPB leader_blacklist = 7;
+  optional EncryptionInfoPB encryption_info = 5;
+  optional cdc.ConsumerRegistryPB consumer_registry = 6;
+  // This field is only generated internally by the master leader in PrepareDefaultClusterConfig (as
+  // opposed to cluster_uuid which can be passed in as a flag). If not already set, it is set on
+  // the VisitSysCatalog path.
+  optional string universe_uuid = 8;
+  // This field is bumped to invalidate all the TServer OID caches.
+  // Note that this is for every database and applies only to YSQL.
+  optional uint32 oid_cache_invalidations_count = 9 [default = 0];
+}
+
+message SysObjectLockEntryPB {
+  message ObjectLocksListPB {
+    repeated docdb.ObjectLockPB locks = 1;
+  }
+  message SubtxnDBMapPB {
+    // subtxn -> object locks ...
+    map<uint32, ObjectLocksListPB> subtxns = 1;
+    optional bytes status_tablet = 2;
+    optional bytes background_transaction_id = 3;
+  }
+  message TransactionSubtxnMapPB {
+    // txn_id -> subtxn ...
+    map<string, SubtxnDBMapPB> transactions = 1;
+  }
+
+  // host_uid is part of the key. Thus not stored
+  // explicitly in this proto again.
+
+  // lease_epoch -> Transaction ...
+  map<uint64, TransactionSubtxnMapPB> lease_epochs = 1;
+
+  message LeaseInfoPB {
+    // Whether the lease is currently live.
+    optional bool live_lease = 1;
+
+    optional uint64 lease_epoch = 2;
+
+    // The instance_seqno of the tserver process to which this lease was granted.
+    optional int64 instance_seqno = 3;
+
+    optional bool lease_relinquished = 4;
+  }
+  optional LeaseInfoPB lease_info = 2;
+  map<uint64, tserver.ReleaseObjectLockRequestPB> in_progress_release_request = 3;
+}
+
+message SysXClusterConfigEntryPB {
+  optional uint32 version = 1;
+  optional xcluster.ProducerRegistryPB xcluster_producer_registry = 2;
+  // Local NamespaceId -> xCluster info for that namespace.
+  map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 3;
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for Redis Config.
+message SysRedisConfigEntryPB {
+  optional string key = 1;
+  repeated bytes args = 2;
+}
+
+message ResourcePermissionsPB {
+  optional string resource_name = 1;
+  optional string canonical_resource = 11;
+  optional string namespace_name = 12;
+  optional ResourceType resource_type = 2;
+  repeated PermissionType permissions = 13;
+}
+
+message SysRoleEntryPB {
+  optional bytes role = 1;
+  optional bool can_login = 2;
+  optional bool is_superuser = 3;
+  repeated bytes member_of = 4;
+  optional bytes salted_hash = 5;
+  repeated ResourcePermissionsPB resources = 7;
+}
+
+// Cluster security configuration.
+message SysSecurityConfigEntryPB {
+  // Roles configuration version. Every time a role gets created/deleted, or a permission gets
+  // added/removed, we increase the version.
+  optional uint64 roles_version = 1;
+  optional bool cassandra_user_created = 2 [default = false];
+}
+
+message YsqlMajorCatalogUpgradeInfoPB {
+  enum State {
+    INVALID = 0;
+    DONE = 1;
+    FAILED = 2;
+    PERFORMING_INIT_DB = 3;
+    PERFORMING_PG_UPGRADE = 4;
+    MONITORING = 5;
+    PERFORMING_ROLLBACK = 6;
+  }
+  optional State state = 1 [ default = DONE ];
+
+  // This is set when the state is FAILED.
+  optional AppStatusPB previous_error = 2;
+
+  // Set to the current version at time of new universe creation.
+  // Updated after the ysql major catalog upgrade is complete.
+  // This field is introduced in version 15. So universes that are upgraded
+  // will have the default value of 11 (the previous version).
+  optional uint32 catalog_version = 3 [ default = 11 ];
+
+  optional bool previous_version_catalog_cleanup_required = 4; // [default = false]
+}
+
+// Metadata about the YSQL catalog (current only version).
+message SysYSQLCatalogConfigEntryPB {
+  // YSQL catalog version. Every time the catalog tables are changed (i.e. by DDL statements)
+  // this version gets incremented.
+  optional uint64 version = 1;
+
+  // This is true if the master ran initdb and it finished, succesfully or not.
+  optional bool initdb_done = 2;
+
+  // If this is set, initdb has failed.
+  optional string initdb_error = 5;
+
+  optional YsqlMajorCatalogUpgradeInfoPB ysql_major_catalog_upgrade_info = 7;
+
+  // true if transactional system catalogs have been enabled on this cluster. This means all
+  // YSQL system catalog tables have been made transactional, both in their schema and in the tablet
+  // metadata.
+  optional bool transactional_sys_catalog_enabled = 6;
+}
+
+// Metadata about the current state of transaction tables.
+message SysTransactionTablesConfigEntryPB {
+  // Transaction status tables version. Every time a transaction table is added or has its placement
+  // changed, this version gets incremented.
+  optional uint64 version = 1;
+}
+
+// Various cluster configuration.
+message SysConfigEntryPB {
+  oneof config {
+    SysSecurityConfigEntryPB security_config = 1;
+    SysYSQLCatalogConfigEntryPB ysql_catalog_config = 2;
+    SysTransactionTablesConfigEntryPB transaction_tables_config = 3;
+  }
+}
+
+// The actual on disk abstract representation of a row in the sys catalog.
+// This has to respect the fixed schema of the catalog. In case of changes to
+// the schema, this proto must reflect them.
+message SysRowEntry {
+  // The type of entry we are storing. Since the data is serialized, we cannot
+  // just store it with
+  // the data, as we are not able to read into the appropriate type.
+  optional SysRowEntryType type = 1;
+
+  // The optional ID of the data that we are storing. This can be useful to only
+  // read information
+  // related to a single item, in the case of tables or tablets, for example.
+  // This is optional.
+  optional string id = 2;
+
+  // This is the serialized format of the proto we store. This used to be of the "string" type, but
+  // was giving warnings due to non-UTF8 data. This is safe, because "bytes" and "string" are
+  // encoded the same way in Protobuf.
+  // https://groups.google.com/forum/#!msg/protobuf/au6eQBkRT5s/Bhpctql7Q5sJ
+  optional bytes data = 3;
+}
+
+message SysRowEntries {
+  repeated SysRowEntry entries = 1;
+}
+
+message DdlLogEntryPB {
+  optional TableType table_type = 1;
+  optional string namespace_name = 2;
+  optional string namespace_id = 3;
+  optional string table_name = 4;
+  optional string table_id = 5;
+  optional string action = 6;
+  optional fixed64 time = 7;
+}
+
+// Options for CDC stream. This will include details such as:
+// Stream sink: YB Universe / Kafka / Elastic Search.
+// Log retention time: Amount of time to retain logs for CDC.
+// Sink details: For example, Kafka cluster IP, port.
+message CDCStreamOptionsPB {
+  optional string key = 1;
+  optional bytes value = 2;
+}
+
+// The on-disk entry specific to CDCSDK streams
+message CDCSDKStreamEntryPB {
+  optional uint64 snapshot_time = 1;
+  optional CDCSDKSnapshotOption consistent_snapshot_option = 2;
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a CDC stream.
+message SysCDCStreamEntryPB {
+  enum State {
+    // Used to mark a stream that has been bootstrapped, but hasn't started streaming yet.
+    INITIATED = 3;
+    ACTIVE = 0;
+    DELETING = 1;
+    // Currently DELETED is not being used because we delete streams entries from sys catalog.
+    DELETED = 2;
+    // Used to handle the stream metadata cleanup as part of drop table.
+    DELETING_METADATA = 4;
+  }
+  repeated string table_id = 1;
+  repeated CDCStreamOptionsPB options = 2;
+  optional State state = 3 [default = ACTIVE];
+  optional string namespace_id = 4;
+  optional bool transactional = 5; // [default = false]
+  optional string cdcsdk_ysql_replication_slot_name = 6;
+  optional CDCSDKStreamEntryPB cdcsdk_stream_metadata = 7;
+  optional uint64 stream_creation_time = 8;
+
+  // This map stores the replica identity for each table in the stream at the time of stream
+  // creation. The key for this map is table_id and the value is replica identity for that table.
+  map<string, PgReplicaIdentity> replica_identity_map = 9;
+
+  optional string cdcsdk_ysql_replication_slot_plugin_name = 10;
+
+  // Dynamic tables are the tables which are created after the creation of the stream.
+  // This field controls if dynamic tables should automatically be added to the CDC stream or not.
+  // If set to true, dynamic table wont get added to the CDC stream.
+  optional bool cdcsdk_disable_dynamic_table_addition = 11;
+
+  // This field stores the list of user created tables that have been removed from CDCSDK
+  // stream.
+  repeated bytes unqualified_table_id = 12;
+
+  optional ReplicationSlotLsnType cdcsdk_ysql_replication_slot_lsn_type =
+      13 [default = ReplicationSlotLsnType_UNSPECIFIED];
+  optional ReplicationSlotOrderingMode cdcsdk_ysql_replication_slot_ordering_mode =
+      14 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
+
+  optional bool allow_tables_without_primary_key = 15 [default = false];
+}
+
+
+
+// The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.
+message SysSnapshotEntryPB {
+  enum State {
+    UNKNOWN = 0;
+    CREATING = 1;
+    COMPLETE = 2;
+    DELETING = 3;
+    DELETED = 4;
+    FAILED = 5;
+    CANCELLED = 6;
+    RESTORING = 7;
+    RESTORED = 8;
+  }
+
+  // Note: The id of the snapshot is not stored here as it is already part of
+  // SysRowEntry's id component.
+
+  optional State state = 1 [ default = UNKNOWN ];
+
+  message TabletSnapshotPB {
+    optional bytes id = 1;
+    optional State state = 2;
+  }
+
+  repeated TabletSnapshotPB tablet_snapshots = 2;
+
+  // Stored info about snapshot (1) namespaces (2) tables (3) tablets.
+  repeated SysRowEntry entries = 3;
+
+  optional fixed64 snapshot_hybrid_time = 4;
+
+  optional int64 version = 5;
+
+  optional bytes schedule_id = 6;
+
+  optional fixed64 previous_snapshot_hybrid_time = 7;
+
+  // This field specifies the TTL of this snapshot.
+  // 1. Not set: the snapshot has no explicit TTL, will be retained until a DeleteSnapshot, and
+  //             does not block object cleanup. This is used to handle a few special cases:
+  //   a. Snapshots which are part of a snapshot schedule do not have this field set. This is
+  //      because their TTL is controlled by the snapshot schedule's retention.
+  //   b. Snapshots created before D28005 (when this field was introduced).
+  // 2. < 0: the snapshot will not be automatically cleaned up until a `DeleteSnapshot`, and might
+  //         block object cleanup until then.
+  // 3. > 0: the snapshot will automatically be cleaned up when
+  //         now() > snapshot_hybrid_time + retention_duration_hours.
+  // 4. 0: explicitly forbidden.
+  optional int32 retention_duration_hours = 8;
+
+  // Whether this is an imported snapshot (part of a restore). Default is false to maintain
+  // historical behavior when deciding whether to block object cleanup.
+  optional bool imported = 9 [default = false];
+}
+
+message SysCloneStatePB {
+  // State for clone operation.
+  // CLONE_SCHEMA_STARTED: Initial state.
+  // CLONE_SCHEMA_STARTED --> CREATING: Once DB objects have been created by ysql_dump (YSQL) or
+  //     ImportSnapshot (YCQL). Clone tablet RPCs are scheduled for all tablets.
+  // CREATING --> RESTORING: All tablets in clone namespace are created and in a running
+  // state. Restore snapshot is issued.
+  // RESTORING --> COMPLETE (YCQL): Restore snapshot completed and DB is ready to be accessed.
+  // RESTORING --> RESTORED (YSQL): Restore snapshot completed.
+  // RESTORED --> COMPLETE (YSQL): DB is ready to be accessed.
+  enum State {
+    CLONE_SCHEMA_STARTED = 1;
+    CREATING = 2;
+    RESTORING = 3;
+    RESTORED = 4;
+    ABORTED = 5;
+    COMPLETE = 6;
+  }
+
+  optional State aggregate_state = 1;
+
+  // Needed to load the clone state into the CloneStateManager's map.
+  optional string source_namespace_id = 2;
+  optional uint32 clone_request_seq_no = 3;
+
+  // Used for debugging.
+  optional YQLDatabase database_type = 8;
+  optional string target_namespace_name = 4;
+  optional string target_namespace_id = 7;
+  optional string source_namespace_name = 9;
+  optional fixed64 restore_time = 5;
+
+  // A reason for why the clone was aborted.
+  optional string abort_message = 6;
+}
+
+message SchemaVersionMappingPB {
+  required uint32 producer_schema_version = 1;
+  required uint32 consumer_schema_version = 2;
+}
+
+message ColocatedSchemaVersionMappingPB {
+  required uint32 colocation_id = 1;
+  required SchemaVersionMappingPB schema_version_mapping = 2;
+}
+
+message SchemaVersionMappingEntryPB {
+  optional SchemaVersionMappingPB schema_version_mapping = 1;
+  repeated ColocatedSchemaVersionMappingPB colocated_schema_versions = 2;
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a universe replication record.
+message SysUniverseReplicationEntryPB {
+  enum State {
+    // Setting up replication.
+    INITIALIZING = 0;
+    // Validated table schemas.
+    VALIDATED = 1;
+    // Active.
+    ACTIVE = 2;
+    // Failed.
+    // Setting up universe replication consists of a sequence of steps like validating schemas,
+    // creating CDC streams, starting subscribers. If any of these fail, we set the universe
+    // replication state to FAILED.
+    FAILED = 3;
+    // Disabled.
+    DISABLED = 6;
+    // Deleted.
+    DELETED = 4;
+    // Error while cleaning up state of deleted entry. This indicates that universe replication has
+    // been deleted but there is still some uncleaned up state - for example, there may be left over
+    // CDC streams.
+    DELETED_ERROR = 5;
+    // Unfinished Delete
+    DELETING = 7;
+  }
+
+  optional string replication_group_id = 1;
+  repeated HostPortPB producer_master_addresses = 2;
+
+  // producer table IDs.
+  repeated string tables = 3;
+
+  optional State state = 4 [default = INITIALIZING];
+
+  // producer table ID -> consumer table ID map.
+  map<string, string> validated_tables = 5;
+
+  // producer table ID -> producer CDC stream ID map.
+  map<string, string> table_streams = 6;
+
+  // 7, 8, and 9 were used by Namespace-level replication but never populated in
+  // production so they are valid for reuse.
+
+  // DEPRECATED schema_version_mappings
+  reserved 10;
+
+  // Set when consistent transactions are enabled for a replication group.
+  optional bool transactional = 11; // [default = false]
+
+  optional uint32 validated_local_auto_flags_config_version = 12;
+
+  // DB Scoped repication.
+  message DBScopeInfo {
+    optional bool automatic_ddl_mode = 1; // [default = false]
+
+    message NamespaceInfo {
+      required string consumer_namespace_id = 1;
+      required string producer_namespace_id = 2;
+    }
+    repeated NamespaceInfo namespace_infos = 13;
+
+    message HistoricalSchemaPackingPB {
+      repeated dockv.SchemaPackingPB old_schema_packings = 1;
+    }
+    message TargetNamespaceInfoPB {
+      // Colocation id to historical schema packings mapping.
+      map<uint32, HistoricalSchemaPackingPB> colocated_historical_schema_packings = 1;
+    }
+    // Target namespace id -> TargetNamespaceInfoPB.
+    map<string, TargetNamespaceInfoPB> target_namespace_infos = 2;
+  }
+
+  optional DBScopeInfo db_scoped_info = 13;
+}
+
+message XClusterSafeTimePB {
+  // Map[Local NamespaceId]: xCluster safe read HybridTime
+  map<string, fixed64> safe_time_map = 1;
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a universe
+// replication record.
+message SysUniverseReplicationBootstrapEntryPB {
+  enum State {
+    // Setting up replication.
+    INITIALIZING = 0;
+
+    // Bootstrapping CDC streams on producer universe.
+    BOOTSTRAP_PRODUCER = 1;
+
+    // Creating snapshot on producer universe.
+    CREATE_PRODUCER_SNAPSHOT = 2;
+
+    // ImportSnapshotMeta on consumer universe.
+    IMPORT_SNAPSHOT = 3;
+
+    // CreateSnapshot on consumer universe, marking it as imported. This is the
+    // same logic that occurs in the yb-admin import_snapshot command.
+    CREATE_CONSUMER_SNAPSHOT = 4;
+
+    // Downloading snapshot files from producer to consumer.
+    TRANSFER_SNAPSHOT = 5;
+
+    // Restore snapshot on consumer universe.
+    RESTORE_SNAPSHOT = 6;
+
+    // Call SetupUniverseReplication on consumer universe.
+    SETUP_REPLICATION = 7;
+
+    // Bootstrap is complete.
+    DONE = 8;
+
+    // Bootstrap failed on some task.
+    FAILED = 9;
+
+    // Deleted.
+    DELETED = 10;
+    // Error while cleaning up state of deleted entry. This indicates that universe replication has
+    // been deleted but there is still some uncleaned up state - for example, there may be left over
+    // CDC streams.
+    DELETED_ERROR = 11;
+
+    // Unfinished Delete
+    DELETING = 12;
+  }
+
+  // The following PBs are used to represent the newly created objects during
+  // CatalogManager::ImportSnapshotMeta. Specifically, these are all the
+  // required fields used in CatalogManager::DeleteNewSnapshotObjects. We store
+  // these PBs in case we need to cleanup on failure.
+  message IdPairPB {
+    optional string old_id = 1;
+    optional string new_id = 2;
+  }
+
+  message TableDataPB {
+    optional IdPairPB ids = 1;
+    optional TableType table_type = 2;
+    optional bytes indexed_table_id = 3; // Indexed table id of this index.
+  }
+
+  message UDTypeDataPB {
+    optional IdPairPB ids = 1;
+    optional bool existing = 2;
+  }
+
+  message NamespaceDataPB {
+    optional IdPairPB ids = 1;
+    optional YQLDatabase db_type = 2;
+    optional bool existing = 3;
+  }
+
+  message NewSnapshotObjectsPB {
+    repeated TableDataPB tables = 1;
+    repeated UDTypeDataPB ud_types = 2;
+    repeated NamespaceDataPB namespaces = 3;
+  }
+
+  optional State state = 1 [ default = INITIALIZING ];
+
+  // There's different cleanup tasks depending on which state the flow failed
+  // on, and so we store this on failure so that we can cleanup properly.
+  optional State failed_on = 2 [ default = INITIALIZING ];
+
+  optional string replication_group_id = 3;
+  repeated HostPortPB producer_master_addresses = 4;
+
+  // producer table ID -> producer CDC stream ID map.
+  map<string, string> table_bootstrap_ids = 5;
+
+  // In the xCluster native bootstrap flow, during the ImportSnapshot step the
+  // consumer universe actually creates its own snapshot with a unique ID. In
+  // this case, old_snapshot_id is the producer snapshot ID and new_snapshot_id
+  // is the consumer snapshot ID.
+  optional bytes old_snapshot_id = 6;
+  optional bytes new_snapshot_id = 7;
+  optional bytes restoration_id = 8;
+
+  // Keeps track of newly created objects in case we need to cleanup on failure.
+  optional NewSnapshotObjectsPB new_snapshot_objects = 9;
+
+  // Set when consistent transactions are enabled for a replication group.
+  optional bool transactional = 10; // [default = false]
+
+  // According to https://phorge.dev.yugabyte.com/D24796, async tasks that
+  // require epoch should retrieve it from the context that initiated the work.
+  // These values store the epoch values passed from the initial RPC call to
+  // SetupNamespaceReplicationWithBootstrap.
+  optional int64 leader_term = 11;
+  optional int32 pitr_count = 12;
+}
+
+message SysXClusterOutboundReplicationGroupEntryPB {
+  message NamespaceInfoPB {
+    enum State {
+      CHECKPOINTING = 0;
+      READY = 1;
+      FAILED = 2;
+    }
+    required State state = 1;
+
+    message TableInfoPB {
+      optional bytes stream_id = 1;
+      optional bool is_checkpointing = 2; // [default = false]
+      // Was this stream checkpointed as part of the initial bootstrap, or was
+      // it added later by a newly created table?
+      optional bool is_part_of_initial_bootstrap = 3;
+    }
+    // Table id -> TableInfoPB
+    map<string, TableInfoPB> table_infos = 2;
+
+    optional bool initial_bootstrap_required = 3; // [default = false]
+
+    optional AppStatusPB error_status = 4; // Set when state is FAILED
+  }
+
+  // Namespace Id -> NamespaceInfoPB
+  map<string, NamespaceInfoPB> namespace_infos = 1;
+
+  message TargetUniverseInfoPB {
+    required bytes universe_uuid = 1;
+
+    enum State {
+      CREATING_REPLICATION_GROUP = 0;
+      FAILED = 1;
+      REPLICATING = 2;
+    }
+    required State state = 2 [ default = CREATING_REPLICATION_GROUP ];
+
+    optional AppStatusPB error_status = 3; // Set when status is FAILED
+  }
+
+  optional TargetUniverseInfoPB target_universe_info = 2;
+
+  enum State {
+    READY = 0;
+    DELETED = 1;
+  }
+  optional State state = 3 [ default = READY ];
+
+  optional bool automatic_ddl_mode = 4; // [default = false]
+}
+
+message SysTabletServerEntryPB {
+  // DEPRECATED unresponsive_last_heartbeat_ht
+  reserved 4;
+
+  enum State {
+    // Proto best practices are to include a sentinel as the first enum value.
+    // See https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum
+    UNSPECIFIED = 0;
+    // A heartbeat from the TServer has been ACK'd recently.
+    LIVE = 1;
+    // No heartbeat from the TServer has been ACK'd within at least tserver_unresponsive_timeout_ms.
+    UNRESPONSIVE = 2;
+    // Another tserver which started more recently has registered with a conflicting
+    // address. Heartbeats from this TServer will be ignored until it restarts with a greater
+    // instance_seqno.
+    //
+    // This is currently used to deal with TServers rebooted after a disk wipe. In this case the new
+    // TServer process generates a new UUID and is recognized as a new TServer by the master
+    // leader. The old TServer entry is put into this state when the new TServer process registers.
+    REPLACED = 3;
+    // The tserver has been removed from the cluster. This state is not persisted to raft, instead
+    // the entry is deleted. This state signals to code that holds on to a shared_ptr<TSDescriptor>
+    // that the object representing the tablet server is stale and should not be used.
+    REMOVED = 4;
+  }
+
+  // The instance_seqno of a tserver is chosen at process start and is constant throughout the
+  // process lifetime. It must be monotonically increased across process restarts for a given UUID.
+  optional int64 instance_seqno = 1;
+  optional State state = 2;
+  // Contains ip addresses, ports, cloud info, and placement_uuid.
+  optional ServerRegistrationPB registration = 3;
+  // The resources (cpu & memory) available at the tserver. Used by the tablet limits machinery.
+  optional ResourcesPB resources = 5;
+  // If true, this entry has been written to the sys catalog. Because the flag that enables writing
+  // these entries to the sys catalog is a runtime flag, this field is used to force tservers which
+  // registered in memory before persistence was enabled to re-register and have their entry
+  // persisted.
+  optional bool persisted = 6;
+
+  optional VersionInfoPB version_info = 9;
+}

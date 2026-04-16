@@ -1,0 +1,3 @@
+# contrib/postgres_fdw/yb_schedule
+
+test: yb.orig.postgres_fdw

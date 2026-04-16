@@ -1,0 +1,9 @@
+####################################################################################################
+# Limit Testsuite
+# Test for FETCH FIRST and LIMIT clause
+# In Vanilla PG, this test is part of parallel_schedule
+####################################################################################################
+test: yb.port.test_setup
+test: yb.port.create_index
+
+test: yb.port.limit

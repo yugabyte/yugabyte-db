@@ -1,0 +1,35 @@
+# run the testsuite on travis-ci.org
+---
+# run once for each of these
+env:
+  - PGVERSION=9.5
+  - PGVERSION=9.6
+  - PGVERSION=10
+  - PGVERSION=11
+  - PGVERSION=12
+  - PGVERSION=13
+
+language: C
+dist: xenial
+arch:
+     - amd64
+     - ppc64le
+sudo: required
+
+before_install:
+  - sudo apt-get update -qq
+
+install:
+  # remove all existing clusters
+  - sudo rm -rf /etc/postgresql /var/lib/postgresql
+  # upgrade postgresql-common for new apt.postgresql.org.sh
+  - sudo apt-get install -y postgresql-common
+  - sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -p -v $PGVERSION -i
+  - sudo apt-get install -y bison flex libicu-dev libssl-dev
+  - sudo -u postgres createuser --superuser $USER
+
+script:
+  - make
+  - sudo make install
+  - make installcheck
+  - if test -s regression.diffs; then cat regression.diffs; fi

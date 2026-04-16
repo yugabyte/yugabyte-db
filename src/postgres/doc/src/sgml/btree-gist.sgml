@@ -1,0 +1,118 @@
+<!-- doc/src/sgml/btree-gist.sgml -->
+
+<sect1 id="btree-gist" xreflabel="btree_gist">
+ <title>btree_gist</title>
+
+ <indexterm zone="btree-gist">
+  <primary>btree_gist</primary>
+ </indexterm>
+
+ <para>
+  <filename>btree_gist</filename> provides GiST index operator classes that
+  implement B-tree equivalent behavior for the data types
+  <type>int2</type>, <type>int4</type>, <type>int8</type>, <type>float4</type>,
+  <type>float8</type>, <type>numeric</type>, <type>timestamp with time zone</type>,
+  <type>timestamp without time zone</type>, <type>time with time zone</type>,
+  <type>time without time zone</type>, <type>date</type>, <type>interval</type>,
+  <type>oid</type>, <type>money</type>, <type>char</type>,
+  <type>varchar</type>, <type>text</type>, <type>bytea</type>, <type>bit</type>,
+  <type>varbit</type>, <type>macaddr</type>, <type>macaddr8</type>, <type>inet</type>,
+  <type>cidr</type>, <type>uuid</type>, <type>bool</type> and all <type>enum</type> types.
+ </para>
+
+ <para>
+  In general, these operator classes will not outperform the equivalent
+  standard B-tree index methods, and they lack one major feature of the
+  standard B-tree code: the ability to enforce uniqueness.  However,
+  they provide some other features that are not available with a B-tree
+  index, as described below.  Also, these operator classes are useful
+  when a multicolumn GiST index is needed, wherein some of the columns
+  are of data types that are only indexable with GiST but other columns
+  are just simple data types.  Lastly, these operator classes are useful for
+  GiST testing and as a base for developing other GiST operator classes.
+ </para>
+
+ <para>
+  In addition to the typical B-tree search operators, <filename>btree_gist</filename>
+  also provides index support for <literal>&lt;&gt;</literal> (<quote>not
+  equals</quote>). This may be useful in combination with an
+  <link linkend="sql-createtable-exclude">exclusion constraint</link>,
+  as described below.
+ </para>
+
+ <para>
+  Also, for data types for which there is a natural distance metric,
+  <filename>btree_gist</filename> defines a distance operator <literal>&lt;-&gt;</literal>,
+  and provides GiST index support for nearest-neighbor searches using
+  this operator.  Distance operators are provided for
+  <type>int2</type>, <type>int4</type>, <type>int8</type>, <type>float4</type>,
+  <type>float8</type>, <type>timestamp with time zone</type>,
+  <type>timestamp without time zone</type>,
+  <type>time without time zone</type>, <type>date</type>, <type>interval</type>,
+  <type>oid</type>, and <type>money</type>.
+ </para>
+
+ <para>
+  This module is considered <quote>trusted</quote>, that is, it can be
+  installed by non-superusers who have <literal>CREATE</literal> privilege
+  on the current database.
+ </para>
+
+ <sect2>
+  <title>Example Usage</title>
+
+  <para>
+   Simple example using <literal>btree_gist</literal> instead of <literal>btree</literal>:
+  </para>
+
+<programlisting>
+CREATE TABLE test (a int4);
+-- create index
+CREATE INDEX testidx ON test USING GIST (a);
+-- query
+SELECT * FROM test WHERE a &lt; 10;
+-- nearest-neighbor search: find the ten entries closest to "42"
+SELECT *, a &lt;-&gt; 42 AS dist FROM test ORDER BY a &lt;-&gt; 42 LIMIT 10;
+</programlisting>
+
+  <para>
+   Use an <link linkend="sql-createtable-exclude">exclusion
+   constraint</link> to enforce the rule that a cage at a zoo
+   can contain only one kind of animal:
+  </para>
+
+<programlisting>
+=&gt; CREATE TABLE zoo (
+  cage   INTEGER,
+  animal TEXT,
+  EXCLUDE USING GIST (cage WITH =, animal WITH &lt;&gt;)
+);
+
+=&gt; INSERT INTO zoo VALUES(123, 'zebra');
+INSERT 0 1
+=&gt; INSERT INTO zoo VALUES(123, 'zebra');
+INSERT 0 1
+=&gt; INSERT INTO zoo VALUES(123, 'lion');
+ERROR:  conflicting key value violates exclusion constraint "zoo_cage_animal_excl"
+DETAIL:  Key (cage, animal)=(123, lion) conflicts with existing key (cage, animal)=(123, zebra).
+=&gt; INSERT INTO zoo VALUES(124, 'lion');
+INSERT 0 1
+</programlisting>
+
+ </sect2>
+
+ <sect2>
+  <title>Authors</title>
+
+  <para>
+   Teodor Sigaev (<email>teodor@stack.net</email>),
+   Oleg Bartunov (<email>oleg@sai.msu.su</email>),
+   Janko Richter (<email>jankorichter@yahoo.de</email>), and
+   Paul Jungwirth (<email>pj@illuminatedcomputing.com</email>).  See
+   <ulink url="http://www.sai.msu.su/~megera/postgres/gist/"></ulink>
+   for additional information.
+  </para>
+
+ </sect2>
+
+</sect1>

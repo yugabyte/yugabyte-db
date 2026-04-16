@@ -1,0 +1,91 @@
+-- date check
+CREATE TABLE datetmp (a date);
+\copy datetmp from 'data/date.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM datetmp WHERE a <  '2001-02-13';
+ count 
+-------
+   230
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a <= '2001-02-13';
+ count 
+-------
+   231
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a  = '2001-02-13';
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a >= '2001-02-13';
+ count 
+-------
+   314
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a >  '2001-02-13';
+ count 
+-------
+   313
+(1 row)
+
+SELECT a, a <-> '2001-02-13' FROM datetmp ORDER BY a <-> '2001-02-13' LIMIT 3;
+     a      | ?column? 
+------------+----------
+ 02-13-2001 |        0
+ 02-11-2001 |        2
+ 03-24-2001 |       39
+(3 rows)
+
+CREATE INDEX dateidx ON datetmp USING gist ( a );
+SET enable_seqscan=off;
+SELECT count(*) FROM datetmp WHERE a <  '2001-02-13'::date;
+ count 
+-------
+   230
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a <= '2001-02-13'::date;
+ count 
+-------
+   231
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a  = '2001-02-13'::date;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a >= '2001-02-13'::date;
+ count 
+-------
+   314
+(1 row)
+
+SELECT count(*) FROM datetmp WHERE a >  '2001-02-13'::date;
+ count 
+-------
+   313
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT a, a <-> '2001-02-13' FROM datetmp ORDER BY a <-> '2001-02-13' LIMIT 3;
+                   QUERY PLAN                   
+------------------------------------------------
+ Limit
+   ->  Index Only Scan using dateidx on datetmp
+         Order By: (a <-> '02-13-2001'::date)
+(3 rows)
+
+SELECT a, a <-> '2001-02-13' FROM datetmp ORDER BY a <-> '2001-02-13' LIMIT 3;
+     a      | ?column? 
+------------+----------
+ 02-13-2001 |        0
+ 02-11-2001 |        2
+ 03-24-2001 |       39
+(3 rows)
+

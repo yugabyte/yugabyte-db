@@ -1,0 +1,124 @@
+
+# Copyright 2019 YugabyteDB, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+credential_vars:
+- AWS_ACCESS_KEY_ID
+- AWS_SECRET_ACCESS_KEY
+region_cidr_format: '{}.0.0/16'
+regions:
+  af-south-1:
+    arm_image: ami-09834fbd2dc666920
+    cidr_prefix: '10.108'
+    image: ami-036743371b5e41c9c
+  ap-east-1:
+    arm_image: ami-027cdced32a35c527
+    cidr_prefix: '10.110'
+    image: ami-075bbc8b771e8108d
+  ap-northeast-1:
+    arm_image: ami-0b3b629dbd9cf1100
+    cidr_prefix: '172.154'
+    image: ami-0d9da98839203a9d1
+  ap-northeast-2:
+    arm_image: ami-0f1a6209375ffd93a
+    cidr_prefix: '172.155'
+    image: ami-0f91c601f23c45b4f
+  ap-northeast-3:
+    arm_image: ami-0961e02359873defc
+    cidr_prefix: '10.107'
+    image: ami-0bcf63727763a2ed9
+  ap-south-1:
+    arm_image: ami-0b7cc54067cd3e91a
+    cidr_prefix: '10.105'
+    image: ami-0d068a70490a20c1c
+  ap-south-2:
+    arm_image: ami-047a89c5aee4cebc0
+    cidr_prefix: '10.116'
+    image: ami-0f9e00589602c21ba
+  ap-southeast-1:
+    arm_image: ami-06d86da0f1b640515
+    cidr_prefix: '172.156'
+    image: ami-0f9bb76db27240e62
+  ap-southeast-2:
+    arm_image: ami-0f8ba0bbd90cb1d3b
+    cidr_prefix: '172.157'
+    image: ami-09b2b8c2f2f4a70f4
+  ap-southeast-3:
+    arm_image: ami-066bb66e716815bdf
+    cidr_prefix: '10.113'
+    image: ami-0aa833e72a2c881cb
+  ca-central-1:
+    arm_image: ami-07f33d54e5e973ae0
+    cidr_prefix: '10.104'
+    image: ami-0edb4085b6dabf43d
+  eu-central-1:
+    arm_image: ami-0586654b55673cd0f
+    cidr_prefix: '172.158'
+    image: ami-08bd4cbd965e93710
+  eu-north-1:
+    arm_image: ami-06034f3f28c27131b
+    cidr_prefix: '10.112'
+    image: ami-0dd5f119e9d1a4f09
+  eu-south-1:
+    arm_image: ami-0b022ea5b0565ede0
+    cidr_prefix: '10.111'
+    image: ami-07559a57c71ba882a
+  eu-west-1:
+    arm_image: ami-04543874bcefc5140
+    cidr_prefix: '172.159'
+    image: ami-0fc3222eb8007aa25
+  eu-west-2:
+    arm_image: ami-00390d6906b6264fc
+    cidr_prefix: '10.102'
+    image: ami-07553454fd840b3b6
+  eu-west-3:
+    arm_image: ami-0fdfd0f893e066eee
+    cidr_prefix: '10.103'
+    image: ami-0d5621f4988b09a08
+  me-south-1:
+    arm_image: ami-0c90500bdcb1624cc
+    cidr_prefix: '10.109'
+    image: ami-0b6d8cf2511047705
+  sa-east-1:
+    arm_image: ami-02ec63f5718863cf0
+    cidr_prefix: '10.100'
+    image: ami-068f5dd0cf9d3b37f
+  us-east-1:
+    arm_image: ami-03f349361fe97c020
+    cidr_prefix: '172.152'
+    image: ami-04588d67f856d6aad
+  us-east-2:
+    arm_image: ami-03da06dc6e3abc333
+    cidr_prefix: '10.101'
+    image: ami-0481085d153c9a850
+  mx-central-1:
+    arm_image: ami-0e71391098daf4a69
+    cidr_prefix: '172.31'
+    image: ami-01d24238cc4e53ade
+  us-gov-east-1:
+    cidr_prefix: '10.114'
+    image: ami-00c6b007ba906a530
+  us-gov-west-1:
+    cidr_prefix: '10.115'
+    image: ami-08b470dba6016d395
+  us-west-1:
+    arm_image: ami-01b7c45c7d2ab8874
+    cidr_prefix: '172.150'
+    image: ami-00b3c9e5ff5096b93
+  us-west-2:
+    arm_image: ami-0feb5348a9974d9a4
+    cidr_prefix: '172.151'
+    image: ami-00ce8e80b02149455
+sg_rules:
+- from_port: 22
+  ip_protocol: tcp
+  to_port: 22
+- from_port: 54422
+  ip_protocol: tcp
+  to_port: 54422
+zone_cidr_format: '{}.{}.0/20'

@@ -1,0 +1,266 @@
+<!--
+doc/src/sgml/ref/lock.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-lock">
+ <indexterm zone="sql-lock">
+  <primary>LOCK</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>LOCK</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>LOCK</refname>
+  <refpurpose>lock a table</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+LOCK [ TABLE ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ * ] [, ...] [ IN <replaceable class="parameter">lockmode</replaceable> MODE ] [ NOWAIT ]
+
+<phrase>where <replaceable class="parameter">lockmode</replaceable> is one of:</phrase>
+
+    ACCESS SHARE | ROW SHARE | ROW EXCLUSIVE | SHARE UPDATE EXCLUSIVE
+    | SHARE | SHARE ROW EXCLUSIVE | EXCLUSIVE | ACCESS EXCLUSIVE
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>LOCK TABLE</command> obtains a table-level lock, waiting
+   if necessary for any conflicting locks to be released.  If
+   <literal>NOWAIT</literal> is specified, <command>LOCK
+   TABLE</command> does not wait to acquire the desired lock: if it
+   cannot be acquired immediately, the command is aborted and an
+   error is emitted.  Once obtained, the lock is held for the
+   remainder of the current transaction.  (There is no <command>UNLOCK
+   TABLE</command> command; locks are always released at transaction
+   end.)
+  </para>
+
+  <para>
+   When a view is locked, all relations appearing in the view definition
+   query are also locked recursively with the same lock mode.
+  </para>
+
+  <para>
+   When acquiring locks automatically for commands that reference
+   tables, <productname>PostgreSQL</productname> always uses the least
+   restrictive lock mode possible. <command>LOCK TABLE</command>
+   provides for cases when you might need more restrictive locking.
+   For example, suppose an application runs a transaction at the
+   <literal>READ COMMITTED</literal> isolation level and needs to ensure that
+   data in a table remains stable for the duration of the transaction.
+   To achieve this you could obtain <literal>SHARE</literal> lock mode over the
+   table before querying. This will prevent concurrent data changes
+   and ensure subsequent reads of the table see a stable view of
+   committed data, because <literal>SHARE</literal> lock mode conflicts with
+   the <literal>ROW EXCLUSIVE</literal> lock acquired by writers, and your
+   <command>LOCK TABLE <replaceable
+   class="parameter">name</replaceable> IN SHARE MODE</command>
+   statement will wait until any concurrent holders of <literal>ROW
+   EXCLUSIVE</literal> mode locks commit or roll back. Thus, once you
+   obtain the lock, there are no uncommitted writes outstanding;
+   furthermore none can begin until you release the lock.
+  </para>
+
+  <para>
+   To achieve a similar effect when running a transaction at the
+   <literal>REPEATABLE READ</literal> or <literal>SERIALIZABLE</literal>
+   isolation level, you have to execute the <command>LOCK TABLE</command> statement
+   before executing any <command>SELECT</command> or data modification statement.
+   A <literal>REPEATABLE READ</literal> or <literal>SERIALIZABLE</literal> transaction's
+   view of data will be frozen when its first
+   <command>SELECT</command> or data modification statement begins.  A <command>LOCK
+   TABLE</command> later in the transaction will still prevent concurrent writes
+   &mdash; but it won't ensure that what the transaction reads corresponds to
+   the latest committed values.
+  </para>
+
+  <para>
+   If a transaction of this sort is going to change the data in the
+   table, then it should use <literal>SHARE ROW EXCLUSIVE</literal> lock mode
+   instead of <literal>SHARE</literal> mode.  This ensures that only one
+   transaction of this type runs at a time.  Without this, a deadlock
+   is possible: two transactions might both acquire <literal>SHARE</literal>
+   mode, and then be unable to also acquire <literal>ROW EXCLUSIVE</literal>
+   mode to actually perform their updates.  (Note that a transaction's
+   own locks never conflict, so a transaction can acquire <literal>ROW
+   EXCLUSIVE</literal> mode when it holds <literal>SHARE</literal> mode &mdash; but not
+   if anyone else holds <literal>SHARE</literal> mode.)  To avoid deadlocks,
+   make sure all transactions acquire locks on the same objects in the
+   same order, and if multiple lock modes are involved for a single
+   object, then transactions should always acquire the most
+   restrictive mode first.
+  </para>
+
+  <para>
+   More information about the lock modes and locking strategies can be
+   found in <xref linkend="explicit-locking"/>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing table to
+      lock. If <literal>ONLY</literal> is specified before the table name, only that
+      table is locked. If <literal>ONLY</literal> is not specified, the table and all
+      its descendant tables (if any) are locked.  Optionally, <literal>*</literal>
+      can be specified after the table name to explicitly indicate that
+      descendant tables are included.
+     </para>
+
+     <para>
+      The command <literal>LOCK TABLE a, b;</literal> is equivalent to
+      <literal>LOCK TABLE a; LOCK TABLE b;</literal>. The tables are locked
+      one-by-one in the order specified in the <command>LOCK
+      TABLE</command> command.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">lockmode</replaceable></term>
+    <listitem>
+     <para>
+      The lock mode specifies which locks this lock conflicts with.
+      Lock modes are described in <xref linkend="explicit-locking"/>.
+     </para>
+
+     <para>
+      If no lock mode is specified, then <literal>ACCESS
+      EXCLUSIVE</literal>, the most restrictive mode, is used.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NOWAIT</literal></term>
+    <listitem>
+     <para>
+      Specifies that <command>LOCK TABLE</command> should not wait for
+      any conflicting locks to be released: if the specified lock(s)
+      cannot be acquired immediately without waiting, the transaction
+      is aborted.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    <literal>LOCK TABLE ... IN ACCESS SHARE MODE</literal> requires <literal>SELECT</literal>
+    privileges on the target table.  <literal>LOCK TABLE ... IN ROW EXCLUSIVE
+    MODE</literal> requires <literal>INSERT</literal>, <literal>UPDATE</literal>, <literal>DELETE</literal>,
+    or <literal>TRUNCATE</literal> privileges on the target table. All other forms of
+    <command>LOCK</command> require table-level <literal>UPDATE</literal>, <literal>DELETE</literal>,
+    or <literal>TRUNCATE</literal> privileges.
+   </para>
+
+   <para>
+    The user performing the lock on the view must have the corresponding
+    privilege on the view.  In addition, by default, the view's owner must
+    have the relevant privileges on the underlying base relations, whereas the
+    user performing the lock does not need any permissions on the underlying
+    base relations.  However, if the view has
+    <literal>security_invoker</literal> set to <literal>true</literal>
+    (see <link linkend="sql-createview"><command>CREATE VIEW</command></link>),
+    the user performing the lock, rather than the view owner, must have the
+    relevant privileges on the underlying base relations.
+   </para>
+
+   <para>
+    <command>LOCK TABLE</command> is useless outside a transaction block: the lock
+    would remain held only to the completion of the statement.  Therefore
+    <productname>PostgreSQL</productname> reports an error if <command>LOCK</command>
+    is used outside a transaction block.
+    Use
+    <link linkend="sql-begin"><command>BEGIN</command></link> and
+    <link linkend="sql-commit"><command>COMMIT</command></link>
+    (or <link linkend="sql-rollback"><command>ROLLBACK</command></link>)
+    to define a transaction block.
+   </para>
+
+  <para>
+   <command>LOCK TABLE</command> only deals with table-level locks, and so
+   the mode names involving <literal>ROW</literal> are all misnomers.  These
+   mode names should generally be read as indicating the intention of
+   the user to acquire row-level locks within the locked table.  Also,
+   <literal>ROW EXCLUSIVE</literal> mode is a shareable table lock.  Keep in
+   mind that all the lock modes have identical semantics so far as
+   <command>LOCK TABLE</command> is concerned, differing only in the rules
+   about which modes conflict with which. For information on how to
+   acquire an actual row-level lock, see <xref linkend="locking-rows"/>
+   and <xref linkend="sql-for-update-share"/>
+   in the <xref linkend="sql-select"/> documentation.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Obtain a <literal>SHARE</literal> lock on a primary key table when going to perform
+   inserts into a foreign key table:
+
+<programlisting>
+BEGIN WORK;
+LOCK TABLE films IN SHARE MODE;
+SELECT id FROM films
+    WHERE name = 'Star Wars: Episode I - The Phantom Menace';
+-- Do ROLLBACK if record was not returned
+INSERT INTO films_user_comments VALUES
+    (_id_, 'GREAT! I was waiting for it for so long!');
+COMMIT WORK;
+</programlisting>
+  </para>
+
+  <para>
+   Take a <literal>SHARE ROW EXCLUSIVE</literal> lock on a primary key table when going to perform
+   a delete operation:
+
+<programlisting>
+BEGIN WORK;
+LOCK TABLE films IN SHARE ROW EXCLUSIVE MODE;
+DELETE FROM films_user_comments WHERE id IN
+    (SELECT id FROM films WHERE rating &lt; 5);
+DELETE FROM films WHERE rating &lt; 5;
+COMMIT WORK;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>LOCK TABLE</command> in the SQL standard,
+   which instead uses <command>SET TRANSACTION</command> to specify
+   concurrency levels on transactions.  <productname>PostgreSQL</productname> supports that too;
+   see <xref linkend="sql-set-transaction"/> for details.
+  </para>
+
+  <para>
+   Except for <literal>ACCESS SHARE</literal>, <literal>ACCESS EXCLUSIVE</literal>,
+   and <literal>SHARE UPDATE EXCLUSIVE</literal> lock modes, the
+   <productname>PostgreSQL</productname> lock modes and the
+   <command>LOCK TABLE</command> syntax are compatible with those
+   present in <productname>Oracle</productname>.
+  </para>
+ </refsect1>
+</refentry>

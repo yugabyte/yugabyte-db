@@ -1,0 +1,11 @@
+* @microsoft/documentdb-contributors
+
+/.pipelines/ @safern @visridha @shuaitian-git @lichoil
+/.github/workflows/ @safern @visridha @shuaitian-git @lichoil
+
+*.csv @microsoft/documentdb-engine-reviewers
+*.sql @microsoft/documentdb-engine-reviewers
+Make* @microsoft/documentdb-engine-reviewers
+/internal/ @microsoft/documentdb-engine-reviewers
+/pg_documentdb/ @microsoft/documentdb-engine-reviewers
+/pg_documentdb_core/ @microsoft/documentdb-engine-reviewers

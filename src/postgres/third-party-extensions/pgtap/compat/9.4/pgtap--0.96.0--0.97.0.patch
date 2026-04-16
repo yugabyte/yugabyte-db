@@ -1,0 +1,81 @@
+--- sql/pgtap--0.96.0--0.97.0.sql
++++ sql/pgtap--0.96.0--0.97.0.sql
+@@ -298,78 +298,3 @@
+         'Extension ' || quote_ident($1) || ' should not exist' );
+ $$ LANGUAGE SQL;
+ 
+--- https://github.com/theory/pgtap/pull/119
+-
+--- throws_ok ( sql, errcode, errmsg, description )
+-CREATE OR REPLACE FUNCTION throws_ok ( TEXT, CHAR(5), TEXT, TEXT )
+-RETURNS TEXT AS $$
+-DECLARE
+-    query     TEXT := _query($1);
+-    errcode   ALIAS FOR $2;
+-    errmsg    ALIAS FOR $3;
+-    desctext  ALIAS FOR $4;
+-    descr     TEXT;
+-BEGIN
+-    descr := COALESCE(
+-          desctext,
+-          'threw ' || errcode || ': ' || errmsg,
+-          'threw ' || errcode,
+-          'threw ' || errmsg,
+-          'threw an exception'
+-    );
+-    EXECUTE query;
+-    RETURN ok( FALSE, descr ) || E'\n' || diag(
+-           '      caught: no exception' ||
+-        E'\n      wanted: ' || COALESCE( errcode, 'an exception' )
+-    );
+-EXCEPTION WHEN OTHERS OR ASSERT_FAILURE THEN
+-    IF (errcode IS NULL OR SQLSTATE = errcode)
+-        AND ( errmsg IS NULL OR SQLERRM = errmsg)
+-    THEN
+-        -- The expected errcode and/or message was thrown.
+-        RETURN ok( TRUE, descr );
+-    ELSE
+-        -- This was not the expected errcode or errmsg.
+-        RETURN ok( FALSE, descr ) || E'\n' || diag(
+-               '      caught: ' || SQLSTATE || ': ' || SQLERRM ||
+-            E'\n      wanted: ' || COALESCE( errcode, 'an exception' ) ||
+-            COALESCE( ': ' || errmsg, '')
+-        );
+-    END IF;
+-END;
+-$$ LANGUAGE plpgsql;
+-
+--- lives_ok( sql, description )
+-CREATE OR REPLACE FUNCTION lives_ok ( TEXT, TEXT )
+-RETURNS TEXT AS $$
+-DECLARE
+-    code  TEXT := _query($1);
+-    descr ALIAS FOR $2;
+-    detail  text;
+-    hint    text;
+-    context text;
+-    schname text;
+-    tabname text;
+-    colname text;
+-    chkname text;
+-    typname text;
+-BEGIN
+-    EXECUTE code;
+-    RETURN ok( TRUE, descr );
+-EXCEPTION WHEN OTHERS OR ASSERT_FAILURE THEN
+-    -- There should have been no exception.
+-    GET STACKED DIAGNOSTICS
+-        detail  = PG_EXCEPTION_DETAIL,
+-        hint    = PG_EXCEPTION_HINT,
+-        context = PG_EXCEPTION_CONTEXT,
+-        schname = SCHEMA_NAME,
+-        tabname = TABLE_NAME,
+-        colname = COLUMN_NAME,
+-        chkname = CONSTRAINT_NAME,
+-        typname = PG_DATATYPE_NAME;
+-    RETURN ok( FALSE, descr ) || E'\n' || diag(
+-           '    died: ' || _error_diag(SQLSTATE, SQLERRM, detail, hint, context, schname, tabname, colname, chkname, typname)
+-    );
+-END;
+-$$ LANGUAGE plpgsql;
+-

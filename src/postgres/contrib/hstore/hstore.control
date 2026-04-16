@@ -1,0 +1,6 @@
+# hstore extension
+comment = 'data type for storing sets of (key, value) pairs'
+default_version = '1.8-yb-1.0'
+module_pathname = '$libdir/hstore'
+relocatable = true
+trusted = true

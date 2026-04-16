@@ -1,0 +1,5 @@
+# orafce extension
+comment = 'Functions and operators that emulate a subset of functions and packages from the Oracle RDBMS'
+default_version = '4.9'
+module_pathname = '$libdir/orafce'
+relocatable = false

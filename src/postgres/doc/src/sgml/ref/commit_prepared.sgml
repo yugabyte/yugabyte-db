@@ -1,0 +1,107 @@
+<!--
+doc/src/sgml/ref/commit_prepared.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-commit-prepared">
+ <indexterm zone="sql-commit-prepared">
+  <primary>COMMIT PREPARED</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>COMMIT PREPARED</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>COMMIT PREPARED</refname>
+  <refpurpose>commit a transaction that was earlier prepared for two-phase commit</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+COMMIT PREPARED <replaceable class="parameter">transaction_id</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>COMMIT PREPARED</command> commits a transaction that is in
+   prepared state.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">transaction_id</replaceable></term>
+    <listitem>
+     <para>
+      The transaction identifier of the transaction that is to be
+      committed.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   To commit a prepared transaction, you must be either the same user that
+   executed the transaction originally, or a superuser.  But you do not
+   have to be in the same session that executed the transaction.
+  </para>
+
+  <para>
+   This command cannot be executed inside a transaction block. The prepared
+   transaction is committed immediately.
+  </para>
+
+  <para>
+   All currently available prepared transactions are listed in the
+   <link linkend="view-pg-prepared-xacts"><structname>pg_prepared_xacts</structname></link>
+   system view.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-commit-prepared-examples">
+  <title>Examples</title>
+  <para>
+   Commit the transaction identified by the transaction
+   identifier <literal>foobar</literal>:
+
+<programlisting>
+COMMIT PREPARED 'foobar';
+</programlisting></para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>COMMIT PREPARED</command> is a
+   <productname>PostgreSQL</productname> extension.  It is intended for use by
+   external transaction management systems, some of which are covered by
+   standards (such as X/Open XA), but the SQL side of those systems is not
+   standardized.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-prepare-transaction"/></member>
+   <member><xref linkend="sql-rollback-prepared"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

@@ -1,0 +1,288 @@
+<!--
+doc/src/sgml/ref/create_domain.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createdomain">
+ <indexterm zone="sql-createdomain">
+  <primary>CREATE DOMAIN</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE DOMAIN</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE DOMAIN</refname>
+  <refpurpose>define a new domain</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE DOMAIN <replaceable class="parameter">name</replaceable> [ AS ] <replaceable class="parameter">data_type</replaceable>
+    [ COLLATE <replaceable>collation</replaceable> ]
+    [ DEFAULT <replaceable>expression</replaceable> ]
+    [ <replaceable class="parameter">constraint</replaceable> [ ... ] ]
+
+<phrase>where <replaceable class="parameter">constraint</replaceable> is:</phrase>
+
+[ CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> ]
+{ NOT NULL | NULL | CHECK (<replaceable class="parameter">expression</replaceable>) }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CREATE DOMAIN</command> creates a new domain.  A domain is
+   essentially a data type with optional constraints (restrictions on
+   the allowed set of values).
+   The user who defines a domain becomes its owner.
+  </para>
+
+  <para>
+   If a schema name is given (for example, <literal>CREATE DOMAIN
+   myschema.mydomain ...</literal>) then the domain is created in the
+   specified schema.  Otherwise it is created in the current schema.
+   The domain name must be unique among the types and domains existing
+   in its schema.
+  </para>
+
+  <para>
+   Domains are useful for abstracting common constraints on fields into
+   a single location for maintenance.  For example, several tables might
+   contain email address columns, all requiring the same CHECK constraint
+   to verify the address syntax.
+   Define a domain rather than setting up each table's constraint
+   individually.
+  </para>
+
+  <para>
+   To be able to create a domain, you must have <literal>USAGE</literal>
+   privilege on the underlying type.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+    <variablelist>
+     <varlistentry>
+      <term><replaceable class="parameter">name</replaceable></term>
+      <listitem>
+       <para>
+        The name (optionally schema-qualified) of a domain to be created.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">data_type</replaceable></term>
+      <listitem>
+       <para>
+        The underlying data type of the domain. This can include array
+        specifiers.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable>collation</replaceable></term>
+      <listitem>
+       <para>
+        An optional collation for the domain.  If no collation is
+        specified, the domain has the same collation behavior as its
+        underlying data type.
+        The underlying type must be collatable if <literal>COLLATE</literal>
+        is specified.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>DEFAULT <replaceable>expression</replaceable></literal></term>
+
+      <listitem>
+       <para>
+        The <literal>DEFAULT</literal> clause specifies a default value for
+        columns of the domain data type.  The value is any
+        variable-free expression (but subqueries are not allowed).
+        The data type of the default expression must match the data
+        type of the domain.  If no default value is specified, then
+        the default value is the null value.
+       </para>
+
+       <para>
+        The default expression will be used in any insert operation
+        that does not specify a value for the column.  If a default
+        value is defined for a particular column, it overrides any
+        default associated with the domain.  In turn, the domain
+        default overrides any default value associated with the
+        underlying data type.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>CONSTRAINT <replaceable class="parameter">constraint_name</replaceable></literal></term>
+      <listitem>
+       <para>
+        An optional name for a constraint.  If not specified,
+        the system generates a name.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>NOT NULL</literal></term>
+      <listitem>
+       <para>
+        Values of this domain are prevented from being null
+        (but see notes below).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>NULL</literal></term>
+      <listitem>
+       <para>
+        Values of this domain are allowed to be null.  This is the default.
+       </para>
+
+       <para>
+        This clause is only intended for compatibility with
+        nonstandard SQL databases.  Its use is discouraged in new
+        applications.
+       </para>
+      </listitem>
+     </varlistentry>
+
+   <varlistentry>
+    <term><literal>CHECK (<replaceable class="parameter">expression</replaceable>)</literal></term>
+    <listitem>
+     <para><literal>CHECK</literal> clauses specify integrity constraints or tests
+      which values of the domain must satisfy.
+      Each constraint must be an expression
+      producing a Boolean result.  It should use the key word <literal>VALUE</literal>
+      to refer to the value being tested.  Expressions evaluating
+      to TRUE or UNKNOWN succeed.  If the expression produces a FALSE result,
+      an error is reported and the value is not allowed to be converted
+      to the domain type.
+     </para>
+
+     <para>
+      Currently, <literal>CHECK</literal> expressions cannot contain
+      subqueries nor refer to variables other than <literal>VALUE</literal>.
+     </para>
+
+     <para>
+      When a domain has multiple <literal>CHECK</literal> constraints,
+      they will be tested in alphabetical order by name.
+      (<productname>PostgreSQL</productname> versions before 9.5 did not honor any
+      particular firing order for <literal>CHECK</literal> constraints.)
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Domain constraints, particularly <literal>NOT NULL</literal>, are checked when
+   converting a value to the domain type.  It is possible for a column that
+   is nominally of the domain type to read as null despite there being such
+   a constraint.  For example, this can happen in an outer-join query, if
+   the domain column is on the nullable side of the outer join.  A more
+   subtle example is
+<programlisting>
+INSERT INTO tab (domcol) VALUES ((SELECT domcol FROM tab WHERE false));
+</programlisting>
+   The empty scalar sub-SELECT will produce a null value that is considered
+   to be of the domain type, so no further constraint checking is applied
+   to it, and the insertion will succeed.
+  </para>
+
+  <para>
+   It is very difficult to avoid such problems, because of SQL's general
+   assumption that a null value is a valid value of every data type.  Best practice
+   therefore is to design a domain's constraints so that a null value is allowed,
+   and then to apply column <literal>NOT NULL</literal> constraints to columns of
+   the domain type as needed, rather than directly to the domain type.
+  </para>
+
+  <para>
+   <productname>PostgreSQL</productname> assumes that
+   <literal>CHECK</literal> constraints' conditions are immutable, that is,
+   they will always give the same result for the same input value.  This
+   assumption is what justifies examining <literal>CHECK</literal>
+   constraints only when a value is first converted to be of a domain type,
+   and not at other times.  (This is essentially the same as the treatment
+   of table <literal>CHECK</literal> constraints, as described in
+   <xref linkend="ddl-constraints-check-constraints"/>.)
+  </para>
+
+  <para>
+   An example of a common way to break this assumption is to reference a
+   user-defined function in a <literal>CHECK</literal> expression, and then
+   change the behavior of that
+   function.  <productname>PostgreSQL</productname> does not disallow that,
+   but it will not notice if there are stored values of the domain type that
+   now violate the <literal>CHECK</literal> constraint. That would cause a
+   subsequent database dump and restore to fail.  The recommended way to
+   handle such a change is to drop the constraint (using <command>ALTER
+   DOMAIN</command>), adjust the function definition, and re-add the
+   constraint, thereby rechecking it against stored data.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   This example creates the <type>us_postal_code</type> data type and
+   then uses the type in a table definition.  A regular expression test
+   is used to verify that the value looks like a valid US postal code:
+
+<programlisting>
+CREATE DOMAIN us_postal_code AS TEXT
+CHECK(
+   VALUE ~ '^\d{5}$'
+OR VALUE ~ '^\d{5}-\d{4}$'
+);
+
+CREATE TABLE us_snail_addy (
+  address_id SERIAL PRIMARY KEY,
+  street1 TEXT NOT NULL,
+  street2 TEXT,
+  street3 TEXT,
+  city TEXT NOT NULL,
+  postal us_postal_code NOT NULL
+);
+</programlisting></para>
+ </refsect1>
+
+ <refsect1 id="sql-createdomain-compatibility">
+  <title>Compatibility</title>
+
+  <para>
+   The command <command>CREATE DOMAIN</command> conforms to the SQL
+   standard.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createdomain-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alterdomain"/></member>
+   <member><xref linkend="sql-dropdomain"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

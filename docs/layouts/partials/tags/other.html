@@ -1,0 +1,18 @@
+{{- $tags := replace .Params.tags.other " " "," -}}
+{{- $tags := split (replaceRE ",+" "," $tags) "," -}}
+{{- /* map of tag to links + display */ -}}
+{{- $linkmap := dict
+  "ycql" (slice "/preview/api/ycql" "YCQL")
+  "ysql" (slice "/preview/api/ysql" "YSQL")
+-}}
+{{- $classmap := dict
+  "ycql" "ycql"
+  "ysql" "ysql"
+-}}
+
+{{- range $k, $v := $tags -}}
+  {{if $v }}
+    {{- $info := index $linkmap $v -}}
+    <a class="tag other {{index $classmap $v}}" href="{{ index $info 0 }}">{{ index $info 1 }}</a>
+  {{- end -}}
+{{- end -}}

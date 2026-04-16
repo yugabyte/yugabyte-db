@@ -1,0 +1,23 @@
+{
+  "uuid": "f33e3c9b-75ab-4c30-80ad-cba8564dfef9",
+  "customerUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea39",
+  "name": "Replication Lag Custom",
+  "description": "Best alert ever",
+  "targetType": "UNIVERSE",
+  "target": {
+    "all": true
+  },
+  "thresholds": {
+    "SEVERE": {
+      "condition": "GREATER_THAN",
+      "threshold": 200000.0
+    }
+  },
+  "thresholdUnit": "MILLISECOND",
+  "createTime": "2021-06-30T15:08:19Z",
+  "template": "REPLICATION_LAG",
+  "durationSec": 15,
+  "active": false,
+  "destinationUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea32",
+  "defaultDestination": false
+}

@@ -1,0 +1,363 @@
+<!--
+doc/src/sgml/ref/alter_sequence.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-altersequence">
+ <indexterm zone="sql-altersequence">
+  <primary>ALTER SEQUENCE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER SEQUENCE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER SEQUENCE</refname>
+  <refpurpose>
+   change the definition of a sequence generator
+  </refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable>
+    [ AS <replaceable class="parameter">data_type</replaceable> ]
+    [ INCREMENT [ BY ] <replaceable class="parameter">increment</replaceable> ]
+    [ MINVALUE <replaceable class="parameter">minvalue</replaceable> | NO MINVALUE ] [ MAXVALUE <replaceable class="parameter">maxvalue</replaceable> | NO MAXVALUE ]
+    [ START [ WITH ] <replaceable class="parameter">start</replaceable> ]
+    [ RESTART [ [ WITH ] <replaceable class="parameter">restart</replaceable> ] ]
+    [ CACHE <replaceable class="parameter">cache</replaceable> ] [ [ NO ] CYCLE ]
+    [ OWNED BY { <replaceable class="parameter">table_name</replaceable>.<replaceable class="parameter">column_name</replaceable> | NONE } ]
+ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> SET { LOGGED | UNLOGGED }
+ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable class="parameter">new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> RENAME TO <replaceable class="parameter">new_name</replaceable>
+ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> SET SCHEMA <replaceable class="parameter">new_schema</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER SEQUENCE</command> changes the parameters of an existing
+   sequence generator.  Any parameters not specifically set in the
+   <command>ALTER SEQUENCE</command> command retain their prior settings.
+  </para>
+
+  <para>
+   You must own the sequence to use <command>ALTER SEQUENCE</command>.
+   To change a sequence's schema, you must also have <literal>CREATE</literal>
+   privilege on the new schema.
+   To alter the owner, you must also be a direct or indirect member of the new
+   owning role, and that role must have <literal>CREATE</literal> privilege on
+   the sequence's schema.  (These restrictions enforce that altering the owner
+   doesn't do anything you couldn't do by dropping and recreating the sequence.
+   However, a superuser can alter ownership of any sequence anyway.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+   <para>
+    <variablelist>
+     <varlistentry>
+      <term><replaceable class="parameter">name</replaceable></term>
+      <listitem>
+       <para>
+        The name (optionally schema-qualified) of a sequence to be altered.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>IF EXISTS</literal></term>
+      <listitem>
+       <para>
+        Do not throw an error if the sequence does not exist. A notice is issued
+        in this case.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">data_type</replaceable></term>
+      <listitem>
+       <para>
+        The optional
+        clause <literal>AS <replaceable class="parameter">data_type</replaceable></literal>
+        changes the data type of the sequence.  Valid types are
+        <literal>smallint</literal>, <literal>integer</literal>,
+        and <literal>bigint</literal>.
+       </para>
+
+       <para>
+        Changing the data type automatically changes the minimum and maximum
+        values of the sequence if and only if the previous minimum and maximum
+        values were the minimum or maximum value of the old data type (in
+        other words, if the sequence had been created using <literal>NO
+        MINVALUE</literal> or <literal>NO MAXVALUE</literal>, implicitly or
+        explicitly).  Otherwise, the minimum and maximum values are preserved,
+        unless new values are given as part of the same command.  If the
+        minimum and maximum values do not fit into the new data type, an error
+        will be generated.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">increment</replaceable></term>
+      <listitem>
+       <para>
+        The clause <literal>INCREMENT BY <replaceable
+        class="parameter">increment</replaceable></literal> is
+        optional. A positive value will make an ascending sequence, a
+        negative one a descending sequence.  If unspecified, the old
+        increment value will be maintained.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">minvalue</replaceable></term>
+      <term><literal>NO MINVALUE</literal></term>
+      <listitem>
+       <para>
+        The optional clause <literal>MINVALUE <replaceable
+        class="parameter">minvalue</replaceable></literal> determines
+        the minimum value a sequence can generate. If <literal>NO
+        MINVALUE</literal> is specified, the defaults of 1 and
+        the minimum value of the data type for ascending and descending sequences,
+        respectively, will be used.  If neither option is specified,
+        the current minimum value will be maintained.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">maxvalue</replaceable></term>
+      <term><literal>NO MAXVALUE</literal></term>
+      <listitem>
+       <para>
+        The optional clause <literal>MAXVALUE <replaceable
+        class="parameter">maxvalue</replaceable></literal> determines
+        the maximum value for the sequence. If <literal>NO
+        MAXVALUE</literal> is specified, the defaults of
+        the maximum value of the data type and -1 for ascending and descending
+        sequences, respectively, will be used.  If neither option is
+        specified, the current maximum value will be maintained.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">start</replaceable></term>
+      <listitem>
+       <para>
+        The optional clause <literal>START WITH <replaceable
+        class="parameter">start</replaceable></literal> changes the
+        recorded start value of the sequence.  This has no effect on the
+        <emphasis>current</emphasis> sequence value; it simply sets the value
+        that future <command>ALTER SEQUENCE RESTART</command> commands will use.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">restart</replaceable></term>
+      <listitem>
+       <para>
+        The optional clause <literal>RESTART [ WITH <replaceable
+        class="parameter">restart</replaceable> ]</literal> changes the
+        current value of the sequence.  This is similar to calling the
+        <function>setval</function> function with <literal>is_called</literal> =
+        <literal>false</literal>: the specified value will be returned by the
+        <emphasis>next</emphasis> call of <function>nextval</function>.
+        Writing <literal>RESTART</literal> with no <replaceable
+        class="parameter">restart</replaceable> value is equivalent to supplying
+        the start value that was recorded by <command>CREATE SEQUENCE</command>
+        or last set by <command>ALTER SEQUENCE START WITH</command>.
+       </para>
+
+       <para>
+        In contrast to a <function>setval</function> call,
+        a <literal>RESTART</literal> operation on a sequence is transactional
+        and blocks concurrent transactions from obtaining numbers from the
+        same sequence. If that's not the desired mode of
+        operation, <function>setval</function> should be used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">cache</replaceable></term>
+      <listitem>
+       <para>
+        The clause <literal>CACHE <replaceable
+        class="parameter">cache</replaceable></literal> enables
+        sequence numbers to be preallocated and stored in memory for
+        faster access. The minimum value is 1 (only one value can be
+        generated at a time, i.e., no cache).  If unspecified, the old
+        cache value will be maintained.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>CYCLE</literal></term>
+      <listitem>
+       <para>
+        The optional <literal>CYCLE</literal> key word can be used to enable
+        the sequence to wrap around when the
+        <replaceable class="parameter">maxvalue</replaceable> or
+        <replaceable class="parameter">minvalue</replaceable> has been
+        reached by
+        an ascending or descending sequence respectively. If the limit is
+        reached, the next number generated will be the
+        <replaceable class="parameter">minvalue</replaceable> or
+        <replaceable class="parameter">maxvalue</replaceable>,
+        respectively.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>NO CYCLE</literal></term>
+      <listitem>
+       <para>
+        If the optional <literal>NO CYCLE</literal> key word is
+        specified, any calls to <function>nextval</function> after the
+        sequence has reached its maximum value will return an error.
+        If neither <literal>CYCLE</literal> or <literal>NO
+        CYCLE</literal> are specified, the old cycle behavior will be
+        maintained.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>SET { LOGGED | UNLOGGED }</literal></term>
+      <listitem>
+       <para>
+        This form changes the sequence from unlogged to logged or vice-versa
+        (see <xref linkend="sql-createsequence"/>).  It cannot be applied to a
+        temporary sequence.
+       </para>
+      </listitem>
+     </varlistentry>
+
+   <varlistentry>
+    <term><literal>OWNED BY</literal> <replaceable class="parameter">table_name</replaceable>.<replaceable class="parameter">column_name</replaceable></term>
+    <term><literal>OWNED BY NONE</literal></term>
+    <listitem>
+     <para>
+      The <literal>OWNED BY</literal> option causes the sequence to be
+      associated with a specific table column, such that if that column
+      (or its whole table) is dropped, the sequence will be automatically
+      dropped as well.  If specified, this association replaces any
+      previously specified association for the sequence.  The specified
+      table must have the same owner and be in the same schema as the
+      sequence.
+      Specifying <literal>OWNED BY NONE</literal> removes any existing
+      association, making the sequence <quote>free-standing</quote>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The user name of the new owner of the sequence.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name for the sequence.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_schema</replaceable></term>
+    <listitem>
+     <para>
+      The new schema for the sequence.
+     </para>
+    </listitem>
+   </varlistentry>
+
+    </variablelist>
+   </para>
+  </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <command>ALTER SEQUENCE</command> will not immediately affect
+   <function>nextval</function> results in backends,
+   other than the current one, that have preallocated (cached) sequence
+   values. They will use up all cached values prior to noticing the changed
+   sequence generation parameters.  The current backend will be affected
+   immediately.
+  </para>
+
+  <para>
+   <command>ALTER SEQUENCE</command> does not affect the <function>currval</function>
+   status for the sequence.  (Before <productname>PostgreSQL</productname>
+   8.3, it sometimes did.)
+  </para>
+
+  <para>
+   <command>ALTER SEQUENCE</command> blocks
+   concurrent <function>nextval</function>, <function>currval</function>,
+   <function>lastval</function>, and <command>setval</command> calls.
+  </para>
+
+  <para>
+   For historical reasons, <command>ALTER TABLE</command> can be used with
+   sequences too; but the only variants of <command>ALTER TABLE</command>
+   that are allowed with sequences are equivalent to the forms shown above.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Restart a sequence called <literal>serial</literal>, at 105:
+<programlisting>
+ALTER SEQUENCE serial RESTART WITH 105;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER SEQUENCE</command> conforms to the <acronym>SQL</acronym>
+   standard, except for the <literal>AS</literal>, <literal>START WITH</literal>,
+   <literal>OWNED BY</literal>, <literal>OWNER TO</literal>, <literal>RENAME TO</literal>, and
+   <literal>SET SCHEMA</literal> clauses, which are
+   <productname>PostgreSQL</productname> extensions.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createsequence"/></member>
+   <member><xref linkend="sql-dropsequence"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

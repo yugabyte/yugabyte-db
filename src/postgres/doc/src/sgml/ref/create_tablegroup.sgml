@@ -1,0 +1,107 @@
+<!--
+doc/src/sgml/ref/create_tablegroup.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createtablegroup">
+  <indexterm zone="sql-createtablegroup">
+    <primary>CREATE TABLEGROUP</primary>
+  </indexterm>
+
+  <refmeta>
+    <refentrytitle>CREATE TABLEGROUP</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>SQL - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>CREATE TABLEGROUP</refname>
+    <refpurpose>define a new tablegroup</refpurpose>
+  </refnamediv>
+
+  <refsynopsisdiv>
+    <synopsis>
+      CREATE TABLEGROUP <replaceable class="parameter">tablegroup_name</replaceable>
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      <command>CREATE TABLEGROUP</command> registers a new cluster-wide
+      tablegroup.  The tablegroup name must be distinct from the name of any
+      existing tablegroup in the database cluster.
+    </para>
+
+    <para>
+      A tablegroup is a group of tables that will be colocated together on a
+      single colocation tablet.
+    </para>
+
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term><replaceable class="parameter">tablegroup_name</replaceable></term>
+        <listitem>
+          <para>
+            The name of a tablegroup to be created.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+  <refsect1>
+    <title>Notes</title>
+
+    <para>
+      Tablegroups cannot be mixed with colocated databases or with
+      <command>COLOCATED = true / false</command> as part of the
+      <command>CREATE TABLE</command> DDL, to avoid confusion between colocated
+      DB and tablegroups.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Create tablegroup<literal>tbl_grp</literal>:
+      <programlisting>
+        CREATE TABLEGROUP tbl_grp;
+      </programlisting>
+    </para>
+
+
+    <para>
+      Create tablegroup <literal>tbl_grp2</literal> with owner <literal>mary</literal>:
+      <programlisting>
+        CREATE TABLEGROUP tbl_grp2 OWNER mary;
+      </programlisting>
+    </para>
+
+  </refsect1>
+
+  <refsect1>
+    <title>Compatibility</title>
+
+    <para>
+      There is no <command>CREATE TABLEGROUP</command> statement in
+      the SQL standard.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="sql-altertablegroup"/></member>
+      <member><xref linkend="sql-droptablegroup"/></member>
+    </simplelist>
+  </refsect1>
+</refentry>

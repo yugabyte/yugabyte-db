@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+
+override_dh_pgxs_test:
+	ln -s \
+		$(PWD)/debian/postgresql-$(PG_MAJOR)-anonymizer/usr/share/postgresql/$(PG_MAJOR)/extension/anon \
+		/usr/share/postgresql/$(PG_MAJOR)/extension/anon
+	pg_buildext -o "shared_preload_libraries=anon" installcheck . . postgresql-%v-anonymizer
+
+%:
+	dh $@ --with pgxs_loop

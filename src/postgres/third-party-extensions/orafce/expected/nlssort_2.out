@@ -1,0 +1,9 @@
+-- Tests for nlssort
+-- Skip this test unless it's a Linux/glibc system with the "en_US.utf8" locale installed.
+SELECT getdatabaseencoding() <> 'UTF8' OR
+       NOT EXISTS (SELECT 1 FROM pg_collation WHERE collname = 'en_US' AND collencoding = pg_char_to_encoding('UTF8')) OR
+       version() !~ 'linux-gnu'
+       AS skip_test \gset
+\if :skip_test
+invalid command \if
+\quit

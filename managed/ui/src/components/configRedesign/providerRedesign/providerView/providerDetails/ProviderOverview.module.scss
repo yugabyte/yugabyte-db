@@ -1,0 +1,27 @@
+@use '../../../../../_style/colors.scss';
+
+.providerOverviewContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.providerPropertiesContainer {
+  padding: 24px;
+
+  background-color: colors.$YB_BACKGROUND;
+  border-radius: 4px;
+  border: 1px solid colors.$YB_GRAY_BORDER;
+
+  .propertiesRow {
+    display: flex;
+    gap: 80px;
+  }
+}
+
+.regionListContainer {
+  padding: 24px;
+
+  border-radius: 4px;
+  border: 1px solid colors.$YB_GRAY_BORDER;
+}

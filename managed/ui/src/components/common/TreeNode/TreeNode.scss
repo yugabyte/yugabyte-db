@@ -1,0 +1,45 @@
+// Copyright (c) 2018 AppJudo Inc.  MIT License.
+
+@use '../../../_style/colors.scss';
+
+.TreeNode {
+  box-shadow: 0 1px 1px rgba(35, 35, 41, 0.05);
+
+  .TreeNode-header {
+    cursor: pointer;
+    padding: 0;
+    font-size: 15px;
+
+    i {
+      font-size: 17px;
+      width: 1em;
+      text-align: center;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+  }
+  .TreeNode-header {
+    padding: 0px 11px;
+    line-height: 32px;
+    height: 38px;
+
+    &:hover {
+      color: colors.$YB_ORANGE_HOVER;
+      background: #f1f2f3;
+    }
+  }
+
+  .TreeNode-header-content {
+    display: inline;
+    padding: 0;
+    line-height: 36px;
+    vertical-align: middle;
+  }
+
+  .TreeNode-body {
+    padding: 0;
+  }
+  .TreeNode-closed {
+    overflow: hidden;
+  }
+}

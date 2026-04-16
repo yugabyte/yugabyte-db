@@ -1,0 +1,74 @@
+name: "CodeQL"
+
+on:
+  schedule:
+    - cron: '59 23 * * 6'
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-20.04
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'c-cpp', 'python' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+
+    - name: Install package dependencies
+      run: |
+        # Create the file repository configuration:
+        sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main 15" > /etc/apt/sources.list.d/pgdg.list'
+        # Import the repository signing key:
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+        wget \
+        curl \
+        sudo \
+        gnupg2 \
+        lsb-release \
+        tzdata \
+        build-essential \
+        pkg-config \
+        cmake \
+        git \
+        postgresql-15 \
+        postgresql-server-dev-15 \
+        libpq-dev \
+        libicu-dev \
+        libkrb5-dev \
+        postgresql-15-cron \
+        postgresql-15-pgvector \
+        postgresql-15-postgis-3 \
+        postgresql-15-rum 
+        export CLEAN_SETUP=1
+        export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
+        mkdir -p /tmp/install_setup
+        cp ./scripts/* /tmp/install_setup
+        sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT MAKE_PROGRAM=cmake /tmp/install_setup/install_setup_libbson.sh
+        sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_setup_pcre2.sh
+        sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_setup_intel_decimal_math_lib.sh
+        sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_citus_indent.sh
+
+    - name: Configure, Build and Install DocumentDB
+      run: |
+        make
+        sudo make install
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+

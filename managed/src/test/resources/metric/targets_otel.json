@@ -1,0 +1,47 @@
+[
+  {
+    "targets": [
+      "10.0.0.3:OTEL_PORT"
+    ],
+    "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
+      "node_prefix": "host",
+      "export_type": "otel_export",
+      "exported_instance": "host-n3",
+      "node_name":"host-n3",
+      "node_address":"10.0.0.3",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY"
+    }
+  },
+  {
+    "targets": [
+      "10.0.0.2:OTEL_PORT"
+    ],
+    "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
+      "node_prefix": "host",
+      "export_type": "otel_export",
+      "exported_instance": "host-n2",
+      "node_name":"host-n2",
+      "node_address":"10.0.0.2",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY"
+    }
+  },
+  {
+    "targets": [
+      "10.0.0.1:OTEL_PORT"
+    ],
+    "labels": {
+      "universe_uuid": "UNIVERSE_UUID",
+      "node_prefix": "host",
+      "export_type": "otel_export",
+      "exported_instance": "host-n1",
+      "node_name":"host-n1",
+      "node_address":"10.0.0.1",
+      "node_region": "test-region",
+      "node_cluster_type": "PRIMARY"
+    }
+  }
+]

@@ -1,0 +1,22 @@
+# src/test/regress/yb_misc_serial_schedule
+#
+####################################################################################################
+# This testsuite includes miscellaneous tests that are not yet characterized to a proper testsuite.
+# This schedule and its siblings schedules (yb_misc_serialN_schedule) are designed to contain a
+# reasonable number of tests in order to avoid test timeout for each of these schedules.
+# Because some tests are larger and take longer time to run, the number of tests in each
+# schedule can be quite different: one schedule can contain quite a few tests if each test
+# is small, another schedule can contain only one test if the test is large.
+# The tests in these schedules are not ported from PostgreSQL original tests.
+####################################################################################################
+test: yb.port.expressions
+test: yb.orig.compound_key
+test: yb.orig.schema
+test: yb.orig.select
+test: yb.orig.guc
+test: yb.orig.depend
+test: yb.orig.query_consistent_snapshot
+test: yb.orig.obj_properties_functions
+test: yb.orig.dependency
+test: yb.orig.create_language
+test: yb.orig.view

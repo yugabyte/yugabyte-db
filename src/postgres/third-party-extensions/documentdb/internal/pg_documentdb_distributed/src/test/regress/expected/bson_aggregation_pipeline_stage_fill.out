@@ -1,0 +1,1009 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog;
+SET citus.next_shard_id TO 468000;
+SET documentdb.next_collection_id TO 4680;
+SET documentdb.next_collection_index_id TO 4680;
+---------------------------------------------------------------------
+-- Prepare data
+---------------------------------------------------------------------
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 5, "a": "p2", "cost": 3, "date": { "$date": { "$numberLong": "1718841600011" } }, "quantity": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 6, "a": "p2", "cost": 8, "date": { "$date": { "$numberLong": "1718841600012" } }, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 7, "a": "p2", "cost": 8, "date": { "$date": { "$numberLong": "1718841600013" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 8, "a": "p2", "cost": 4, "date": { "$date": { "$numberLong": "1718841600014"} }, "quantity": 4  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 11, "a": "p3", "cost": 8, "date": { "$date": { "$numberLong": "1718841600021"} }, "quantity": 100  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 10, "a": "p3", "cost": 8, "date": { "$date": { "$numberLong": "1718841605022" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 9, "a": "p3", "cost": 8, "date": { "$date": { "$numberLong": "1718841606023" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+---------------------------------------------------------------------
+-- positive case
+---------------------------------------------------------------------
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : null }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": { "date": 1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : null }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": { "_id": 1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.5" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "252.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : { "$numberDouble" : "36.0" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : { "$numberDouble" : "68.0" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": -1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "method": "locf"}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : { "$numberInt" : "100" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": { "date": 1 },"output": {"quantity": { "method": "locf"}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : { "$numberInt" : "100" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": { "_id": 1 },"output": {"quantity": { "method": "locf"}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": -1 },"output": {"quantity": { "method": "locf"}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "value": 123}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "123" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberInt" : "123" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberInt" : "123" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberInt" : "123" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : { "$numberInt" : "123" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : { "$numberInt" : "123" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": { "date": 1 },"output": {"quantity": { "value": 567}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "567" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberInt" : "567" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberInt" : "567" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberInt" : "567" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : { "$numberInt" : "567" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : { "$numberInt" : "567" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": { "_id": 1 },"output": {"quantity": { "value": "test"}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : "test" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : "test" }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : "test" }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : "test" }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : "test" }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : "test" }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": -1 },"output": {"quantity": { "value": {"$numberDecimal": "123"}}}}}]}');
+                                                                                        document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : { "$numberDecimal" : "123" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : { "$numberDecimal" : "123" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDecimal" : "123" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDecimal" : "123" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDecimal" : "123" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDecimal" : "123" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionByFields": ["a"], "sortBy": { "date": 1 },"output": {"quantity": { "value": 123}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "123" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberInt" : "123" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberInt" : "123" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberInt" : "123" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : { "$numberInt" : "123" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : { "$numberInt" : "123" } }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionByFields": ["a"], "sortBy": { "date": 1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : null }
+(11 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionByFields": ["a", "cost"], "sortBy": { "date": 1 },"output": {"quantity": { "method": "locf"}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : { "$numberInt" : "100" } }
+(11 rows)
+
+---------------------------------------------------------------------
+-- positive corner case
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": null  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "method": "locf"}}}}]}');
+                                                                            document                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : null }
+(4 rows)
+
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc1", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc2", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc3", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc4", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                       document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc4", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+(4 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": { "date": 1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc4", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+(4 rows)
+
+---------------------------------------------------------------------
+-- positive case to test manual window trim
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": 500 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}, "quantity": 500 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 5, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600005"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 6, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600006"}}, "quantity": 600 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 7, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600007"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 8, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600008"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 9, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600009"}}, "quantity": 700 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionByFields": ["a"], "sortBy": { "date": 1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                                 document                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberDouble" : "533.33333333333337123" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600005" } }, "quantity" : { "$numberDouble" : "566.66666666666662877" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600006" } }, "quantity" : { "$numberInt" : "600" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600007" } }, "quantity" : { "$numberDouble" : "633.33333333333337123" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600008" } }, "quantity" : { "$numberDouble" : "666.66666666666662877" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600009" } }, "quantity" : { "$numberInt" : "700" } }
+(9 rows)
+
+---------------------------------------------------------------------
+-- positive case with different numeric types
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": { "$numberDecimal": "500" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                        document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberDecimal" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDecimal" : "501" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDecimal" : "502" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+(4 rows)
+
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": { "$numberLong": "500" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": { "$numberDouble": "503" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberLong" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberDouble" : "503.0" } }
+(4 rows)
+
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": { "$numberLong": "500" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": { "$numberDouble": "503" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 5, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600011"}}, "quantity": { "$numberDecimal": "500" }  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 6, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600012" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 7, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600013" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 8, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600014"}} , "quantity": { "$numberDouble": "503" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                               document                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberLong" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberDouble" : "503.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberDecimal" : "500" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDecimal" : "501.000000000000" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDecimal" : "502.000000000000" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberDouble" : "503.0" } }
+(8 rows)
+
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": { "$numberDecimal": "500" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": { "$numberInt": "501" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberDecimal" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "501" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+(4 rows)
+
+---------------------------------------------------------------------
+-- positive corner case with sortBy
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "def", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "def", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "cost": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "3" }, "a" : "def", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "def", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : null }
+(4 rows)
+
+---------------------------------------------------------------------
+-- negative case
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- without sortBy field
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "output": {"quantity": { "method": "linear"}}}}]}');
+ERROR:  $linearFill must be specified with a top level sortBy expression with exactly one element
+-- sortBy is not numeric or date
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "a": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
+ERROR:  sortBy value must be numeric or a date, but found string
+-- sortBy with repeated value in one partition
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "cost": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
+ERROR:  There can be no repeated values in the sort field
+-- partionBy and partitionByFields both are present
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "partitionByFields": ["a"], "sortBy": { "date": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
+ERROR:  Maximum one of 'partitionBy' and 'partitionByFields can be specified in '$fill'
+-- partitionByFields element starts with $
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionByFields": ["$a"], "sortBy": { "date": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
+ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField.
+-- output field is not present in the document
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 }}}]}');
+ERROR:  BSON field '$fill.output' is missing but a required field
+-- fill non-numeric field
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": "503" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
+ERROR:   Value to be filled must be numeric or nullish
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 5, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600005"}} , "quantity": "503" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
+ERROR:   Value to be filled must be numeric or nullish
+-- fill with missing value
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": 1, "c": 5 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": 2, "c": null  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": 3  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"output": {"c": { "value": "$a"}}}}]}');
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "4" } }
+(4 rows)
+
+-- fill with mixed types
+SELECT documentdb_api.drop_collection('db','filltest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 1, "a": 1, "b": 1, "c": 5 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 2, "a": 2, "b": null, "c": null  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": 3, "b": 3 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 4, "a": 4, "b": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','filltest','{ "_id": 5, "a": 5, "b": 5, "c": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "method": "linear" } ,"c": { "value": "$a" }}}}]}');
+                                                             document                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : { "$numberDouble" : "2.0" }, "c" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "4" }, "b" : { "$numberDouble" : "4.0" }, "c" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "5" }, "c" : { "$numberInt" : "5" } }
+(5 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "method": "locf" } ,"c": { "value": "$a" }}}}]}');
+                                                           document                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "4" }, "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "5" }, "c" : { "$numberInt" : "5" } }
+(5 rows)
+
+-- fill with multi methods
+SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "method": "locf", "method": "linear" }}}}]}');
+                                                           document                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : { "$numberDouble" : "2.0" }, "c" : null }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "4" }, "b" : { "$numberDouble" : "4.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "5" }, "c" : null }
+(5 rows)
+
+-- explain plan validation
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "method": "linear" }}}}]}');
+                                                                              QUERY PLAN                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               ->  WindowAgg
+                     ->  Sort
+                           Sort Key: (documentdb_api_catalog.bson_orderby(collection.document, '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                           ->  Bitmap Heap Scan on documents_4693_468212 collection
+                                 Recheck Cond: (shard_key_value = '4693'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (shard_key_value = '4693'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "b": { "value": 1 }}}}]}');
+                                                                  QUERY PLAN                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+               ->  Bitmap Heap Scan on documents_4693_468212 collection
+                     Recheck Cond: (shard_key_value = '4693'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '4693'::bigint)
+(11 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"sortBy": {"a" : 1}, "output": { "c": { "method": "linear" }, "b": { "value": 1 }}}}]}');
+                                                                              QUERY PLAN                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               ->  WindowAgg
+                     ->  Sort
+                           Sort Key: (documentdb_api_catalog.bson_orderby(collection.document, '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                           ->  Bitmap Heap Scan on documents_4693_468212 collection
+                                 Recheck Cond: (shard_key_value = '4693'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (shard_key_value = '4693'::bigint)
+(13 rows)
+

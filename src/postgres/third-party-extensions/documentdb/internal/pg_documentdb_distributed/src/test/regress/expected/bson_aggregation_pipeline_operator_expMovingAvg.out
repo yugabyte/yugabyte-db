@@ -1,0 +1,274 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 4156000;
+SET documentdb.next_collection_id TO 41560;
+SET documentdb.next_collection_index_id TO 41560;
+-- insert data
+-- positive case
+SELECT documentdb_api.insert_one('db','test1','{ "_id": 1, "name": "p1", "cost": 13, "date": { "$date": { "$numberLong": "1718841600001"}}}');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test1','{ "_id": 2, "name": "p1", "cost": 15.4, "date": { "$date": { "$numberLong": "1718841600002" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test1','{ "_id": 3, "name": "p1", "cost": 12, "date": { "$date": { "$numberLong": "1718841600003" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test1','{ "_id": 4, "name": "p1", "cost": 11.7, "date": { "$date": { "$numberLong": "1718841600004"}} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test1','{ "_id": 5, "name": "p2", "cost": 82, "date": { "$date": { "$numberLong": "1718841600001"}}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test1','{ "_id": 6, "name": "p2", "cost": 94, "date": { "$date": { "$numberLong": "1718841600002" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test1','{ "_id": 7, "name": "p2", "cost": 112, "date": { "$date": { "$numberLong": "1718841600003" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test1','{ "_id": 8, "name": "p2", "cost": 97.3, "date": { "$date": { "$numberLong": "1718841600004"}} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "N": 2} } } } } ] }');
+                                                                                                                   document                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "p1", "cost" : { "$numberInt" : "13" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : { "$numberInt" : "13" } }
+ { "_id" : { "$numberInt" : "2" }, "name" : "p1", "cost" : { "$numberDouble" : "15.400000000000000355" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : { "$numberDouble" : "14.599999999999999645" } }
+ { "_id" : { "$numberInt" : "3" }, "name" : "p1", "cost" : { "$numberInt" : "12" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "12.86666666666666714" } }
+ { "_id" : { "$numberInt" : "4" }, "name" : "p1", "cost" : { "$numberDouble" : "11.699999999999999289" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : { "$numberDouble" : "12.088888888888899231" } }
+ { "_id" : { "$numberInt" : "5" }, "name" : "p2", "cost" : { "$numberInt" : "82" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : { "$numberInt" : "82" } }
+ { "_id" : { "$numberInt" : "6" }, "name" : "p2", "cost" : { "$numberInt" : "94" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : { "$numberInt" : "90" } }
+ { "_id" : { "$numberInt" : "7" }, "name" : "p2", "cost" : { "$numberInt" : "112" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "104.6666666666666714" } }
+ { "_id" : { "$numberInt" : "8" }, "name" : "p2", "cost" : { "$numberDouble" : "97.299999999999997158" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : { "$numberDouble" : "99.755555555555673664" } }
+(8 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "alpha": 0.666} } } } } ] }');
+                                                                                                                   document                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "p1", "cost" : { "$numberInt" : "13" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : { "$numberInt" : "13" } }
+ { "_id" : { "$numberInt" : "2" }, "name" : "p1", "cost" : { "$numberDouble" : "15.400000000000000355" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : { "$numberDouble" : "14.598399999999999821" } }
+ { "_id" : { "$numberInt" : "3" }, "name" : "p1", "cost" : { "$numberInt" : "12" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "12.867865600000000015" } }
+ { "_id" : { "$numberInt" : "4" }, "name" : "p1", "cost" : { "$numberDouble" : "11.699999999999999289" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : { "$numberDouble" : "12.090067110399999706" } }
+ { "_id" : { "$numberInt" : "5" }, "name" : "p2", "cost" : { "$numberInt" : "82" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : { "$numberInt" : "82" } }
+ { "_id" : { "$numberInt" : "6" }, "name" : "p2", "cost" : { "$numberInt" : "94" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : { "$numberDouble" : "89.992000000000004434" } }
+ { "_id" : { "$numberInt" : "7" }, "name" : "p2", "cost" : { "$numberInt" : "112" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "104.64932799999999702" } }
+ { "_id" : { "$numberInt" : "8" }, "name" : "p2", "cost" : { "$numberDouble" : "97.299999999999997158" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : { "$numberDouble" : "99.754675551999994809" } }
+(8 rows)
+
+-- N is long
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "N": 12345678901234} } } } } ] }');
+                                                                                                                   document                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "p1", "cost" : { "$numberInt" : "13" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : { "$numberInt" : "13" } }
+ { "_id" : { "$numberInt" : "2" }, "name" : "p1", "cost" : { "$numberDouble" : "15.400000000000000355" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : { "$numberDouble" : "13.000000000000389022" } }
+ { "_id" : { "$numberInt" : "3" }, "name" : "p1", "cost" : { "$numberInt" : "12" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "13.000000000000238032" } }
+ { "_id" : { "$numberInt" : "4" }, "name" : "p1", "cost" : { "$numberDouble" : "11.699999999999999289" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : { "$numberDouble" : "12.999999999999989342" } }
+ { "_id" : { "$numberInt" : "5" }, "name" : "p2", "cost" : { "$numberInt" : "82" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : { "$numberInt" : "82" } }
+ { "_id" : { "$numberInt" : "6" }, "name" : "p2", "cost" : { "$numberInt" : "94" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : { "$numberDouble" : "82.000000000001946887" } }
+ { "_id" : { "$numberInt" : "7" }, "name" : "p2", "cost" : { "$numberInt" : "112" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "82.000000000006764367" } }
+ { "_id" : { "$numberInt" : "8" }, "name" : "p2", "cost" : { "$numberDouble" : "97.299999999999997158" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : { "$numberDouble" : "82.000000000009279688" } }
+(8 rows)
+
+-- negative case
+-- no sortBy
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "N": 2} } } } } ] }');
+ERROR:  $expMovingAvg requires an explicit 'sortBy'
+-- alpha and N all exist
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "alpha": 0.666, "N": 2} } } } } ] }');
+ERROR:  $expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field
+-- miss input
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"alpha": 0.666, "N": 2} } } } } ] }');
+ERROR:  $expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field
+-- miss alpha and N
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost"} } } } } ] }');
+ERROR:  $expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field
+-- incorrect parameter
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "alpah": 0.666} } } } } ] }');
+ERROR:  Got unrecognized field in $expMovingAvg, $expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "M": 2} } } } } ] }');
+ERROR:  Got unrecognized field in $expMovingAvg, $expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field
+-- N is float
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "N": 2.3} } } } } ] }');
+ERROR:  'N' field must be an integer, but found  N: 2.300000. To use a non-integer, use the 'alpha' argument instead
+-- alpha >= 1
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "alpha": 2} } } } } ] }');
+ERROR:  'alpha' must be between 0 and 1 (exclusive), found alpha: 2.000000
+-- alpha <= 0
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test1", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "alpha": -2.8} } } } } ] }');
+ERROR:  'alpha' must be between 0 and 1 (exclusive), found alpha: -2.800000
+-- data contains null
+SELECT documentdb_api.insert_one('db','test2','{ "_id": 1, "name": "p1", "cost": 13, "date": { "$date": { "$numberLong": "1718841600001"}}}');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test2','{ "_id": 2, "name": "p1", "cost": null, "date": { "$date": { "$numberLong": "1718841600002" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test2','{ "_id": 3, "name": "p1", "cost": 12, "date": { "$date": { "$numberLong": "1718841600003" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test2','{ "_id": 4, "name": "p1", "cost": 11.7, "date": { "$date": { "$numberLong": "1718841600004"}} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test2','{ "_id": 5, "name": "p2", "cost": null, "date": { "$date": { "$numberLong": "1718841600001"}}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test2','{ "_id": 6, "name": "p2", "cost": 94, "date": { "$date": { "$numberLong": "1718841600002" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test2','{ "_id": 7, "name": "p2", "cost": 112, "date": { "$date": { "$numberLong": "1718841600003" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test2','{ "_id": 8, "name": "p2", "cost": 97.3, "date": { "$date": { "$numberLong": "1718841600004"}} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test2", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "N": 2} } } } } ] }');
+                                                                                                                   document                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "p1", "cost" : { "$numberInt" : "13" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : { "$numberInt" : "13" } }
+ { "_id" : { "$numberInt" : "2" }, "name" : "p1", "cost" : null, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : null }
+ { "_id" : { "$numberInt" : "3" }, "name" : "p1", "cost" : { "$numberInt" : "12" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "12.333333333333333925" } }
+ { "_id" : { "$numberInt" : "4" }, "name" : "p1", "cost" : { "$numberDouble" : "11.699999999999999289" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : { "$numberDouble" : "11.911111111111100769" } }
+ { "_id" : { "$numberInt" : "5" }, "name" : "p2", "cost" : null, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : null }
+ { "_id" : { "$numberInt" : "6" }, "name" : "p2", "cost" : { "$numberInt" : "94" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : { "$numberInt" : "94" } }
+ { "_id" : { "$numberInt" : "7" }, "name" : "p2", "cost" : { "$numberInt" : "112" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberInt" : "106" } }
+ { "_id" : { "$numberInt" : "8" }, "name" : "p2", "cost" : { "$numberDouble" : "97.299999999999997158" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : { "$numberDouble" : "100.20000000000000284" } }
+(8 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test2", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "alpha": 0.666} } } } } ] }');
+                                                                                                                   document                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "p1", "cost" : { "$numberInt" : "13" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : { "$numberInt" : "13" } }
+ { "_id" : { "$numberInt" : "2" }, "name" : "p1", "cost" : null, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : null }
+ { "_id" : { "$numberInt" : "3" }, "name" : "p1", "cost" : { "$numberInt" : "12" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "12.333999999999999631" } }
+ { "_id" : { "$numberInt" : "4" }, "name" : "p1", "cost" : { "$numberDouble" : "11.699999999999999289" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : { "$numberDouble" : "11.911756000000000455" } }
+ { "_id" : { "$numberInt" : "5" }, "name" : "p2", "cost" : null, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : null }
+ { "_id" : { "$numberInt" : "6" }, "name" : "p2", "cost" : { "$numberInt" : "94" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : { "$numberInt" : "94" } }
+ { "_id" : { "$numberInt" : "7" }, "name" : "p2", "cost" : { "$numberInt" : "112" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "105.98799999999999955" } }
+ { "_id" : { "$numberInt" : "8" }, "name" : "p2", "cost" : { "$numberDouble" : "97.299999999999997158" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : { "$numberDouble" : "100.20179199999999753" } }
+(8 rows)
+
+-- input contains string
+SELECT documentdb_api.insert_one('db','test3','{ "_id": 1, "name": "p1", "cost": "asd", "date": { "$date": { "$numberLong": "1718841600001"}}}');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test3','{ "_id": 2, "name": "p1", "cost": 15.4, "date": { "$date": { "$numberLong": "1718841600002" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test3','{ "_id": 3, "name": "p1", "cost": 12, "date": { "$date": { "$numberLong": "1718841600003" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test3','{ "_id": 4, "name": "p1", "cost": "zxc", "date": { "$date": { "$numberLong": "1718841600004"}} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test3','{ "_id": 5, "name": "p2", "cost": 82, "date": { "$date": { "$numberLong": "1718841600001"}}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test3','{ "_id": 6, "name": "p2", "cost": "qwe", "date": { "$date": { "$numberLong": "1718841600002" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test3','{ "_id": 7, "name": "p2", "cost": 112, "date": { "$date": { "$numberLong": "1718841600003" } } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','test3','{ "_id": 8, "name": "p2", "cost": "vbn", "date": { "$date": { "$numberLong": "1718841600004"}} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test3", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "N": 2} } } } } ] }');
+                                                                                                                   document                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "p1", "cost" : "asd", "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : null }
+ { "_id" : { "$numberInt" : "2" }, "name" : "p1", "cost" : { "$numberDouble" : "15.400000000000000355" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : { "$numberDouble" : "15.400000000000000355" } }
+ { "_id" : { "$numberInt" : "3" }, "name" : "p1", "cost" : { "$numberInt" : "12" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "13.13333333333333286" } }
+ { "_id" : { "$numberInt" : "4" }, "name" : "p1", "cost" : "zxc", "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : null }
+ { "_id" : { "$numberInt" : "5" }, "name" : "p2", "cost" : { "$numberInt" : "82" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : { "$numberInt" : "82" } }
+ { "_id" : { "$numberInt" : "6" }, "name" : "p2", "cost" : "qwe", "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : null }
+ { "_id" : { "$numberInt" : "7" }, "name" : "p2", "cost" : { "$numberInt" : "112" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberInt" : "102" } }
+ { "_id" : { "$numberInt" : "8" }, "name" : "p2", "cost" : "vbn", "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : null }
+(8 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "test3", "pipeline": [ { "$setWindowFields": { "partitionBy": "$name", "sortBy": {"date": 1}, "output":{"expMovingAvgForCost": { "$expMovingAvg":{"input": "$cost", "alpha": 0.666} } } } } ] }');
+                                                                                                                   document                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "p1", "cost" : "asd", "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : null }
+ { "_id" : { "$numberInt" : "2" }, "name" : "p1", "cost" : { "$numberDouble" : "15.400000000000000355" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : { "$numberDouble" : "15.400000000000000355" } }
+ { "_id" : { "$numberInt" : "3" }, "name" : "p1", "cost" : { "$numberInt" : "12" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "13.135600000000000165" } }
+ { "_id" : { "$numberInt" : "4" }, "name" : "p1", "cost" : "zxc", "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : null }
+ { "_id" : { "$numberInt" : "5" }, "name" : "p2", "cost" : { "$numberInt" : "82" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "expMovingAvgForCost" : { "$numberInt" : "82" } }
+ { "_id" : { "$numberInt" : "6" }, "name" : "p2", "cost" : "qwe", "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "expMovingAvgForCost" : null }
+ { "_id" : { "$numberInt" : "7" }, "name" : "p2", "cost" : { "$numberInt" : "112" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "expMovingAvgForCost" : { "$numberDouble" : "101.98000000000000398" } }
+ { "_id" : { "$numberInt" : "8" }, "name" : "p2", "cost" : "vbn", "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "expMovingAvgForCost" : null }
+(8 rows)
+

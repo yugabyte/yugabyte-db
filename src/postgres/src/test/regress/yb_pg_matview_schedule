@@ -1,0 +1,10 @@
+# src/test/regress/yb_pg_matview_schedule
+#
+# This file is for ported tests only.
+####################################################################################################
+# Tests for materialized views
+####################################################################################################
+# Dependencies for `yb.port.matview`
+test: yb.port.test_setup
+
+test: yb.port.matview

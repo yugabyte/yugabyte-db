@@ -1,0 +1,3 @@
+Read the development information in the wiki at
+<http://wiki.postgresql.org/wiki/Development_information>.  All the
+developer tools are located in the src/tools/ directory.

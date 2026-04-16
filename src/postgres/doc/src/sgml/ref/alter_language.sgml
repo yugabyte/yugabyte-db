@@ -1,0 +1,91 @@
+<!--
+doc/src/sgml/ref/alter_language.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterlanguage">
+ <indexterm zone="sql-alterlanguage">
+  <primary>ALTER LANGUAGE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER LANGUAGE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER LANGUAGE</refname>
+  <refpurpose>change the definition of a procedural language</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER [ PROCEDURAL ] LANGUAGE <replaceable>name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+ALTER [ PROCEDURAL ] LANGUAGE <replaceable>name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER LANGUAGE</command> changes the definition of a
+   procedural language.  The only functionality is to rename the language or
+   assign a new owner.  You must be superuser or owner of the language to
+   use <command>ALTER LANGUAGE</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable>name</replaceable></term>
+    <listitem>
+     <para>
+      Name of a language
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable>new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name of the language
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable>new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The new owner of the language
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>ALTER LANGUAGE</command> statement in the SQL
+   standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createlanguage"/></member>
+   <member><xref linkend="sql-droplanguage"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

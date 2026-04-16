@@ -1,0 +1,5 @@
+error: type macros other than `composite_type!` are not yet implemented
+ --> tests/compile-fail/variadic-is-dead.rs:5:18
+  |
+5 | fn whatever() -> variadic!(i32) {
+  |                  ^^^^^^^^

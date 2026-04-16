@@ -1,0 +1,67 @@
+name: YSQL-CDC
+description: Create a CDC issue.
+title: "[CDCSDK] Title"
+labels: ["area/cdcsdk", "status/awaiting-triage"]
+body:
+- type: textarea
+  id: cdcsdk
+  attributes:
+    label: Description
+    placeholder: |
+      **Provide a detailed description of the issue you want to report related to YSQL.**
+
+      **Include steps to reproduce the issue.**
+  validations:
+    required: true
+- type: textarea
+  id: connectorversion
+  attributes:
+    label: Source connector version
+    placeholder: |
+      **v1.9.5.y.15**
+  validations:
+    required: true
+- type: textarea
+  id: configuration
+  attributes:
+    label: Connector configuration
+    placeholder: |
+      **Configuration properties used to deploy the YugabyteDB Source Connector**
+  validations:
+    required: true
+- type: textarea
+  id: ybversion
+  attributes:
+    label: YugabyteDB version
+    placeholder: |
+      **The YugabyteDB version with build number (if available)**
+  validations:
+    required: false
+- type: dropdown
+  id: issueType
+  attributes:
+    label: Issue Type
+    description: Please choose the issue type
+    multiple: false
+    options:
+      - 'kind/bug'
+      - 'kind/enhancement'
+      - 'kind/failing-test'
+      - 'kind/improve-ux'
+      - 'kind/new-feature'
+      - 'kind/question'
+  validations:
+    required: true
+- type: checkboxes
+  id: warning
+  attributes:
+    label: "Warning: Please confirm that this issue does not contain any sensitive information"
+    description: >
+      Sensitive Information includes any customer names, regulated data (e.g. privacy data,
+      cardholder data, protected health information, etc.), confidential or proprietary information
+      including but not limited to company identifying information, network proprietary information,
+      proprietary database schema information, log data, etc. If you are unsure whether your ticket
+      contains any sensitive information, please reach out to your security team for assistance.
+    options:
+      - label: I confirm this issue does not contain any sensitive information.
+        required: true

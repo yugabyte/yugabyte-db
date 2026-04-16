@@ -1,0 +1,20 @@
+{
+  "data": {
+    "alerts": [
+      {
+        "activeAt": "2018-07-04T20:27:12.60602144+02:00",
+        "annotations": {
+          "summary": "Clock Skew Alert for universe Test is firing"
+        },
+        "labels": {
+          "customer_uuid": "199bccbc-6295-4676-950e-c0049b8adfa9",
+          "definition_uuid": "199bccbc-6295-4676-950e-c0049b8adfa8",
+          "definition_name": "Clock Skew Alert"
+        },
+        "state": "firing",
+        "value": "1e+00"
+      }
+    ]
+  },
+  "status": "success"
+}

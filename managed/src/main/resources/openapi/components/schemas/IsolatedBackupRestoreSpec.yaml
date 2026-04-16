@@ -1,0 +1,13 @@
+title: IsolatedBackupRestoreSpec
+description: |
+  IsolatedBackupRestoreSpec
+
+  User provided details to trigger a restore of YBA from a local filepath.
+type: object
+required:
+  - local_path
+properties:
+  local_path:
+    description: full path to YBA backup file on host
+    type: string
+    example: /opt/yba_backups/yba_backup.tar.gz

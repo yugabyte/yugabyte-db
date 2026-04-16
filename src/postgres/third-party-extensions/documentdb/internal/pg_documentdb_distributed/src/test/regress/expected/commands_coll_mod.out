@@ -1,0 +1,222 @@
+SET citus.next_shard_id TO 2500000;
+SET documentdb.next_collection_id TO 25000;
+SET documentdb.next_collection_index_id TO 25000;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+-- Create a collection
+SELECT documentdb_api.create_collection('commands','collModTest');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('commands','collModTest','{"_id":"1", "a": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Creating a regular and ttl index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('commands', documentdb_distributed_test_helpers.generate_create_index_arg('collModTest', 'a_1', '{"a": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('commands', '{"createIndexes": "collModTest", "indexes": [{"key": {"b": 1}, "name": "b_ttl", "v" : 2, "expireAfterSeconds": 10000}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('commands', '{"createIndexes": "collModTest", "indexes": [{"key": {"z": 1}, "name": "z_ttl_should_be_dropped_parallely", "v" : 2, "expireAfterSeconds": 1000}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- Top level validations for collMod index options
+SELECT documentdb_api.coll_mod(NULL, 'collModTest', '{"collMod": "collModTest", "index": {}}');
+ERROR:  db name cannot be NULL
+SELECT documentdb_api.coll_mod('commands', NULL, '{"collMod": "collModTest", "index": {}}');
+ERROR:  collection name cannot be NULL
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "hello": 1}'); -- Unknown field
+ERROR:  BSON field 'collMod.hello' is an unknown field.
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": 1}'); -- Type mismatch
+ERROR:  BSON field 'collMod.index' is the wrong type 'int', expected type 'object'
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {}}');
+ERROR:  Must specify either index name or key pattern.
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": []}');
+ERROR:  BSON field 'collMod.index' is the wrong type 'array', expected type 'object'
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"name": "c_1"}}');
+ERROR:  no expireAfterSeconds or hidden field
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"name": 1}}');
+ERROR:  BSON field 'collMod.index.name' is the wrong type 'int', expected type 'string'
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"keyPattern": 1}}');
+ERROR:  BSON field 'collMod.index.keyPattern' is the wrong type 'int', expected type 'object'
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"keyPattern": {"c": 1}, "name": 1}}');
+ERROR:  BSON field 'collMod.index.name' is the wrong type 'int', expected type 'string'
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"keyPattern": 1, "name": "c_1"}}');
+ERROR:  BSON field 'collMod.index.keyPattern' is the wrong type 'int', expected type 'object'
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"keyPattern": {"c": 1}, "name": "c_1"}}');
+ERROR:  Cannot specify both key pattern and name.
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"keyPattern": {"c": 1}}}');
+ERROR:  no expireAfterSeconds or hidden field
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"name": 1, "expireAfterSeconds": true}}');
+ERROR:  BSON field 'collMod.index.name' is the wrong type 'int', expected type 'string'
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"name": 1, "expireAfterSeconds": {}}}');
+ERROR:  BSON field 'collMod.index.name' is the wrong type 'int', expected type 'string'
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"name": 1, "expireAfterSeconds": "expire"}}');
+ERROR:  BSON field 'collMod.index.name' is the wrong type 'int', expected type 'string'
+-- Inserting some documents
+SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id" : 0, "b": { "$date": { "$numberLong": "-1000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id" : 1, "b": { "$date": { "$numberLong": "0" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id" : 2, "b": { "$date": { "$numberLong": "100" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id" : 3, "b": { "$date": { "$numberLong": "1657900030774" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id" : 4, "b": { "$date": { "$numberLong": "2657899731608" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id" : 5, "b": [{ "$date": { "$numberLong": "100" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id" : 6, "b": [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id" : 7, "b": [true, { "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id" : 8, "b": true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id" : 9, "b": "would not expire" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert a doc with current time when the test is running
+-- Function to insert a doc in collection with current time and given id
+CREATE OR REPLACE FUNCTION insert_doc_with_current_time(id numeric)
+RETURNS void
+AS $fn$
+DECLARE
+    epoch_bgn       text;
+    bgn_epoch_sec   numeric;
+    bgn_usec        numeric;
+    bgn_epoch_msec  numeric;
+BEGIN
+    SELECT extract(epoch from clock_timestamp()) into epoch_bgn;
+    SELECT split_part(epoch_bgn, '.', 1)::numeric into bgn_epoch_sec;
+    SELECT split_part(epoch_bgn, '.', 2)::numeric into bgn_usec;
+    bgn_epoch_msec := bgn_epoch_sec * 1000 + ROUND(bgn_usec / 1000);
+    EXECUTE format($$
+        SELECT documentdb_api.insert_one('commands','collModTest', '{ "_id": %s, "b": { "$date": { "$numberLong": "%s" } } }', NULL)$$,
+    id, bgn_epoch_msec);
+    
+END    
+$fn$
+LANGUAGE plpgsql;
+SELECT insert_doc_with_current_time(100);
+ insert_doc_with_current_time 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test TTL deletion with current setting it should not delete the current timestamp doc with _id: 100
+CALL documentdb_api_internal.delete_expired_rows();
+SELECT object_id from documentdb_api.collection('commands', 'collModTest');
+             object_id             
+---------------------------------------------------------------------
+ { "" : "1" }
+ { "" : { "$numberInt" : "4" } }
+ { "" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "100" } }
+(5 rows)
+
+-- Updating ttl expiration time to 2 secs
+SELECT * FROM documentdb_api_catalog.collection_indexes
+    WHERE (index_spec).index_name = 'b_ttl' AND
+    (index_spec).index_expire_after_seconds = 2; -- Before update
+ collection_id | index_id | index_spec | index_is_valid 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT documentdb_api.coll_mod('commands', 'collModTest',
+                             '{"collMod": "collModTest", "index": {"name": "b_ttl", "expireAfterSeconds": 2}}');
+                                                                     coll_mod                                                                      
+---------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "expireAfterSeconds_old" : { "$numberLong" : "10000" }, "expireAfterSeconds_new" : { "$numberDouble" : "2.0" } }
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.collection_indexes
+    WHERE (index_spec).index_name = 'b_ttl' AND
+    (index_spec).index_expire_after_seconds = 2; -- After update
+ collection_id | index_id |                         index_spec                         | index_is_valid 
+---------------------------------------------------------------------
+         25001 |    25003 | (b_ttl,"{ ""b"" : { ""$numberInt"" : ""1"" } }",,,,,2,2,,) | t
+(1 row)
+
+SELECT pg_sleep(2);
+ pg_sleep 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Now even _id: 100 should get deleted
+CALL documentdb_api_internal.delete_expired_rows();
+SELECT object_id from documentdb_api.collection('commands', 'collModTest');
+            object_id            
+---------------------------------------------------------------------
+ { "" : "1" }
+ { "" : { "$numberInt" : "4" } }
+ { "" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }
+(4 rows)
+
+-- Errors
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"name": "a_1", "expireAfterSeconds": 2000}}'); -- Not a TTL index to be modified
+ERROR:  no expireAfterSeconds field to update
+SELECT documentdb_api.coll_mod('commands', 'collModTest', '{"collMod": "collModTest", "index": {"name": "a_1", "hidden": true}}'); -- Hidden is not supported yet
+ERROR:  'collMod.index.hidden' is not supported yet.
+SELECT documentdb_api.coll_mod('commands', 'collModTest',
+                             '{"collMod": "collModTest", "index": {"name": "c_1", "expireAfterSeconds": 1000}}'); -- index not found
+ERROR:  cannot find index c_1 for ns commands.collModTest
+SELECT documentdb_api.coll_mod('commands', 'collModTest',
+                             '{"collMod": "collModTest", "index": {"keyPattern": {"c": 1}, "expireAfterSeconds": 1000}}'); -- index not found
+ERROR:  cannot find index { "c" : 1 } for ns commands.collModTest

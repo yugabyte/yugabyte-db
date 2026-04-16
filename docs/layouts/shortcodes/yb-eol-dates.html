@@ -1,0 +1,55 @@
+{{/*
+Outputs the end-of-maintenance or end-of-life date for the given
+release series. Defaults to EOL date if not specified.
+
+Syntax:
+  {{< yb-eol-date <series> [EOL | EOM | release] >}}
+
+Examples:
+  * {{< yb-eol-date "v2.16" >}}        returns the EOL date for v2.14 (need to quote due to the dot)
+  * {{< yb-eol-date stable EOL >}}     returns the EOL date for stable
+  * {{< yb-eol-date "v2.14" EOM >}}    returns the EOM date for v2.14
+  * {{< yb-eol-date preview EOL >}}    returns an error. preview has no EOM or EOL.
+
+Date types:
+  * EOM: end of maintenance (support only, no new engineering fixes)
+  * EOL: end of life (no more support)
+  * release: initial release
+*/}}
+
+{{- $series := default "v2.16" (.Get 0) -}}
+{{- $dateType := default "EOL" (.Get 1) -}}
+{{- $date := "" -}}
+
+{{ range .Site.Data.currentVersions.dbVersions }}
+
+  {{- if eq $series .series -}}
+
+    {{- if eq .isStable true -}}
+      {{- if eq $dateType "EOM" -}}
+        {{ $date = .endOfMaintenance }}
+      {{- else if eq $dateType "EOL" -}}
+        {{ $date = .endOfLife }}
+      {{- else -}}
+        {{ $date = .initialRelease }}
+      {{- end -}}
+
+    {{- else -}}
+      {{- if eq $dateType "release" -}}
+        {{- if .initialRelease }}
+          {{ $date = .initialRelease }}
+        {{- end -}}
+      {{- else -}}
+        {{ errorf "%s: Non-stable releases have only a release date. %s" $.Name $.Position }}
+      {{- end -}}
+    {{- end -}}
+
+  {{- end -}}
+
+{{- end -}}
+
+{{ if gt (len $date) 0 }}
+  {{ $date | time.Format ":date_long" }}
+{{ else }}
+  {{ errorf "%s: No %s date for series %s. Check currentVersions.json. %s" .Name $dateType $series $.Position }}
+{{ end }}

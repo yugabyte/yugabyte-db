@@ -1,0 +1,19 @@
+
+
+# clean up files generated to measure code coverage
+EXTRA_CLEAN += $(addprefix src/,*.gcno *.gcda) $(addprefix src/**/,*.gcno *.gcda)
+EXTRA_CLEAN += build/ .deps/
+
+PG_CONFIG ?= pg_config
+PGXS := $(shell $(PG_CONFIG) --pgxs)
+include $(PGXS)
+
+ifeq ($(ALLOW_DEFAULT_VISIBILITY),yes)
+override LDFLAGS_SL += -fvisibility=default
+override CFLAGS += -fvisibility=default
+override CXXFLAGS += -fvisibility=default
+endif
+
+ifneq ($(EXTRA_INCLUDE_MAKEFILE),)
+include $(EXTRA_INCLUDE_MAKEFILE)
+endif

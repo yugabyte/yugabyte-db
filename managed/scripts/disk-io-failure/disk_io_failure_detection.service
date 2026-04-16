@@ -1,0 +1,11 @@
+[Unit]
+Description=Disk I/O Failure Detection Script Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python /home/yugabyte/disk_io_failure_detection.py
+Restart=always
+
+[Install]
+WantedBy=default.target

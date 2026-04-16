@@ -1,0 +1,20 @@
+error[E0277]: the trait bound `Vec<Option<PgHeapTuple<'_, AllocatedByRust>>>: ArgAbi<'_>` is not satisfied
+  --> tests/todo/busted-exotic-signature.rs:12:9
+   |
+10 |     #[pg_extern]
+   |     ------------ in this procedural macro expansion
+11 |     fn exotic_signature(
+12 |         _cats: pgrx::default!(
+   |         ^^^^^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<PgHeapTuple<'_, AllocatedByRust>>>`
+   |
+   = help: the following other types implement trait `ArgAbi<'fcx>`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+   = note: required for `Option<Vec<Option<PgHeapTuple<'_, AllocatedByRust>>>>` to implement `ArgAbi<'_>`
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)

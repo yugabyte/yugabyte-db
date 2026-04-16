@@ -1,0 +1,345 @@
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
+SET documentdb.next_collection_id TO 12200;
+SET documentdb.next_collection_index_id TO 12200;
+SELECT documentdb_api.insert_one('db','sales',' { "_id" : 1, "item" : "almonds", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 2, "year": 2020 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','sales','{ "_id" : 2, "item" : "pecans", "pricing" : { "wholesale": 10, "retail": 9 }, "quantity" : 1, "year": 2021 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','sales',' { "_id" : 3, "item" : "bread", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 5 , "year": 2020}', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','sales',' { "_id" : 4, "item" : "meat", "pricing" : { "wholesale": 4, "retail": 10 }, "quantity" : 3 , "year": 2022}', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','sales','{ "_id" : 5, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','sales','{ "_id" : 6, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','sales','{ "_id" : 7, "item" : "bread", "pricing" : { "retail": 15, "wholesale": 10 }, "quantity" : 1, "year": 2020 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* running multiple $addToSet accumulators with different expressions */
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": { "item" : "$item" } } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "itemsSold" : [ { "item" : "almonds" }, { "item" : "bread" } ] }
+ { "_id" : { "$numberInt" : "2021" }, "itemsSold" : [ { "item" : "bread" }, { "item" : "pecans" } ] }
+ { "_id" : { "$numberInt" : "2022" }, "itemsSold" : [ { "item" : "meat" } ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
+                                  document                                   
+-----------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "itemsSold" : [ "almonds", "bread" ] }
+ { "_id" : { "$numberInt" : "2021" }, "itemsSold" : [ "pecans", "bread" ] }
+ { "_id" : { "$numberInt" : "2022" }, "itemsSold" : [ "meat" ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
+                                                                                                         document                                                                                                         
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "10" }, "retail" : { "$numberInt" : "15" } }, { "retail" : { "$numberInt" : "15" }, "wholesale" : { "$numberInt" : "10" } } ] }
+ { "_id" : { "$numberInt" : "2021" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "75" }, "retail" : { "$numberInt" : "100" } }, { "wholesale" : { "$numberInt" : "10" }, "retail" : { "$numberInt" : "9" } } ] }
+ { "_id" : { "$numberInt" : "2022" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "4" }, "retail" : { "$numberInt" : "10" } } ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
+                                                   document                                                   
+--------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "retailPrices" : [ { "$numberInt" : "15" } ] }
+ { "_id" : { "$numberInt" : "2021" }, "retailPrices" : [ { "$numberInt" : "9" }, { "$numberInt" : "100" } ] }
+ { "_id" : { "$numberInt" : "2022" }, "retailPrices" : [ { "$numberInt" : "10" } ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+                             document                             
+------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "retailPrices" : [ null ] }
+ { "_id" : { "$numberInt" : "2021" }, "retailPrices" : [ null ] }
+ { "_id" : { "$numberInt" : "2022" }, "retailPrices" : [ null ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "items": { "$addToSet": { "$getField": { "field": "a", "input": { "b": 1 } } } } } } ] }');
+                       document                        
+-------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "items" : [  ] }
+ { "_id" : { "$numberInt" : "2021" }, "items" : [  ] }
+ { "_id" : { "$numberInt" : "2022" }, "items" : [  ] }
+(3 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": { "item" : "$item" } } } } ] }');
+                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'itemsSold'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "item" : "$item" } }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         ->  Sort
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+               ->  Bitmap Heap Scan on documentdb_data.documents_12200 collection
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
+                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'itemsSold'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$item" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         ->  Sort
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+               ->  Bitmap Heap Scan on documentdb_data.documents_12200 collection
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
+                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'pricingDeals'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$pricing" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         ->  Sort
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+               ->  Bitmap Heap Scan on documentdb_data.documents_12200 collection
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
+                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'retailPrices'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$pricing.retail" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         ->  Sort
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+               ->  Bitmap Heap Scan on documentdb_data.documents_12200 collection
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'retailPrices'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$noValue" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         ->  Sort
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+               ->  Bitmap Heap Scan on documentdb_data.documents_12200 collection
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "items": { "$addToSet": { "$getField": { "field": "a", "input": { "b": 1 } } } } } } ] }');
+                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'items'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "$getField" : { "field" : "a", "input" : { "b" : { "$numberInt" : "1" } } } } }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         ->  Sort
+               Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), collection.document
+               Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+               ->  Bitmap Heap Scan on documentdb_data.documents_12200 collection
+                     Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+                     Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '12200'::bigint)
+(13 rows)
+
+/* running $addToSet with document that exceeds 16MB */
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "c": 5 MB - ~5.5 MB & there's 25 of them
+FOR i IN 1..25 LOOP
+PERFORM documentdb_api.insert_one('db', 'sizes_test', FORMAT('{ "_id": %s, "groupName": "A", "c": [ %s "d" ] }', i, repeat('"' || i || repeat('a', 1000) || '", ', 5000))::documentdb_core.bson);
+END LOOP;
+END;
+$$;
+NOTICE:  creating collection
+/* should fail with intermediate size error */
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sizes_test", "pipeline": [ { "$group": { "_id": "$groupName", "data": { "$addToSet": "$c" } } } ] }');
+ERROR:  Size 106297194 is larger than maximum size allowed for an intermediate document 104857600
+/* shard collection */
+SELECT documentdb_api.shard_collection('db', 'sales', '{ "_id": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+/* run same $addToSet queries to ensure consistency */
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": { "item" : "$item" } } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "itemsSold" : [ { "item" : "almonds" }, { "item" : "bread" } ] }
+ { "_id" : { "$numberInt" : "2021" }, "itemsSold" : [ { "item" : "bread" }, { "item" : "pecans" } ] }
+ { "_id" : { "$numberInt" : "2022" }, "itemsSold" : [ { "item" : "meat" } ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
+                                  document                                   
+-----------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "itemsSold" : [ "almonds", "bread" ] }
+ { "_id" : { "$numberInt" : "2021" }, "itemsSold" : [ "pecans", "bread" ] }
+ { "_id" : { "$numberInt" : "2022" }, "itemsSold" : [ "meat" ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
+                                                                                                         document                                                                                                         
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "10" }, "retail" : { "$numberInt" : "15" } }, { "retail" : { "$numberInt" : "15" }, "wholesale" : { "$numberInt" : "10" } } ] }
+ { "_id" : { "$numberInt" : "2021" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "75" }, "retail" : { "$numberInt" : "100" } }, { "wholesale" : { "$numberInt" : "10" }, "retail" : { "$numberInt" : "9" } } ] }
+ { "_id" : { "$numberInt" : "2022" }, "pricingDeals" : [ { "wholesale" : { "$numberInt" : "4" }, "retail" : { "$numberInt" : "10" } } ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
+                                                   document                                                   
+--------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "retailPrices" : [ { "$numberInt" : "15" } ] }
+ { "_id" : { "$numberInt" : "2021" }, "retailPrices" : [ { "$numberInt" : "9" }, { "$numberInt" : "100" } ] }
+ { "_id" : { "$numberInt" : "2022" }, "retailPrices" : [ { "$numberInt" : "10" } ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+                             document                             
+------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "retailPrices" : [ null ] }
+ { "_id" : { "$numberInt" : "2021" }, "retailPrices" : [ null ] }
+ { "_id" : { "$numberInt" : "2022" }, "retailPrices" : [ null ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "items": { "$addToSet": { "$getField": { "field": "a", "input": { "b": 1 } } } } } } ] }');
+                       document                        
+-------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "items" : [  ] }
+ { "_id" : { "$numberInt" : "2021" }, "items" : [  ] }
+ { "_id" : { "$numberInt" : "2022" }, "items" : [  ] }
+(3 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": { "item" : "$item" } } } } ] }');
+                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  HashAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'itemsSold'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "item" : "$item" } }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+         ->  Seq Scan on documentdb_data.documents_12200 collection
+               Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+(7 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
+                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  HashAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'itemsSold'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$item" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+         ->  Seq Scan on documentdb_data.documents_12200 collection
+               Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+(7 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
+                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  HashAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'pricingDeals'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$pricing" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+         ->  Seq Scan on documentdb_data.documents_12200 collection
+               Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+(7 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
+                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  HashAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'retailPrices'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$pricing.retail" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+         ->  Seq Scan on documentdb_data.documents_12200 collection
+               Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+(7 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  HashAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'retailPrices'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$noValue" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+         ->  Seq Scan on documentdb_data.documents_12200 collection
+               Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+(7 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "items": { "$addToSet": { "$getField": { "field": "a", "input": { "b": 1 } } } } } } ] }');
+                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  HashAggregate
+         Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)), 'items'::text, documentdb_api_internal.bson_add_to_set(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "$getField" : { "field" : "a", "input" : { "b" : { "$numberInt" : "1" } } } } }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+         Group Key: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+         ->  Seq Scan on documentdb_data.documents_12200 collection
+               Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true, '{ "now" : NOW_SYS_VARIABLE }'::bson), collection.document
+(7 rows)
+

@@ -1,0 +1,114 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_shared_buffer';
+                   name                   | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_shared_buffer | 1       | MB   | postmaster | integer | configuration file | 1       | 10000   |          | 20       | 1         | f
+(1 row)
+
+CREATE database example;
+SELECT datname, substr(query,0,150) AS query, SUM(calls) AS calls FROM pg_stat_monitor GROUP BY datname, query ORDER BY datname, query, calls DESC Limit 20;
+ datname |                                                     query                                                     | calls 
+---------+---------------------------------------------------------------------------------------------------------------+-------
+ example | BEGIN                                                                                                         | 10000
+ example | END                                                                                                           | 10000
+ example | INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)          | 10000
+ example | SELECT abalance FROM pgbench_accounts WHERE aid = $1                                                          | 10000
+ example | UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2                                           | 10000
+ example | UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2                                           | 10000
+ example | UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2                                            | 10000
+ example | alter table pgbench_accounts add primary key (aid)                                                            |     1
+ example | alter table pgbench_branches add primary key (bid)                                                            |     1
+ example | alter table pgbench_tellers add primary key (tid)                                                             |     1
+ example | begin                                                                                                         |     1
+ example | commit                                                                                                        |     1
+ example | copy pgbench_accounts from stdin                                                                              |     1
+ example | create table pgbench_accounts(aid    int not null,bid int,abalance int,filler char(84)) with (fillfactor=100) |     1
+ example | create table pgbench_branches(bid int not null,bbalance int,filler char(88)) with (fillfactor=100)            |     1
+ example | create table pgbench_history(tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22))            |     1
+ example | create table pgbench_tellers(tid int not null,bid int,tbalance int,filler char(84)) with (fillfactor=100)     |     1
+ example | drop table if exists pgbench_accounts, pgbench_branches, pgbench_history, pgbench_tellers                     |     1
+ example | insert into pgbench_branches(bid,bbalance) values($1,$2)                                                      |    10
+ example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                               |   100
+(20 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_shared_buffer';
+                   name                   | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_shared_buffer | 2       | MB   | postmaster | integer | configuration file | 1       | 10000   |          | 20       | 2         | f
+(1 row)
+
+SELECT datname, substr(query,0,150) AS query, SUM(calls) AS calls FROM pg_stat_monitor GROUP BY datname, query ORDER BY datname, query, calls DESC Limit 20;
+ datname |                                                     query                                                     | calls 
+---------+---------------------------------------------------------------------------------------------------------------+-------
+ example | BEGIN                                                                                                         | 10000
+ example | END                                                                                                           | 10000
+ example | INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)          | 10000
+ example | SELECT abalance FROM pgbench_accounts WHERE aid = $1                                                          | 10000
+ example | UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2                                           | 10000
+ example | UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2                                           | 10000
+ example | UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2                                            | 10000
+ example | alter table pgbench_accounts add primary key (aid)                                                            |     1
+ example | alter table pgbench_branches add primary key (bid)                                                            |     1
+ example | alter table pgbench_tellers add primary key (tid)                                                             |     1
+ example | begin                                                                                                         |     1
+ example | commit                                                                                                        |     1
+ example | copy pgbench_accounts from stdin                                                                              |     1
+ example | create table pgbench_accounts(aid    int not null,bid int,abalance int,filler char(84)) with (fillfactor=100) |     1
+ example | create table pgbench_branches(bid int not null,bbalance int,filler char(88)) with (fillfactor=100)            |     1
+ example | create table pgbench_history(tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22))            |     1
+ example | create table pgbench_tellers(tid int not null,bid int,tbalance int,filler char(84)) with (fillfactor=100)     |     1
+ example | drop table if exists pgbench_accounts, pgbench_branches, pgbench_history, pgbench_tellers                     |     1
+ example | insert into pgbench_branches(bid,bbalance) values($1,$2)                                                      |    10
+ example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                               |   100
+(20 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_query_shared_buffer';
+                   name                   | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_query_shared_buffer | 20      | MB   | postmaster | integer | configuration file | 1       | 10000   |          | 20       | 20        | f
+(1 row)
+
+SELECT datname, substr(query,0,150) AS query, SUM(calls) AS calls FROM pg_stat_monitor GROUP BY datname, query ORDER BY datname, query, calls DESC Limit 20;
+ datname |                                                     query                                                     | calls 
+---------+---------------------------------------------------------------------------------------------------------------+-------
+ example | BEGIN                                                                                                         | 10000
+ example | END                                                                                                           | 10000
+ example | INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)          | 10000
+ example | SELECT abalance FROM pgbench_accounts WHERE aid = $1                                                          | 10000
+ example | UPDATE pgbench_accounts SET abalance = abalance + $1 WHERE aid = $2                                           | 10000
+ example | UPDATE pgbench_branches SET bbalance = bbalance + $1 WHERE bid = $2                                           | 10000
+ example | UPDATE pgbench_tellers SET tbalance = tbalance + $1 WHERE tid = $2                                            | 10000
+ example | alter table pgbench_accounts add primary key (aid)                                                            |     1
+ example | alter table pgbench_branches add primary key (bid)                                                            |     1
+ example | alter table pgbench_tellers add primary key (tid)                                                             |     1
+ example | begin                                                                                                         |     1
+ example | commit                                                                                                        |     1
+ example | copy pgbench_accounts from stdin                                                                              |     1
+ example | create table pgbench_accounts(aid    int not null,bid int,abalance int,filler char(84)) with (fillfactor=100) |     1
+ example | create table pgbench_branches(bid int not null,bbalance int,filler char(88)) with (fillfactor=100)            |     1
+ example | create table pgbench_history(tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22))            |     1
+ example | create table pgbench_tellers(tid int not null,bid int,tbalance int,filler char(84)) with (fillfactor=100)     |     1
+ example | drop table if exists pgbench_accounts, pgbench_branches, pgbench_history, pgbench_tellers                     |     1
+ example | insert into pgbench_branches(bid,bbalance) values($1,$2)                                                      |    10
+ example | insert into pgbench_tellers(tid,bid,tbalance) values ($1,$2,$3)                                               |   100
+(20 rows)
+
+DROP EXTENSION pg_stat_monitor;

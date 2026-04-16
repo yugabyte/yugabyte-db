@@ -1,0 +1,220 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#include <string>
+
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/path_handlers_util.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/snapshot_test_util.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+
+#include "yb/util/jsonreader.h"
+
+namespace yb::integration_tests {
+
+using std::string;
+
+const uint kNumMasters(3);
+const uint kNumTservers(3);
+
+class TServerPathHandlersItest : public YBMiniClusterTestBase<MiniCluster> {
+ public:
+  void InitCluster() {
+    MiniClusterOptions opts;
+    opts.num_tablet_servers = kNumTservers;
+    opts.num_masters = kNumMasters;
+    cluster_.reset(new MiniCluster(opts));
+    ASSERT_OK(cluster_->Start());
+  }
+
+  void SetUp() override {
+    YBMiniClusterTestBase<MiniCluster>::SetUp();
+    InitCluster();
+
+    auto tserver_http_endpoint = cluster_->mini_tablet_server(0)->bound_http_addr();
+    tserver_http_url_ = "http://" + AsString(tserver_http_endpoint);
+  }
+
+  void DoTearDown() override {
+    LOG(INFO) << "Calling DoTearDown";
+    cluster_->Shutdown();
+  }
+
+ protected:
+  Result<string> FetchURL(const string& query_path) {
+    faststring result;
+    RETURN_NOT_OK(path_handlers_util::GetUrl(tserver_http_url_ + query_path, &result));
+    return result.ToString();
+  }
+
+  string tserver_http_url_;
+};
+
+TEST_F(TServerPathHandlersItest, TestMasterPathHandlers) {
+  faststring result;
+  // TServer HTML paths.
+  ASSERT_OK(FetchURL("/"));
+  ASSERT_OK(FetchURL("/tables"));
+  ASSERT_OK(FetchURL("/tablets"));
+  ASSERT_OK(FetchURL("/operations"));
+  ASSERT_OK(FetchURL("/tablet-consensus-status"));
+  ASSERT_OK(FetchURL("/log-anchors"));
+  ASSERT_OK(FetchURL("/transactions"));
+  ASSERT_OK(FetchURL("/rocksdb"));
+  ASSERT_OK(FetchURL("/waitqueue"));
+  ASSERT_OK(FetchURL("/api/v1/meta-cache"));
+#ifndef NDEBUG
+  ASSERT_OK(FetchURL("/intentsdb"));
+#endif
+  ASSERT_OK(FetchURL("/maintenance-manager"));
+
+  // Default paths.
+  ASSERT_OK(FetchURL("/logs"));
+  ASSERT_OK(FetchURL("/varz"));
+  ASSERT_OK(FetchURL("/status"));
+  ASSERT_OK(FetchURL("/memz"));
+  ASSERT_OK(FetchURL("/mem-trackers"));
+  ASSERT_OK(FetchURL("/api/v1/mem-trackers"));
+  ASSERT_OK(FetchURL("/api/v1/varz"));
+  ASSERT_OK(FetchURL("/api/v1/version-info"));
+
+  // API paths.
+  ASSERT_OK(FetchURL("/api/v1/health-check"));
+  ASSERT_OK(FetchURL("/api/v1/version"));
+  ASSERT_OK(FetchURL("/api/v1/masters"));
+  ASSERT_OK(FetchURL("/api/v1/tablets"));
+}
+
+TEST_F(TServerPathHandlersItest, TestVarzAutoFlag) {
+  static const auto kExpectedAutoFlag = "ysql_yb_enable_expression_pushdown";
+
+  // In Non LTO builds the unexpected AutoFlag will not be found. In LTO builds and MiniCluster
+  // tests the flag will appear in the Default section instead of the AutoFlags section.
+  static const auto kUnExpectedAutoFlag = "use_parent_table_id_field";
+
+  // Test the HTML endpoint.
+  static const auto kAutoFlagsStart = ">Auto Flags<";
+  static const auto kAutoFlagsEnd = ">Default Flags<";
+
+  auto result = ASSERT_RESULT(FetchURL("/varz"));
+
+  auto it_auto_flags_start = result.find(kAutoFlagsStart);
+  ASSERT_NE(it_auto_flags_start, std::string::npos);
+  auto it_auto_flags_end = result.find(kAutoFlagsEnd);
+  ASSERT_NE(it_auto_flags_end, std::string::npos);
+
+  auto it_expected_flag = result.find(kExpectedAutoFlag);
+  ASSERT_GT(it_expected_flag, it_auto_flags_start);
+  ASSERT_LT(it_expected_flag, it_auto_flags_end);
+
+  auto it_unexpected_flag = result.find(kUnExpectedAutoFlag);
+  ASSERT_GT(it_unexpected_flag, it_auto_flags_end);
+
+  // We should not have any hidden flags in the UI. TEST flags are always marked hidden.
+  ASSERT_STR_NOT_CONTAINS(result, "TEST_override_transaction_priority");
+
+  // We should not have any master flags in the tserver.
+  ASSERT_STR_NOT_CONTAINS(result, "master_yb_client_default_timeout_ms");
+
+  // Test the JSON API endpoint.
+  result = ASSERT_RESULT(FetchURL("/api/v1/varz"));
+
+  JsonReader r(result);
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_obj = nullptr;
+  ASSERT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+  ASSERT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  ASSERT_TRUE(json_obj->HasMember("flags"));
+  ASSERT_EQ(rapidjson::kArrayType, (*json_obj)["flags"].GetType());
+  const rapidjson::Value::ConstArray flags = (*json_obj)["flags"].GetArray();
+
+  auto it_expected_json_flag = std::find_if(flags.Begin(), flags.End(), [](const auto& flag) {
+    return flag["name"] == kExpectedAutoFlag;
+  });
+  ASSERT_NE(it_expected_json_flag, flags.End());
+  ASSERT_EQ((*it_expected_json_flag)["type"], "Auto");
+
+  auto it_unexpected_json_flag = std::find_if(flags.Begin(), flags.End(), [](const auto& flag) {
+    return flag["name"] == kUnExpectedAutoFlag;
+  });
+
+  ASSERT_NE(it_unexpected_json_flag, flags.End());
+  ASSERT_EQ((*it_unexpected_json_flag)["type"], "Default");
+}
+
+void VerifyMetaCacheObjectIsValid(
+    const rapidjson::Value* json_object, const JsonReader& json_reader) {
+  EXPECT_TRUE(json_object->HasMember("MainMetaCache"));
+
+  const rapidjson::Value* main_metacache = nullptr;
+  EXPECT_OK(json_reader.ExtractObject(json_object, "MainMetaCache", &main_metacache));
+  EXPECT_TRUE(main_metacache->HasMember("tablets"));
+
+  std::vector<const rapidjson::Value*> remote_tablets;
+  ASSERT_OK(json_reader.ExtractObjectArray(main_metacache, "tablets", &remote_tablets));
+  for (auto remote_tablet : remote_tablets) {
+    EXPECT_TRUE(remote_tablet->HasMember("tablet_id"));
+    EXPECT_TRUE(remote_tablet->HasMember("replicas"));
+  }
+}
+
+TEST_F(TServerPathHandlersItest, TestListMetaCache) {
+  auto result = ASSERT_RESULT(FetchURL("/api/v1/meta-cache"));
+  JsonReader r(result);
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_object = nullptr;
+  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_object));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_object)->GetType());
+  VerifyMetaCacheObjectIsValid(json_object, r);
+}
+
+TEST_F(TServerPathHandlersItest, TestSnapshotsEndpoint) {
+  client::SnapshotTestUtil snapshot_util;
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  snapshot_util.SetProxy(&client->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  client::TableHandle table;
+  client::YBSchema schema;
+  client::YBSchemaBuilder builder;
+  builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  ASSERT_OK(builder.Build(&schema));
+
+  const client::YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "my_table");
+  ASSERT_OK(client->CreateNamespaceIfNotExists(
+      kTableName.namespace_name(), kTableName.namespace_type()));
+  ASSERT_OK(table.Create(kTableName, 1 /* num_tablets */, schema, client.get()));
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      table, YQL_DATABASE_CQL, kTableName.namespace_name(), client::WaitSnapshot::kTrue));
+
+  auto rows = ASSERT_RESULT(path_handlers_util::GetHtmlTableRows(
+      tserver_http_url_ + "/snapshots", "snapshots_" + kTableName.namespace_name()));
+  ASSERT_GE(rows.size(), 2);
+
+  ASSERT_EQ(rows[0][0], "Active RocksDB");
+  ASSERT_FALSE(rows[1][0].empty()); // snapshot id
+  ASSERT_FALSE(rows[1][1].empty()); // snapshot time
+  ASSERT_FALSE(rows[1][2].empty()); // cumulative size
+  ASSERT_FALSE(rows[1][3].empty()); // exclusive size
+  ASSERT_EQ(rows[1][4], schedule_id.ToString()); // schedule id
+}
+
+}  // namespace yb::integration_tests

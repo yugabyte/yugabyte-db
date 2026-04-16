@@ -1,0 +1,50 @@
+openapi: 3.0.0
+info:
+  title: YugabyteDB Anywhere V2 APIs
+  description: An improved set of APIs for managing YugabyteDB Anywhere
+  contact:
+    name: YugabyteDB Anywhere Support
+    url: 'https://docs.yugabyte.com'
+    email: support@yugabyte.com
+  license:
+    name: Polyform Free Trial License 1.0.0
+    url: 'https://github.com/yugabyte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt'
+  version: v2
+servers:
+  - description: API endpoint of YBA server
+    url: '{protocol}://{host_port}/api/v2'
+    variables:
+      protocol:
+        enum:
+          - http
+          - https
+        default: http
+      host_port:
+        default: 'localhost:9000'
+tags:
+  - name: Authentication
+    description: Authentication operations on YBA
+  - name: Backup and Restore
+    description: Operations related to universe backup and restore
+  - name: Continuous Backup
+    description: CRUD operations for Continuous YBA Backups
+  - name: Isolated Backup
+    description: Isolated backup/restore of YBA to local filesystem
+  - name: Job Scheduler
+    description: Job Scheduler
+  - name: Metrics
+    description: CRUD operations for YBA metrics
+  - name: Telemetry Provider
+    description: Operations for Telemetry Providers
+  - name: Universe
+    description: CRUD operations for a Universe
+  - name: YBA Instance
+    description: YBA Instance operations
+paths:
+  $ref: "paths/_index.yaml"
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      name: X-AUTH-YW-API-TOKEN
+      in: header

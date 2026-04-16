@@ -1,0 +1,23 @@
+title: JobScheduleConfigSpec
+description: Job schedule config spec for a job schedule.
+type: object
+properties:
+  disabled:
+    description: Disable or enable the job schedule.
+    type: boolean
+  interval_secs:
+    description: Delay interval between two jobs.
+    type: integer
+    format: int64
+  snooze_until:
+    description: Time until the job should be snoozed.
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+  type:
+    description: Type of the job schedule.
+    $ref: "./JobScheduleType.yaml"
+required:
+  - disabled
+  - interval_secs
+  - type

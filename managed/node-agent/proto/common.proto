@@ -1,0 +1,11 @@
+syntax = "proto3";
+package nodeagent.server;
+
+option go_package = "./service";
+option java_package = "com.yugabyte.yw.nodeagent";
+option java_multiple_files = true;
+
+message Error {
+    int32 code = 1;
+    string message = 2;
+}

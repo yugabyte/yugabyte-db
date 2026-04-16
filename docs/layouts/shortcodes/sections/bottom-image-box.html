@@ -1,0 +1,37 @@
+<div>
+  <div class="card-title">
+    {{- .Params.title -}}
+  </div>
+
+  <div class="card-desc">
+    {{- .Params.description -}}
+  </div>
+
+  <div class="card-link">
+    {{- if and (.Params.buttonText) (.Params.buttonUrl) -}}
+      {{ $arrowImage := "/icons/arrow-primary.svg" }}
+      {{ $buttonType := "primary-btn" }}
+
+      {{- if eq .Params.buttonType "secondary" -}}
+        {{ $arrowImage = "/icons/arrow-secondary.svg" }}
+        {{ $buttonType = "secondary-btn" }}
+      {{- else if eq .Params.buttonType "tritiery" -}}
+        {{ $arrowImage = "/icons/arrow-tritiery.svg" }}
+        {{ $buttonType = "tritiery-btn" }}
+      {{- end -}}
+
+      <a class="{{ $buttonType }}" href="{{ .Params.buttonUrl }}" title="{{- .Params.buttonText -}}"{{- if .Params.buttonTarget }} target="_blank" rel="noopener"{{- end -}}>
+        {{ .Params.buttonText }}
+        {{- if ne .Params.buttonArrow false -}}
+          <img src="{{ $arrowImage }}" width="24" height="24">
+        {{- end -}}
+      </a>
+    {{- end -}}
+  </div>
+
+  <div class="card-img">
+    {{- if .Params.imageUrl -}}
+      <img src="{{- .Params.imageUrl -}}" {{- if .Params.imageAlt }} alt="{{- .Params.imageAlt -}}" title="{{- .Params.imageAlt -}}"{{- end -}}>
+    {{- end -}}
+  </div>
+</div>

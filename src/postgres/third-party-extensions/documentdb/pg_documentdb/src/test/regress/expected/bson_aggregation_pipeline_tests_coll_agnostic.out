@@ -1,0 +1,41 @@
+SET search_path TO documentdb_api,documentdb_api_catalog,documentdb_core;
+SET documentdb.next_collection_id TO 4500;
+SET documentdb.next_collection_index_id TO 4500;
+set application_name to 'coll_agnostic_tests';
+set documentdb_api.current_op_application_name to 'coll_agnostic_tests';
+-- this is further tested in isolation tests
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$currentOp": 1 }] }');
+ERROR:  BSON field 'pipeline.$currentOp' is the wrong type 'int', expected type 'object'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$match": { } }, { "$currentOp": {} }] }');
+ERROR:  {aggregate: 1} is not valid for '$match'; a collection is required.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }] }');
+ERROR:  $currentOp must be run against the 'admin' database with {aggregate: 1}
+SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": "coll", "pipeline": [ { "$currentOp": {} }] }');
+ERROR:  $currentOp must be run against the 'admin' database with {aggregate: 1}
+SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }, { "$project": { "opid": 0, "op_prefix": 0, "currentOpTime": 0, "secs_running": 0 }}] }');
+                                                          document                                                          
+----------------------------------------------------------------------------------------------------------------------------
+ { "shard" : "defaultShard", "active" : true, "type" : "op", "command" : {  }, "op" : "command", "waitingForLock" : false }
+(1 row)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }] }');
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Function Scan on documentdb_api_internal.current_op_aggregation "currentOp"
+   Output: document
+   Function Call: documentdb_api_internal.current_op_aggregation('{ }'::bson)
+(3 rows)
+
+-- does the same as aggregation.
+SELECT current_op_command('{ "op_prefix": { "$lt": 2 }}');
+                   current_op_command                    
+---------------------------------------------------------
+ { "inprog" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- collection agnostic with no pipeline should work and return 0 rows.
+SELECT document from bson_aggregation_pipeline('db', '{ "aggregate" : 1.0, "pipeline" : [  ], "cursor" : {  }, "txnNumber" : 0, "lsid" : { "id" : { "$binary" : { "base64": "H+W3J//vSn6obaefeJ6j/g==", "subType" : "04" } } }, "$db" : "admin" }');
+ document 
+----------
+(0 rows)
+

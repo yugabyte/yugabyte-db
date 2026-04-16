@@ -1,0 +1,1260 @@
+// Copyright (c) YugabyteDB, Inc.
+package com.yugabyte.yw.commissioner.tasks;
+
+import static com.yugabyte.yw.common.table.TableInfoUtil.isColocatedChildTable;
+
+import com.google.api.client.util.Throwables;
+import com.google.common.collect.Sets;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.State;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
+import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.PitrConfig;
+import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
+import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
+import com.yugabyte.yw.models.XClusterNamespaceConfig.Status;
+import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.File;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import javax.annotation.Nullable;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.yb.CommonTypes;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.IsXClusterBootstrapRequiredResponse;
+import org.yb.client.YBClient;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
+
+@Slf4j
+@Abortable
+@Retryable
+public class CreateXClusterConfig extends XClusterConfigTaskBase {
+
+  public static final long TIME_BEFORE_DELETE_BACKUP_MS = TimeUnit.DAYS.toMillis(1);
+  private static final long DELAY_BETWEEN_RETRIES_MS = TimeUnit.SECONDS.toMillis(10);
+
+  @Inject
+  protected CreateXClusterConfig(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
+  }
+
+  public List<Restore> restoreList = new ArrayList<>();
+
+  public List<Backup> backupList = new ArrayList<>();
+
+  public Map<String, Boolean> dbIdBootstrapRequiredMap = new HashMap<>();
+
+  protected boolean checkBootstrapRequired(
+      String dbId,
+      YBClientService ybService,
+      Universe sourceUniverse,
+      XClusterConfig xClusterConfig,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
+    if (dbIdBootstrapRequiredMap.containsKey(dbId)) {
+      log.debug(
+          "Db: {} requires bootstrapping: {} from cache.",
+          dbId,
+          dbIdBootstrapRequiredMap.get(dbId));
+      return dbIdBootstrapRequiredMap.get(dbId);
+    }
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+        getRequestedTableInfoList(Set.of(dbId), sourceTableInfoList);
+    String namespaceName = requestedTableInfoList.get(0).getNamespace().getName();
+
+    Map<String, String> sourceTableIdTargetTableIdMap =
+        XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
+            requestedTableInfoList, targetTableInfoList);
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> srcTablesNotPresentOnTarget =
+        requestedTableInfoList.stream()
+            .filter(
+                ti -> {
+                  if (isColocatedChildTable(ti)) {
+                    return false;
+                  }
+
+                  String tableId = ti.getId().toStringUtf8();
+                  return !(sourceTableIdTargetTableIdMap.containsKey(tableId)
+                      && sourceTableIdTargetTableIdMap.get(tableId) != null);
+                })
+            .toList();
+
+    if (!srcTablesNotPresentOnTarget.isEmpty()) {
+      log.warn(
+          "{} will be bootstrapped because the following tables exist on source and"
+              + " don't exist on target: {}",
+          namespaceName,
+          groupByNamespaceId(srcTablesNotPresentOnTarget));
+      dbIdBootstrapRequiredMap.put(dbId, true);
+      return true;
+    }
+
+    Set<String> targetTablesToReplicate =
+        sourceTableIdTargetTableIdMap.values().stream()
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesNotPresentOnSource =
+        targetTableInfoList.stream()
+            .filter(
+                ti -> {
+                  if (isColocatedChildTable(ti)) {
+                    return false;
+                  }
+
+                  return ti.getNamespace().getName().equals(namespaceName)
+                      && !targetTablesToReplicate.contains(ti.getId().toStringUtf8());
+                })
+            .toList();
+
+    if (!targetTablesNotPresentOnSource.isEmpty()) {
+      log.warn(
+          "{} will be bootstrapped because the following tables exist on target and"
+              + " don't exist on source: {}",
+          namespaceName,
+          groupByNamespaceId(targetTablesNotPresentOnSource));
+      dbIdBootstrapRequiredMap.put(dbId, true);
+      return true;
+    }
+
+    Duration xclusterWaitTimeout =
+        confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
+
+    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
+      List<String> lastErrors = new ArrayList<>();
+      boolean result =
+          doWithConstTimeout(
+              DELAY_BETWEEN_RETRIES_MS,
+              xclusterWaitTimeout.toMillis(),
+              () -> {
+                try {
+                  lastErrors.clear();
+                  IsXClusterBootstrapRequiredResponse completionResponse =
+                      client.isXClusterBootstrapRequired(
+                          xClusterConfig.getReplicationGroupName(), dbId);
+
+                  if (completionResponse.hasError()) {
+                    lastErrors.add(
+                        String.format(
+                            "Master error: %s when fetching isXClusterBootstrapRequired for db %s",
+                            completionResponse.errorMessage(), dbId));
+                  }
+
+                  log.debug(
+                      "CheckBootstrapRequired, checkpointing status is complete: {}, for universe:"
+                          + " {}, xClusterConfig: {}, dbId: {}",
+                      !completionResponse.isNotReady(),
+                      sourceUniverse.getUniverseUUID(),
+                      xClusterConfig.getName(),
+                      dbId);
+
+                  if (completionResponse.isNotReady()) {
+                    lastErrors.add(
+                        String.format(
+                            "Db %s should be finished checkpointing otherwise isBootstrapRequired"
+                                + " bit is not set",
+                            dbId));
+                  }
+                  if (lastErrors.isEmpty()) {
+                    dbIdBootstrapRequiredMap.put(
+                        dbId, completionResponse.itInitialBootstrapRequired());
+                    log.debug(
+                        "Bootstrap required for db {}: {}",
+                        dbId,
+                        completionResponse.itInitialBootstrapRequired());
+                  }
+                  log.debug(
+                      "Last errors for checking db: {} if needs bootstrapping: {}",
+                      dbId,
+                      lastErrors);
+                  return lastErrors.isEmpty();
+                } catch (Exception e) {
+                  log.error("Hit unexpected error: {}", e.getMessage());
+                  return false;
+                }
+              });
+      if (!result) {
+        throw new RuntimeException(
+            String.format(
+                "Failed to execute isInitialBootstrapRequired rpc. Error details: %s",
+                String.join(",", lastErrors)));
+      }
+    } catch (Exception e) {
+      log.error("{} hit error : {}", getName(), e.getMessage());
+      Throwables.propagate(e);
+    }
+    return dbIdBootstrapRequiredMap.get(dbId);
+  }
+
+  @Override
+  public void run() {
+    log.info("Running {}", getName());
+
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    try {
+      // Lock the target universe.
+      lockAndFreezeUniverseForUpdate(
+          targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
+      try {
+        // Lock the source universe.
+        lockAndFreezeUniverseForUpdate(
+            sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
+
+        // Check equality of auto flags on both universes only if universe is used for DR.
+        createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse, xClusterConfig.isUsedForDr())
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
+
+        createXClusterConfigSetStatusTask(xClusterConfig, XClusterConfigStatusType.Updating)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
+        if (xClusterConfig.isUsedForDr()) {
+          createSetDrStatesTask(
+                  xClusterConfig,
+                  State.Updating,
+                  null /* sourceUniverseState */,
+                  null /* targetUniverseState */,
+                  null /* keyspacePending */)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
+        }
+
+        if (xClusterConfig.getType() == ConfigType.Db) {
+          addSubtasksToCreateXClusterConfig(
+              xClusterConfig, taskParams().getDbs(), taskParams().getPitrParams());
+        } else {
+          addSubtasksToCreateXClusterConfig(
+              xClusterConfig,
+              taskParams().getTableInfoList(),
+              taskParams().getMainTableIndexTablesMap(),
+              taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+              taskParams().getPitrParams());
+        }
+
+        // After all the other subtasks are done, set the DR states to show replication is
+        // happening.
+        if (xClusterConfig.isUsedForDr()) {
+          createSetDrStatesTask(
+                  xClusterConfig,
+                  State.Replicating,
+                  SourceUniverseState.ReplicatingData,
+                  TargetUniverseState.ReceivingData,
+                  null /* keyspacePending */)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
+
+        createXClusterConfigSetStatusTask(xClusterConfig, XClusterConfigStatusType.Running)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+        createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+        createMarkUniverseUpdateSuccessTasks(sourceUniverse.getUniverseUUID())
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+        getRunnableTask().runSubTasks();
+      } catch (Exception e) {
+        log.error("{} hit error : {}", getName(), e.getMessage());
+        xClusterConfig.refresh();
+        // Set xCluster config status to failed.
+        xClusterConfig.updateStatus(XClusterConfigStatusType.Failed);
+        // Set tables in updating status to failed.
+        Set<String> tablesInPendingStatus =
+            xClusterConfig.getTableIdsInStatus(
+                getTableIds(taskParams().getTableInfoList()),
+                X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
+        xClusterConfig.updateStatusForTables(
+            tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+
+        if (xClusterConfig.isUsedForDr()) {
+          // Prevent all other DR tasks except delete from running.
+          log.info(
+              "Setting the dr config state of xCluster config {} to {} from {}",
+              xClusterConfig.getUuid(),
+              State.Failed,
+              xClusterConfig.getDrConfig().getState());
+          xClusterConfig.getDrConfig().setState(State.Failed);
+          xClusterConfig.getDrConfig().update();
+        }
+
+        // Set backup and restore status to failed and alter load balanced.
+        boolean isLoadBalancerAltered = false;
+        for (Restore restore : restoreList) {
+          isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
+        }
+        handleFailedBackupAndRestore(
+            backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
+        throw new RuntimeException(e);
+      } finally {
+        // Unlock the source universe.
+        unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
+      }
+    } finally {
+      // Unlock the target universe.
+      unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
+    }
+
+    log.info("Completed {}", getName());
+  }
+
+  protected void addSubtasksToCreateXClusterConfig(
+      XClusterConfig xClusterConfig,
+      @Nullable List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
+      @Nullable Map<String, List<String>> mainTableIndexTablesMap,
+      @Nullable Set<String> sourceTableIdsWithNoTableOnTargetUniverse,
+      @Nullable Set<String> sourceDbIds,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams,
+      boolean isForceBootstrap) {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+
+    // Create namespaces for universe's clusters if both universes are k8s universes and MCS is
+    // enabled.
+    if (KubernetesUtil.isMCSEnabled(sourceUniverse)
+        && KubernetesUtil.isMCSEnabled(targetUniverse)) {
+      createReplicateNamespacesTask(xClusterConfig);
+    }
+
+    // Ensure network health between source and target universes.
+    if (confGetter.getConfForScope(
+        sourceUniverse, UniverseConfKeys.xClusterNetworkConnectivityCheckEnabled)) {
+      createXClusterNetworkConnectivityCheckTask(xClusterConfig);
+    }
+
+    // Support mismatched TLS root certificates.
+    createTransferXClusterCertsCopyTasks(xClusterConfig);
+
+    boolean isReplicationConfigCreated = false;
+    Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
+        dbToTablesInfoMapNeedBootstrap = null;
+    if (xClusterConfig.getType() != ConfigType.Db) {
+      if (Objects.nonNull(taskParams().getBootstrapParams())) {
+        Set<String> tableIdsAllowedForBootstrap =
+            Sets.intersection(
+                taskParams().getBootstrapParams().tables, getTableIds(requestedTableInfoList));
+        xClusterConfig.getTables().stream()
+            .filter(tableConfig -> tableIdsAllowedForBootstrap.contains(tableConfig.getTableId()))
+            .forEach(
+                tableConfig -> {
+                  tableConfig.setNeedBootstrap(true);
+                  tableConfig.update();
+                });
+      }
+      dbToTablesInfoMapNeedBootstrap =
+          getDbToTablesInfoMapNeedBootstrapAndUpdateTableNeedBootstrap(
+              xClusterConfig,
+              getTableIds(requestedTableInfoList),
+              requestedTableInfoList,
+              mainTableIndexTablesMap,
+              sourceTableIdsWithNoTableOnTargetUniverse,
+              isForceBootstrap);
+
+      // Add the subtasks to set up replication for tables that do not need bootstrapping.
+      Set<String> tableIdsNotNeedBootstrap =
+          getTableIdsNotNeedBootstrap(getTableIds(requestedTableInfoList));
+
+      // If the status for at least one table is Running, it means the replication is set up for all
+      //  of them and this task should not run.
+      if (!tableIdsNotNeedBootstrap.isEmpty()
+          && xClusterConfig
+                  .getTableById(tableIdsNotNeedBootstrap.stream().findFirst().get())
+                  .getStatus()
+              != XClusterTableConfig.Status.Running) {
+        createXClusterConfigSetStatusForTablesTask(
+            xClusterConfig, tableIdsNotNeedBootstrap, XClusterTableConfig.Status.Updating);
+      }
+
+      if (!CollectionUtils.isEmpty(tableIdsNotNeedBootstrap)) {
+        addSubtasksForTablesNotNeedBootstrap(
+            xClusterConfig,
+            tableIdsNotNeedBootstrap,
+            requestedTableInfoList,
+            sourceDbIds,
+            false /* isReplicationConfigCreated */,
+            pitrParams);
+        isReplicationConfigCreated = true;
+      }
+    }
+
+    // Add the subtasks to set up replication for tables that need bootstrapping.
+    addSubtasksForTablesNeedBootstrap(
+        xClusterConfig,
+        taskParams().getBootstrapParams(),
+        dbToTablesInfoMapNeedBootstrap,
+        sourceDbIds,
+        isReplicationConfigCreated,
+        pitrParams);
+  }
+
+  protected void addSubtasksToCreateXClusterConfig(
+      XClusterConfig xClusterConfig,
+      Set<String> sourceDbIds,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams,
+      boolean isForceBootstrap) {
+    addSubtasksToCreateXClusterConfig(
+        xClusterConfig, null, null, null, sourceDbIds, pitrParams, isForceBootstrap);
+  }
+
+  protected void addSubtasksToCreateXClusterConfig(
+      XClusterConfig xClusterConfig,
+      Set<String> sourceDbIds,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams) {
+    addSubtasksToCreateXClusterConfig(
+        xClusterConfig, null, null, null, sourceDbIds, pitrParams, false /* isForceBootstrap */);
+  }
+
+  protected void addSubtasksToCreateXClusterConfig(
+      XClusterConfig xClusterConfig,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
+      Map<String, List<String>> mainTableIndexTablesMap,
+      Set<String> sourceTableIdsWithNoTableOnTargetUniverse,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams) {
+    addSubtasksToCreateXClusterConfig(
+        xClusterConfig,
+        requestedTableInfoList,
+        mainTableIndexTablesMap,
+        sourceTableIdsWithNoTableOnTargetUniverse,
+        null,
+        pitrParams,
+        false /*isforcebootstrap */);
+  }
+
+  protected void addSubtasksForTablesNotNeedBootstrap(
+      XClusterConfig xClusterConfig,
+      Set<String> tableIdsNotNeedBootstrap,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
+      Set<String> sourceDbIds,
+      boolean isReplicationConfigCreated,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams) {
+    log.info(
+        "Creating a subtask to set up replication without bootstrap for tables {}",
+        tableIdsNotNeedBootstrap);
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      throw new IllegalArgumentException(
+          "This method must not be called for db-scoped replication");
+    }
+
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    CommonTypes.TableType tableType =
+        xClusterConfig.getType() == ConfigType.Db
+            ? CommonTypes.TableType.PGSQL_TABLE_TYPE
+            : requestedTableInfoList.get(0).getTableType();
+
+    Set<String> tableIdsNotNeedBootstrapWithoutStream =
+        xClusterConfig.getTablesById(tableIdsNotNeedBootstrap).stream()
+            .filter(tableConfig -> Objects.isNull(tableConfig.getStreamId()))
+            .map(XClusterTableConfig::getTableId)
+            .collect(Collectors.toSet());
+    if (!tableIdsNotNeedBootstrapWithoutStream.isEmpty()
+        || taskParams().updatingTask == TaskType.SwitchoverDrConfig) {
+      // Create checkpoints for the tables.
+      createBootstrapProducerTask(
+              xClusterConfig, tableIdsNotNeedBootstrapWithoutStream, taskParams().updatingTask)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
+    }
+
+    Set<String> tableIdsNotNeedBootstrapWithoutReplicationSetup =
+        xClusterConfig.getTablesById(tableIdsNotNeedBootstrap).stream()
+            .filter(tableConfig -> !tableConfig.isReplicationSetupDone())
+            .map(XClusterTableConfig::getTableId)
+            .collect(Collectors.toSet());
+
+    if (!tableIdsNotNeedBootstrapWithoutReplicationSetup.isEmpty()) {
+      if (xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                null /* drConfigState */,
+                SourceUniverseState.ReadyToReplicate,
+                null /* targetUniverseState */,
+                null /* keyspacePending */)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
+
+      // Set up PITRs for txn/db scoped xCluster.
+      if (xClusterConfig.getType() == ConfigType.Txn || xClusterConfig.getType() == ConfigType.Db) {
+        Set<MasterTypes.NamespaceIdentifierPB> namespaces;
+        if (xClusterConfig.getType() == ConfigType.Db) {
+          namespaces = getNamespaces(this.ybService, sourceUniverse, sourceDbIds);
+          if (namespaces.size() != sourceDbIds.size()) {
+            throw new RuntimeException(
+                String.format(
+                    "Some db ids passed in are missing from source universe: %s, expected"
+                        + " namespaces: %s, got: %s",
+                    sourceUniverse.getUniverseUUID(), sourceDbIds, namespaces));
+          }
+        } else {
+          List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
+              requestedTableInfoListNotNeedBootstrap =
+                  requestedTableInfoList.stream()
+                      .filter(tableInfo -> tableIdsNotNeedBootstrap.contains(getTableId(tableInfo)))
+                      .collect(Collectors.toList());
+          namespaces = getNamespaces(requestedTableInfoListNotNeedBootstrap);
+        }
+        namespaces.forEach(
+            namespace -> {
+              createPitrConfigIfRequired(
+                  xClusterConfig, targetUniverse, tableType, namespace.getName(), pitrParams);
+              createPitrConfigIfRequired(
+                  xClusterConfig, sourceUniverse, tableType, namespace.getName(), pitrParams);
+            });
+      }
+
+      if (isReplicationConfigCreated) {
+        // If the xCluster config is already created, add the bootstrapped tables to the created
+        // xCluster config.
+        createXClusterConfigModifyTablesTask(
+                xClusterConfig,
+                tableIdsNotNeedBootstrap,
+                XClusterConfigModifyTables.Params.Action.ADD)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      } else {
+        // Set up the replication config.
+        createXClusterConfigSetupTask(xClusterConfig, tableIdsNotNeedBootstrap)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
+
+      createXClusterConfigSetStatusForTablesTask(
+          xClusterConfig, tableIdsNotNeedBootstrap, XClusterTableConfig.Status.Running);
+    }
+  }
+
+  protected void addSubtasksForTablesNeedBootstrap(
+      XClusterConfig xClusterConfig,
+      @Nullable XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      @Nullable
+          Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
+              dbToTablesInfoMapNeedBootstrap,
+      Set<String> sourceDbIds,
+      boolean isReplicationConfigCreated,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams) {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+
+    Map<String, String> dbNameToDbIdMap = new HashMap<>();
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      Set<MasterTypes.NamespaceIdentifierPB> namespaces =
+          getNamespaces(ybService, sourceUniverse, sourceDbIds);
+      for (MasterTypes.NamespaceIdentifierPB namespace : namespaces) {
+        dbNameToDbIdMap.put(namespace.getName(), namespace.getId().toStringUtf8());
+      }
+    }
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+        new ArrayList<>();
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
+        new ArrayList<>();
+
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      sourceTableInfoList.addAll(getTableInfoList(ybService, sourceUniverse));
+      targetTableInfoList.addAll(getTableInfoList(ybService, targetUniverse));
+    }
+
+    for (String namespaceName :
+        dbToTablesInfoMapNeedBootstrap != null
+            ? dbToTablesInfoMapNeedBootstrap.keySet()
+            : dbNameToDbIdMap.keySet()) {
+      String namespaceId = dbNameToDbIdMap.get(namespaceName);
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoListNeedBootstrap = null;
+
+      if (xClusterConfig.getType() == ConfigType.Db) {
+        Optional<XClusterNamespaceConfig> namespaceConfigOptional =
+            xClusterConfig.maybeGetNamespaceById(namespaceId);
+        if (namespaceConfigOptional.isPresent()
+            && namespaceConfigOptional.get().getStatus() == Status.Running) {
+          log.info(
+              "Namespace {} already is in replication {}, skipping",
+              namespaceName,
+              xClusterConfig.getUuid());
+          continue;
+        }
+      }
+
+      // For db scoped replication, we will skip backup/restore subtasks at runtime if bootstrapping
+      //   is not required. For non-db scoped replication, we always perform backup restore here.
+      Predicate<ITask> bootstrapRequiredPredicate =
+          task -> {
+            // No bootstrap should be done for switchover.
+            if (xClusterConfig.isUsedForDr()
+                && xClusterConfig.getDrConfig().getState() == State.SwitchoverInProgress) {
+              return false;
+            }
+
+            if (xClusterConfig.getType() == ConfigType.Db) {
+              return checkBootstrapRequired(
+                  namespaceId,
+                  ybService,
+                  sourceUniverse,
+                  xClusterConfig,
+                  sourceTableInfoList,
+                  targetTableInfoList);
+            }
+
+            return true;
+          };
+
+      if (xClusterConfig.getType() != ConfigType.Db) {
+        tablesInfoListNeedBootstrap = dbToTablesInfoMapNeedBootstrap.get(namespaceName);
+        if (tablesInfoListNeedBootstrap.isEmpty()) {
+          throw new RuntimeException(
+              String.format(
+                  "tablesInfoListNeedBootstrap in namespaceName %s is empty", namespaceName));
+        }
+      }
+      CommonTypes.TableType tableType =
+          xClusterConfig.getType() == ConfigType.Db
+              ? CommonTypes.TableType.PGSQL_TABLE_TYPE
+              : tablesInfoListNeedBootstrap.get(0).getTableType();
+      Set<String> tableIdsNeedBootstrap = null;
+      if (xClusterConfig.getType() != ConfigType.Db) {
+        tableIdsNeedBootstrap = getTableIds(tablesInfoListNeedBootstrap);
+        log.info(
+            "Creating subtasks to set up replication using bootstrap for tables {} in "
+                + "keyspace {}",
+            tableIdsNeedBootstrap,
+            namespaceName);
+      }
+
+      if (xClusterConfig.getType() != ConfigType.Db) {
+        createXClusterConfigSetStatusForTablesTask(
+            xClusterConfig, tableIdsNeedBootstrap, XClusterTableConfig.Status.Updating);
+      } else {
+        createXClusterConfigSetStatusForNamespacesTask(
+            xClusterConfig,
+            Collections.singleton(namespaceId),
+            XClusterNamespaceConfig.Status.Updating);
+      }
+
+      if (xClusterConfig.getType() == ConfigType.Db) {
+        if (!xClusterConfig.getDbIds().contains(namespaceId)) {
+          xClusterConfig.addNamespaces(Set.of(namespaceId));
+          xClusterConfig.updateStatusForNamespace(
+              namespaceId, XClusterNamespaceConfig.Status.Updating);
+        }
+
+        if (!isReplicationConfigCreated) {
+          createCreateOutboundReplicationGroupTask(
+              xClusterConfig, Collections.singleton(namespaceId));
+        } else {
+          createXClusterAddNamespaceToOutboundReplicationGroupTask(xClusterConfig, namespaceId);
+        }
+      } else {
+        // Create checkpoints for the tables.
+        createBootstrapProducerTask(
+                xClusterConfig, tableIdsNeedBootstrap, taskParams().updatingTask)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
+      }
+
+      // Create the following subtask only when the subtasks to set up replication for the first
+      // namespace are being created.
+      if (xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                null /* drConfigState */,
+                SourceUniverseState.ReadyToReplicate,
+                null /* targetUniverseState */,
+                namespaceName)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
+
+      // Backup from the source universe.
+      boolean useYbc =
+          sourceUniverse.isYbcEnabled()
+              && targetUniverse.isYbcEnabled()
+              && confGetter.getGlobalConf(GlobalConfKeys.enableYbcForXCluster);
+
+      BootstrapBackupParams backupParams = null;
+      if (bootstrapParams == null) {
+        if (xClusterConfig.isUsedForDr()) {
+          backupParams = new BootstrapBackupParams();
+          backupParams.storageConfigUUID = xClusterConfig.getDrConfig().getStorageConfigUuid();
+          backupParams.parallelism = xClusterConfig.getDrConfig().getParallelism();
+        }
+      } else {
+        backupParams = bootstrapParams.backupRequestParams;
+      }
+
+      BackupRequestParams backupRequestParams =
+          getBackupRequestParams(
+              sourceUniverse, backupParams, tablesInfoListNeedBootstrap, namespaceName, tableType);
+      Backup backup =
+          xClusterConfig.getType() == ConfigType.Db
+              ? xClusterConfig.getNamespaceById(namespaceId).getBackup()
+              : xClusterConfig
+                  .getTableById(getTableId(tablesInfoListNeedBootstrap.get(0)))
+                  .getBackup();
+
+      if (backup == null || backup.getState() != Backup.BackupState.Completed) {
+        backup =
+            createAllBackupSubtasks(
+                backupRequestParams,
+                UserTaskDetails.SubTaskGroupType.CreatingBackup,
+                useYbc,
+                null,
+                bootstrapRequiredPredicate,
+                true /* forXCluster */);
+        backupList.add(backup);
+
+        if (xClusterConfig.getType() != ConfigType.Db) {
+          // Assign the created backup UUID for the tables in the DB.
+          xClusterConfig.updateBackupForTables(tableIdsNeedBootstrap, backup);
+        } else {
+          xClusterConfig.updateBackupForNamespaces(Collections.singleton(namespaceId), backup);
+        }
+      }
+
+      Restore restore =
+          xClusterConfig.getType() == ConfigType.Db
+              ? xClusterConfig.getNamespaceById(namespaceId).getRestore()
+              : xClusterConfig
+                  .getTableById(getTableId(tablesInfoListNeedBootstrap.get(0)))
+                  .getRestore();
+      if (restore == null || restore.getState() != Restore.State.Completed) {
+        // Before dropping the tables on the target universe, delete the associated PITR configs.
+        Optional<PitrConfig> pitrConfigOnTargetOptional =
+            PitrConfig.maybeGet(
+                xClusterConfig.getTargetUniverseUUID(),
+                tableType,
+                namespaceName); // Need to drop pitr configs that may be dangling.
+        long retentionPeriodSeconds;
+        long snapshotIntervalSeconds;
+        // Need to keep track of re-created PITR after deleting old PITR if backup restore is
+        // needed.
+        boolean oldPitrCreatedForDr = false;
+        if (xClusterConfig.isUsedForDr() && Objects.nonNull(pitrParams)) {
+          retentionPeriodSeconds = pitrParams.retentionPeriodSec;
+          snapshotIntervalSeconds = pitrParams.snapshotIntervalSec;
+        } else {
+          retentionPeriodSeconds =
+              confGetter
+                  .getConfForScope(
+                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
+                  .getSeconds();
+          snapshotIntervalSeconds =
+              confGetter
+                  .getConfForScope(
+                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+                  .getSeconds();
+        }
+        if (xClusterConfig.getType() != ConfigType.Basic) {
+          if (pitrConfigOnTargetOptional.isPresent()) {
+            PitrConfig pitrConfig = pitrConfigOnTargetOptional.get();
+            oldPitrCreatedForDr = pitrConfig.isCreatedForDr();
+            // if new PITR will not be created, need to add pitr config to existing xcluster config.
+            // If PITR is dropped, this will dropped from cascade.
+            if (pitrConfig.getRetentionPeriod() == retentionPeriodSeconds
+                && pitrConfig.getScheduleInterval() == snapshotIntervalSeconds) {
+              createAddExistingPitrToXClusterConfig(xClusterConfig, pitrConfig);
+            }
+
+            // Delete the PITR config if the the bootstrap required predicate is true (db cannot
+            // be dropped if there is a PITR config associated to it) or the PITR config has
+            // different parameters.
+            createDeletePitrConfigTask(
+                    pitrConfig.getUuid(),
+                    targetUniverse.getUniverseUUID(),
+                    false /* ignoreErrors */)
+                .setShouldRunPredicate(
+                    bootstrapRequiredPredicate.or(
+                        task ->
+                            pitrConfig.getRetentionPeriod() != retentionPeriodSeconds
+                                || pitrConfig.getScheduleInterval() != snapshotIntervalSeconds));
+          }
+        }
+
+        if (tableType == CommonTypes.TableType.YQL_TABLE_TYPE) {
+          // If the table type is YCQL, delete the tables from the target universe, because if the
+          // tables exist, the restore subtask will fail.
+          List<String> tableNamesNeedBootstrap =
+              tablesInfoListNeedBootstrap.stream()
+                  // Filter out index tables as they will be dropped once their main tables are
+                  // dropped.
+                  .filter(
+                      tableInfo ->
+                          tableInfo.getRelationType()
+                              != MasterTypes.RelationType.INDEX_TABLE_RELATION)
+                  .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
+                  .toList();
+          List<String> tableNamesToDeleteOnTargetUniverse =
+              getTableInfoList(targetUniverse).stream()
+                  .filter(
+                      tableInfo ->
+                          tableType == tableInfo.getTableType()
+                              && tableNamesNeedBootstrap.contains(tableInfo.getName())
+                              && tableInfo.getNamespace().getName().equals(namespaceName))
+                  .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
+                  .toList();
+          createDeleteTablesFromUniverseTask(
+                  targetUniverse.getUniverseUUID(),
+                  Collections.singletonMap(namespaceName, tableNamesToDeleteOnTargetUniverse))
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
+        } else if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
+          // Delete hanging replication streams, otherwise deleting the database will fail.
+          createDeleteRemnantStreamsTask(xClusterConfig, namespaceName)
+              .setShouldRunPredicate(bootstrapRequiredPredicate);
+          // If the table type is YSQL, delete the database from the target universe before restore.
+          createDeleteKeySpaceTask(
+                  namespaceName, CommonTypes.TableType.PGSQL_TABLE_TYPE, true /*ysqlForce*/)
+              .setShouldRunPredicate(bootstrapRequiredPredicate);
+        }
+
+        // Wait for sometime to make sure the above drop database has reached all the nodes.
+        Duration waitTime =
+            this.confGetter.getConfForScope(
+                targetUniverse, UniverseConfKeys.sleepTimeBeforeRestoreXClusterSetup);
+        if (waitTime.compareTo(Duration.ZERO) > 0) {
+          createWaitForDurationSubtask(targetUniverse, waitTime)
+              .setShouldRunPredicate(bootstrapRequiredPredicate)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
+        }
+
+        if (xClusterConfig.isUsedForDr()) {
+          createSetDrStatesTask(
+                  xClusterConfig,
+                  null /* drConfigState */,
+                  SourceUniverseState.WaitingForDr,
+                  TargetUniverseState.Bootstrapping,
+                  namespaceName)
+              .setShouldRunPredicate(bootstrapRequiredPredicate)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
+
+        // Restore to the target universe.
+        RestoreBackupParams restoreBackupParams =
+            getRestoreBackupParams(sourceUniverse, targetUniverse, backupRequestParams, backup);
+        // For db scoped replication, we will skip restore if bootstrapping was not required.
+        restore =
+            createAllRestoreSubtasks(
+                restoreBackupParams,
+                UserTaskDetails.SubTaskGroupType.RestoringBackup,
+                bootstrapRequiredPredicate,
+                true /* forXCluster */);
+        restoreList.add(restore);
+
+        if (xClusterConfig.getType() != ConfigType.Db) {
+          // Assign the created restore UUID for the tables in the DB.
+          xClusterConfig.updateRestoreForTables(tableIdsNeedBootstrap, restore);
+
+          // Set the restore time for the tables in the DB and update restore object to completed
+          // state.
+          createSetRestoreTimeTask(xClusterConfig, tableIdsNeedBootstrap)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
+        } else {
+          // Assign the created restore UUID for the namespaces in the DB.
+          xClusterConfig.updateRestoreForNamespaces(Collections.singleton(namespaceId), restore);
+
+          createSetRestoreStateTask(restore, Restore.State.Completed)
+              .setShouldRunPredicate(bootstrapRequiredPredicate);
+        }
+
+        // Recreate the PITR config for txn xCluster.
+        if (xClusterConfig.getType() != ConfigType.Basic) {
+          if (pitrConfigOnTargetOptional.isPresent()) {
+            PitrConfig pitrConfig = pitrConfigOnTargetOptional.get();
+            // Create the PITR config on the target if the predicate is true which means the
+            // previously existed PITR is deleted.
+            createCreatePitrConfigTask(
+                    targetUniverse,
+                    namespaceName,
+                    tableType,
+                    retentionPeriodSeconds,
+                    snapshotIntervalSeconds,
+                    xClusterConfig,
+                    oldPitrCreatedForDr /* createdForDr */)
+                .setShouldRunPredicate(
+                    bootstrapRequiredPredicate.or(
+                        task ->
+                            pitrConfig.getRetentionPeriod() != retentionPeriodSeconds
+                                || pitrConfig.getScheduleInterval() != snapshotIntervalSeconds));
+          } else {
+            createCreatePitrConfigTask(
+                targetUniverse,
+                namespaceName,
+                tableType,
+                retentionPeriodSeconds,
+                snapshotIntervalSeconds,
+                xClusterConfig,
+                true /* createdForDr */);
+          }
+          createPitrConfigIfRequired(
+              xClusterConfig, sourceUniverse, tableType, namespaceName, pitrParams);
+        }
+      }
+
+      if (xClusterConfig.getType() == ConfigType.Db) {
+        // Delete backup restore objects here if bootstrappig was not required as backup and
+        //  restore objects were generated during subtask creation.
+        createDeleteXClusterBackupRestoreEntriesTask(backup, restore)
+            .setShouldRunPredicate(bootstrapRequiredPredicate.negate());
+      }
+
+      if (isReplicationConfigCreated) {
+        if (xClusterConfig.getType() == ConfigType.Db) {
+          createAddNamespaceToXClusterReplicationTask(xClusterConfig, namespaceId);
+        } else {
+          // If the xCluster config is already created, add the bootstrapped tables to the created
+          // xCluster config.
+          createXClusterConfigModifyTablesTask(
+                  xClusterConfig,
+                  tableIdsNeedBootstrap,
+                  XClusterConfigModifyTables.Params.Action.ADD)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
+      } else {
+        // Set up the replication config.
+        if (xClusterConfig.getType() == ConfigType.Db) {
+          createXClusterDbReplicationSetupTask(xClusterConfig)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        } else {
+          createXClusterConfigSetupTask(xClusterConfig, tableIdsNeedBootstrap)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
+        isReplicationConfigCreated = true;
+      }
+
+      if (xClusterConfig.getType() == ConfigType.Db) {
+        createXClusterConfigSetStatusForNamespacesTask(
+            xClusterConfig,
+            Collections.singleton(namespaceId),
+            XClusterNamespaceConfig.Status.Running);
+      }
+    }
+  }
+
+  protected Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
+      getDbToTablesInfoMapNeedBootstrapAndUpdateTableNeedBootstrap(
+          XClusterConfig xClusterConfig,
+          Set<String> tableIds,
+          List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
+          Map<String, List<String>> mainTableIndexTablesMap,
+          Set<String> sourceTableIdsWithNoTableOnTargetUniverse,
+          boolean isForceBootstrap) {
+    if (requestedTableInfoList.isEmpty()) {
+      log.warn("requestedTablesInfoList is empty");
+      return Collections.emptyMap();
+    }
+    // At least one entry exists in requestedTableInfoList.
+    CommonTypes.TableType tableType = requestedTableInfoList.get(0).getTableType();
+    Set<String> tableIdsToCheck = getTableIdsNeedBootstrap(tableIds);
+    log.debug("tableIdsToCheck bootstrap required for replication setup is {}", tableIdsToCheck);
+    checkBootstrapRequiredForReplicationSetup(tableIdsToCheck, isForceBootstrap);
+
+    // If a table does not exist on the target universe, bootstrapping will be required for it.
+    xClusterConfig.updateNeedBootstrapForTables(
+        sourceTableIdsWithNoTableOnTargetUniverse, true /* needBootstrap */);
+
+    Set<String> tableIdsNeedBootstrap = getTableIdsNeedBootstrap(tableIds);
+    Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>> dbToTableInfoListMap =
+        groupByNamespaceName(requestedTableInfoList);
+    dbToTableInfoListMap.forEach(
+        (namespaceName, tablesInfoList) -> {
+          Set<String> tableIdsInNamespace = getTableIds(tablesInfoList);
+          // If at least one YSQL table needs bootstrap, it must be done for all tables in that
+          // keyspace.
+          if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE
+              && !getTablesNeedBootstrap(tableIdsInNamespace).isEmpty()) {
+            xClusterConfig.updateNeedBootstrapForTables(
+                tableIdsInNamespace, true /* needBootstrap */);
+          }
+          // If a main table or an index table of a main table needs bootstrapping, it must be
+          // done for the main table and all of its index tables due to backup/restore
+          // restrictions.
+          mainTableIndexTablesMap.forEach(
+              (mainTableId, indexTableIds) -> {
+                if (tableIdsNeedBootstrap.contains(mainTableId)
+                    || indexTableIds.stream().anyMatch(tableIdsNeedBootstrap::contains)) {
+                  xClusterConfig.updateNeedBootstrapForTables(
+                      Collections.singleton(mainTableId), true /* needBootstrap */);
+                  xClusterConfig.updateNeedBootstrapForTables(
+                      indexTableIds, true /* needBootstrap */);
+                }
+              });
+        });
+
+    // Get tables requiring bootstrap again in case previous statement has made any changes.
+    Set<String> tableIdsNeedBootstrapAfterChanges =
+        getTableIdsNeedBootstrap(getTableIds(requestedTableInfoList));
+
+    Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
+        dbToTablesInfoMapNeedBootstrap =
+            requestedTableInfoList.stream()
+                .filter(
+                    tableInfo ->
+                        tableIdsNeedBootstrapAfterChanges.contains(
+                            tableInfo.getId().toStringUtf8()))
+                .collect(Collectors.groupingBy(tableInfo -> tableInfo.getNamespace().getName()));
+
+    log.debug(
+        "Following tables need bootstrap dbToTablesInfoMapNeedBootstrap is {}",
+        dbToTablesInfoMapNeedBootstrap);
+    return dbToTablesInfoMapNeedBootstrap;
+  }
+
+  private static BackupRequestParams getBackupRequestParams(
+      Universe sourceUniverse,
+      BootstrapBackupParams backupParams,
+      @Nullable
+          List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoListNeedBootstrap,
+      String namespaceName,
+      CommonTypes.TableType tableType) {
+    BackupRequestParams backupRequestParams;
+    if (backupParams != null) {
+      backupRequestParams = new BackupRequestParams();
+      backupRequestParams.storageConfigUUID = backupParams.storageConfigUUID;
+      backupRequestParams.parallelism = backupParams.parallelism;
+    } else {
+      // In case the user does not pass the backup parameters, use the default values.
+      backupRequestParams = new BackupRequestParams();
+      backupRequestParams.customerUUID = Customer.get(sourceUniverse.getCustomerId()).getUuid();
+      // Use the last storage config used for a successful backup as the default one.
+      Optional<Backup> latestCompletedBackupOptional =
+          Backup.fetchLatestByState(backupRequestParams.customerUUID, Backup.BackupState.Completed);
+      if (latestCompletedBackupOptional.isEmpty()) {
+        throw new RuntimeException(
+            "backupParams in XClusterConfigCreateFormData is null, and storageConfigUUID "
+                + "cannot be determined based on the latest successful backup");
+      }
+      backupRequestParams.storageConfigUUID =
+          latestCompletedBackupOptional.get().getStorageConfigUUID();
+      log.info(
+          "storageConfigUUID {} will be used for bootstrapping",
+          backupRequestParams.storageConfigUUID);
+    }
+    // These parameters are pre-set. Others either come from the user, or the defaults are good.
+    backupRequestParams.setUniverseUUID(sourceUniverse.getUniverseUUID());
+    backupRequestParams.customerUUID = Customer.get(sourceUniverse.getCustomerId()).getUuid();
+    backupRequestParams.backupType = tableType;
+    backupRequestParams.timeBeforeDelete = TIME_BEFORE_DELETE_BACKUP_MS;
+    backupRequestParams.expiryTimeUnit = com.yugabyte.yw.models.helpers.TimeUnit.MILLISECONDS;
+    // Set to true because it is a beta version of bootstrapping, and we need to debug it.
+    backupRequestParams.enableVerboseLogs = true;
+    // Ensure keyspaceTableList is not specified by the user.
+    if (backupRequestParams.keyspaceTableList != null) {
+      throw new RuntimeException(
+          "backupRequestParams.keyspaceTableList must be null, table selection happens "
+              + "automatically");
+    }
+    backupRequestParams.keyspaceTableList = new ArrayList<>();
+    BackupRequestParams.KeyspaceTable keyspaceTable = new BackupRequestParams.KeyspaceTable();
+    keyspaceTable.keyspace = namespaceName;
+    if (backupRequestParams.backupType != CommonTypes.TableType.PGSQL_TABLE_TYPE) {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesNeedBootstrapInfoList =
+          tablesInfoListNeedBootstrap.stream()
+              // Filter out index tables because backup will include them automatically once their
+              // main tables are being backed up.
+              .filter(
+                  tableInfo ->
+                      tableInfo.getRelationType() != MasterTypes.RelationType.INDEX_TABLE_RELATION)
+              .toList();
+      keyspaceTable.tableNameList =
+          tablesNeedBootstrapInfoList.stream()
+              .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
+              .collect(Collectors.toList());
+      keyspaceTable.tableUUIDList =
+          tablesNeedBootstrapInfoList.stream()
+              .map(tableInfo -> Util.getUUIDRepresentation(tableInfo.getId().toStringUtf8()))
+              .collect(Collectors.toList());
+    }
+    backupRequestParams.keyspaceTableList.add(keyspaceTable);
+    return backupRequestParams;
+  }
+
+  static RestoreBackupParams getRestoreBackupParams(
+      Universe sourceUniverse,
+      Universe targetUniverse,
+      BackupRequestParams backupRequestParams,
+      Backup backup) {
+    RestoreBackupParams restoreTaskParams = new RestoreBackupParams();
+    // For the following parameters the default values will be used:
+    //    restoreTaskParams.alterLoadBalancer = true
+    //    restoreTaskParams.restoreTimeStamp = null
+    //    public String oldOwner = "yugabyte"
+    //    public String newOwner = null
+    // The following parameters are set. For others, the defaults are good.
+    restoreTaskParams.customerUUID = backupRequestParams.customerUUID;
+    restoreTaskParams.setUniverseUUID(targetUniverse.getUniverseUUID());
+    if (sourceUniverse.getUniverseDetails().encryptionAtRestConfig != null) {
+      restoreTaskParams.kmsConfigUUID =
+          sourceUniverse.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID;
+    }
+    restoreTaskParams.actionType = RestoreBackupParams.ActionType.RESTORE;
+    restoreTaskParams.enableVerboseLogs = backupRequestParams.enableVerboseLogs;
+    restoreTaskParams.storageConfigUUID = backupRequestParams.storageConfigUUID;
+    restoreTaskParams.useTablespaces = backupRequestParams.useTablespaces;
+    restoreTaskParams.parallelism = backupRequestParams.parallelism;
+    restoreTaskParams.disableChecksum = backupRequestParams.disableChecksum;
+    restoreTaskParams.category = backup.getCategory();
+    restoreTaskParams.prefixUUID = UUID.randomUUID();
+    // Set storage info.
+    restoreTaskParams.backupStorageInfoList = new ArrayList<>();
+    RestoreBackupParams.BackupStorageInfo backupStorageInfo =
+        new RestoreBackupParams.BackupStorageInfo();
+    backupStorageInfo.backupType = backupRequestParams.backupType;
+    List<BackupTableParams> backupList = backup.getBackupParamsCollection();
+    if (backupList == null) {
+      throw new RuntimeException("backup.getBackupInfo().backupList must not be null");
+    }
+    if (backupList.size() != 1) {
+      String errMsg =
+          String.format(
+              "backup.getBackupInfo().backupList must have exactly one element, had %d",
+              backupList.size());
+      throw new RuntimeException(errMsg);
+    }
+    backupStorageInfo.storageLocation = backupList.get(0).storageLocation;
+    List<BackupRequestParams.KeyspaceTable> keyspaceTableList =
+        backupRequestParams.keyspaceTableList;
+    if (keyspaceTableList == null) {
+      throw new RuntimeException("backupRequestParams.keyspaceTableList must not be null");
+    }
+    if (keyspaceTableList.size() != 1) {
+      String errMsg =
+          String.format(
+              "backupRequestParams.keyspaceTableList must have exactly one element, had %d",
+              keyspaceTableList.size());
+      throw new RuntimeException(errMsg);
+    }
+    backupStorageInfo.keyspace = keyspaceTableList.get(0).keyspace;
+    backupStorageInfo.sse = backupRequestParams.sse;
+    restoreTaskParams.backupStorageInfoList.add(backupStorageInfo);
+
+    return restoreTaskParams;
+  }
+
+  public void createTransferXClusterCertsCopyTasks(XClusterConfig xClusterConfig) {
+    createTransferXClusterCertsCopyTasks(xClusterConfig, xClusterConfig.getReplicationGroupName());
+  }
+
+  /**
+   * Transfer source universe certs -> target universe. Also, target universe certs -> source
+   * universe if db scoped.
+   *
+   * @param xClusterConfig config with source and target universe to transfer certs.
+   * @param replicationGroupName name of the replication group for xClusterConfig.
+   */
+  public void createTransferXClusterCertsCopyTasks(
+      XClusterConfig xClusterConfig, String replicationGroupName) {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    Optional<File> sourceCertificate =
+        getOriginCertficateIfNecessary(sourceUniverse, targetUniverse);
+
+    sourceCertificate.ifPresent(
+        cert ->
+            createTransferXClusterCertsCopyTasks(
+                targetUniverse.getNodes(), replicationGroupName, cert, targetUniverse));
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      Optional<File> targetCertificate =
+          getOriginCertficateIfNecessary(targetUniverse, sourceUniverse);
+      targetCertificate.ifPresent(
+          cert ->
+              createTransferXClusterCertsCopyTasks(
+                  sourceUniverse.getNodes(), replicationGroupName, cert, sourceUniverse));
+    }
+  }
+
+  protected void createPitrConfigIfRequired(
+      XClusterConfig xClusterConfig,
+      Universe universe,
+      TableType tableType,
+      String dbName,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams) {
+    long retentionPeriodSeconds;
+    long snapshotIntervalSeconds;
+    if (xClusterConfig.isUsedForDr() && Objects.nonNull(pitrParams)) {
+      retentionPeriodSeconds = pitrParams.retentionPeriodSec;
+      snapshotIntervalSeconds = pitrParams.snapshotIntervalSec;
+    } else {
+      retentionPeriodSeconds =
+          confGetter
+              .getConfForScope(universe, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
+              .getSeconds();
+      snapshotIntervalSeconds =
+          confGetter
+              .getConfForScope(universe, UniverseConfKeys.txnXClusterPitrDefaultSnapshotInterval)
+              .getSeconds();
+    }
+    log.info(
+        "Using retentionPeriodSeconds={} and snapshotIntervalSeconds={} as PITR params",
+        retentionPeriodSeconds,
+        snapshotIntervalSeconds);
+    Optional<PitrConfig> pitrConfigOptional =
+        PitrConfig.maybeGet(universe.getUniverseUUID(), tableType, dbName);
+    if (pitrConfigOptional.isPresent()) {
+      // Only delete and recreate if the PITR config parameters differ from taskParams.
+      if (pitrConfigOptional.get().getRetentionPeriod() != retentionPeriodSeconds
+          || pitrConfigOptional.get().getScheduleInterval() != snapshotIntervalSeconds) {
+        log.info(
+            "Deleting the existing PITR config and creating a new one with the new"
+                + " parameters");
+        createDeletePitrConfigTask(
+            pitrConfigOptional.get().getUuid(),
+            universe.getUniverseUUID(),
+            false /* ignoreErrors */);
+        // We mark this PITR config as not created during DR as it existed before DR with
+        // different params.
+        // In Future, we will set the PITR config with old params if it not required by DR.
+        createCreatePitrConfigTask(
+            universe,
+            dbName,
+            tableType,
+            retentionPeriodSeconds,
+            snapshotIntervalSeconds,
+            xClusterConfig,
+            false /* createdForDr */);
+      } else {
+        // Reusing the existing PITR config.
+        createAddExistingPitrToXClusterConfig(xClusterConfig, pitrConfigOptional.get());
+      }
+    } else {
+      log.info("Creating a new PITR config");
+      createCreatePitrConfigTask(
+          universe,
+          dbName,
+          tableType,
+          retentionPeriodSeconds,
+          snapshotIntervalSeconds,
+          xClusterConfig,
+          true /* createdForDr */);
+    }
+  }
+}

@@ -1,0 +1,1158 @@
+SET search_path TO documentdb_core, documentdb_api_catalog, documentdb_api, documentdb_api_internal, public;
+SET citus.next_shard_id TO 91000000;
+SET documentdb.next_collection_id TO 91000;
+SET documentdb.next_collection_index_id TO 91000;
+SELECT documentdb_api.create_collection('db', 'create_indexes_vector');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- now you get different errors
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": "cosmosSearch"}, "name": "foo_1"  } ] }', true);
+ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1" } :: caused by :: Index type 'CosmosSearch' was requested, but the 'cosmosSearch' options were not provided.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": 1 }, "name": "foo_1", "cosmosSearchOptions": { } } ] }', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "foo_1", "cosmosSearchOptions" : {  } } :: caused by :: cosmosSearch index kind must be specified
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 1 } } ] }', true);
+ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS", "dimensions" : 1 } } :: caused by :: vector index must specify dimensions greater than 1
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS" } } ] }', true);
+ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS" } } :: caused by :: vector index must specify dimensions greater than 1
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "dimensions": 10 } } ] }', true);
+ERROR:  Error in specification { "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "dimensions" : 10 } } :: caused by :: vector index must specify similarity metric
+-- create a valid indexes
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "a": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "b": "cosmosSearch" }, "name": "foo_2", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 200, "similarity": "IP", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_vector", "indexes": [ { "key": { "c": "cosmosSearch" }, "name": "foo_3", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 300, "similarity": "L2", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+\d documentdb_data.documents_91000
+                   Table "documentdb_data.documents_91000"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_91000" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_91001" ivfflat ((bson_extract_vector(document, 'a'::text)::vector(3)) vector_cosine_ops) WITH (lists='100') WHERE bson_extract_vector(document, 'a'::text) IS NOT NULL
+    "documents_rum_index_91002" ivfflat ((bson_extract_vector(document, 'b'::text)::vector(3)) vector_ip_ops) WITH (lists='200') WHERE bson_extract_vector(document, 'b'::text) IS NOT NULL
+    "documents_rum_index_91003" ivfflat ((bson_extract_vector(document, 'c'::text)::vector(3))) WITH (lists='300') WHERE bson_extract_vector(document, 'c'::text) IS NOT NULL
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '91000'::bigint)
+
+\d documentdb_api_catalog.index_spec_type_internal
+   Composite type "documentdb_api_catalog.index_spec_type_internal"
+           Column           |  Type   | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ index_name                 | text    |           |          | 
+ index_key                  | bson    |           |          | 
+ index_pfe                  | bson    |           |          | 
+ index_wp                   | bson    |           |          | 
+ index_is_sparse            | boolean |           |          | 
+ index_is_unique            | boolean |           |          | 
+ index_version              | integer |           |          | 
+ index_expire_after_seconds | integer |           |          | 
+ cosmos_search_options      | bson    |           |          | 
+ index_options              | bson    |           |          | 
+
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "create_indexes_vector" }') ORDER BY 1;
+                                                                                                                                                                                  bson_dollar_unwind                                                                                                                                                                                  
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "100" }, "similarity" : "COS", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "b" : "cosmosSearch" }, "name" : "foo_2", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "200" }, "similarity" : "IP", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.create_indexes_vector", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "c" : "cosmosSearch" }, "name" : "foo_3", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "300" }, "similarity" : "L2", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+(4 rows)
+
+SELECT documentdb_api.insert_one('db', 'create_indexes_vector', '{ "a": "some sentence", "elem": [3.0, 5.0, 1.1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'create_indexes_vector', '{ "a": "some other sentence", "elem": [8.0, 5.0, 0.1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'create_indexes_vector') ORDER BY documentdb_api_internal.bson_extract_vector(document, 'elem') <=> '[10, 1, 2]';
+            ?column?            
+---------------------------------------------------------------------
+ { "" : "some other sentence" }
+ { "" : "some sentence" }
+(2 rows)
+
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'create_indexes_vector') ORDER BY documentdb_api_internal.bson_extract_vector(document, 'elem') <=> '[10, 1, 2]';
+            ?column?            
+---------------------------------------------------------------------
+ { "" : "some other sentence" }
+ { "" : "some sentence" }
+(2 rows)
+
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'create_indexes_vector') ORDER BY documentdb_api_internal.bson_extract_vector(document, 'elem') <=> '[3, 5, 2]' limit 1;
+         ?column?         
+---------------------------------------------------------------------
+ { "" : "some sentence" }
+(1 row)
+
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'create_indexes_vector') ORDER BY documentdb_api_internal.bson_extract_vector(document, 'elem') <=> '[3, 5, 2]' DESC limit 1;
+            ?column?            
+---------------------------------------------------------------------
+ { "" : "some other sentence" }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'create_indexes_vector');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+\d documentdb_data.documents_91000;
+                   Table "documentdb_data.documents_91000"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "documents_rum_index_91001" ivfflat ((bson_extract_vector(document, 'a'::text)::vector(3)) vector_cosine_ops) WITH (lists='100') WHERE bson_extract_vector(document, 'a'::text) IS NOT NULL
+    "documents_rum_index_91002" ivfflat ((bson_extract_vector(document, 'b'::text)::vector(3)) vector_ip_ops) WITH (lists='200') WHERE bson_extract_vector(document, 'b'::text) IS NOT NULL
+    "documents_rum_index_91003" ivfflat ((bson_extract_vector(document, 'c'::text)::vector(3))) WITH (lists='300') WHERE bson_extract_vector(document, 'c'::text) IS NOT NULL
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '91000'::bigint)
+
+begin;
+set local enable_seqscan to off;
+EXPLAIN(COSTS OFF) SELECT document -> 'a' FROM documentdb_api.collection('db', 'create_indexes_vector')
+    ORDER BY (documentdb_api_internal.bson_extract_vector(document, 'elem'::text)::vector(3)) <=> '[10, 1, 2]';
+                                                             QUERY PLAN                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (((documentdb_api_internal.bson_extract_vector(document, 'elem'::text))::vector(3) <=> '[10,1,2]'::vector))
+               ->  Seq Scan on documents_91000_91000002 collection
+(8 rows)
+
+ROLLBACK;
+-- Create an index
+-- Also create a geospatial index first so that we can test these are ignore for the sort clause and only vector index is considered
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector": "2dsphere" }, "name": "foo_1_2ds" } ] }', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "COS", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence1", "myvector": [3.0, 5.0, 1.1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence2", "myvector": [3.0, 5.0, 1.1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence3", "myvector": [8.0, 1.0, 9.0 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence3", "myvector": [8.0, 1.0, 8.0 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- bad queries 
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [ 8.0, 1.0 ], "limit": 1, "path": "myvector", "numCandidates": 10 } }]}');
+ERROR:  expected 3 dimensions, not 2
+-- correct queries
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 9.0], "limit": 1, "path": "myvector", "numCandidates": 10 } }, { "$project": { "myvector": 1, "_id": 0 }} ]}');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "myvector" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "9.0" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 9.0], "limit": 2, "path": "myvector", "numCandidates": 10 } }, { "$project": { "myvector": 1, "_id": 0 }} ]}');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "myvector" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "9.0" } ] }
+ { "myvector" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "8.0" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 9, 1], "limit": 1, "path": "myvector", "numCandidates": 10 } }, { "$project": { "myvector": 1, "_id": 0 }} ]}');
+                                                           document                                                           
+---------------------------------------------------------------------
+ { "myvector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "5.0" }, { "$numberDouble" : "1.1000000000000000888" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [], "limit": 1, "path": "myvector", "numCandidates": 10 } }, { "$project": { "myvector": 1, "_id": 0 }} ]}');
+ERROR:  $vectorSearch.queryVector cannot be an empty array.
+-- Drop the geospatial index
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "vectorIndexColl", "index": "foo_1_2ds"}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
+(1 row)
+
+-- direct query that does not require rewrite
+SELECT document -> 'myvector' FROM documentdb_api.collection('db', 'vectorIndexColl') ORDER BY 
+documentdb_api_internal.bson_extract_vector(document, 'myvector') <=> documentdb_api_internal.bson_extract_vector('{ "path" : "myvector", "vector": [8.0, 1.0, 9.0], "k": 10 }', 'vector') LIMIT 1;
+                                              ?column?                                              
+---------------------------------------------------------------------
+ { "" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "9.0" } ] }
+(1 row)
+
+-- same index with different dimensions
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "vectorIndexColl", "index": "foo_1"}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector": "cosmosSearch" }, "name": "foo_2", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "COS", "dimensions": 4 } } ] }', true);
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+ERROR:  expected 4 dimensions, not 3
+CONTEXT:  SQL statement "CREATE INDEX documents_rum_index_91007 ON documentdb_data.documents_91001 USING ivfflat(CAST(documentdb_api_internal.bson_extract_vector(document, 'myvector'::text) AS public.vector(4)) public.vector_cosine_ops) WITH (lists = 2) WHERE documentdb_api_internal.bson_extract_vector(document, 'myvector'::text) IS NOT NULL"
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "COS", "dimensions": 3 } } ] }', true);
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- second index on a differet path
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector2": "cosmosSearch" }, "name": "foo_2", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "COS", "dimensions": 4 } } ] }', true);
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+NOTICE:  ivfflat index created with little data
+DETAIL:  This will cause low recall.
+HINT:  Drop the index until the table has more data.
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence2", "myvector": [3.0, 5.0], "myvector2": [3.0, 5.0, 1.1, 4 ] }');
+                                                                                                  insert_one                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "130" }, "errmsg" : "expected 3 dimensions, not 2" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence2", "myvector": [3.0, 5.0, 1], "myvector2": [3.0, 5.0, 1.1] }');
+                                                                                                  insert_one                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "130" }, "errmsg" : "expected 4 dimensions, not 3" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence1", "myvector": [3.0, 5.0, 1.1 ], "myvector2": [3.0, 5.0, 1.1, 4 ]  }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence3", "myvector": [8.0, 1.0, 9.0 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence3", "myvector2": [8.0, 1.0, 8.0, 8 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- query should fail
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 9.0, 2], "limit": 1, "path": "myvector", "numCandidates": 10 } }, { "$project": { "myvector": 1, "_id": 0 }} ]}');
+ERROR:  expected 3 dimensions, not 4
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 9], "limit": 1, "path": "myvector2", "numCandidates": 10 } }, { "$project": { "myvector2": 1, "_id": 0 }} ]}');
+ERROR:  expected 4 dimensions, not 3
+-- query should work
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 9], "limit": 1, "path": "myvector", "numCandidates": 10 } }, { "$project": { "myvector": 1, "_id": 0 }} ]}');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "myvector" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "9.0" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 9, -1], "limit": 1, "path": "myvector2", "numCandidates": 10 } }, { "$project": { "myvector2": 1, "_id": 0 }} ]}');
+                                                              document                                                               
+---------------------------------------------------------------------
+ { "myvector2" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "8.0" }, { "$numberInt" : "8" } ] }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','vectorIndexColl');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+begin;
+set local enable_seqscan to off;
+EXPLAIN(COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 9, -1], "limit": 1, "path": "myvector2", "numCandidates": 10 } }, { "$project": { "myvector2": 1, "_id": 0 }} ]}');
+                                                                           QUERY PLAN                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               ->  Limit
+                     ->  Custom Scan (DocumentDBApiQueryScan)
+                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           ->  Index Scan using foo_2 on documents_91001_91000016 collection
+                                 Order By: (vector(documentdb_api_internal.bson_extract_vector(document, 'myvector2'::text), 4, true) <=> '[8,1,9,-1]'::vector)
+(11 rows)
+
+ROLLBACK;
+-- check other two vector indexes
+SET search_path TO documentdb_api_catalog, documentdb_api, public;
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector3": "cosmosSearch" }, "name": "foo_3_ip", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "IP", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "vectorIndexColl", "indexes": [ { "key": { "myvector4": "cosmosSearch" }, "name": "foo_4_l2", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 2, "similarity": "L2", "dimensions": 4 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "vectorIndexColl" }') ORDER BY 1;
+                                                                                                                                                                                   bson_dollar_unwind                                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "COS", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector2" : "cosmosSearch" }, "name" : "foo_2", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "COS", "dimensions" : { "$numberInt" : "4" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector3" : "cosmosSearch" }, "name" : "foo_3_ip", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "IP", "dimensions" : { "$numberInt" : "3" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.vectorIndexColl", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "myvector4" : "cosmosSearch" }, "name" : "foo_4_l2", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : { "$numberInt" : "2" }, "similarity" : "L2", "dimensions" : { "$numberInt" : "4" } } } }, "ok" : { "$numberDouble" : "1.0" } }
+(4 rows)
+
+\d documentdb_data.documents_91001;
+                   Table "documentdb_data.documents_91001"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | documentdb_core.bson     |           | not null | 
+ document        | documentdb_core.bson     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "documents_rum_index_91008" ivfflat ((documentdb_api_internal.bson_extract_vector(document, 'myvector'::text)::vector(3)) vector_cosine_ops) WITH (lists='2') WHERE documentdb_api_internal.bson_extract_vector(document, 'myvector'::text) IS NOT NULL
+    "documents_rum_index_91009" ivfflat ((documentdb_api_internal.bson_extract_vector(document, 'myvector2'::text)::vector(4)) vector_cosine_ops) WITH (lists='2') WHERE documentdb_api_internal.bson_extract_vector(document, 'myvector2'::text) IS NOT NULL
+    "documents_rum_index_91010" ivfflat ((documentdb_api_internal.bson_extract_vector(document, 'myvector3'::text)::vector(3)) vector_ip_ops) WITH (lists='2') WHERE documentdb_api_internal.bson_extract_vector(document, 'myvector3'::text) IS NOT NULL
+    "documents_rum_index_91011" ivfflat ((documentdb_api_internal.bson_extract_vector(document, 'myvector4'::text)::vector(4))) WITH (lists='2') WHERE documentdb_api_internal.bson_extract_vector(document, 'myvector4'::text) IS NOT NULL
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '91001'::bigint)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence3", "myvector3": [8.0, 1.0, 9.0 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'vectorIndexColl', '{ "elem": "some sentence3", "myvector4": [8.0, 1.0, 8.0, 8 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 9.0], "limit": 1, "path": "myvector3", "numCandidates": 10 } }, { "$project": { "myvector3": 1, "_id": 0 }} ]}');
+                                                  document                                                   
+---------------------------------------------------------------------
+ { "myvector3" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "9.0" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorIndexColl", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 8.0, 7], "limit": 1, "path": "myvector4", "numCandidates": 10 } }, { "$project": { "myvector4": 1, "_id": 0 }} ]}');
+                                                              document                                                               
+---------------------------------------------------------------------
+ { "myvector4" : [ { "$numberDouble" : "8.0" }, { "$numberDouble" : "1.0" }, { "$numberDouble" : "8.0" }, { "$numberInt" : "8" } ] }
+(1 row)
+
+-- Query on a non-existent collection
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "vectorCollNonExistent", "pipeline": [{ "$vectorSearch": { "queryVector": [8.0, 1.0, 8.0, 7], "limit": 1, "path": "myvector4", "numCandidates": 10 } }, { "$project": { "myvector4": 1, "_id": 0 }} ]}');
+ERROR:  $vectorSearch must be the first stage in the pipeline
+-- Test vector similarity score projection [COS]
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "similarity_score_cos", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+SELECT documentdb_api.insert_one('db', 'similarity_score_cos', '{ "_id": 1, "a": "some sentence", "b": 10, "v": [1, 2, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'similarity_score_cos', '{ "_id": 2, "a": "some other sentence", "b": 20, "v": [1, 2.0, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'similarity_score_cos', '{ "_id": 3, "a": "some sentence", "b": 30, "v": [3, 2, 1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'similarity_score_cos', '{ "_id": 4, "a": "some other sentence", "b": 40, "v": [-3, -2.0, -1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_cos", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "90740.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "72409.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "72409.0" } }
+ { "_id" : { "$numberInt" : "4" }, "rank" : { "$numberDouble" : "-90740.0" } }
+(4 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_cos", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ -1.0, 2, -3.0 ], "k": 4, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "rank" : { "$numberDouble" : "14286.0" } }
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "-14286.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "-42857.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "-42857.0" } }
+(4 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_cos", "pipeline": [ { "$project": { "rank": { "$meta": "searchScore" } } } ], "cursor": {} }');
+ERROR:  query requires search score metadata, but it is not available
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_cos", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v" }  } }, { "$project": { "v": 0 }}, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "90740.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "72409.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "72409.0" } }
+ { "_id" : { "$numberInt" : "4" }, "rank" : { "$numberDouble" : "-90740.0" } }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','similarity_score_cos');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+begin;
+set local enable_seqscan to off;
+EXPLAIN (costs off, verbose on) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_cos", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ -1.0, 2, -3.0 ], "k": 1, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_project(documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision OPERATOR(pg_catalog.-) (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "-1.0" }, { "$numberInt" : "2" }, { "$numberDouble" : "-3.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)))), '{ "rank" : { "$round" : [ { "$multiply" : [ { "$meta" : "searchScore" }, { "$numberInt" : "100000" } ] } ] } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS document FROM (SELECT collection.document FROM documentdb_data.documents_91002_91000037 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '91002'::bigint) AND (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "-1.0" }, { "$numberInt" : "2" }, { "$numberDouble" : "-3.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)) LIMIT '1'::bigint) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_api_internal.bson_dollar_project(documentdb_api_internal.bson_document_add_score_field(agg_stage_0.document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) <=> '[-1,2,-3]'::vector))), '{ "rank" : { "$round" : [ { "$multiply" : [ { "$meta" : "searchScore" }, { "$numberInt" : "100000" } ] } ] } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+               ->  Limit
+                     Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[-1,2,-3]'::vector))
+                     ->  Custom Scan (DocumentDBApiQueryScan)
+                           Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[-1,2,-3]'::vector)
+                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           ->  Index Scan using foo_1 on documentdb_data.documents_91002_91000037 collection
+                                 Output: collection.document
+                                 Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[-1,2,-3]'::vector)
+(17 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_cos", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_document_add_score_field(document, ('1'::double precision OPERATOR(pg_catalog.-) (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)))) AS document FROM (SELECT collection.document FROM documentdb_data.documents_91002_91000037 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '91002'::bigint) AND (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<=>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)) LIMIT '1'::bigint) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_api_internal.bson_document_add_score_field(agg_stage_0.document, ('1'::double precision - (vector(documentdb_api_internal.bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)))
+               ->  Limit
+                     Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector))
+                     ->  Custom Scan (DocumentDBApiQueryScan)
+                           Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
+                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           ->  Index Scan using foo_1 on documentdb_data.documents_91002_91000037 collection
+                                 Output: collection.document
+                                 Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <=> '[3,4.9,1]'::vector)
+(17 rows)
+
+ROLLBACK;
+-- Test vector similarity score projection [L2]
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "similarity_score_l2", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "sim_l2", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "L2", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+SELECT documentdb_api.insert_one('db', 'similarity_score_l2', '{ "_id": 1, "a": "some sentence", "v": [1, 2, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'similarity_score_l2', '{ "_id": 2, "a": "some other sentence", "v": [1, 2.0, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'similarity_score_l2', '{ "_id": 3, "a": "some sentence", "v": [3, 2, 1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'similarity_score_l2', '{ "_id": 4, "a": "some other sentence", "v": [-3, -2.0, -1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','similarity_score_l2');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_l2", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "290000.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "405093.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "405093.0" } }
+ { "_id" : { "$numberInt" : "4" }, "rank" : { "$numberDouble" : "936002.0" } }
+(4 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_l2", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ -1.0, 2, -3.0 ], "k": 4, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "rank" : { "$numberDouble" : "489898.0" } }
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "565685.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "632456.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "632456.0" } }
+(4 rows)
+
+begin;
+set local enable_seqscan to off;
+EXPLAIN (costs off, verbose on) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_l2", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ -1.0, 2, -3.0 ], "k": 1, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_project(documentdb_api_internal.bson_document_add_score_field(document, (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<->) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "-1.0" }, { "$numberInt" : "2" }, { "$numberDouble" : "-3.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true))), '{ "rank" : { "$round" : [ { "$multiply" : [ { "$meta" : "searchScore" }, { "$numberInt" : "100000" } ] } ] } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS document FROM (SELECT collection.document FROM documentdb_data.documents_91003_91000050 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '91003'::bigint) AND (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<->) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "-1.0" }, { "$numberInt" : "2" }, { "$numberDouble" : "-3.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)) LIMIT '1'::bigint) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_api_internal.bson_dollar_project(documentdb_api_internal.bson_document_add_score_field(agg_stage_0.document, (vector(documentdb_api_internal.bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) <-> '[-1,2,-3]'::vector)), '{ "rank" : { "$round" : [ { "$multiply" : [ { "$meta" : "searchScore" }, { "$numberInt" : "100000" } ] } ] } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+               ->  Limit
+                     Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[-1,2,-3]'::vector))
+                     ->  Custom Scan (DocumentDBApiQueryScan)
+                           Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[-1,2,-3]'::vector)
+                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           ->  Index Scan using sim_l2 on documentdb_data.documents_91003_91000050 collection
+                                 Output: collection.document
+                                 Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[-1,2,-3]'::vector)
+(17 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_l2", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_document_add_score_field(document, (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<->) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true))) AS document FROM (SELECT collection.document FROM documentdb_data.documents_91003_91000050 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '91003'::bigint) AND (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<->) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)) LIMIT '1'::bigint) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_api_internal.bson_document_add_score_field(agg_stage_0.document, (vector(documentdb_api_internal.bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) <-> '[3,4.9,1]'::vector))
+               ->  Limit
+                     Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[3,4.9,1]'::vector))
+                     ->  Custom Scan (DocumentDBApiQueryScan)
+                           Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[3,4.9,1]'::vector)
+                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           ->  Index Scan using sim_l2 on documentdb_data.documents_91003_91000050 collection
+                                 Output: collection.document
+                                 Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <-> '[3,4.9,1]'::vector)
+(17 rows)
+
+ROLLBACK;
+-- Test vector similarity score projection [IP]
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "similarity_score_ip", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "sim_ip", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "IP", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+SELECT documentdb_api.insert_one('db', 'similarity_score_ip', '{ "_id": 1, "a": "some sentence", "v": [1, 2, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'similarity_score_ip', '{ "_id": 2, "a": "some other sentence", "v": [1, 2.0, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'similarity_score_ip', '{ "_id": 3, "a": "some sentence", "v": [3, 2, 1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'similarity_score_ip', '{ "_id": 4, "a": "some other sentence", "v": [-3, -2.0, -1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','similarity_score_ip');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_ip", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "1980000.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "1580000.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "1580000.0" } }
+ { "_id" : { "$numberInt" : "4" }, "rank" : { "$numberDouble" : "-1980000.0" } }
+(4 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_ip", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ -1.0, 2, -3.0 ], "k": 4, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                    document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "rank" : { "$numberDouble" : "200000.0" } }
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "-200000.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "-600000.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "-600000.0" } }
+(4 rows)
+
+begin;
+set local enable_seqscan to off;
+EXPLAIN (costs off, verbose on) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_ip", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ -1.0, 2, -3.0 ], "k": 1, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_project(documentdb_api_internal.bson_document_add_score_field(document, ('-1'::double precision OPERATOR(pg_catalog.*) (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<#>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "-1.0" }, { "$numberInt" : "2" }, { "$numberDouble" : "-3.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)))), '{ "rank" : { "$round" : [ { "$multiply" : [ { "$meta" : "searchScore" }, { "$numberInt" : "100000" } ] } ] } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS document FROM (SELECT collection.document FROM documentdb_data.documents_91004_91000066 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '91004'::bigint) AND (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<#>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "-1.0" }, { "$numberInt" : "2" }, { "$numberDouble" : "-3.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)) LIMIT '1'::bigint) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_api_internal.bson_dollar_project(documentdb_api_internal.bson_document_add_score_field(agg_stage_0.document, ('-1'::double precision * (vector(documentdb_api_internal.bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) <#> '[-1,2,-3]'::vector))), '{ "rank" : { "$round" : [ { "$multiply" : [ { "$meta" : "searchScore" }, { "$numberInt" : "100000" } ] } ] } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+               ->  Limit
+                     Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[-1,2,-3]'::vector))
+                     ->  Custom Scan (DocumentDBApiQueryScan)
+                           Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[-1,2,-3]'::vector)
+                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           ->  Index Scan using sim_ip on documentdb_data.documents_91004_91000066 collection
+                                 Output: collection.document
+                                 Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[-1,2,-3]'::vector)
+(17 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "similarity_score_ip", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v" }  } } ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_document_add_score_field(document, ('-1'::double precision OPERATOR(pg_catalog.*) (public.vector(documentdb_api_internal.bson_extract_vector(document, 'v'::text), 3, true) OPERATOR(public.<#>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)))) AS document FROM (SELECT collection.document FROM documentdb_data.documents_91004_91000066 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '91004'::bigint) AND (documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text) IS NOT NULL)) ORDER BY (public.vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) OPERATOR(public.<#>) public.vector(documentdb_api_internal.bson_extract_vector('{ "vector" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "4.9000000000000003553" }, { "$numberDouble" : "1.0" } ], "k" : { "$numberInt" : "1" }, "path" : "v" }'::documentdb_core.bson, 'vector'::text), 3, true)) LIMIT '1'::bigint) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_api_internal.bson_document_add_score_field(agg_stage_0.document, ('-1'::double precision * (vector(documentdb_api_internal.bson_extract_vector(agg_stage_0.document, 'v'::text), 3, true) <#> '[3,4.9,1]'::vector)))
+               ->  Limit
+                     Output: collection.document, ((vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[3,4.9,1]'::vector))
+                     ->  Custom Scan (DocumentDBApiQueryScan)
+                           Output: collection.document, (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[3,4.9,1]'::vector)
+                           CosmosSearch Custom Params: { "nProbes" : 1 }
+                           ->  Index Scan using sim_ip on documentdb_data.documents_91004_91000066 collection
+                                 Output: collection.document
+                                 Order By: (vector(documentdb_api_internal.bson_extract_vector(collection.document, 'v'::text), 3, true) <#> '[3,4.9,1]'::vector)
+(17 rows)
+
+ROLLBACK;
+-- ivf, Create index first and shard later 
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_ivf_index_first_shard_later", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+ANALYZE;
+BEGIN;
+SET local client_min_messages TO WARNING;
+SELECT documentdb_api.shard_collection('db','create_ivf_index_first_shard_later', '{"a":"hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+END;
+SELECT documentdb_api.insert_one('db', 'create_ivf_index_first_shard_later', '{ "_id": 1, "a": "some sentence", "v": [1, 2, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'create_ivf_index_first_shard_later', '{ "_id": 2, "a": "some other sentence", "v": [1, 2.0, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'create_ivf_index_first_shard_later', '{ "_id": 3, "a": "some sentence", "v": [3, 2, 1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+ANALYZE;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "create_ivf_index_first_shard_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "90740.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "72409.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "72409.0" } }
+(3 rows)
+
+-- nProbes = 1, will return 1 result, the vector [3, 2, 1] is only on one shard
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "create_ivf_index_first_shard_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3, 2, 1 ], "k": 4, "path": "v", "nProbes": 1 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "100000.0" } }
+(1 row)
+
+COMMIT;
+-- nProbes = 1, will return 2 results, the vector [1, 2, 3] is on both shards
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "create_ivf_index_first_shard_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 1, 2, 3 ], "k": 4, "path": "v", "nProbes": 1 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "100000.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "100000.0" } }
+(2 rows)
+
+COMMIT;
+-- nProbes = 100, will return all data
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "create_ivf_index_first_shard_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3, 2, 1 ], "k": 4, "path": "v", "nProbes": 100 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "100000.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "71429.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "71429.0" } }
+(3 rows)
+
+COMMIT;
+-- ivf, Shard collection first and create index later
+SELECT documentdb_api.shard_collection('db','shard_first_create_ivf_index_later', '{"a":"hashed"}', false);
+NOTICE:  creating collection
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "shard_first_create_ivf_index_later", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+SELECT documentdb_api.insert_one('db', 'shard_first_create_ivf_index_later', '{ "_id": 1, "a": "some sentence", "v": [1, 2, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'shard_first_create_ivf_index_later', '{ "_id": 2, "a": "some other sentence", "v": [1, 2.0, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'shard_first_create_ivf_index_later', '{ "_id": 3, "a": "some sentence", "v": [3, 2, 1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+ANALYZE;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "shard_first_create_ivf_index_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "90740.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "72409.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "72409.0" } }
+(3 rows)
+
+-- nProbes = 1, will return 1 result, the vector [3, 2, 1] is only on one shard
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "shard_first_create_ivf_index_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3, 2, 1 ], "k": 4, "path": "v", "nProbes": 1 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "100000.0" } }
+(1 row)
+
+COMMIT;
+-- nProbes = 1, will return 2 results, the vector [1, 2, 3] is on both shards
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "shard_first_create_ivf_index_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 1, 2, 3 ], "k": 4, "path": "v", "nProbes": 1 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "100000.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "100000.0" } }
+(2 rows)
+
+COMMIT;
+-- nProbes = 100, will return all data
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "shard_first_create_ivf_index_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3, 2, 1 ], "k": 4, "path": "v", "nProbes": 100 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "100000.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "71429.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "71429.0" } }
+(3 rows)
+
+COMMIT;
+-- hnsw, Create index first and shard later 
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_hnsw_index_first_shard_later", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "COS", "dimensions": 3 } } ] }', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+ANALYZE;
+BEGIN;
+SET local client_min_messages TO WARNING;
+SELECT documentdb_api.shard_collection('db','create_hnsw_index_first_shard_later', '{"a":"hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+END;
+SELECT documentdb_api.insert_one('db', 'create_hnsw_index_first_shard_later', '{ "_id": 1, "a": "some sentence", "v": [1, 2, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'create_hnsw_index_first_shard_later', '{ "_id": 2, "a": "some other sentence", "v": [1, 2.0, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'create_hnsw_index_first_shard_later', '{ "_id": 3, "a": "some sentence", "v": [3, 2, 1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+ANALYZE;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "create_hnsw_index_first_shard_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "90740.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "72409.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "72409.0" } }
+(3 rows)
+
+-- efSearch = 1, search [3, 2, 1] will return 2 results, one vector from each shard
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "create_hnsw_index_first_shard_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3, 2, 1 ], "k": 4, "path": "v", "efSearch": 1 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "100000.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "71429.0" } }
+(2 rows)
+
+COMMIT;
+-- efSearch = 1, search [1, 2, 3] will return 2 results, one vector from each shard
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "create_hnsw_index_first_shard_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 1, 2, 3 ], "k": 4, "path": "v", "efSearch": 1 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "100000.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "100000.0" } }
+(2 rows)
+
+COMMIT;
+-- efSearch = 10, will return all data
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "create_hnsw_index_first_shard_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3, 2, 1 ], "k": 4, "path": "v", "efSearch": 10 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "100000.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "71429.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "71429.0" } }
+(3 rows)
+
+COMMIT;
+-- hnsw, Shard collection first and create index later
+SELECT documentdb_api.shard_collection('db','shard_first_create_hnsw_index_later', '{"a":"hashed"}', false);
+NOTICE:  creating collection
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "shard_first_create_hnsw_index_later", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "COS", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'shard_first_create_hnsw_index_later', '{ "_id": 1, "a": "some sentence", "v": [1, 2, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'shard_first_create_hnsw_index_later', '{ "_id": 2, "a": "some other sentence", "v": [1, 2.0, 3 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'shard_first_create_hnsw_index_later', '{ "_id": 3, "a": "some sentence", "v": [3, 2, 1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+ANALYZE;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "shard_first_create_hnsw_index_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 4, "path": "v" }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "90740.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "72409.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "72409.0" } }
+(3 rows)
+
+-- efSearch = 1, search [3, 2, 1] will return 2 results, one vector from each shard
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "shard_first_create_hnsw_index_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3, 2, 1 ], "k": 4, "path": "v", "efSearch": 1 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "100000.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "71429.0" } }
+(2 rows)
+
+COMMIT;
+-- efSearch = 1, search [1, 2, 3] will return 2 results, one vector from each shard
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "shard_first_create_hnsw_index_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 1, 2, 3 ], "k": 4, "path": "v", "efSearch": 1 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "100000.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "100000.0" } }
+(2 rows)
+
+COMMIT;
+-- efSearch = 10, will return all data
+BEGIN;
+SET LOCAL enable_seqscan = off;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "shard_first_create_hnsw_index_later", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3, 2, 1 ], "k": 4, "path": "v", "efSearch": 10 }  } }, { "$project": { "rank": {"$round":[{"$multiply": [{"$meta": "searchScore" }, 100000]}]} } } ], "cursor": {} }');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "rank" : { "$numberDouble" : "100000.0" } }
+ { "_id" : { "$numberInt" : "1" }, "rank" : { "$numberDouble" : "71429.0" } }
+ { "_id" : { "$numberInt" : "2" }, "rank" : { "$numberDouble" : "71429.0" } }
+(3 rows)
+
+COMMIT;
+-- multiple cosmosSearch indexes on a same path
+-- create a hnsw index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "IP", "dimensions": 3 } } ] }', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- same name same options
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "IP", "dimensions": 3 } } ] }', true);
+                                                                                                                      create_indexes_non_concurrently                                                                                                                       
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- same name different options
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 8, "efConstruction": 16, "similarity": "IP", "dimensions": 3 } } ] }', true);
+ERROR:  An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-hnsw", "m" : 8, "efConstruction" : 16, "similarity" : "IP", "dimensions" : 3 } }, existing index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-hnsw", "m" : 4, "efConstruction" : 16, "similarity" : "IP", "dimensions" : 3 } }
+-- different name same options
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_2", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "IP", "dimensions": 3 } } ] }', true);
+ERROR:  Index already exists with a different name: foo_1
+-- different name different options
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_2", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "COS", "dimensions": 3 } } ] }', true);
+ERROR:  An equivalent index already exists with a different name and options. Requested index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_2", "cosmosSearchOptions" : { "kind" : "vector-hnsw", "m" : 4, "efConstruction" : 16, "similarity" : "COS", "dimensions" : 3 } }, existing index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-hnsw", "m" : 4, "efConstruction" : 16, "similarity" : "IP", "dimensions" : 3 } }
+-- different name different kind ivf
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_3", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
+ERROR:  An equivalent index already exists with a different name and options. Requested index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_3", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS", "dimensions" : 3 } }, existing index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-hnsw", "m" : 4, "efConstruction" : 16, "similarity" : "IP", "dimensions" : 3 } }
+-- create a ivf index
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "multiple_indexes", "index": "foo_1"}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SET client_min_messages TO WARNING;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+-- same name same options
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
+                                                                                                                      create_indexes_non_concurrently                                                                                                                       
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- same name different options
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 200, "similarity": "COS", "dimensions": 3 } } ] }', true);
+ERROR:  An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 200, "similarity" : "COS", "dimensions" : 3 } }, existing index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS", "dimensions" : 3 } }
+-- different name same options
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_2", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "COS", "dimensions": 3 } } ] }', true);
+ERROR:  Index already exists with a different name: foo_1
+-- different name different options
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_2", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 100, "similarity": "IP", "dimensions": 3 } } ] }', true);
+ERROR:  An equivalent index already exists with a different name and options. Requested index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_2", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "IP", "dimensions" : 3 } }, existing index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS", "dimensions" : 3 } }
+-- different name different kind hnsw
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "multiple_indexes", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_4", "cosmosSearchOptions": { "kind": "vector-hnsw", "m": 4, "efConstruction": 16, "similarity": "IP", "dimensions": 3 } } ] }', true);
+ERROR:  An equivalent index already exists with a different name and options. Requested index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_4", "cosmosSearchOptions" : { "kind" : "vector-hnsw", "m" : 4, "efConstruction" : 16, "similarity" : "IP", "dimensions" : 3 } }, existing index: { "v" : 2, "key" : { "v" : "cosmosSearch" }, "name" : "foo_1", "cosmosSearchOptions" : { "kind" : "vector-ivf", "numLists" : 100, "similarity" : "COS", "dimensions" : 3 } }
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "multiple_indexes", "index": "foo_1"}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+

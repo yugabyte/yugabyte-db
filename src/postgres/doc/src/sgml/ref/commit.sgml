@@ -1,0 +1,112 @@
+<!--
+doc/src/sgml/ref/commit.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-commit">
+ <indexterm zone="sql-commit">
+  <primary>COMMIT</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>COMMIT</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>COMMIT</refname>
+  <refpurpose>commit the current transaction</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+COMMIT [ WORK | TRANSACTION ] [ AND [ NO ] CHAIN ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>COMMIT</command> commits the current transaction. All
+   changes made by the transaction become visible to others
+   and are guaranteed to be durable if a crash occurs.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <indexterm zone="sql-commit-chain">
+   <primary>chained transactions</primary>
+  </indexterm>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>WORK</literal></term>
+    <term><literal>TRANSACTION</literal></term>
+    <listitem>
+     <para>
+      Optional key words. They have no effect.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-commit-chain">
+    <term><literal>AND CHAIN</literal></term>
+    <listitem>
+     <para>
+      If <literal>AND CHAIN</literal> is specified, a new transaction is
+      immediately started with the same transaction characteristics (see <xref
+      linkend="sql-set-transaction"/>) as the just finished one.  Otherwise,
+      no new transaction is started.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Use <xref linkend="sql-rollback"/> to
+   abort a transaction.
+  </para>
+
+  <para>
+   Issuing <command>COMMIT</command> when not inside a transaction does
+   no harm, but it will provoke a warning message.  <command>COMMIT AND
+   CHAIN</command> when not inside a transaction is an error.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To commit the current transaction and make all changes permanent:
+<programlisting>
+COMMIT;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The command <command>COMMIT</command> conforms to the SQL standard.  The
+   form <literal>COMMIT TRANSACTION</literal> is a PostgreSQL extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-begin"/></member>
+   <member><xref linkend="sql-rollback"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

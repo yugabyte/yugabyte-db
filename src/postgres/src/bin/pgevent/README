@@ -1,0 +1,20 @@
+src/bin/pgevent/README
+
+pgevent
+=======
+
+MSG00001.bin is a binary file, result of Microsoft MC compiler. MC compiler
+can be downloaded for free with MS Core SDK but it is not included with MSYS
+tools and I didn't find an alternative way to compile MC file.
+
+To summarize: the command "MC pgmsgevent.mc" generates pgmsgevent.h,
+pgmsgevent.rc, and MSG00001.bin files.  In MC file, we declare a string
+with %s format, so we can write anything we want in the future without
+needing to change the definition of this string.
+
+To finish, because DllUnregisterServer and DllRegisterServer are system
+defined entry points, we need to export these two functions with their names
+without "decoration", so we cannot use auto generated .def files without
+handy modifications.
+
+Laurent Ballester

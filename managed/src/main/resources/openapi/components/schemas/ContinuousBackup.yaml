@@ -1,0 +1,11 @@
+title: ContinuousBackup
+description: |
+  ContinuousBackup
+
+  Continuous Backup object which contains the info for a configuration.
+type: object
+properties:
+  info:
+    $ref: "./ContinuousBackupInfo.yaml"
+  spec:
+    $ref: "./ContinuousBackupSpec.yaml"

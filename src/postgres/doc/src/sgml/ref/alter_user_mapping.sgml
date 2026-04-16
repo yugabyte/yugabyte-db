@@ -1,0 +1,124 @@
+<!--
+doc/src/sgml/ref/alter_user_mapping.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterusermapping">
+ <indexterm zone="sql-alterusermapping">
+  <primary>ALTER USER MAPPING</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER USER MAPPING</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER USER MAPPING</refname>
+  <refpurpose>change the definition of a user mapping</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER USER MAPPING FOR { <replaceable class="parameter">user_name</replaceable> | USER | CURRENT_ROLE | CURRENT_USER | SESSION_USER | PUBLIC }
+    SERVER <replaceable class="parameter">server_name</replaceable>
+    OPTIONS ( [ ADD | SET | DROP ] <replaceable class="parameter">option</replaceable> ['<replaceable class="parameter">value</replaceable>'] [, ... ] )
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER USER MAPPING</command> changes the definition of a
+   user mapping.
+  </para>
+
+  <para>
+   The owner of a foreign server can alter user mappings for that
+   server for any user.  Also, a user can alter a user mapping for
+   their own user name if <literal>USAGE</literal> privilege on the server has
+   been granted to the user.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">user_name</replaceable></term>
+    <listitem>
+     <para>
+      User name of the mapping. <literal>CURRENT_ROLE</literal>, <literal>CURRENT_USER</literal>,
+      and <literal>USER</literal> match the name of the current
+      user. <literal>PUBLIC</literal> is used to match all present and future
+      user names in the system.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">server_name</replaceable></term>
+    <listitem>
+     <para>
+      Server name of the user mapping.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>OPTIONS ( [ ADD | SET | DROP ] <replaceable class="parameter">option</replaceable> ['<replaceable class="parameter">value</replaceable>'] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      Change options for the user mapping. The new options override
+      any previously specified
+      options.  <literal>ADD</literal>, <literal>SET</literal>, and <literal>DROP</literal>
+      specify the action to be performed.  <literal>ADD</literal> is assumed
+      if no operation is explicitly specified.  Option names must be
+      unique; options are also validated by the server's foreign-data
+      wrapper.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Change the password for user mapping <literal>bob</literal>, server <literal>foo</literal>:
+<programlisting>
+ALTER USER MAPPING FOR bob SERVER foo OPTIONS (SET password 'public');
+</programlisting></para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER USER MAPPING</command> conforms to ISO/IEC 9075-9
+   (SQL/MED).  There is a subtle syntax issue: The standard omits
+   the <literal>FOR</literal> key word.  Since both <literal>CREATE
+   USER MAPPING</literal> and <literal>DROP USER MAPPING</literal> use
+   <literal>FOR</literal> in analogous positions, and IBM DB2 (being
+   the other major SQL/MED implementation) also requires it
+   for <literal>ALTER USER MAPPING</literal>, PostgreSQL diverges from
+   the standard here in the interest of consistency and
+   interoperability.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createusermapping"/></member>
+   <member><xref linkend="sql-dropusermapping"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

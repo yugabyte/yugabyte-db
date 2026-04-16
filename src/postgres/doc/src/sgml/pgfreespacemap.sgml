@@ -1,0 +1,121 @@
+<!-- doc/src/sgml/pgfreespacemap.sgml -->
+
+<sect1 id="pgfreespacemap" xreflabel="pg_freespacemap">
+ <title>pg_freespacemap</title>
+
+ <indexterm zone="pgfreespacemap">
+  <primary>pg_freespacemap</primary>
+ </indexterm>
+
+ <para>
+  The <filename>pg_freespacemap</filename> module provides a means for examining the
+  <link linkend="storage-fsm">free space map</link> (<acronym>FSM</acronym>).
+  It provides a function called <function>pg_freespace</function>, or two
+  overloaded functions, to be precise. The functions show the value recorded in
+  the free space map for a given page, or for all pages in the relation.
+ </para>
+
+ <para>
+  By default use is restricted to superusers and roles with privileges of the
+  <literal>pg_stat_scan_tables</literal> role. Access may be granted to others
+  using <command>GRANT</command>.
+ </para>
+
+ <sect2>
+  <title>Functions</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>pg_freespace(rel regclass IN, blkno bigint IN) returns int2</function>
+     <indexterm>
+      <primary>pg_freespace</primary>
+     </indexterm>
+    </term>
+
+    <listitem>
+     <para>
+      Returns the amount of free space on the page of the relation, specified
+      by <literal>blkno</literal>, according to the <acronym>FSM</acronym>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+
+   <varlistentry>
+    <term>
+     <function>pg_freespace(rel regclass IN, blkno OUT bigint, avail OUT int2)</function>
+    </term>
+
+    <listitem>
+     <para>
+      Displays the amount of free space on each page of the relation,
+      according to the <acronym>FSM</acronym>. A set of
+      <literal>(blkno bigint, avail int2)</literal>
+      tuples is returned, one tuple for each page in the relation.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   The values stored in the free space map are not exact. They're rounded
+   to precision of 1/256th of <symbol>BLCKSZ</symbol> (32 bytes with default <symbol>BLCKSZ</symbol>), and
+   they're not kept fully up-to-date as tuples are inserted and updated.
+  </para>
+
+  <para>
+   For indexes, what is tracked is entirely-unused pages, rather than free
+   space within pages.  Therefore, the values are not meaningful, just
+   whether a page is full or empty.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Sample Output</title>
+
+<screen>
+postgres=# SELECT * FROM pg_freespace('foo');
+ blkno | avail
+-------+-------
+     0 |     0
+     1 |     0
+     2 |     0
+     3 |    32
+     4 |   704
+     5 |   704
+     6 |   704
+     7 |  1216
+     8 |   704
+     9 |   704
+    10 |   704
+    11 |   704
+    12 |   704
+    13 |   704
+    14 |   704
+    15 |   704
+    16 |   704
+    17 |   704
+    18 |   704
+    19 |  3648
+(20 rows)
+
+postgres=# SELECT * FROM pg_freespace('foo', 7);
+ pg_freespace
+--------------
+         1216
+(1 row)
+</screen>
+ </sect2>
+
+ <sect2>
+  <title>Author</title>
+
+  <para>
+   Original version by Mark Kirkwood <email>markir@paradise.net.nz</email>.
+   Rewritten in version 8.4 to suit new <acronym>FSM</acronym> implementation
+   by Heikki Linnakangas <email>heikki@enterprisedb.com</email>
+  </para>
+ </sect2>
+
+</sect1>

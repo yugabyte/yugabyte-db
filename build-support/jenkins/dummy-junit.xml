@@ -1,0 +1,12 @@
+<!-- There must be at least one junit xml file found in its search paths or the
+     Jenkins surefire plugin will fail. This file is left here to make the LINT
+     build pass, since it does not run any unit tests.
+     Unfortunately, it gets a bit more convoluted than that. The test file also
+     has to have a recent last-modified time for Jenkins to accept it.
+     Therefore, the build must have an execution step that "touches" this file
+     each time it runs in order for this workaround to succeed. -->
+<testsuites>
+  <testsuite name="DummyTest">
+    <testcase name="TestDummy" classname="DummyTest"/>
+  </testsuite>
+</testsuites>

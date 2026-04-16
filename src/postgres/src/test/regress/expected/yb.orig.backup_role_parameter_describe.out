@@ -1,0 +1,41 @@
+              List of relations
+ Schema |    Name    | Type  |     Owner     
+--------+------------+-------+---------------
+ public | test_table | table | yugabyte_test
+(1 row)
+
+ log_min_messages 
+------------------
+ warning
+(1 row)
+
+ log_min_messages 
+------------------
+ warning
+(1 row)
+
+ log_min_messages 
+------------------
+ log
+(1 row)
+
+ log_min_messages 
+------------------
+ debug1
+(1 row)
+
+ log_min_messages 
+------------------
+ warning
+(1 row)
+
+ log_min_messages 
+------------------
+ log
+(1 row)
+
+ log_min_messages 
+------------------
+ debug1
+(1 row)
+

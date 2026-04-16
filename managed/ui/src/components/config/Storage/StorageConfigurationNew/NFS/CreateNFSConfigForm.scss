@@ -1,0 +1,21 @@
+@use '../../../../../_style/colors.scss';
+
+.multi-region-enabled.nfs {
+  .nfs-location {
+    position: relative;
+    width: 630px;
+  }
+  .is-default-location {
+    margin-left: 16px;
+    display: inline-flex;
+    align-items: center;
+    position: absolute;
+    right: 0%;
+    input {
+      margin: 0 10px 0 0;
+    }
+  }
+   .remove-field-icon{
+    top: 0px;
+  }
+}

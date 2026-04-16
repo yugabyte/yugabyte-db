@@ -1,0 +1,6 @@
+comment = 'versioned_custom_libname_so:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+# commenting-out module_pathname results in this extension being built/run/tested in "versioned shared-object mode"
+# module_pathname = '$libdir/versioned_othername'
+relocatable = false
+superuser = false

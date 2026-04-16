@@ -1,0 +1,27 @@
+ services:
+  - name: ybdbService
+    fileName: "{{ .SystemdFileLocation }}"
+    contents: |
+      [Unit]
+      Description=YBDB
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      User={{ yamlPath "service_username" }}
+      Group={{ yamlPath "service_username" }}
+      Type=forking
+      TimeoutSec=300
+      LimitNOFILE=1048576
+      ExecStart={{ .YbdBin }} start --base_dir {{ .BaseDir }} \
+      --advertise_address 127.0.0.1 \
+      --tserver_flags=yb_enable_read_committed_isolation=\
+      {{ yamlPath "ybdb.install.read_committed_isolation"}}
+
+      ExecStop={{ .YbdBin }} stop --base_dir {{ .BaseDir }}
+
+      Restart=always
+      RestartSec={{ yamlPath "ybdb.install.restartSeconds"}}
+
+      [Install]
+      WantedBy=multi-user.target

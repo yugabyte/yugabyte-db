@@ -1,0 +1,64 @@
+# Check that its enabled and has the desired settings
+validate_transparent_hugepage_settings() {
+    local settings=(
+        "/sys/kernel/mm/transparent_hugepage/enabled [always]"
+        "/sys/kernel/mm/transparent_hugepage/defrag [defer+madvise]"
+        "/sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none 0"
+    )
+
+    local valid=0
+    local invalid=0
+
+    for setting in "${settings[@]}"; do
+        local path=$(echo "$setting" | awk '{print $1}')
+        local expected_value=$(echo "$setting" | awk '{print $2}')
+
+        if [[ ! -f "$path" ]]; then
+            echo "$path: INVALID Does not exist!"
+            ((invalid++))
+            continue
+        fi
+
+        local actual_value=$(cat "$path")
+
+        if [[ "$expected_value" == "0" && "$path" == *"max_ptes_none" ]]; then
+            if [[ "$actual_value" == "$expected_value" ]]; then
+                echo "$path: VALID (Expected: '$expected_value', Actual: '$actual_value')"
+                ((valid++))
+            else
+                echo "$path: INVALID (Expected: '$expected_value', Actual: '$actual_value')"
+                ((invalid++))
+            fi
+        else
+            # Fuzzy Match for everything else
+            if [[ "$actual_value" == *"$expected_value"* ]]; then
+                echo "$path: VALID (Expected: '$expected_value', Actual: '$actual_value')"
+                ((valid++))
+            else
+                echo "$path: INVALID (Expected: '$expected_value', Actual: '$actual_value')"
+                ((invalid++))
+            fi
+        fi
+
+    done
+
+    echo "SUMMARY: Valid Checks: $valid , Invalid Checks: $invalid"
+
+    if [[ "$valid" -eq 3 && "$invalid" -eq 0 ]]; then
+        echo "PASS: All ${valid} settings applied."
+        return 0
+    else
+        echo "FAIL: ${invalid} setting(s) not applied."
+        return 1
+    fi
+}
+
+# Call function to validate transparent hugepage settings
+validate_transparent_hugepage_settings
+
+if [[ $? -ne 0 ]]; then
+    add_result "Transparent Hugepages check" "FAIL" \
+        "Transparent Hugepages settings are not as expected."
+else
+    add_result "Transparent Hugepages check" "PASS" ""
+fi

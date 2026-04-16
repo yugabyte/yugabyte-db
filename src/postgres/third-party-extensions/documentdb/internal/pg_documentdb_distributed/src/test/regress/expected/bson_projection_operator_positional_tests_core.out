@@ -1,0 +1,355 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 270000;
+SET documentdb.next_collection_id TO 2700;
+SET documentdb.next_collection_index_id TO 2700;
+-- Invalid scenarios
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": 1, "b.$": 1}', '{}');
+ERROR:  Cannot specify more than one positional projection per query.
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a..$": 1}', '{}');
+ERROR:  FieldPath must not end with a '.'.
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": {"$slice": 1}}', '{}');
+ERROR:  positional projection cannot be used with an expression or sub object
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": 0}', '{}');
+ERROR:  positional projection cannot be used with exclusion
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": [1,2,3]}', '{}');
+ERROR:  positional projection cannot be used with a literal
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": "Hello"}', '{}');
+ERROR:  positional projection cannot be used with a literal
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": {"$numberDecimal": "0"}}', '{}');
+ERROR:  positional projection cannot be used with exclusion
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a": 1, "a.$": 1 }', '{}');
+ERROR:  Path collision at a
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.b": 1, "a.b.$": 1 }', '{}');
+ERROR:  Path collision at a.b
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a": 1, "a.b.$": 1 }', '{}');
+ERROR:  Path collision at a.b remaining portion b
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": 1, "a": 1 }', '{}');
+ERROR:  Path collision at a
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.b.$": 1, "a.b": 1 }', '{}');
+ERROR:  Path collision at a.b
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.b": 1, "a.$": 1 }', '{}');
+ERROR:  Path collision at a
+-- some basic positional projection test
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": {"$numberDecimal": "Infinity"}}', '{"a": 1}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "a" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": {"$numberDecimal": "NaN"}}', '{"a": 2}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "a" : [ { "$numberInt" : "2" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3] }', '{ "a.$": 1}', '{"a": 1}');
+                       bson_dollar_project_find                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3] }', '{ "a.$": 1}', '{"a": 2}');
+                       bson_dollar_project_find                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "2" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3] }', '{ "a.$": 1}', '{"a": 3}');
+                       bson_dollar_project_find                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "3" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": [6,5,4] }', '{ "a.$": 1}', '{"b": 6}');
+                       bson_dollar_project_find                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}', '{"a": 1, "c": 8, "b": 5}');
+                       bson_dollar_project_find                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "b" : [ { "$numberInt" : "5" } ] }
+(1 row)
+
+-- with $and
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"$and": [{"a": 1}, {"c": 8}, {"b": 5}]}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "5" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"$and": [{"a": 2}, {"a": 3}, {"a": 1}]}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "6" } ] }
+(1 row)
+
+-- with $nor and $not and complex $or - Error
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"$nor": [{"a": 1}, {"c": 8}, {"b": 5}]}');
+ERROR:  Executor error during find command :: caused by :: positional operator '.$' couldn't find a matching element in the array
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"a": {"$not": {"$eq": 3}}}');
+ERROR:  Executor error during find command :: caused by :: positional operator '.$' couldn't find a matching element in the array
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"$or": [{"a": 3}, {"b": 6}]}');
+ERROR:  Executor error during find command :: caused by :: positional operator '.$' couldn't find a matching element in the array
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"$or": [{"a": {"$gte": 1}}, {"a": {"$lt": 3}}]}');
+ERROR:  Executor error during find command :: caused by :: positional operator '.$' couldn't find a matching element in the array
+-- with $in
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"a": {"$in": [1,2,3]}}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "6" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"a": {"$in": [4,5,3]}}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "4" } ] }
+(1 row)
+
+-- $or with simple expressions converted to $in
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"$or": [{"a": 2}, {"a": 3}, {"a": 1}]}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "6" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"$or": [{"a": {"$in": [3]}}, {"a": {"$in": [2]}}, {"a": {"$in": [1]}}]}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "6" } ] }
+(1 row)
+
+-- positional with various conditions
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"a": {"$elemMatch": {"$eq": 2}}}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "5" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[[1],[2],[3]], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"a": {"$elemMatch": {"$elemMatch": {"$eq": 3}}}}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "4" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[[1,2], [3,4]], "b": [[5,6], [7,8]], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"a": {"$elemMatch": {"$elemMatch": {"$eq": 3}}}}');
+                     bson_dollar_project_find                     
+---------------------------------------------------------------------
+ { "b" : [ [ { "$numberInt" : "7" }, { "$numberInt" : "8" } ] ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[{"b": [1,2,3]}, {"b": [4,5,6]}, {"b": [7,8,9]}], "c": [10, 11, 12] }', '{ "c.$": 1}',
+                                        '{"a": {"$elemMatch": {"b": {"$elemMatch": {"$eq": 6}}}}}');
+       bson_dollar_project_find        
+---------------------------------------------------------------------
+ { "c" : [ { "$numberInt" : "11" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "x": [{"y": 1}, {"y": 2}, {"y": 3}] }', '{ "x.$": 1}',
+                                        '{"x": {"$elemMatch": {"y": {"$gt": 1}}}}');
+            bson_dollar_project_find            
+---------------------------------------------------------------------
+ { "x" : [ { "y" : { "$numberInt" : "2" } } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[1, {"b": [4,5,6]}, {"b": [7,8,9]}], "c": [10, 11, 12] }', '{ "c.$": 1}',
+                                        '{"a": {"$elemMatch": {}}}');
+       bson_dollar_project_find        
+---------------------------------------------------------------------
+ { "c" : [ { "$numberInt" : "11" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"a": {"$type": "int"}}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "6" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,"string"], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"a": {"$type": "string"}}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "4" } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "a" :[{"c": 1}, {"c": 2}, {"b": 3}], "b": [6,5,4], "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"a.b": {"$exists": true}}');
+       bson_dollar_project_find       
+---------------------------------------------------------------------
+ { "b" : [ { "$numberInt" : "4" } ] }
+(1 row)
+
+-- non existent fields
+SELECT * FROM bson_dollar_project_find('{"x": [{"a": 1, "b": 2}, {"a": 2, "c": 3}, {"a": 1, "d": 5}], "y": [{"aa": 1, "bb": 2}, {"aa": 2, "cc": 3}, {"aa": 1, "dd": 5}]}', '{"g.$": 1}', '{}');
+ bson_dollar_project_find 
+---------------------------------------------------------------------
+ { }
+(1 row)
+
+-- positional on non array fields
+SELECT * FROM bson_dollar_project_find('{ "a" :[{"c": 1}, {"c": 2}, {"b": 3}], "b": 25, "c": [7,8,9] }', '{ "b.$": 1}',
+                                        '{"a.b": {"$exists": true}}');
+     bson_dollar_project_find      
+---------------------------------------------------------------------
+ { "b" : { "$numberInt" : "25" } }
+(1 row)
+
+-- on nested path
+SELECT * FROM bson_dollar_project_find('{"x": [-1, 1, 2], "a": {"b": {"d": [1,2,3]}, "f": 456}, "e": 123}', '{"a.b.c.$": 1}', '{"x": {"$gt": 0}}');
+ bson_dollar_project_find 
+---------------------------------------------------------------------
+ { "a" : { "b" : {  } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{"x": {"y": [{"a": 1, "b": 1}, {"a": 1, "b": 2}]}}', '{"x.y.$": 1}', '{"x.y.a": 1}');
+                                bson_dollar_project_find                                
+---------------------------------------------------------------------
+ { "x" : { "y" : [ { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } } ] } }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{"x": [1], "a": [{"b":[[[{"c": 1, "d": 2}]]]}]}', '{"a.b.c.$": 1}', '{"x": 1}'); -- Only relevant path is included
+                       bson_dollar_project_find                       
+---------------------------------------------------------------------
+ { "a" : [ { "b" : [ [ [ { "c" : { "$numberInt" : "1" } } ] ] ] } ] }
+(1 row)
+
+-- in a nested path match the query on the first array and include only the fields requested in positional
+SELECT * FROM bson_dollar_project_find('{"x": {"y": {"z": [0,1,2]}}, "a": [{"b": {"c": [1,2,3]}}, {"b": {"c": [4,5,6]}}, {"b": {"c": [7,8,9]}}]}', '{"a.b.c.$": 1}', '{"x.y.z": 1}');
+                                           bson_dollar_project_find                                           
+---------------------------------------------------------------------
+ { "a" : [ { "b" : { "c" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ] } } ] }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{"x": {"y": {"z": [0,1,2]}}, "a": {"b": [{"c": [1,2,3]}, {"c": [4,5,6]}, {"c": [7,8,9]}]}}', '{"a.b.c.$": 1}', '{"x.y.z": 1}');
+                                           bson_dollar_project_find                                           
+---------------------------------------------------------------------
+ { "a" : { "b" : [ { "c" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ] } ] } }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{"x": {"y": {"z": [0,1,2]}}, "a": {"b": {"c": [1,2,3]}}}', '{"a.b.c.$": 1}', '{"x.y.z": 1}');
+                 bson_dollar_project_find                 
+---------------------------------------------------------------------
+ { "a" : { "b" : { "c" : [ { "$numberInt" : "2" } ] } } }
+(1 row)
+
+-- errors if no match found or matched index is greater than size of array
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": [4,5,6,7] }', '{ "a.$": 1}', '{"b": 2}');
+ERROR:  Executor error during find command :: caused by :: positional operator '.$' couldn't find a matching element in the array
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": [4,5,6,7] }', '{ "a.$": 1}', '{"b": 7}');
+ERROR:  Executor error during find command :: caused by :: positional operator '.$' element mismatch
+-- Test with multiple docs
+BEGIN;
+SELECT documentdb_api.insert_one('db','positionalProjection', '{"_id": 1, "a" : { "b" : [{"c": 1, "d": 1}, {"c": 2, "d": 2}]}, "x": [1,2]}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','positionalProjection', '{"_id": 2, "a" : { "b" : {"c": [11, 12], "d": [13, 14]} }, "x": [1,2]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT bson_dollar_project_find(document, '{"a.b.c.$": 1}', '{"x": 2}')
+    FROM documentdb_api.collection('db', 'positionalProjection')
+    WHERE document @@ '{ "x": 2}' 
+    ORDER BY object_id;
+                                 bson_dollar_project_find                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "c" : { "$numberInt" : "2" } } ] } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "c" : [ { "$numberInt" : "12" } ] } } }
+(2 rows)
+
+ROLLBACK;
+-- Empty or null query Spec
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": {"c": [{"d": 1, "e": 2}]} }', '{ "a.$": 1}', NULL);
+ERROR:  Executor error during find command :: caused by :: positional operator '.$' couldn't find a matching element in the array
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": {"c": [{"d": 1, "e": 2}]} }', '{ "a.$": 1}', '{}');
+ERROR:  Executor error during find command :: caused by :: positional operator '.$' couldn't find a matching element in the array
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": {"c": [{"d": 1, "e": 2}]} }', '{ "b.c.d.$": 1}', NULL);
+ERROR:  Executor error during find command :: caused by :: positional operator '.$' couldn't find a matching element in the array
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": {"c": [{"d": 1, "e": 2}]} }', '{ "b.c.d.$": 1}', '{}');
+ERROR:  Executor error during find command :: caused by :: positional operator '.$' couldn't find a matching element in the array
+-- Empty or null with non array spec field works
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": {"c": [{"d": 1, "e": 2}]} }', '{ "b.$": 1}', NULL);
+                                                bson_dollar_project_find                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "b" : { "c" : [ { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "2" } } ] } }
+(1 row)
+
+SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": {"c": {"d": 1, "e": 2}} }', '{ "b.c.d.$": 1}', '{}');
+                               bson_dollar_project_find                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "b" : { "c" : { "d" : { "$numberInt" : "1" } } } }
+(1 row)
+
+-- $project and $addFields doesn't support positional, TODO throw native mongo error for $project
+SELECT * FROM bson_dollar_project('{ "_id": 1, "a" :[{ "b": {"c": [1,3,2]}, "d": {"e": [4,5,6]}}]} ', '{"a.b.c.$": 1 }');
+ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+SELECT bson_dollar_add_fields('{"a": {"b": [1,2,3]}}', '{ "a.b.$" : "1", "a.y": ["p", "q"]}');
+ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+--sharded collection tests
+BEGIN;
+-- Insert data into a new collection to be sharded
+SELECT documentdb_api.insert_one('db','positional_sharded',' { "_id" : 0, "key": {"a": "b"}, "a" : [{"b": 1, "c": 1}, {"b": 1, "c": 2}], "x":[11,12,13] }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','positional_sharded',' { "_id" : 1, "key": {"a": "b"}, "a" : [{"b": {"c": 1}}, {"b": {"c": 2}}], "x":[11,12,13] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','positional_sharded',' { "_id" : 2, "key": {"b": "c"}, "a" : { "b": [{"c": 1, "d": 1}, {"c": 2, "d": 2}] }, "x":[11,12,13] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','positional_sharded',' { "_id" : 3, "key": {"c": "d"}, "a" : { "b": {"c": [{"d": 1, "d": 2}], "e": [1,2,3]} }, "x":[11,12,13] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Shard orders collection on key
+SELECT documentdb_api.shard_collection('db','positional_sharded', '{"key":"hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT bson_dollar_project_find(document, '{"a.b.c.$": 1}', '{"x": 11}')
+    FROM documentdb_api.collection('db', 'positional_sharded')
+    WHERE document @@ '{ "x": 11}' 
+    ORDER BY object_id;
+                                                     bson_dollar_project_find                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "a" : [ {  } ] }
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "b" : { "c" : { "$numberInt" : "1" } } } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "c" : { "$numberInt" : "1" } } ] } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "c" : [ { "d" : { "$numberInt" : "1" }, "d" : { "$numberInt" : "2" } } ] } } }
+(4 rows)
+
+ROLLBACK;

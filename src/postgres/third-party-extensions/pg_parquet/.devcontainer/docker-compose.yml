@@ -1,0 +1,78 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: "./entrypoint.sh"
+    network_mode: host
+    volumes:
+      - ..:/workspace
+      - ${USERPROFILE}${HOME}/.ssh:/home/rust/.ssh:ro
+      - ${USERPROFILE}${HOME}/.ssh/known_hosts:/home/rust/.ssh/known_hosts:rw
+      - ${USERPROFILE}${HOME}/.gitconfig:/home/rust/.gitconfig:ro
+      - ${USERPROFILE}${HOME}/.aws:/home/rust/.aws:rw
+      - ${USERPROFILE}${HOME}/.azure:/home/rust/.azure:rw
+      - ${USERPROFILE}${HOME}/.config/gcloud:/home/rust/.config/gcloud:rw
+      - ./entrypoint.sh:/entrypoint.sh
+    env_file:
+      - .env
+    cap_add:
+      - SYS_PTRACE
+    depends_on:
+      - minio
+      - azurite
+      - webdav
+      - fake-gcs-server
+
+  minio:
+    image: minio/minio
+    env_file:
+      - .env
+    network_mode: host
+    entrypoint: "./entrypoint.sh"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "http://localhost:9000"]
+      interval: 6s
+      timeout: 2s
+      retries: 3
+    volumes:
+        - ./minio-entrypoint.sh:/entrypoint.sh
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    env_file:
+      - .env
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "10000"]
+      interval: 6s
+      timeout: 2s
+      retries: 3
+
+  webdav:
+    image: rclone/rclone
+    command: ["serve", "webdav", "/data", "--addr", ":8080"]
+    env_file:
+      - .env
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 6s
+      timeout: 2s
+      retries: 3
+
+  fake-gcs-server:
+     image: tustvold/fake-gcs-server
+     env_file:
+       - .env
+     network_mode: host
+     command: -scheme http -public-host localhost:4443
+     restart: unless-stopped
+     healthcheck:
+       test: ["CMD", "nc", "-z", "localhost", "4443"]
+       interval: 6s
+       timeout: 2s
+       retries: 3

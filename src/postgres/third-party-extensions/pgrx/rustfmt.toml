@@ -1,0 +1,7 @@
+# Run rustfmt with this config (it should be picked up automatically).
+use_small_heuristics = "Max"
+merge_derives = false
+
+# run `cargo +nightly fmt` with these uncommented occasionally until it stabilizes
+# unstable_features = true
+# imports_granularity = "Module"

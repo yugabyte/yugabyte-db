@@ -1,0 +1,1743 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 7850000;
+SET documentdb.next_collection_id TO 7850;
+SET documentdb.next_collection_index_id TO 7850;
+--Test without Enabling feature flag of $merge
+SELECT documentdb_api.insert_one('sourceDB','withoutFlag',' { "_id" :  1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('sourceDB', '{ "aggregate": "withoutFlag", "pipeline": [ {"$merge" : { "into": "targetwithoutFlag" }} ] , "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge target collection create not supported yet, Please create target collection first and try again
+--set Feature flag for $merge across DB support
+SET documentdb.enableMergeAcrossDB TO ON;
+--Test without Enabling flag for $merge stage target collection creation 
+SELECT * FROM aggregate_cursor_first_page('sourceDB', '{ "aggregate": "withoutFlag", "pipeline": [ {"$merge" : { "into": "targetwithoutFlag" }} ] , "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge target collection create not supported yet, Please create target collection first and try again
+--set Feature flag for $merge stage target collection creation 
+SET documentdb.enableMergeTargetCreation TO ON;
+-- custom udf testing
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_add_object_id('{"_id" :  1, "a" : 1}', documentdb_api_internal.bson_dollar_merge_generate_object_id('{"a" : "dummy bson"}'));
+                 bson_dollar_merge_add_object_id                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_add_object_id('{"a" : 1, "_id" :  1}', documentdb_api_internal.bson_dollar_merge_generate_object_id('{"a" : "dummy bson"}'));
+                 bson_dollar_merge_add_object_id                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT count(*) FROM documentdb_api_internal.bson_dollar_merge_generate_object_id('{"a" : "dummy bson"}');
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_join('{"a" : 1, "b" : 2}', documentdb_api_internal.bson_dollar_extract_merge_filter('{"a" : 1, "b" : 3}', 'a'::TEXT), 'a'::TEXT);
+ bson_dollar_merge_join 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_join('{"a" : 1, "b" : 2}', documentdb_api_internal.bson_dollar_extract_merge_filter('{"a" : 2, "b" : 2}', 'a'::TEXT), 'a'::TEXT);
+ bson_dollar_merge_join 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_join('{"a" : {"b" : 1 }, "c" : 2}', '{"a" : {"b" : 1}}', 'a.b'::TEXT);
+ bson_dollar_merge_join 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_join('{"a" : {"b" : 1 }, "c" : 2}', '{"a" : {"b" : 2}}', 'a.b'::TEXT);
+ bson_dollar_merge_join 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_join('{"a" : [1,2,3], "c" : 2}', '{"a" : 2}', 'a'::TEXT);
+ bson_dollar_merge_join 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_join('{"a" : [1,2,3], "c" : 2}', '{"a" : 4}', 'a'::TEXT);
+ bson_dollar_merge_join 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_join('{"a" : 1, "b" : 2}', documentdb_api_internal.bson_dollar_extract_merge_filter('{"a" : [1,2,3], "b" : 3}','a'::TEXT), 'a'::TEXT);
+ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_join('{"a" : 1, "b" : 2}',  documentdb_api_internal.bson_dollar_extract_merge_filter('{"b" : 3}', 'a'::TEXT), 'a'::TEXT);
+ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_join('{"a" : 1, "b" : 2}',  documentdb_api_internal.bson_dollar_extract_merge_filter('{"a" : null}','a' ::TEXT), 'a'::TEXT);
+ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
+SELECT * FROM documentdb_api_internal.bson_dollar_merge_fail_when_not_matched('{"a" : "this is a dummy bson"}', 'this is dummy text'::TEXT);
+ERROR:  $merge could not find a matching document in the target collection for at least one document in the source collection
+--  Merge with default option
+SELECT documentdb_api.insert_one('defDb','defSrc',' { "_id" :  1, "a" : 1 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('defDb','defSrc',' { "_id" :  2, "a" : 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('defDb','defTar',' { "_id" :  1, "b" : 2 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('defDb', '{ "aggregate": "defSrc", "pipeline": [  {"$merge" : { "into": "defTar" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "defDb.defSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('defDb', 'defTar');
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+-- simplest test case working
+SELECT documentdb_api.insert('db', '{"insert":"salaries", "documents":[
+   { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
+   { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
+   { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
+   { "_id" : 4, "employee": "Bee", "salary": 145000, "fiscal_year": 2018 },
+   { "_id" : 5, "employee": "Cat", "salary": 135000, "fiscal_year": 2018 },
+   { "_id" : 6, "employee": "Cat", "salary": 150000, "fiscal_year": 2019 }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""6"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "salaries", "pipeline": [  {"$merge" : { "into": "budgets" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'budgets');
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+(6 rows)
+
+-- simple test case target database is not same as source database
+SELECT documentdb_api.insert_one('sourceDB','sourceDumpData',' { "_id" :  1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('sourceDB', '{ "aggregate": "sourceDumpData", "pipeline": [ {"$merge" : { "into": {"db" : "targetDB" , "coll" : "targetDumpData"}, "on" : "_id", "whenMatched" : "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "sourceDB.sourceDumpData", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('targetDB', 'targetDumpData');
+                                                            document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item" : "almonds", "price" : { "$numberInt" : "12" }, "quantity" : { "$numberInt" : "2" } }
+(1 row)
+
+-- object id missing test
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "salaries", "pipeline": [ {"$project" : {"_id" : 0}}, {"$merge" : { "into": "budgets2" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT count(document) FROM documentdb_api.collection('db', 'budgets2');
+ count 
+---------------------------------------------------------------------
+     6
+(1 row)
+
+-- test when merge input is string 
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "salaries", "pipeline": [ {"$merge" : "normalString" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "salaries", "pipeline": [ {"$merge" : "dotted.String" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                            cursorpage                                                            | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.salaries", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','normalString');
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+(6 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'dotted.String');
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+(6 rows)
+
+-- unique index test
+SELECT documentdb_api.insert_one('db','uniqueIndexTestSrc',' { "_id" :  10, "a" : 1, "b" : 1, "c" : 1 , "d" : 1, "e" : 1, "f" : 1}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "uniqueIndexTestTarget", "indexes": [{"key": {"a": 1, "b" : 1, "c" :1}, "name": "index_1", "unique" : true}]}', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "uniqueIndexTestTarget", "indexes": [{"key": {"a": 1}, "name": "index_2", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "uniqueIndexTestTarget", "indexes": [{"key": {"e": 1}, "name": "index_3", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "uniqueIndexTestTarget", "indexes": [{"key": {"f": 1}, "name": "index_4", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "on" : ["b" , "c" , "a"],"into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "on" : ["c" , "b" , "a"],"into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "on" : "_id", "into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "uniqueIndexTestSrc", "pipeline": [ {"$merge" : { "on" : ["_id"], "into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                 cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.uniqueIndexTestSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'uniqueIndexTestTarget');
+                                                                                                        document                                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" }, "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" }, "f" : { "$numberInt" : "1" } }
+(1 row)
+
+-- _id unique index test
+SELECT documentdb_api.insert_one('db','objectIDUniqueIndex',' { "_id" :  10, "a" : 1, "b" : 1, "c" : 1 , "d" : 1, "e" : 1, "f" : 1, "field1" : 1, "field2" : 2}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "uniqueIndexTestTarget", "indexes": [{"key": {"field1": 1, "field2" : 1, "_id" : 1}, "name": "index_id", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDUniqueIndex", "pipeline": [ {"$merge" : { "on" : "_id","into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDUniqueIndex", "pipeline": [ {"$merge" : { "on" : ["_id"],"into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDUniqueIndex", "pipeline": [ {"$merge" : { "on" : ["field1","_id","field2"],"into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDUniqueIndex", "pipeline": [ {"$merge" : { "into": "uniqueIndexTestTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.objectIDUniqueIndex", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+--test source collection is sharded.
+SELECT documentdb_api.insert('db', '{"insert":"soruceShardedTest", "documents":[
+   { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
+   { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
+   { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
+   { "_id" : 4, "employee": "Bee", "salary": 145000, "fiscal_year": 2018 },
+   { "_id" : 5, "employee": "Cat", "salary": 135000, "fiscal_year": 2018 },
+   { "_id" : 6, "employee": "Cat", "salary": 150000, "fiscal_year": 2019 }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""6"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.shard_collection('db', 'soruceShardedTest', '{ "employee": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "soruceShardedTest", "pipeline": [ {"$merge" : { "into": "soruceShardedTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.soruceShardedTest", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'soruceShardedTarget');
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+(6 rows)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "soruceShardedTest", "pipeline": [{"$project" : { "_id" : 1, "employee" : 1, "salary" : {"$add" : ["$salary" , 1000]} }} ,{"$merge" : { "into": "soruceShardedTarget", "whenMatched" : "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.soruceShardedTest", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'soruceShardedTarget');
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "121000" } }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "146000" } }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "136000" } }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "151000" } }
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "101000" } }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "116000" } }
+(6 rows)
+
+-- simple replace scenario
+SELECT documentdb_api.insert('db', '{"insert":"sourceDataReplace", "documents":[
+   { "_id" : 1, "a": 1, "b": "a" },
+   { "_id" : 2, "a": 2, "b": "b" },
+   { "_id" : 3, "a": 3, "b": "c" }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetDataReplace", "documents":[
+   { "_id" : 1, "a": 10 },
+   { "_id" : 3, "a": 30 },
+   { "_id" : 4, "a": 40 }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataReplace", "pipeline": [  {"$merge": {"into": "targetDataReplace", "whenMatched": "replace", "whenNotMatched": "discard"}} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceDataReplace", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','targetDataReplace');
+                                  document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : "a" }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "b" : "c" }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "40" } }
+(3 rows)
+
+-- let's create index and match on other key and try to replace _id field when source and target ID are same
+SELECT documentdb_api.insert('db', '{"insert":"sourceDataReplaceId", "documents":[{ "_id" : 1, "a": 10 }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetDataReplaceId", "documents":[{ "_id" : 1, "a": 10, "b" : 10 }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "targetDataReplaceId", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataReplaceId", "pipeline": [ {"$merge" : { "into": "targetDataReplaceId", "on" : "a", "whenMatched" : "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                 cursorpage                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceDataReplaceId", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','targetDataReplaceId');
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "10" } }
+(1 row)
+
+-- let's create index and match on other key and try to replace _id field whe source and target ID's are different. 
+SELECT documentdb_api.insert('db', '{"insert":"sourceDataReplaceIdDiff", "documents":[{ "_id" : 1, "a": 10 }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetDataReplaceIdDiff", "documents":[{ "_id" : 2, "a": 10, "b" : 10 }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "targetDataReplaceIdDiff", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataReplaceIdDiff", "pipeline": [ {"$merge" : { "into": "targetDataReplaceIdDiff", "on" : "a", "whenMatched" : "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge failed to update the matching document, did you attempt to modify the _id or the shard key?
+-- Now let's see what happens when we are not projecting _id from source and source _id is getting generated and if source objectID is generated then it will be not same as targets.
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataReplaceIdDiff", 
+"pipeline": [  {"$project" : { "_id": 0 }},
+               {"$merge" : { "into": "targetDataReplaceIdDiff", "on" : "a", "whenMatched" : "replace" }} 
+            ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                   cursorpage                                                                    | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceDataReplaceIdDiff", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','targetDataReplaceIdDiff');
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "10" } }
+(1 row)
+
+-- simple merge scenario
+SELECT documentdb_api.insert('db', '{"insert":"sourceWhenMatchMerge", "documents":[
+   { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
+   { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
+   { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
+   { "_id" : 4, "employee": "Bee", "salary": 145000, "fiscal_year": 2018 },
+   { "_id" : 5, "employee": "Cat", "salary": 135000, "fiscal_year": 2018 },
+   { "_id" : 6, "employee": "Cat", "salary": 150000, "fiscal_year": 2019 }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""6"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetWhenMatchMerge", "documents":[
+   { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
+   { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
+   { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
+   { "_id" : 4, "employee": "Bee", "salary": 145000, "fiscal_year": 2018 },
+   { "_id" : 5, "employee": "Cat", "salary": 135000, "fiscal_year": 2018 },
+   { "_id" : 6, "employee": "Cat", "salary": 150000, "fiscal_year": 2019 }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""6"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- As all doc from source matches with target so there should not be any change in target collection. 
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceWhenMatchMerge", "pipeline": [  {"$merge" : { "into": "targetWhenMatchMerge", "whenMatched" : "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceWhenMatchMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select document from documentdb_api.collection('db', 'targetWhenMatchMerge');
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+(6 rows)
+
+-- Let's Add one more column by projection and see if it merges in target collection.
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceWhenMatchMerge", 
+"pipeline": [ 
+               {"$project" : {"_id" : 1, "new_column" : "testing merge"}}, 
+               {"$merge" : { "into": "targetWhenMatchMerge", "whenMatched" : "merge" }} 
+            ], 
+"cursor": { "batchSize": 1 } }', 4294967294);
+                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceWhenMatchMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select document from documentdb_api.collection('db', 'targetWhenMatchMerge');
+                                                                                 document                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge" }
+(6 rows)
+
+-- let's try to modify value of existing column of target collection. 
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceWhenMatchMerge", 
+"pipeline": [ 
+               {"$project" : {"_id" : 1, "fiscal_year" : {"$add" : ["$fiscal_year" , 1]}}}, 
+               {"$merge" : { "into": "targetWhenMatchMerge", "whenMatched" : "merge" }} 
+            ], 
+"cursor": { "batchSize": 1 } }', 4294967294);
+                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceWhenMatchMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select document from documentdb_api.collection('db', 'targetWhenMatchMerge');
+                                                                                 document                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2018" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2019" }, "new_column" : "testing merge" }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2020" }, "new_column" : "testing merge" }
+(6 rows)
+
+-- let's create index and match on other key and try to merge when _id field on source and target ID are same
+SELECT documentdb_api.insert('db', '{"insert":"sourceDataMergeId", "documents":[{ "_id" : 1, "a": 10, "b" : 10 }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetDataMergeId", "documents":[{ "_id" : 1, "a": 10  }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "targetDataMergeId", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataMergeId", "pipeline": [ {"$merge" : { "into": "targetDataMergeId", "on" : "a", "whenMatched" : "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceDataMergeId", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','targetDataMergeId');
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "10" } }
+(1 row)
+
+-- let's create index and match on other key and try to merge when _id field on source and target ID are different
+SELECT documentdb_api.insert('db', '{"insert":"sourceDataMergeIdDiff", "documents":[{ "_id" : 1, "a": 10, "b" : 10 }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetDataMergeIdDiff", "documents":[{ "_id" : 2, "a": 10  }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "targetDataMergeIdDiff", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataMergeIdDiff", "pipeline": [ {"$merge" : { "into": "targetDataMergeIdDiff", "on" : "a", "whenMatched" : "merge" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge failed to update the matching document, did you attempt to modify the _id or the shard key?
+SELECT document FROM documentdb_api.collection('db','targetDataMergeIdDiff');
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "10" } }
+(1 row)
+
+-- Now let's see what happens when we are not projecting _id from source and source _id is getting generated and if source objectID is generated then it will be not same as target's.
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataMergeIdDiff", 
+"pipeline": [  {"$project" : { "_id": 0 }},
+               {"$merge" : { "into": "targetDataMergeIdDiff", "on" : "a", "whenMatched" : "merge" }} 
+            ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                  cursorpage                                                                   | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceDataMergeIdDiff", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','targetDataMergeIdDiff');
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "10" } }
+(1 row)
+
+-- merge whenNotMatched fail
+-- 1) this will not fail as all the doc from source are matching with target
+SELECT documentdb_api.insert('db', '{"insert":"sourceNotMatchedFailed", "documents":[
+   { "_id" : 1, "a": 1, "b": "a" },
+   { "_id" : 2, "a": 2, "b": "b" },
+   { "_id" : 3, "a": 3, "b": "c" }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetNotMatchedFailed", "documents":[
+   { "_id" : 1, "a": 1, "b": "e" },
+   { "_id" : 2, "a": 2, "b": "f" },
+   { "_id" : 3, "a": 3, "b": "g" }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', 
+               '{ 
+                  "aggregate": "sourceNotMatchedFailed", 
+                  "pipeline": [  
+                                 {"$merge" : 
+                                       { "into": "targetNotMatchedFailed", 
+                                        "whenMatched" : "replace" ,
+                                        "whenNotMatched" : "fail" }
+                                 } 
+                              ], 
+                           "cursor": { "batchSize": 1 } 
+               }',  4294967294
+            );
+                                                                   cursorpage                                                                   | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceNotMatchedFailed", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select document FROM documentdb_api.collection('db','targetNotMatchedFailed');
+                                  document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : "a" }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : "b" }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "b" : "c" }
+(3 rows)
+
+-- 2) this will fail as not one source doc is not matching with target and user has selected failure option.
+SELECT documentdb_api.insert_one('db','sourceNotMatchedFailed',' { "_id" :  10, "a" : 1, "b" : 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', 
+               '{ 
+                  "aggregate": "sourceNotMatchedFailed", 
+                  "pipeline": [  
+                                 {"$merge" : 
+                                       { "into": "targetNotMatchedFailed", 
+                                        "whenMatched" : "replace" ,
+                                        "whenNotMatched" : "fail" }
+                                 } 
+                              ] , "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge could not find a matching document in the target collection for at least one document in the source collection
+select document FROM documentdb_api.collection('db','targetNotMatchedFailed');
+                                  document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : "a" }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : "b" }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "b" : "c" }
+(3 rows)
+
+-- merge whenNotMatched Discard
+SELECT documentdb_api.insert('db', '{"insert":"sourceNotMatchedDiscard", "documents":[
+   { "_id" : 1, "a": 1, "b": "a" },
+   { "_id" : 2, "a": 2, "b": "b" },
+   { "_id" : 3, "a": 3, "b": "c" }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetNotMatchedDiscard", "documents":[
+   { "_id" : 1, "a": 1, "b": "e" },
+   { "_id" : 5, "a": 2, "b": "f" },
+   { "_id" : 6, "a": 3, "b": "g" }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', 
+               '{ 
+                  "aggregate": "sourceNotMatchedDiscard", 
+                  "pipeline": [  
+                                 {"$merge" : 
+                                       { "into": "targetNotMatchedDiscard", 
+                                        "whenMatched" : "replace" ,
+                                        "whenNotMatched" : "discard" }
+                                 } 
+                              ] , "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                   cursorpage                                                                    | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceNotMatchedDiscard", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select document FROM documentdb_api.collection('db','targetNotMatchedDiscard');
+                                  document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : "a" }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "2" }, "b" : "f" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "3" }, "b" : "g" }
+(3 rows)
+
+-- WhanMathched : keepexisting
+SELECT documentdb_api.insert('db', '{"insert":"sourceMatchedKeepExisting", "documents":[
+   { "_id" : 1, "a": 1, "b": "a" },
+   { "_id" : 2, "a": 2, "b": "b" },
+   { "_id" : 3, "a": 3, "b": "c" }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetMatchedKeepExisting", "documents":[
+   { "_id" : 1, "a": 1, "b": "e" },
+   { "_id" : 2, "a": 2, "b": "f" },
+   { "_id" : 6, "a": 3, "b": "g" }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', 
+               '{ 
+                  "aggregate": "sourceMatchedKeepExisting", 
+                  "pipeline": [  
+                                 {"$merge" : 
+                                       { "into": "targetMatchedKeepExisting", 
+                                        "whenMatched" : "keepExisting" ,
+                                        "whenNotMatched" : "insert" }
+                                 } 
+                              ] , "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                    cursorpage                                                                     | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceMatchedKeepExisting", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+select document from documentdb_api.collection('db','targetMatchedKeepExisting');
+                                  document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : "e" }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : "f" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "3" }, "b" : "g" }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "b" : "c" }
+(4 rows)
+
+-- WhanMathched : fail
+SELECT * FROM aggregate_cursor_first_page('db', 
+               '{ 
+                  "aggregate": "sourceMatchedKeepExisting", 
+                  "pipeline": [  
+                                 {"$merge" : 
+                                       { "into": "targetMatchedKeepExisting", 
+                                        "whenMatched" : "fail" ,
+                                        "whenNotMatched" : "insert" }
+                                 } 
+                              ] , "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge with whenMatched: fail found an existing document with the same values for the 'on' fields
+select document FROM documentdb_api.collection('db','targetMatchedKeepExisting');
+                                  document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : "e" }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : "f" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "3" }, "b" : "g" }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "b" : "c" }
+(4 rows)
+
+-- whenMatched : _id are getting changed in case of replace
+SELECT documentdb_api.insert('db', '{"insert":"sourceMatchedIdTests", "documents":[
+   { "_id" : 4, "a": 1, "b": "a" },
+   { "_id" : 5, "a": 2, "b": "b" },
+   { "_id" : 6, "a": 3, "b": "c" }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetMatchedIdTests", "documents":[
+   { "_id" : 1, "a": 1, "b": "e" },
+   { "_id" : 2, "a": 2, "b": "f" },
+   { "_id" : 6, "a": 3, "b": "g" }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "targetMatchedIdTests", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', 
+               '{ 
+                  "aggregate": "sourceMatchedIdTests", 
+                  "pipeline": [  
+                                 {"$merge" : 
+                                       {
+                                        "on" : "a", 
+                                        "into": "targetMatchedIdTests", 
+                                        "whenMatched" : "replace" ,
+                                        "whenNotMatched" : "insert" }
+                                 } 
+                              ] , "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge failed to update the matching document, did you attempt to modify the _id or the shard key?
+select document FROM documentdb_api.collection('db','targetMatchedIdTests');
+                                  document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : "e" }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : "f" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "3" }, "b" : "g" }
+(3 rows)
+
+-- complex pipeline with last stage merge with replace and insert mode.
+SELECT documentdb_api.insert_one('db','pipelinefromMerge',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','pipelinefromMerge','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','pipelinetoMerge','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House"}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','pipelinetoMerge','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','pipelinetoMerge','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "pipelinetoMerge", 
+  "pipeline": 
+   [ 
+      { 
+      "$lookup": 
+         { 
+            "from": "pipelinefromMerge", 
+            "pipeline": [ { "$match": { "quantity": { "$gt": 110 } }}], 
+            "as": "matched_docs", 
+            "localField": "restaurant_name", 
+            "foreignField": "name" 
+         }
+      },
+      {"$sort"  : {"_id" :  -1}} ,
+      {"$group" :{"_id" :  "$restaurant_name"}},
+      {"$project" : {"matched_docs" : 0}},
+      {"$merge" : { "into": "pipelineFinalMerge", "whenMatched": "replace", "whenNotMatched": "insert" }} 
+   ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                               cursorpage                                                                | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.pipelinetoMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','pipelineFinalMerge');
+              document              
+---------------------------------------------------------------------
+ { "_id" : "American Steak House" }
+ { "_id" : "Honest John Pizza" }
+(2 rows)
+
+-- when target collection has array 
+SELECT documentdb_api.insert_one('db','sourceTargetHasArray',' { "_id" :  1, "a" : 1 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','sourceTargetHasArray',' { "_id" :  2, "a" : 5 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','targetTargetHasArray',' { "_id" :  1, "a" : [1,2,3,4] }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "targetTargetHasArray", "indexes": [{"key": {"a": 1}, "name": "index_2", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceTargetHasArray", "pipeline":[  {"$merge" : { "into": "targetTargetHasArray", "on" : "a", "whenMatched" : "replace", "whenNotMatched" : "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                  cursorpage                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceTargetHasArray", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','target');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- when query has sort clause
+SELECT documentdb_api.insert_one('db','sortClauseToTable','{ "_id": 1, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda"}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','sortClauseToTable','{ "_id": 2, "item": "cheeseLess pizza", "restaurant_name": "DisHonest John Pizza", "drink": "pepsi"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sortClauseToTable",  "pipeline": [  {"$sort"  : {"_id" :  -1}} , {"$merge" : { "into": "sortClauseTarget", "whenMatched": "replace", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                                cursorpage                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sortClauseToTable", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','sortClauseTarget');
+                                                            document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheeseLess pizza", "restaurant_name" : "DisHonest John Pizza", "drink" : "pepsi" }
+ { "_id" : { "$numberInt" : "1" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda" }
+(2 rows)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "pipelinetoMerge",  "pipeline": [  {"$sort"  : {"_id" :  -1}} , {"$group" : {"_id" :  "$_id"}}, {"$merge" : { "into": "sortClauseGroup", "whenMatched": "replace", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                               cursorpage                                                                | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.pipelinetoMerge", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','sortClauseGroup');
+              document              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" } }
+(3 rows)
+
+-- when query has multiple sort clause or multiple resjunk columns
+SELECT documentdb_api.insert_one('db','resJunkSrc',' { "_id" :  1, "a" : 45, "b" : 10 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','resJunkSrc',' { "_id" :  2, "a" : 87, "b" : 7 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','resJunkSrc',' { "_id" :  3, "a" : 29, "b" : 17 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','resJunkSrc',' { "_id" :  4, "a" : 13, "b" : 99 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','resJunkSrc',' { "_id" :  5, "a" : 45, "b" : 113 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','resJunkSrc',' { "_id" :  6, "a" : 87, "b" : 76 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','resJunkSrc',' { "_id" :  7, "a" : 29, "b" : 86 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','resJunkSrc',' { "_id" :  8, "a" : 13, "b" : 20 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "resJunkSrc",  "pipeline": [  {"$sort"  : {"a" :  -1, "b" : 1}} , {"$merge" : { "into": "resJunkeTarget", "whenMatched": "replace", "whenNotMatched": "insert" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                             cursorpage                                                             | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.resJunkSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db','resJunkeTarget');
+                                             document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "87" }, "b" : { "$numberInt" : "7" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "87" }, "b" : { "$numberInt" : "76" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "45" }, "b" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "45" }, "b" : { "$numberInt" : "113" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "29" }, "b" : { "$numberInt" : "17" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "29" }, "b" : { "$numberInt" : "86" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "13" }, "b" : { "$numberInt" : "20" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "13" }, "b" : { "$numberInt" : "99" } }
+(8 rows)
+
+-- test when source collection is view
+SELECT documentdb_api.create_collection('db', 'sourceCollForView');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"sourceCollForView", "documents":[{ "_id" : 1, "a" : 1, "b" : 1  }]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"sourceCollForView", "documents":[{ "_id" : 2, "a" : 2, "b" : 2  }]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"sourceCollForView", "documents":[{ "_id" : 3, "a" : 3, "b" : 3  }]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.create_collection_view('db', '{ "create": "sourceView", "viewOn": "sourceCollForView", "pipeline": [ { "$project": { "_id": 1, "c" : {"$add" : ["$a","$b"]} } } ] }');
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceView", "pipeline": [  {"$merge" : { "into" : "targetViewedOutput" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                             cursorpage                                                             | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.sourceView", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM  documentdb_api.collection('db', 'targetViewedOutput');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "6" } }
+(3 rows)
+
+-- Let's look at explain plan for unshared collection
+SELECT documentdb_api.create_collection('db', 'sourceExplain');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"sourceExplain", "documents":[{ "_id" : 1, "a" : 1, "b" : 1  }]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"sourceExplain", "documents":[{ "_id" : 2, "a" : 2, "b" : 1  }]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"sourceExplain", "documents":[{ "_id" : 3, "a" : 3, "b" : 1  }]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"sourceExplain", "documents":[{ "_id" : 4, "a" : 4, "b" : 1  }]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"sourceExplain", "documents":[{ "_id" : 5, "a" : 5, "b" : 1  }]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+EXPLAIN VERBOSE SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sourceExplain", "pipeline": [{"$merge" : { "into": "explainTarget", "whenMatched" : "replace" }} ] }');
+NOTICE:  creating collection
+                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus MERGE INTO ...)  (cost=0.00..0.00 rows=0 width=0)
+   MERGE INTO documents_7902 method: pull to coordinator
+   ->  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
+         Output: remote_scan.document, remote_scan.target_shard_key_value, remote_scan.generated_object_id, remote_scan.extracted_4
+         Task Count: 1
+         Tasks Shown: All
+         ->  Task
+               Query: SELECT document, target_shard_key_value, generated_object_id, extracted_4 FROM (SELECT collection.document, '7902'::bigint AS target_shard_key_value, documentdb_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id, documentdb_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text) AS extracted_4 FROM documentdb_data.documents_7901_7850698 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '7901'::bigint)) citus_insert_select_subquery
+               Node: host=localhost port=58070 dbname=regression
+               ->  Bitmap Heap Scan on documentdb_data.documents_7901_7850698 collection  (cost=4.18..12.66 rows=4 width=104)
+                     Output: collection.document, '7902'::bigint, documentdb_api_internal.bson_dollar_merge_generate_object_id(collection.document), documentdb_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text)
+                     Recheck Cond: (collection.shard_key_value = '7901'::bigint)
+                     ->  Bitmap Index Scan on _id_  (cost=0.00..4.18 rows=4 width=0)
+                           Index Cond: (collection.shard_key_value = '7901'::bigint)
+(14 rows)
+
+--explain when merge is not first stage of pipeline
+EXPLAIN VERBOSE SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sourceExplain", "pipeline": [{ "$match" : {"_id" :1}}, {"$merge" : { "into": "explainTarget", "whenMatched" : "replace" }} ] }');
+                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus MERGE INTO ...)  (cost=0.00..0.00 rows=0 width=0)
+   MERGE INTO documents_7902 method: pull to coordinator
+   ->  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
+         Output: remote_scan.document, remote_scan.target_shard_key_value, remote_scan.generated_object_id, remote_scan.extracted_4
+         Task Count: 1
+         Tasks Shown: All
+         ->  Task
+               Query: SELECT document, target_shard_key_value, generated_object_id, extracted_4 FROM (SELECT collection.document, '7902'::bigint AS target_shard_key_value, documentdb_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id, documentdb_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text) AS extracted_4 FROM documentdb_data.documents_7901_7850698 collection WHERE ((collection.document OPERATOR(documentdb_api_catalog.#=) '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery) AND (collection.object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '7901'::bigint))) citus_insert_select_subquery
+               Node: host=localhost port=58070 dbname=regression
+               ->  Index Scan using _id_ on documentdb_data.documents_7901_7850698 collection  (cost=0.00..0.01 rows=1 width=104)
+                     Output: collection.document, '7902'::bigint, documentdb_api_internal.bson_dollar_merge_generate_object_id(collection.document), documentdb_api_internal.bson_dollar_extract_merge_filter(collection.document, '_id'::text)
+                     Index Cond: ((collection.shard_key_value = '7901'::bigint) AND (collection.object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+(12 rows)
+
+-- Let's look at explain plan for sharded collection
+SELECT documentdb_api.shard_collection('db', 'sourceExplain', '{ "a": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+EXPLAIN VERBOSE SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sourceExplain", "pipeline": [{"$merge" : { "into": "explainTarget", "whenMatched" : "replace" }} ] }');
+                                                                                                                                                            QUERY PLAN                                                                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus MERGE INTO ...)  (cost=0.00..0.00 rows=0 width=0)
+   MERGE INTO documents_7902 method: repartition
+   ->  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=100000 width=104)
+         Output: remote_scan.document, remote_scan.target_shard_key_value, remote_scan.generated_object_id, remote_scan.extracted_4
+         Task Count: 8
+         Tasks Shown: One of 8
+         ->  Task
+               Query: SELECT document, '7902'::bigint AS target_shard_key_value, documentdb_api_internal.bson_dollar_merge_generate_object_id(document) AS generated_object_id, documentdb_api_internal.bson_dollar_extract_merge_filter(document, '_id'::text) AS extracted_4 FROM documentdb_data.documents_7901_7850728 collection WHERE true
+               Node: host=localhost port=58070 dbname=regression
+               ->  Seq Scan on documentdb_data.documents_7901_7850728 collection  (cost=0.00..1.01 rows=1 width=104)
+                     Output: document, '7902'::bigint, documentdb_api_internal.bson_dollar_merge_generate_object_id(document), documentdb_api_internal.bson_dollar_extract_merge_filter(document, '_id'::text)
+(11 rows)
+
+-- Let's look at explain plan for when on field is indexed
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "sourceExplain", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "explainTarget", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- citus will wrap our query in a subquery: SELECT document, target_shard_key_value FROM (our query) AS subquery
+EXPLAIN VERBOSE SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sourceExplain", "pipeline": [{"$merge" : { "into": "explainTarget", "on" : "a", "whenMatched" : "replace" }} ] }');
+                                                                                                                                                           QUERY PLAN                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus MERGE INTO ...)  (cost=0.00..0.00 rows=0 width=0)
+   MERGE INTO documents_7902 method: repartition
+   ->  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=100000 width=104)
+         Output: remote_scan.document, remote_scan.target_shard_key_value, remote_scan.generated_object_id, remote_scan.extracted_4
+         Task Count: 8
+         Tasks Shown: One of 8
+         ->  Task
+               Query: SELECT document, '7902'::bigint AS target_shard_key_value, documentdb_api_internal.bson_dollar_merge_generate_object_id(document) AS generated_object_id, documentdb_api_internal.bson_dollar_extract_merge_filter(document, 'a'::text) AS extracted_4 FROM documentdb_data.documents_7901_7850728 collection WHERE true
+               Node: host=localhost port=58070 dbname=regression
+               ->  Seq Scan on documentdb_data.documents_7901_7850728 collection  (cost=0.00..1.01 rows=1 width=104)
+                     Output: document, '7902'::bigint, documentdb_api_internal.bson_dollar_merge_generate_object_id(document), documentdb_api_internal.bson_dollar_extract_merge_filter(document, 'a'::text)
+(11 rows)
+
+-- source and target are same
+SELECT documentdb_api.create_collection('db', 'AsSourceAsTarget');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','AsSourceAsTarget',' { "_id" :  1, "a" : 1, "b" : 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM  aggregate_cursor_first_page('db', '{ "aggregate": "AsSourceAsTarget", "pipeline": [ {"$project" : {"new" : "data"}}, {"$merge" : { "into": "AsSourceAsTarget" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                cursorpage                                                                | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.AsSourceAsTarget", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'AsSourceAsTarget');
+                                                    document                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "new" : "data" }
+(1 row)
+
+-- Negative tests : Invalid input
+SELECT documentdb_api.create_collection('db', 'negInvalidInput');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : 1} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge requires a string or object argument, but found int
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : {  }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  BSON field '$merge.into' is missing but a required field
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "xman" : 1  }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  BSON field '$merge.xman' is an unknown field
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : 1  }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge 'into' field  must be either a string or an object, but found int
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : {"db" : "apple"}  }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge 'into' field must specify a 'coll' that is not empty, null or undefined
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : {"db" : 1}  }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  BSON field 'into.db' is the wrong type 'object', expected type 'string
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : {"db" : "database", "coll" :  1}  }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  BSON field 'into.coll' is the wrong type 'object', expected type 'string
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : {"db" : "apple", "haha" : "haha"}  }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  BSON field 'into.haha' is an unknown field
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl", "on" :  1  }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge 'on' field  must be either a string or an array of strings, but found int
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl", "on" :  [1]  }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge 'on' array elements must be strings, but found int
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl", "whenMatched" : 1   }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge 'whenMatched' field  must be string, but found int
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl", "whenMatched" : "falsevalue"   }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Enumeration value 'falsevalue' for field 'whenMatched' is not a valid value.
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl", "whenNotMatched" : 1   }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  BSON field '$merge.whenNotMatched' is the wrong type 'int', expected type 'string'
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl", "whenNotMatched" : "falsevalue"   }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Enumeration value 'falsevalue' for field '$merge.whenNotMatched' is not a valid value
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl" }}, {} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  A pipeline stage specification object must contain exactly one field.
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "outColl" }}, {"project" : {"a" : 1}
+} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge can only be the final stage in the pipeline
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into": "targetNotExists", "on" : [] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  If explicitly specifying $merge 'on', must include at least one field
+-- Negative test cases when on fields value are not unique index.
+SELECT documentdb_api.create_collection('db', 'indexNegColl');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','indexNegColl',' { "_id" :  1, "a" : 1, "b" : 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'indexNegOutColl');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexNegOutColl", "indexes": [{"key": {"b": 1}, "name": "index_2", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexNegOutColl", "indexes": [{"key": {"c": 1}, "name": "index_3", "unique" : false}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexNegOutColl", "indexes": [{"key": {"d": 1}, "name": "index_A"}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexNegOutColl", "indexes": [{"key": {"e": 1, "f" : 1, "g" : 1}, "name": "index_4"}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexNegOutColl", "indexes": [{"key": {"x": 1, "y" : 1, "z" : 1}, "name": "index_5", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexNegOutColl", "indexes": [{"key": {"parag": 1}, "name": "index_6", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexNegOutColl", "indexes": [{"key": {"jain": 1}, "name": "index_7", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "7" }, "numIndexesAfter" : { "$numberInt" : "8" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexNegOutColl", "indexes": [{"key": {"partialTest": 1}, "name": "index_8", "unique" : true, "partialFilterExpression": {"a": {"$gt": 1}}}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "8" }, "numIndexesAfter" : { "$numberInt" : "9" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexNegOutColl", "indexes": [{"key": {"partialTest": 1, "partialTest2" : 1}, "name": "index_9", "unique" : true, "partialFilterExpression": {"a": {"$gt": 1}}}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "9" }, "numIndexesAfter" : { "$numberInt" : "10" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : "a" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : "c" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : "d" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["a"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["b", "a"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["b", "c"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["b", "d"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : "e" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["f","g"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["e","f","g"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : "f" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["x","z","y","f"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : "x" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["x","z"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["x","_id"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["parag","jain"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["partialTest"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : "partialTest" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["partialTest", "partialTest2"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["a", "a"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Found a duplicate field a
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["a", "b", "b"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Found a duplicate field b
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["c", "a", "c"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Found a duplicate field c
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["x","y"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "indexNegOutColl", "on" : ["z","x"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+-- _id Negative unique test
+SELECT documentdb_api.insert_one('db','objectIDNegUniqueIndex',' { "_id" :  10, "a" : 1, "b" : 1, "c" : 1 , "d" : 1, "e" : 1, "f" : 1}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "objectIDTargetNegUniqueIndex", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "objectIDTargetNegUniqueIndex", "indexes": [{"key": {"b": 1}, "name": "index_2", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "objectIDTargetNegUniqueIndex", "indexes": [{"key": {"a": 1, "b" : 1}, "name": "index_3", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDNegUniqueIndex", "pipeline": [ {"$merge" : { "on" : ["_id", "a"],"into": "objectIDTargetNegUniqueIndex" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDNegUniqueIndex", "pipeline": [ {"$merge" : { "on" : ["a", "_id"], "into": "objectIDTargetNegUniqueIndex" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "objectIDNegUniqueIndex", "pipeline": [ {"$merge" : { "on" : ["a", "_id", "b"], "into": "objectIDTargetNegUniqueIndex" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+-- Negative tests : when target collection does not exist
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "targetNotExist", "on" : "a" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "targetNotExist", "on" : ["a"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "targetNotExist", "on" : ["_id","a"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "indexNegColl", "pipeline": [  {"$merge" : { "into": "targetNotExist", "on" : ["a","_id"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Cannot find index to verify that join fields will be unique
+--Negative test when target collection is a view
+SELECT documentdb_api.create_collection('db', 'targetCollForView');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetCollForView", "documents":[{ "_id" : 1, "a" : 1  }]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.create_collection_view('db', '{ "create": "targetView", "viewOn": "targetCollForView", "pipeline": [ { "$sort": { "a": 1 } } ] }');
+         create_collection_view         
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "targetCollForView", "pipeline": [  {"$merge" : { "into" : "targetView" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  Namespace db.targetView is a view, not a collection
+--Negative tests : when on field is missing/array in source document
+SELECT documentdb_api.insert('db', '{"insert":"sourceDataMissing", "documents":[{ "_id" : 3, "b": "c" }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"targetDataMissingTest", "documents":[{ "_id" : 3, "b": "c" }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "targetDataMissingTest", "indexes": [{"key": {"a": 1}, "name": "index_1", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataMissing", "pipeline": [  {"$merge" : { "into": "targetDataMissingTest", "on" : "a" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataMissing", "pipeline": [  {"$merge" : { "into": "targetDataMissingTest", "on" : ["a"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
+SELECT documentdb_api.insert('db', '{"insert":"sourceDataArray", "documents":[{ "_id" : 3, "a" : [1,2,3], "b": "c" }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataArray", "pipeline": [  {"$merge" : { "into": "targetDataMissingTest", "on" : "a" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataArray", "pipeline": [  {"$merge" : { "into": "targetDataMissingTest", "on" :  ["a"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
+SELECT documentdb_api.insert('db', '{"insert":"sourceDataNull", "documents":[{ "_id" : 3, "a" : null , "b": "c" }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataNull", "pipeline": [  {"$merge" : { "into": "targetDataMissingTest", "on" : "a" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataNull", "pipeline": [  {"$merge" : { "into": "targetDataMissingTest", "on" :  ["a"] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
+-- Negative test when non-Immutable function present in query
+-- As in below query we call empty_data_table() which is non-Immutable function because targetcollection in lookup stage is empty.
+SELECT documentdb_api.create_collection('db', 'nonImmutable');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','nonImmutable',' { "_id" :  1, "a" : 1, "b" : 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM  aggregate_cursor_first_page('db', '{ "aggregate": "nonImmutable", "pipeline": [ {"$lookup": {"from": "bar", "as": "x", "localField": "f_id", "foreignField": "_id"}}, {"$merge" : { "into": "bar" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  The `$merge` stage is not supported with this command. If your query references any non-existent collections, please create them and try again.
+-- Merge inside transaction
+BEGIN;
+SELECT documentdb_api.insert('db', '{"insert":"insideTransaction", "documents":[{ "_id" : 3, "a" : 3, "b": "c" }]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "insideTransaction", "pipeline": [  {"$merge" : { "into": "targetTransaction", "on" : "a" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge cannot be used in a transaction
+END;
+-- Option not supported failures
+SELECT documentdb_api.create_collection('db', 'optionNotSupported');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "negInvalidInput", "pipeline": [  {"$merge" : { "into" : "optionNotSupportedOut", "whenMatched" : [] }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge 'whenMatched' with 'pipeline' not supported yet
+SELECT documentdb_api.shard_collection('db', 'optionNotSupportedOut', '{ "a": "hashed" }', false);
+NOTICE:  creating collection
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "optionNotSupported", "pipeline": [  {"$merge" : { "into" : "optionNotSupportedOut" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $merge for sharded output collection not supported yet
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "optionNotSupported", "pipeline": [  { "$match": { "name": "test" } }, {  "$graphLookup":  {"from": "optionNotSupported",  "startWith": "$id",  "connectFromField": "id", "connectToField": "ReportsTo", "as": "reportingHierarchy"}}, {"$merge":{ "into": "targetDataReplace"}}], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  $graphLookup is not supported with $merge stage yet.
+-- simple test case target database is not same as source database
+SET documentdb.enableMergeAcrossDB TO OFF;
+SELECT * FROM aggregate_cursor_first_page('sourceDB', '{ "aggregate": "sourceDumpData", "pipeline": [ {"$merge" : { "into": {"db" : "targetDB" , "coll" : "targetDumpData"}, "on" : "_id", "whenMatched" : "replace" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  merge is not supported across databases
+-- let's verify we insert or update proper data in database.
+--try to insert 16 MB Document
+SELECT documentdb_api.insert_one('db','sourceDataValidation','{ "_id": 1, "item": "a" }' , NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', FORMAT('{ "aggregate": "sourceDataValidation", "pipeline": [ {"$addFields" : { "newLargeField": "%s"} }, {"$merge" : {"into" : "targetDataValidation"}} ], "cursor": { "batchSize": 1 } }',repeat('a', 16*1024*1024) )::bson, 4294967294);
+NOTICE:  creating collection
+ERROR:  Size 16777262 is larger than MaxDocumentSize 16777216
+--try to insert bad _id field
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataValidation", "pipeline": [ {"$project" : {"_id" : [1,2,3]}}, {"$merge" : {"into" : "targetDataValidation"}} ], "cursor": { "batchSize": 1 } }');
+NOTICE:  creating collection
+ERROR:  $merge write error: 'on' field cannot be missing, null, undefined or an array
+-- try to update 16 MB document 
+SELECT documentdb_api.insert_one('db','targetDataValidation','{ "_id": 1, "item": "a" }' , NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', FORMAT('{ "aggregate": "sourceDataValidation", "pipeline": [ {"$addFields" : { "newLargeField": "%s"} }, {"$merge" : {"into" : "targetDataValidation"}} ], "cursor": { "batchSize": 1 } }',repeat('a', 16*1024*1024) )::bson, 4294967294);
+ERROR:  Size 16777262 is larger than MaxDocumentSize 16777216
+--try to update bad _id field
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "targetDataValidation", "indexes": [{"key": {"item": 1}, "name": "index_1", "unique" : true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "sourceDataValidation", "pipeline": [ {"$project" : {"_id" : [1,2,3], "item" : 1}}, {"$merge" : {"into" : "targetDataValidation", "on" : "item"}} ], "cursor": { "batchSize": 1 } }');
+ERROR:  The '_id' value cannot be of type array
+-- Basic Test with enable Native colocation
+SET documentdb.enableNativeColocation=true; 
+SELECT documentdb_api.insert('db', '{"insert":"nativeSrc", "documents":[
+   { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
+   { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
+   { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
+   { "_id" : 4, "employee": "Bee", "salary": 145000, "fiscal_year": 2018 },
+   { "_id" : 5, "employee": "Cat", "salary": 135000, "fiscal_year": 2018 },
+   { "_id" : 6, "employee": "Cat", "salary": 150000, "fiscal_year": 2019 }
+]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""6"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+--insert
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "nativeSrc", "pipeline": [  {"$merge" : { "into": "nativeTar" }} ], "cursor": { "batchSize": 1 } }', 4294967294);
+NOTICE:  creating collection
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.nativeSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'nativeTar');
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+(6 rows)
+
+--replace
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "nativeSrc", "pipeline": [  {"$merge" : { "into": "nativeTar"}} ], "cursor": { "batchSize": 1 } }', 4294967294);
+                                                            cursorpage                                                             | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.nativeSrc", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'nativeTar');
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
+ { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
+ { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+(6 rows)
+
+SET documentdb.enableNativeColocation=false;

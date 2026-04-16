@@ -1,0 +1,182 @@
+# This is a suppression file for use with Valgrind tools.  File format
+# documentation:
+#	http://valgrind.org/docs/manual/mc-manual.html#mc-manual.suppfiles
+
+# The libc symbol that implements a particular standard interface is
+# implementation-dependent.  For example, strncpy() shows up as "__GI_strncpy"
+# on some platforms.  Use wildcards to avoid mentioning such specific names.
+# Avoid mentioning functions that are good candidates for inlining,
+# particularly single-caller static functions.  Suppressions mentioning them
+# would be ineffective at higher optimization levels.
+
+
+# We have occasion to write raw binary structures to disk or to the network.
+# These may contain uninitialized padding bytes.  Since recipients also ignore
+# those bytes as padding, this is harmless.
+
+{
+	padding_pgstat_write
+	Memcheck:Param
+	write(buf)
+
+	...
+	fun:pgstat_write_statsfiles
+}
+
+{
+	padding_XLogRecData_CRC
+	Memcheck:Value8
+
+	fun:pg_comp_crc32c*
+	fun:XLogRecordAssemble
+}
+
+{
+	padding_XLogRecData_write
+	Memcheck:Param
+	pwrite64(buf)
+
+	...
+	fun:XLogWrite
+}
+
+{
+	padding_relcache
+	Memcheck:Param
+	write(buf)
+
+	...
+	fun:write_relcache_init_file
+}
+
+{
+	padding_reorderbuffer_serialize
+	Memcheck:Param
+	write(buf)
+
+	...
+	fun:ReorderBufferSerializeTXN
+}
+
+{
+	padding_twophase_prepare
+	Memcheck:Param
+	write(buf)
+
+	...
+	fun:EndPrepare
+}
+
+
+{
+	padding_twophase_CRC
+	Memcheck:Value8
+	fun:pg_comp_crc32c*
+	fun:EndPrepare
+}
+
+{
+	padding_bootstrap_initial_xlog_write
+	Memcheck:Param
+	write(buf)
+
+	...
+	fun:BootStrapXLOG
+}
+
+{
+	padding_bootstrap_control_file_write
+	Memcheck:Param
+	write(buf)
+
+	...
+	fun:WriteControlFile
+	fun:BootStrapXLOG
+}
+
+{
+	bootstrap_write_relmap_overlap
+	Memcheck:Overlap
+	fun:memcpy*
+	fun:write_relmap_file
+	fun:RelationMapFinishBootstrap
+}
+
+
+# gcc on ppc64 can generate a four-byte read to fetch the final "char" fields
+# of a FormData_pg_cast.  This is valid compiler behavior, because a proper
+# FormData_pg_cast has trailing padding.  Tuples we treat as structures omit
+# that padding, so Valgrind reports an invalid read.  Practical trouble would
+# entail the missing pad bytes falling in a different memory page.  So long as
+# the structure is aligned, that will not happen.
+{
+	overread_tuplestruct_pg_cast
+	Memcheck:Addr4
+
+	fun:IsBinaryCoercible
+}
+
+# Python's allocator does some low-level tricks for efficiency. Those
+# can be disabled for better instrumentation; but few people testing
+# postgres will have such a build of python. So add broad
+# suppressions of the resulting errors.
+# See also https://svn.python.org/projects/python/trunk/Misc/README.valgrind
+{
+   python_clever_allocator
+   Memcheck:Addr4
+   fun:PyObject_Free
+}
+
+{
+   python_clever_allocator
+   Memcheck:Addr8
+   fun:PyObject_Free
+}
+
+{
+   python_clever_allocator
+   Memcheck:Value4
+   fun:PyObject_Free
+}
+
+{
+   python_clever_allocator
+   Memcheck:Value8
+   fun:PyObject_Free
+}
+
+{
+   python_clever_allocator
+   Memcheck:Cond
+   fun:PyObject_Free
+}
+
+{
+   python_clever_allocator
+   Memcheck:Addr4
+   fun:PyObject_Realloc
+}
+
+{
+   python_clever_allocator
+   Memcheck:Addr8
+   fun:PyObject_Realloc
+}
+
+{
+   python_clever_allocator
+   Memcheck:Value4
+   fun:PyObject_Realloc
+}
+
+{
+   python_clever_allocator
+   Memcheck:Value8
+   fun:PyObject_Realloc
+}
+
+{
+   python_clever_allocator
+   Memcheck:Cond
+   fun:PyObject_Realloc
+}

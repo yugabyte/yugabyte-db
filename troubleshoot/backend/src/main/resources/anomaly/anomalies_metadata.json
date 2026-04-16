@@ -1,0 +1,632 @@
+[
+  {
+    "metadataUuid": "ffac2c96-2db6-401d-a2e0-4f5767962cc2",
+    "category": "SQL",
+    "type": "SQL_QUERY_LATENCY_INCREASE",
+    "title": "SQL query latency increase detected",
+    "mainGraphs": [
+      {
+        "name": "query_latency",
+        "filters": {
+          "universeUuid": [],
+          "queryId": [],
+          "dbId": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "NONE",
+      "splitType": "NONE",
+      "splitCount": 0,
+      "returnAggregatedValue": false,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "Load increase",
+        "possibleCauseDescription": "RPS for this query or overall RPS increased significantly and DB is not able to process increased load",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check RPS graph for this query",
+            "supportingGraphs": [
+              {
+                "name": "query_rps",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": [],
+                  "dbId": []
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check YSQL RPS graph",
+            "supportingGraphs": [
+              {
+                "name": "ysql_server_rpc_per_second",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Response size or queried tables sizes increased significantly",
+        "possibleCauseDescription": "DB have to process more data to process each request, hence latency grows",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check Average Rows graph for the query",
+            "supportingGraphs": [
+              {
+                "name": "query_rows_avg",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": [],
+                  "dbId": []
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check Table SST/WAL size graphs for tables, referenced in the query"
+          }
+        ]
+      },
+      {
+        "possibleCause": "Query execution plan changed",
+        "possibleCauseDescription": "DB updated query execution plan based on the data statistics collected for requested tables",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check query execution plan via EXPLAIN ANALYSE"
+          }
+        ]
+      },
+      {
+        "possibleCause": "DB internal queues contention",
+        "possibleCauseDescription": "RPC queues are growing and DB is not able to process all the requests on time. Typically all queries latency will grow.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check RPC Queue Size graph",
+            "supportingGraphs": [
+              {
+                "name": "tserver_rpc_queue_size_tserver",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Resource contention",
+        "possibleCauseDescription": "DB nodes face CPU, Memory or Disk IOPS/throughput limits. Typically all queries latency will grow.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check CPU, Memory and Disk IOPS/throughput graphs",
+            "supportingGraphs": [
+              {
+                "name": "cpu_usage",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "disk_iops",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "disk_bytes_per_second_per_node",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "lsm_rocksdb_memory_rejections",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Infra issues",
+        "possibleCauseDescription": "Network latency between DB nodes increased, Disk IOPS/throughput degraded, Network partitioning or other outage",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check network latency between the DB nodes"
+          },
+          {
+            "recommendation": "Check all DB nodes are up and running"
+          },
+          {
+            "recommendation": "Check Network graphs for anomaly"
+          }
+        ]
+      },
+      {
+        "possibleCause": "Clock skew increased",
+        "possibleCauseDescription": "DB nodes clock became out of sync, which slows down queries processing",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check Clock Skew graph",
+            "supportingGraphs": [
+              {
+                "name": "node_clock_skew",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various reasons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph for this query",
+            "supportingGraphs": [
+              {
+                "name": "active_session_history_tserver",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": []
+                }
+              },
+              {
+                "name": "active_session_history_ysql",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": []
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "1d3ad67b-fdf8-4766-9bf8-6c516f3475fb",
+    "category": "SQL",
+    "type": "SQL_QUERY_LOCK_CONTENTION",
+    "title": "SQL query lock contention detected",
+    "mainGraphs": [
+      {
+        "name": "active_session_history_tserver",
+        "filters": {
+          "universeUuid": [],
+          "queryId": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "NONE",
+      "splitType": "NONE",
+      "splitCount": 0,
+      "returnAggregatedValue": false,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "Load increase",
+        "possibleCauseDescription": "RPS for this query or overall RPS increased significantly - more conflicts between queries",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check RPS graph for this query",
+            "supportingGraphs": [
+              {
+                "name": "query_rps",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": [],
+                  "dbId": []
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check YSQL RPS graph",
+            "supportingGraphs": [
+              {
+                "name": "ysql_server_rpc_per_second",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Query execution time increased",
+        "possibleCauseDescription": "Query execution takes longer, which is causing more conflicts between queries",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check Query Latency graph",
+            "supportingGraphs": [
+              {
+                "name": "query_latency",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": [],
+                  "dbId": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various reasons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph for this query",
+            "supportingGraphs": [
+              {
+                "name": "active_session_history_tserver",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": []
+                }
+              },
+              {
+                "name": "active_session_history_ysql",
+                "filters": {
+                  "universeUuid": [],
+                  "queryId": []
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "f9d72305-e793-4ea5-9195-5504bbe93048",
+    "category": "NODE",
+    "type": "HOT_NODE_CPU",
+    "title": "Uneven CPU usage distribution across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "cpu_usage",
+        "filters": {
+          "universeUuid": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "DB node(s) are processing more queries",
+        "possibleCauseDescription": "Particular DB node or set of nodes are processing significantly more requests, that the other nodes",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check YSQL RPC distribution across DB nodes",
+            "supportingGraphs": [
+              {
+                "name": "ysql_server_rpc_per_second",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check TServer read/write requests distribution across DB nodes",
+            "supportingGraphs": [
+              {
+                "name": "tserver_rpcs_per_sec_by_universe",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "DB internal tasks",
+        "possibleCauseDescription": "Some DB background activities are consuming CPU unevenly",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check TServer/Master logs for evidence of background activities"
+          }
+        ]
+      },
+      {
+        "possibleCause": "3rd party processes",
+        "possibleCauseDescription": "Some process(es) are running on the DB nodes which consumes CPU",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check top command output on the affected DB nodes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "0b83923d-c712-47b4-ae64-59f79f5117ca",
+    "category": "NODE",
+    "type": "HOT_NODE_READS_WRITES",
+    "title": "Uneven TServer Reads/Writes distribution across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "tserver_rpcs_per_sec_by_universe",
+        "filters": {
+          "universeUuid": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "DB node(s) are storing data, accessed more often",
+        "possibleCauseDescription": "Data for particular table/set of tables is partitioned across DB nodes the way that particular node gets more read/write requests consistently",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check reads/writes for particular tables too see - which table is causing uneven distribution"
+          },
+          {
+            "recommendation": "Check affected tables partitioning logic - maybe there is a better way to spread load across DB nodes"
+          }
+        ]
+      },
+      {
+        "possibleCause": "Load balancing is not in progress or load is not balanced",
+        "possibleCauseDescription": "We can turn off load balancing during some DB operations. Also, load balancing may not be able to catch up on changed data, etc.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check load balancing status in Master UI"
+          }
+        ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Various query processing step times can change due to various reasons.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph per query/client",
+            "supportingGraphs": [
+              {
+                "name": "active_session_history_tserver",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "active_session_history_ysql",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "17a0c2e0-5823-43b6-a940-3714c5b0f8f8",
+    "category": "NODE",
+    "type": "HOT_NODE_YSQL_QUERIES",
+    "title": "Uneven distribution of YSQL queries across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "ysql_server_rpc_per_second",
+        "filters": {
+          "universeUuid": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "DB clients prefer particular set of nodes",
+        "possibleCauseDescription": "DB clients have more connections to particular set of nodes, or are sending more queries to particular set of nodes",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check if connecition count is even across DB nodes",
+            "supportingGraphs": [
+              {
+                "name": "ysql_connections",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "ysql_connections_per_sec",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          },
+          {
+            "recommendation": "Check query stats UI to see - which query/set of queries is distributed unevenly"
+          }
+        ]
+      },
+      {
+        "possibleCause": "ASH events ratio for the query changed",
+        "possibleCauseDescription": "Particular clients started to send more queries, etc.",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check ASH graph per query/client",
+            "supportingGraphs": [
+              {
+                "name": "active_session_history_tserver",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "active_session_history_ysql",
+                "filters": {
+                  "universeUuid": []
+                },
+                "groupBy": ["clientNodeIp"]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "e1bd486c-1823-48e5-97f9-3641ec685055",
+    "category": "NODE",
+    "type": "SLOW_DISKS",
+    "title": "DB node(s) disk IO too high",
+    "mainGraphs": [
+      {
+        "name": "disk_io_time",
+        "filters": {
+          "universeUuid": []
+        }
+      },
+      {
+        "name": "disk_io_queue_depth",
+        "filters": {
+          "universeUuid": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "IOPS/throughput limit reached",
+        "possibleCauseDescription": "DB node disk IO approaches provisioned IOPS/throughput level or device limitations",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check IOPS/throughput metrics",
+            "supportingGraphs": [
+              {
+                "name": "disk_iops",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "disk_bytes_per_second_per_node",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "possibleCause": "Excessive compactions",
+        "possibleCauseDescription": "DB may run too many compaction operations, which consume IOPS/throughput",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check compaction metrics",
+            "supportingGraphs": [
+              {
+                "name": "lsm_rocksdb_compaction",
+                "filters": {
+                  "universeUuid": []
+                }
+              },
+              {
+                "name": "lsm_rocksdb_compaction_tasks",
+                "filters": {
+                  "universeUuid": []
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "metadataUuid": "2355a3d0-c4ca-42d1-929d-4a0fbfb4ddd7",
+    "category": "NODE",
+    "type": "HOT_NODE_DATA",
+    "title": "Table data is spread unevenly across DB nodes",
+    "mainGraphs": [
+      {
+        "name": "table_size",
+        "filters": {
+          "universeUuid": [],
+          "dbName": [],
+          "tableId": [],
+          "tableName": []
+        }
+      },
+      {
+        "name": "table_sst_size",
+        "filters": {
+          "universeUuid": [],
+          "dbName": [],
+          "tableId": [],
+          "tableName": []
+        }
+      },
+      {
+        "name": "table_wal_size",
+        "filters": {
+          "universeUuid": [],
+          "dbName": [],
+          "tableId": [],
+          "tableName": []
+        }
+      }
+    ],
+    "defaultSettings": {
+      "splitMode": "TOP",
+      "splitType": "NODE",
+      "splitCount": 3,
+      "returnAggregatedValue": true,
+      "aggregatedValueFunction": "AVG"
+    },
+    "rcaGuidelines": [
+      {
+        "possibleCause": "Suboptimal table partitioning logic",
+        "possibleCauseDescription": "Particular range/hash key has significantly more data, than the other",
+        "troubleshootingRecommendations": [
+          {
+            "recommendation": "Check amount of rows for each range/hash value"
+          }
+        ]
+      }
+    ]
+  }
+]

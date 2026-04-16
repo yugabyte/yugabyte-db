@@ -1,0 +1,7 @@
+# third-party-extensions/hypopg/yb_old_cost_model_schedule
+
+test: yb.orig.hypopg_old_cost_model
+test: yb.port.hypo_include
+test: yb.port.hypo_index_part
+test: yb.port.hypo_hide_index
+test: yb.orig.hypo_hints

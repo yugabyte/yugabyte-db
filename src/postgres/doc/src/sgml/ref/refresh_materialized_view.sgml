@@ -1,0 +1,143 @@
+<!--
+doc/src/sgml/ref/refresh_materialized_view.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-refreshmaterializedview">
+ <indexterm zone="sql-refreshmaterializedview">
+  <primary>REFRESH MATERIALIZED VIEW</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>REFRESH MATERIALIZED VIEW</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>REFRESH MATERIALIZED VIEW</refname>
+  <refpurpose>replace the contents of a materialized view</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+REFRESH MATERIALIZED VIEW [ CONCURRENTLY ] <replaceable class="parameter">name</replaceable>
+    [ WITH [ NO ] DATA ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>REFRESH MATERIALIZED VIEW</command> completely replaces the
+   contents of a materialized view.  To execute this command you must be the
+   owner of the materialized view.  The old contents are discarded.  If
+   <literal>WITH DATA</literal> is specified (or defaults) the backing query
+   is executed to provide the new data, and the materialized view is left in a
+   scannable state.  If <literal>WITH NO DATA</literal> is specified no new
+   data is generated and the materialized view is left in an unscannable
+   state.
+  </para>
+  <para>
+   <literal>CONCURRENTLY</literal> and <literal>WITH NO DATA</literal> may not
+   be specified together.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>CONCURRENTLY</literal></term>
+    <listitem>
+     <para>
+      Refresh the materialized view without locking out concurrent selects on
+      the materialized view.  Without this option a refresh which affects a
+      lot of rows will tend to use fewer resources and complete more quickly,
+      but could block other connections which are trying to read from the
+      materialized view.  This option may be faster in cases where a small
+      number of rows are affected.
+     </para>
+     <para>
+      This option is only allowed if there is at least one
+      <literal>UNIQUE</literal> index on the materialized view which uses only
+      column names and includes all rows;  that is, it must not be an
+      expression index or include a <literal>WHERE</literal> clause.
+     </para>
+     <para>
+      This option may not be used when the materialized view is not already
+      populated.
+     </para>
+     <para>
+      Even with this option only one <literal>REFRESH</literal> at a time may
+      run against any one materialized view.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of the materialized view to
+      refresh.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   If there is an <literal>ORDER BY</literal> clause in the materialized
+   view's defining query, the original contents of the materialized view
+   will be ordered that way; but <command>REFRESH MATERIALIZED
+   VIEW</command> does not guarantee to preserve that ordering.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   This command will replace the contents of the materialized view called
+   <literal>order_summary</literal> using the query from the materialized
+   view's definition, and leave it in a scannable state:
+<programlisting>
+REFRESH MATERIALIZED VIEW order_summary;
+</programlisting>
+  </para>
+
+  <para>
+   This command will free storage associated with the materialized view
+   <literal>annual_statistics_basis</literal> and leave it in an unscannable
+   state:
+<programlisting>
+REFRESH MATERIALIZED VIEW annual_statistics_basis WITH NO DATA;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>REFRESH MATERIALIZED VIEW</command> is a
+   <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-creatematerializedview"/></member>
+   <member><xref linkend="sql-altermaterializedview"/></member>
+   <member><xref linkend="sql-dropmaterializedview"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

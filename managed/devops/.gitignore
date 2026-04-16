@@ -1,0 +1,34 @@
+*.pyc
+*.bak
+*.tmp
+*.retry
+/python_virtual_env
+/python*_modules
+/third-party
+/unused
+/venv
+CMakeLists.txt
+.idea
+*.sw?
+*~
+opscli/build/*
+opscli/dist/*
+opscli/ybops.egg-info/*
+opscli/ybops/node_agent
+build/*
+# This can be used to automatically save a vim session.
+.session.vim
+.session.vim.lock
+
+serverless/venv
+serverless/secrets.*.yml
+serverless/node_modules
+serverless/.serverless
+
+core
+core.*
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml

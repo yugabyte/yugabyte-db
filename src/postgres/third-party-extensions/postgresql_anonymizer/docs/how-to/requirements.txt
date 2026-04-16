@@ -1,0 +1,5 @@
+ipython-sql
+jupyter
+jupyterlab
+jupyterlab_sql
+#nb-mermaid

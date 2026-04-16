@@ -1,0 +1,105 @@
+error[E0277]: the trait bound `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>: ArgAbi<'_>` is not satisfied
+  --> tests/todo/vec-option-composite_type-nesting-problems.rs:55:5
+   |
+53 | #[pg_extern]
+   | ------------ in this procedural macro expansion
+54 | fn sum_scritches_for_names_strict_optional_items(
+55 |     dogs: Vec<Option<pgrx::composite_type!("Dog")>>,
+   |     ^^^^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>`
+   |
+   = help: the following other types implement trait `ArgAbi<'fcx>`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>: ArgAbi<'_>` is not satisfied
+  --> tests/todo/vec-option-composite_type-nesting-problems.rs:72:5
+   |
+70 | #[pg_extern]
+   | ------------ in this procedural macro expansion
+71 | fn sum_scritches_for_names_default_optional_items(
+72 |     dogs: pgrx::default!(Vec<Option<pgrx::composite_type!("Dog")>>, "ARRAY[ROW('Nami', 0)]::Dog[]"),
+   |     ^^^^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>`
+   |
+   = help: the following other types implement trait `ArgAbi<'fcx>`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>: ArgAbi<'_>` is not satisfied
+  --> tests/todo/vec-option-composite_type-nesting-problems.rs:89:5
+   |
+87 | #[pg_extern]
+   | ------------ in this procedural macro expansion
+88 | fn sum_scritches_for_names_optional_items(
+89 |     dogs: Option<Vec<Option<pgrx::composite_type!("Dog")>>>,
+   |     ^^^^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>`
+   |
+   = help: the following other types implement trait `ArgAbi<'fcx>`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+   = note: required for `Option<Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>>` to implement `ArgAbi<'_>`
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+ --> tests/todo/vec-option-composite_type-nesting-problems.rs:8:1
+  |
+8 | #[pg_extern]
+  | ^^^^^^^^^^^^ one type is more general than the other
+  |
+  = note: expected struct `pgrx::prelude::PgHeapTuple<'arr, pgrx::AllocatedByRust>`
+             found struct `pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>`
+note: the lifetime requirement is introduced here
+ --> $WORKSPACE/pgrx/src/callconv.rs
+  |
+  |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+  |                                         ^^^^^^^^^^^^
+  = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> tests/todo/vec-option-composite_type-nesting-problems.rs:23:1
+   |
+23 | #[pg_extern]
+   | ^^^^^^^^^^^^ one type is more general than the other
+   |
+   = note: expected struct `pgrx::prelude::PgHeapTuple<'arr, pgrx::AllocatedByRust>`
+              found struct `pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>`
+note: the lifetime requirement is introduced here
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> tests/todo/vec-option-composite_type-nesting-problems.rs:39:1
+   |
+39 | #[pg_extern]
+   | ^^^^^^^^^^^^ one type is more general than the other
+   |
+   = note: expected struct `pgrx::prelude::PgHeapTuple<'arr, pgrx::AllocatedByRust>`
+              found struct `pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>`
+note: the lifetime requirement is introduced here
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)

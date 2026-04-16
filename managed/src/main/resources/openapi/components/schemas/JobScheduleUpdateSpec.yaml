@@ -1,0 +1,8 @@
+title: JobScheduleUpdateSpec
+description: |
+  JobScheduleUpdateSpec
+
+  Request payload for updating schedule config of a job.
+type: object
+allOf:
+  - $ref: "./JobScheduleConfigSpec.yaml"

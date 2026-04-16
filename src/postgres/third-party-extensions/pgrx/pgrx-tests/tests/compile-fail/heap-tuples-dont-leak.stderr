@@ -1,0 +1,26 @@
+error[E0515]: cannot return value referencing temporary value
+  --> tests/compile-fail/heap-tuples-dont-leak.rs:10:5
+   |
+10 |     dog?.get_by_name("name").ok()?
+   |     ----^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     returns a value referencing data owned by the current function
+   |     temporary value created here
+
+error[E0515]: cannot return value referencing local variable `dog`
+  --> tests/compile-fail/heap-tuples-dont-leak.rs:20:5
+   |
+20 |     dog.get_by_name("name").unwrap().unwrap()
+   |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     returns a value referencing data owned by the current function
+   |     `dog` is borrowed here
+
+error[E0515]: cannot return value referencing local variable `dog`
+  --> tests/compile-fail/heap-tuples-dont-leak.rs:28:5
+   |
+28 |     dog.get_by_name("name").unwrap().unwrap()
+   |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     returns a value referencing data owned by the current function
+   |     `dog` is borrowed here

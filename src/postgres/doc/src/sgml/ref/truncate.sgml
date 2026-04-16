@@ -1,0 +1,233 @@
+<!--
+doc/src/sgml/ref/truncate.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-truncate">
+ <indexterm zone="sql-truncate">
+  <primary>TRUNCATE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>TRUNCATE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>TRUNCATE</refname>
+  <refpurpose>empty a table or set of tables</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+TRUNCATE [ TABLE ] [ ONLY ] <replaceable class="parameter">name</replaceable> [ * ] [, ... ]
+    [ RESTART IDENTITY | CONTINUE IDENTITY ] [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>TRUNCATE</command> quickly removes all rows from a set of
+   tables. It has the same effect as an unqualified
+   <command>DELETE</command> on each table, but since it does not actually
+   scan the tables it is faster. Furthermore, it reclaims disk space
+   immediately, rather than requiring a subsequent <command>VACUUM</command>
+   operation. This is most useful on large tables.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of a table to truncate.
+      If <literal>ONLY</literal> is specified before the table name, only that table
+      is truncated.  If <literal>ONLY</literal> is not specified, the table and all
+      its descendant tables (if any) are truncated.  Optionally, <literal>*</literal>
+      can be specified after the table name to explicitly indicate that
+      descendant tables are included.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTART IDENTITY</literal></term>
+    <listitem>
+     <para>
+      Automatically restart sequences owned by columns of
+      the truncated table(s).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CONTINUE IDENTITY</literal></term>
+    <listitem>
+     <para>
+      Do not change the values of sequences.  This is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically truncate all tables that have foreign-key references
+      to any of the named tables, or to any tables added to the group
+      due to <literal>CASCADE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      Refuse to truncate if any of the tables have foreign-key references
+      from tables that are not listed in the command.  This is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   You must have the <literal>TRUNCATE</literal> privilege on a table
+   to truncate it.
+  </para>
+
+  <para>
+   <command>TRUNCATE</command> acquires an <literal>ACCESS EXCLUSIVE</literal> lock on each
+   table it operates on, which blocks all other concurrent operations
+   on the table.  When <literal>RESTART IDENTITY</literal> is specified, any
+   sequences that are to be restarted are likewise locked exclusively.
+   If concurrent access to a table is required, then
+   the <command>DELETE</command> command should be used instead.
+  </para>
+
+  <para>
+   <command>TRUNCATE</command> cannot be used on a table that has foreign-key
+   references from other tables, unless all such tables are also truncated
+   in the same command.  Checking validity in such cases would require table
+   scans, and the whole point is not to do one.  The <literal>CASCADE</literal>
+   option can be used to automatically include all dependent tables &mdash;
+   but be very careful when using this option, or else you might lose data you
+   did not intend to!
+   Note in particular that when the table to be truncated is a partition,
+   siblings partitions are left untouched, but cascading occurs to all
+   referencing tables and all their partitions with no distinction.
+  </para>
+
+  <para>
+   <command>TRUNCATE</command> will not fire any <literal>ON DELETE</literal>
+   triggers that might exist for the tables.  But it will fire
+   <literal>ON TRUNCATE</literal> triggers.
+   If <literal>ON TRUNCATE</literal> triggers are defined for any of
+   the tables, then all <literal>BEFORE TRUNCATE</literal> triggers are
+   fired before any truncation happens, and all <literal>AFTER
+   TRUNCATE</literal> triggers are fired after the last truncation is
+   performed and any sequences are reset.
+   The triggers will fire in the order that the tables are
+   to be processed (first those listed in the command, and then any
+   that were added due to cascading).
+  </para>
+
+  <para>
+   <command>TRUNCATE</command> is not MVCC-safe.  After truncation, the table will
+   appear empty to concurrent transactions, if they are using a snapshot
+   taken before the truncation occurred.
+   See <xref linkend="mvcc-caveats"/> for more details.
+  </para>
+
+  <para>
+   <command>TRUNCATE</command> is transaction-safe with respect to the data
+   in the tables: the truncation will be safely rolled back if the surrounding
+   transaction does not commit.
+  </para>
+
+  <para>
+   When <literal>RESTART IDENTITY</literal> is specified, the implied
+   <command>ALTER SEQUENCE RESTART</command> operations are also done
+   transactionally; that is, they will be rolled back if the surrounding
+   transaction does not commit.  Be aware that if any additional
+   sequence operations are done on the restarted sequences before the
+   transaction rolls back, the effects of these operations on the sequences
+   will be rolled back, but not their effects on <function>currval()</function>;
+   that is, after the transaction <function>currval()</function> will continue to
+   reflect the last sequence value obtained inside the failed transaction,
+   even though the sequence itself may no longer be consistent with that.
+   This is similar to the usual behavior of <function>currval()</function> after
+   a failed transaction.
+  </para>
+
+  <para>
+   <command>TRUNCATE</command> can be used for foreign tables if
+   supported by the foreign data wrapper, for instance,
+   see <xref linkend="postgres-fdw"/>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Truncate the tables <literal>bigtable</literal> and
+   <literal>fattable</literal>:
+
+<programlisting>
+TRUNCATE bigtable, fattable;
+</programlisting>
+  </para>
+
+  <para>
+   The same, and also reset any associated sequence generators:
+
+<programlisting>
+TRUNCATE bigtable, fattable RESTART IDENTITY;
+</programlisting>
+  </para>
+
+  <para>
+   Truncate the table <literal>othertable</literal>, and cascade to any tables
+   that reference <literal>othertable</literal> via foreign-key
+   constraints:
+
+<programlisting>
+TRUNCATE othertable CASCADE;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The SQL:2008 standard includes a <command>TRUNCATE</command> command
+   with the syntax <literal>TRUNCATE TABLE
+   <replaceable>tablename</replaceable></literal>.  The clauses
+   <literal>CONTINUE IDENTITY</literal>/<literal>RESTART IDENTITY</literal>
+   also appear in that standard, but have slightly different though related
+   meanings.  Some of the concurrency behavior of this command is left
+   implementation-defined by the standard, so the above notes should be
+   considered and compared with other implementations if necessary.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-delete"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

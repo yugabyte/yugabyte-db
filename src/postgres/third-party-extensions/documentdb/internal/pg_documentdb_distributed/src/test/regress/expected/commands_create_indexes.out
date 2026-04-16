@@ -1,0 +1,758 @@
+SET citus.next_shard_id TO 110000;
+SET documentdb.next_collection_id TO 11000;
+SET documentdb.next_collection_index_id TO 11000;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog;
+---- createIndexes - top level - parse error ----
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', NULL, true);
+ERROR:  arg cannot be NULL
+SELECT documentdb_api_internal.create_indexes_non_concurrently(NULL, '{}', true);
+ERROR:  dbName cannot be NULL
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "unknown_field": []}', true);
+ERROR:  BSON field 'createIndexes.unknown_field' is an unknown field
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": null, "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}', true);
+ERROR:  collection name has invalid type null
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": null}', true);
+ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'null', expected type 'array'
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": 5}', true);
+ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": []}', true);
+ERROR:  Must specify at least one index to create
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1"}', true);
+ERROR:  BSON field 'createIndexes.indexes' is missing but a required field
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{}', true);
+ERROR:  BSON field 'createIndexes.indexes' is missing but a required field
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": 1}', true);
+ERROR:  collection name has invalid type int
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": 1}', true);
+ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [1,2]}', true);
+ERROR:  BSON field 'createIndexes.indexes.0' is the wrong type 'int', expected type 'object'
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": 1}]}', true);
+ERROR:  Error in specification { "key" : 1 } :: caused by :: The field 'key' must be an object, but got int
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": 1}]}', true);
+ERROR:  Error in specification { "name" : 1 } :: caused by :: The field 'name' must be an string, but got int
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"unique": "1"}]}', true);
+ERROR:  Error in specification { "unique" : "1" } :: caused by :: The field 'unique' has value unique: "1", which is not convertible to bool
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}}]}', true);
+ERROR:  Error in specification { "key" : { "a" : 1 } } :: caused by :: The 'name' field is a required property of an index specification
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "my_idx"}]}', true);
+ERROR:  Error in specification { "name" : "my_idx" } :: caused by :: The 'key' field is a required property of an index specification
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"unknown_field": "111"}]}', true);
+ERROR:  Error in specification { "unknown_field" : "111" } :: caused by :: The field 'unknown_field' is not valid for an index specification. Specification: { "unknown_field" : "111" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "_name_", "unknown_field": "111"}]}', true);
+ERROR:  Error in specification { "name" : "_name_", "unknown_field" : "111" } :: caused by :: The field 'unknown_field' is not valid for an index specification. Specification: { "name" : "_name_", "unknown_field" : "111" }
+---- createIndexes - indexes.key - parse error ----
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"": 1}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { "" : 1 }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { "a" : 1, "" : -1 }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": 1, "b": -1}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { "a.$**" : 1, "b" : -1 }, "name" : "my_idx" } :: caused by :: wildcard indexes do not allow compounding
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {".$**": 1}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { ".$**" : 1 }, "name" : "my_idx" } :: caused by :: Index keys cannot contain an empty field.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": "bad"}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { "a.$**" : "bad" }, "name" : "my_idx" } :: caused by :: Unknown index plugin "bad"
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": 0}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { "a.$**" : 0 }, "name" : "my_idx" } :: caused by :: Values in the index key pattern cannot be 0.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": ""}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { "a.$**" : "" }, "name" : "my_idx" } :: caused by :: Values in the index key pattern cannot be empty strings
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": {"a": 1}}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { "a.$**" : { "a" : 1 } }, "name" : "my_idx" } :: caused by :: Values in v:2 index key pattern cannot be of type object. Only numbers > 0, numbers < 0, and strings are allowed.
+-- note that those are valid ..
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**foo": 1}, "name": "my_idx_1"}]}', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": 1}, "name": "my_idx_3"}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- valid sparse index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"asparse": 1}, "name": "my_sparse_idx1", "sparse": true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"asparse_num": 1}, "name": "my_sparse_num_idx1", "sparse": 1}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"asparse_num": 1}, "name": "my_non_sparse_num_idx1", "sparse": 0}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.double": 1}, "name": "my_sparse_double_idx1", "sparse": 0.2}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": null, "createIndexes": "collection_1", "indexes": [{"key": 0, "key": {"bsparse": 1}, "name": "my_non_sparse_idx1", "sparse": false}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "7" }, "numIndexesAfter" : { "$numberInt" : "8" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"cs.$**": 1}, "name": "my_wildcard_non_sparse_idx1", "sparse": false}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "8" }, "numIndexesAfter" : { "$numberInt" : "9" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- invalid sparse indexes
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.$**": 1}, "name": "my_wildcard_sparse_idx1", "sparse": true}]}', true);
+ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : true } :: caused by :: Index type 'wildcard' does not support the sparse option
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.$**": 1}, "name": "my_wildcard_sparse_idx1", "sparse": "true"}]}', true);
+ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : "true" } :: caused by :: The field 'sparse' has value sparse: "true", which is not convertible to bool
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.a": 1}, "name": "my_sparse_with_pfe_idx", "sparse": true, "partialFilterExpression": { "rating": { "$gt": 5 } }}]}', true);
+ERROR:  Error in specification { "key" : { "bs.a" : 1 }, "name" : "my_sparse_with_pfe_idx", "sparse" : true, "partialFilterExpression" : { "rating" : { "$gt" : 5 } } } :: caused by :: cannot mix "partialFilterExpression" and "sparse" options
+-- sparse can create index for same key with different sparse options
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_sparse_a_b_idx", "sparse": true}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "9" }, "numIndexesAfter" : { "$numberInt" : "10" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_non_sparse_a_b_idx", "sparse": false}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "10" }, "numIndexesAfter" : { "$numberInt" : "11" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- valid hash indexes
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": "hashed"}, "name": "my_idx_hashed"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "11" }, "numIndexesAfter" : { "$numberInt" : "12" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": "hashed", "b": 1 }, "name": "my_idx_hashed_compound"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "12" }, "numIndexesAfter" : { "$numberInt" : "13" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1, "b": "hashed" }, "name": "my_idx_hashed_compound_hash"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "13" }, "numIndexesAfter" : { "$numberInt" : "14" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "hashed"}, "name": "my_idx_dollar_name_1"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "14" }, "numIndexesAfter" : { "$numberInt" : "15" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.c$": "hashed"}, "name": "my_idx_dollar_name_2"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "15" }, "numIndexesAfter" : { "$numberInt" : "16" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- invalid hash indexes
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed" }, "unique": 1, "name": "invalid_hashed"}]}', true);
+ERROR:  Error in specification { "key" : { "b" : "hashed" }, "unique" : 1, "name" : "invalid_hashed" } :: caused by :: Currently hashed indexes cannot guarantee uniqueness. Use a regular index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed", "c": "hashed" }, "name": "invalid_hashed"}]}', true);
+ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: A maximum of one index field is allowed to be hashed but found 2
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed", "c": 1, "d": "hashed" }, "name": "invalid_hashed"}]}', true);
+ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : 1, "d" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: A maximum of one index field is allowed to be hashed but found 2
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b.$**": "hashed" }, "name": "invalid_hashed"}]}', true);
+ERROR:  Error in specification { "key" : { "b.$**" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+-- can't create index on same key with same sparse options
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_non_sparse_a_b_idx1"}]}', true);
+ERROR:  Index already exists with a different name: my_non_sparse_a_b_idx
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_non_sparse_a_b_idx2", "sparse": false}]}', true);
+ERROR:  Index already exists with a different name: my_non_sparse_a_b_idx
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_non_sparse_a_b_idx3", "sparse": true}]}', true);
+ERROR:  Index already exists with a different name: my_sparse_a_b_idx
+-- passing named args is also ok
+SELECT documentdb_api_internal.create_indexes_non_concurrently(p_database_name=>'db', p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"c.a$**": 1}, "name": "my_idx_4"}]}', p_skip_check_collection_create=>true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "16" }, "numIndexesAfter" : { "$numberInt" : "17" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"d.a$**": 1}, "name": "my_idx_5"}]}', p_database_name=>'db', p_skip_check_collection_create=>true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "17" }, "numIndexesAfter" : { "$numberInt" : "18" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- invalid index names
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1 }, "name": "*"}]}', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "*" } :: caused by :: The index name '*' is not valid
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1 }, "name": "name\u0000field"}]}', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "name\u0000field" } :: caused by :: The index name cannot contain embedded nulls
+-- For the next test, show the commands that we internally execute to build
+-- & clean-up the collection indexes.
+SET client_min_messages TO DEBUG1;
+-- Creating another index with the same name is not ok.
+-- Note that we won't create other indexes too, even if it would be ok to create them in a separate command.
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  p_database_name=>'db',
+  p_arg=>'{
+    "createIndexes": "collection_1",
+    "indexes": [
+      {"key": {"x.y.z": 1}, "name": "valid_index_1"},
+      {"key": {"c.d.e": 1}, "name": "my_idx_5"},
+      {"key": {"x.y": 1}, "name": "valid_index_2"}
+    ]
+  }',
+  p_skip_check_collection_create=>true
+);
+DEBUG:  executing "SELECT index_id, index_spec, documentdb_api_internal.index_build_is_in_progress(index_id) FROM documentdb_api_catalog.collection_indexes WHERE collection_id = $1 AND (index_spec).index_name = $2 AND (index_is_valid OR documentdb_api_internal.index_build_is_in_progress(index_id))" via SPI
+DEBUG:  executing "SELECT index_id, index_spec, documentdb_api_internal.index_build_is_in_progress(index_id)FROM documentdb_api_catalog.collection_indexes WHERE collection_id = $1 AND documentdb_api_internal.index_spec_options_are_equivalent(index_spec, $2) AND (index_is_valid OR documentdb_api_internal.index_build_is_in_progress(index_id))" via SPI
+DEBUG:  executing "SELECT index_id, index_spec, documentdb_api_internal.index_build_is_in_progress(index_id) FROM documentdb_api_catalog.collection_indexes WHERE collection_id = $1 AND (index_spec).index_name = $2 AND (index_is_valid OR documentdb_api_internal.index_build_is_in_progress(index_id))" via SPI
+ERROR:  An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { "v" : 2, "key" : { "c.d.e" : 1 }, "name" : "my_idx_5" }, existing index: { "v" : 2, "key" : { "d.a$**" : 1 }, "name" : "my_idx_5" }
+RESET client_min_messages;
+-- show that we didn't leave any invalid collection indexes behind
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'collection_1') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                             index_spec_as_bson                                                              | index_is_valid 
+---------------------------------------------------------------------
+         11000 |    11000 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                               | t
+         11000 |    11001 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**foo" : { "$numberInt" : "1" } }, "name" : "my_idx_1" }                                       | t
+         11000 |    11002 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_3" }                                          | t
+         11000 |    11003 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse" : { "$numberInt" : "1" } }, "name" : "my_sparse_idx1", "sparse" : true }                | t
+         11000 |    11004 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_sparse_num_idx1", "sparse" : true }        | t
+         11000 |    11005 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_num_idx1", "sparse" : false }   | t
+         11000 |    11006 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.double" : { "$numberInt" : "1" } }, "name" : "my_sparse_double_idx1", "sparse" : true } | t
+         11000 |    11007 | { "v" : { "$numberInt" : "2" }, "key" : { "bsparse" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_idx1", "sparse" : false }           | t
+         11000 |    11008 | { "v" : { "$numberInt" : "2" }, "key" : { "cs.$**" : { "$numberInt" : "1" } }, "name" : "my_wildcard_non_sparse_idx1", "sparse" : false }   | t
+         11000 |    11009 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_sparse_a_b_idx", "sparse" : true }          | t
+         11000 |    11010 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_a_b_idx", "sparse" : false }     | t
+         11000 |    11011 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed" }, "name" : "my_idx_hashed" }                                                      | t
+         11000 |    11012 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed", "b" : { "$numberInt" : "1" } }, "name" : "my_idx_hashed_compound" }               | t
+         11000 |    11013 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : "hashed" }, "name" : "my_idx_hashed_compound_hash" }          | t
+         11000 |    11014 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : "hashed" }, "name" : "my_idx_dollar_name_1" }                                            | t
+         11000 |    11015 | { "v" : { "$numberInt" : "2" }, "key" : { "a.c$" : "hashed" }, "name" : "my_idx_dollar_name_2" }                                            | t
+         11000 |    11016 | { "v" : { "$numberInt" : "2" }, "key" : { "c.a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_4" }                                        | t
+         11000 |    11017 | { "v" : { "$numberInt" : "2" }, "key" : { "d.a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_5" }                                        | t
+(18 rows)
+
+-- also show that we didn't leave any invalid pg indexes behind
+SELECT indexrelid::regclass, indisvalid, indisready
+FROM documentdb_distributed_test_helpers.get_data_table_indexes('db', 'collection_1')
+ORDER BY indexrelid;
+                indexrelid                 | indisvalid | indisready 
+---------------------------------------------------------------------
+ documentdb_data.collection_pk_11000       | t          | t
+ documentdb_data.documents_rum_index_11001 | t          | t
+ documentdb_data.documents_rum_index_11002 | t          | t
+ documentdb_data.documents_rum_index_11003 | t          | t
+ documentdb_data.documents_rum_index_11004 | t          | t
+ documentdb_data.documents_rum_index_11005 | t          | t
+ documentdb_data.documents_rum_index_11006 | t          | t
+ documentdb_data.documents_rum_index_11007 | t          | t
+ documentdb_data.documents_rum_index_11008 | t          | t
+ documentdb_data.documents_rum_index_11009 | t          | t
+ documentdb_data.documents_rum_index_11010 | t          | t
+ documentdb_data.documents_rum_index_11011 | t          | t
+ documentdb_data.documents_rum_index_11012 | t          | t
+ documentdb_data.documents_rum_index_11013 | t          | t
+ documentdb_data.documents_rum_index_11014 | t          | t
+ documentdb_data.documents_rum_index_11015 | t          | t
+ documentdb_data.documents_rum_index_11016 | t          | t
+ documentdb_data.documents_rum_index_11017 | t          | t
+(18 rows)
+
+-- .., but those are not
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**foo": 1}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { "a.$**foo" : 1 }, "name" : "my_idx" } :: caused by :: Index key contains an illegal field name
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**.foo": 1}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { "a.$**.foo" : 1 }, "name" : "my_idx" } :: caused by :: Index key contains an illegal field name
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": -1, "a.$**": 1}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : { "b" : -1, "a.$**" : 1 }, "name" : "my_idx" } :: caused by :: wildcard indexes do not allow compounding
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {}, "name": "my_idx"}]}', true);
+ERROR:  Error in specification { "key" : {  }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "my_idx"}]}', true);
+ERROR:  Error in specification { "name" : "my_idx" } :: caused by :: The 'key' field is a required property of an index specification
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"$**foo": 1}, "name": "my_idx_13"}]}', true);
+ERROR:  Error in specification { "key" : { "$**foo" : 1 }, "name" : "my_idx_13" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"..": 1}, "name": "my_idx_12"}]}', true);
+ERROR:  Error in specification { "key" : { ".." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a..b.$**": 1}, "name": "my_idx_10"}]}', true);
+ERROR:  Error in specification { "key" : { "a..b.$**" : 1 }, "name" : "my_idx_10" } :: caused by :: Index keys cannot contain an empty field.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a..b.foo": 1}, "name": "my_idx_11"}]}', true);
+ERROR:  Error in specification { "key" : { "a..b.foo" : 1 }, "name" : "my_idx_11" } :: caused by :: Index keys cannot contain an empty field.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"$a": 1}, "name": "my_idx_12"}]}', true);
+ERROR:  Error in specification { "key" : { "$a" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {".": 1}, "name": "my_idx_12"}]}', true);
+ERROR:  Error in specification { "key" : { "." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$b": 1}, "name": "my_idx_12"}]}', true);
+ERROR:  Error in specification { "key" : { "a.$b" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$b.$**": 1}, "name": "my_idx_12"}]}', true);
+ERROR:  Error in specification { "key" : { "a.$b.$**" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.": 1}, "name": "my_idx_12"}]}', true);
+ERROR:  Error in specification { "key" : { "a." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+-- show that we didn't leave any invalid collection indexes behind
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'collection_1') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                             index_spec_as_bson                                                              | index_is_valid 
+---------------------------------------------------------------------
+         11000 |    11000 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                               | t
+         11000 |    11001 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**foo" : { "$numberInt" : "1" } }, "name" : "my_idx_1" }                                       | t
+         11000 |    11002 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_3" }                                          | t
+         11000 |    11003 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse" : { "$numberInt" : "1" } }, "name" : "my_sparse_idx1", "sparse" : true }                | t
+         11000 |    11004 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_sparse_num_idx1", "sparse" : true }        | t
+         11000 |    11005 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_num_idx1", "sparse" : false }   | t
+         11000 |    11006 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.double" : { "$numberInt" : "1" } }, "name" : "my_sparse_double_idx1", "sparse" : true } | t
+         11000 |    11007 | { "v" : { "$numberInt" : "2" }, "key" : { "bsparse" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_idx1", "sparse" : false }           | t
+         11000 |    11008 | { "v" : { "$numberInt" : "2" }, "key" : { "cs.$**" : { "$numberInt" : "1" } }, "name" : "my_wildcard_non_sparse_idx1", "sparse" : false }   | t
+         11000 |    11009 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_sparse_a_b_idx", "sparse" : true }          | t
+         11000 |    11010 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_a_b_idx", "sparse" : false }     | t
+         11000 |    11011 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed" }, "name" : "my_idx_hashed" }                                                      | t
+         11000 |    11012 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed", "b" : { "$numberInt" : "1" } }, "name" : "my_idx_hashed_compound" }               | t
+         11000 |    11013 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : "hashed" }, "name" : "my_idx_hashed_compound_hash" }          | t
+         11000 |    11014 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : "hashed" }, "name" : "my_idx_dollar_name_1" }                                            | t
+         11000 |    11015 | { "v" : { "$numberInt" : "2" }, "key" : { "a.c$" : "hashed" }, "name" : "my_idx_dollar_name_2" }                                            | t
+         11000 |    11016 | { "v" : { "$numberInt" : "2" }, "key" : { "c.a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_4" }                                        | t
+         11000 |    11017 | { "v" : { "$numberInt" : "2" }, "key" : { "d.a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_5" }                                        | t
+(18 rows)
+
+-- also show that we didn't leave any invalid pg indexes behind
+SELECT indexrelid::regclass, indisvalid, indisready
+FROM documentdb_distributed_test_helpers.get_data_table_indexes('db', 'collection_1')
+ORDER BY indexrelid;
+                indexrelid                 | indisvalid | indisready 
+---------------------------------------------------------------------
+ documentdb_data.collection_pk_11000       | t          | t
+ documentdb_data.documents_rum_index_11001 | t          | t
+ documentdb_data.documents_rum_index_11002 | t          | t
+ documentdb_data.documents_rum_index_11003 | t          | t
+ documentdb_data.documents_rum_index_11004 | t          | t
+ documentdb_data.documents_rum_index_11005 | t          | t
+ documentdb_data.documents_rum_index_11006 | t          | t
+ documentdb_data.documents_rum_index_11007 | t          | t
+ documentdb_data.documents_rum_index_11008 | t          | t
+ documentdb_data.documents_rum_index_11009 | t          | t
+ documentdb_data.documents_rum_index_11010 | t          | t
+ documentdb_data.documents_rum_index_11011 | t          | t
+ documentdb_data.documents_rum_index_11012 | t          | t
+ documentdb_data.documents_rum_index_11013 | t          | t
+ documentdb_data.documents_rum_index_11014 | t          | t
+ documentdb_data.documents_rum_index_11015 | t          | t
+ documentdb_data.documents_rum_index_11016 | t          | t
+ documentdb_data.documents_rum_index_11017 | t          | t
+(18 rows)
+
+-- create a valid index.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"start_path": 1}, "name": "my_idx_14"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "18" }, "numIndexesAfter" : { "$numberInt" : "19" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'collection_1') WHERE index_spec_as_bson OPERATOR(documentdb_api_catalog.@@) '{"name": "my_idx_14"}' ORDER BY collection_id, index_id;
+ collection_id | index_id |                                            index_spec_as_bson                                             | index_is_valid 
+---------------------------------------------------------------------
+         11000 |    11018 | { "v" : { "$numberInt" : "2" }, "key" : { "start_path" : { "$numberInt" : "1" } }, "name" : "my_idx_14" } | t
+(1 row)
+
+-- creating the same index should noop
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"start_path": 1}, "name": "my_idx_14"}]}', true);
+                                                                                                                       create_indexes_non_concurrently                                                                                                                        
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "19" }, "numIndexesAfter" : { "$numberInt" : "19" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'collection_1')  WHERE index_spec_as_bson OPERATOR(documentdb_api_catalog.@@) '{"name": "my_idx_14"}' ORDER BY collection_id, index_id;
+ collection_id | index_id |                                            index_spec_as_bson                                             | index_is_valid 
+---------------------------------------------------------------------
+         11000 |    11018 | { "v" : { "$numberInt" : "2" }, "key" : { "start_path" : { "$numberInt" : "1" } }, "name" : "my_idx_14" } | t
+(1 row)
+
+-- not the same index since this specifies partialFilterExpression
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"start_path": 1}, "name": "my_idx_14", "partialFilterExpression": {"a": 1}}]}', true);
+ERROR:  An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { "v" : 2, "key" : { "start_path" : 1 }, "name" : "my_idx_14", "partialFilterExpression" : { "a" : 1 } }, existing index: { "v" : 2, "key" : { "start_path" : 1 }, "name" : "my_idx_14" }
+-- valid mongo index type in specification, which are not supported yet
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "2d"}, "name": "my_idx_2d"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "19" }, "numIndexesAfter" : { "$numberInt" : "20" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "2dsphere"}, "name": "my_idx_2dsphere"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "20" }, "numIndexesAfter" : { "$numberInt" : "21" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "text"}, "name": "my_idx_text"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "21" }, "numIndexesAfter" : { "$numberInt" : "22" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- test "v"
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 2.1234, "name": "invalid_v"}]}', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 2.1234000000000001762, "name" : "invalid_v" } :: caused by :: Index version must be representable as a 32-bit integer, but got 2.123400
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 10000000000000000, "name": "invalid_v"}]}', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 10000000000000000, "name" : "invalid_v" } :: caused by :: Index version must be representable as a 32-bit integer, but got 10000000000000000.000000
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": -10000000000000000, "name": "invalid_v"}]}', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : -10000000000000000, "name" : "invalid_v" } :: caused by :: Index version must be representable as a 32-bit integer, but got -10000000000000000.000000
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 100, "name": "invalid_v"}]}', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "v" : 100, "name" : "invalid_v" } :: caused by :: Invalid index specification { "key" : { "a" : 1 }, "v" : 100, "name" : "invalid_v" }; cannot create an index with v=100
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 2.0, "name": "valid_v"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "22" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- same index since 2.0 == 2
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}, "v": 2, "name": "valid_v"}]}', true);
+                                                                                                                       create_indexes_non_concurrently                                                                                                                        
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- following are assumed to be identical to built-in _id index even if their names are different than "_id_"
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes" : [{"key": {"_id": 1}, "name" : "_id_1"}, {"key": {"_id": 1.0}, "name" : "_id_2"}]}', true);
+                                                                                                                       create_indexes_non_concurrently                                                                                                                        
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "23" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- but this is not identical to built-in _id index, so we will create it
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes" : [{"key": {"_id": 1.2}, "name" : "_id_3"}]}', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "23" }, "numIndexesAfter" : { "$numberInt" : "24" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- and this conflicts with _id_3 since key != {"_id": 1}, so we will throw an error
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes" : [{"key": {"_id": 1.2}, "name" : "_id_4"}]}', true);
+ERROR:  Index already exists with a different name: _id_3
+-- background is ignored.
+SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"e.a": 1}, "name": "my_idx_6", "background": true }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "24" }, "numIndexesAfter" : { "$numberInt" : "25" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- hidden false is ignored.
+SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"e.b": 1}, "name": "my_idx_7", "hidden": false }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "25" }, "numIndexesAfter" : { "$numberInt" : "26" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- hidden true fails.
+SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"e.c": 1}, "name": "my_idx_8", "hidden": true }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
+ERROR:  hidden indexes are not supported yet.
+-- ns is ignored.
+SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"e.f": 1}, "name": "my_idx_9", "ns": "foo.bar" }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "26" }, "numIndexesAfter" : { "$numberInt" : "27" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- readPreference is ignored
+SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "collection_1", "indexes": [{"key": {"e.g": 1}, "name": "my_idx_10" }], "$readPreference": { "mode": "secondary" }}', p_database_name=>'db', p_skip_check_collection_create=>true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "27" }, "numIndexesAfter" : { "$numberInt" : "28" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "too_many_indexes", "indexes": [{"key": {"a0": 1}, "name": "a0"},{"key": {"a1": 1}, "name": "a1"},{"key": {"a2": 1}, "name": "a2"},{"key": {"a3": 1}, "name": "a3"},{"key": {"a4": 1}, "name": "a4"},{"key": {"a5": 1}, "name": "a5"},{"key": {"a6": 1}, "name": "a6"},{"key": {"a7": 1}, "name": "a7"},{"key": {"a8": 1}, "name": "a8"},{"key": {"a9": 1}, "name": "a9"},{"key": {"a10": 1}, "name": "a10"},{"key": {"a11": 1}, "name": "a11"},{"key": {"a12": 1}, "name": "a12"},{"key": {"a13": 1}, "name": "a13"},{"key": {"a14": 1}, "name": "a14"},{"key": {"a15": 1}, "name": "a15"},{"key": {"a16": 1}, "name": "a16"},{"key": {"a17": 1}, "name": "a17"},{"key": {"a18": 1}, "name": "a18"},{"key": {"a19": 1}, "name": "a19"},{"key": {"a20": 1}, "name": "a20"},{"key": {"a21": 1}, "name": "a21"},{"key": {"a22": 1}, "name": "a22"},{"key": {"a23": 1}, "name": "a23"},{"key": {"a24": 1}, "name": "a24"},{"key": {"a25": 1}, "name": "a25"},{"key": {"a26": 1}, "name": "a26"},{"key": {"a27": 1}, "name": "a27"},{"key": {"a28": 1}, "name": "a28"},{"key": {"a29": 1}, "name": "a29"},{"key": {"a30": 1}, "name": "a30"},{"key": {"a31": 1}, "name": "a31"},{"key": {"a32": 1}, "name": "a32"},{"key": {"a33": 1}, "name": "a33"},{"key": {"a34": 1}, "name": "a34"},{"key": {"a35": 1}, "name": "a35"},{"key": {"a36": 1}, "name": "a36"},{"key": {"a37": 1}, "name": "a37"},{"key": {"a38": 1}, "name": "a38"},{"key": {"a39": 1}, "name": "a39"},{"key": {"a40": 1}, "name": "a40"},{"key": {"a41": 1}, "name": "a41"},{"key": {"a42": 1}, "name": "a42"},{"key": {"a43": 1}, "name": "a43"},{"key": {"a44": 1}, "name": "a44"},{"key": {"a45": 1}, "name": "a45"},{"key": {"a46": 1}, "name": "a46"},{"key": {"a47": 1}, "name": "a47"},{"key": {"a48": 1}, "name": "a48"},{"key": {"a49": 1}, "name": "a49"},{"key": {"a50": 1}, "name": "a50"},{"key": {"a51": 1}, "name": "a51"},{"key": {"a52": 1}, "name": "a52"},{"key": {"a53": 1}, "name": "a53"},{"key": {"a54": 1}, "name": "a54"},{"key": {"a55": 1}, "name": "a55"},{"key": {"a56": 1}, "name": "a56"},{"key": {"a57": 1}, "name": "a57"},{"key": {"a58": 1}, "name": "a58"},{"key": {"a59": 1}, "name": "a59"},{"key": {"a60": 1}, "name": "a60"},{"key": {"a61": 1}, "name": "a61"},{"key": {"a62": 1}, "name": "a62"},{"key": {"a63": 1}, "name": "a63"}, {"key": {"a64": 1}, "name": "a64"}]}', true);
+NOTICE:  creating collection
+ERROR:  add index fails, too many indexes for db.too_many_indexes key:{ "a63" : 1 }
+BEGIN;
+  SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "too_many_indexes", "indexes": [{"key": {"a0": 1}, "name": "a0"},{"key": {"a1": 1}, "name": "a1"},{"key": {"a2": 1}, "name": "a2"},{"key": {"a3": 1}, "name": "a3"},{"key": {"a4": 1}, "name": "a4"},{"key": {"a5": 1}, "name": "a5"},{"key": {"a6": 1}, "name": "a6"},{"key": {"a7": 1}, "name": "a7"},{"key": {"a8": 1}, "name": "a8"},{"key": {"a9": 1}, "name": "a9"},{"key": {"a10": 1}, "name": "a10"},{"key": {"a11": 1}, "name": "a11"},{"key": {"a12": 1}, "name": "a12"},{"key": {"a13": 1}, "name": "a13"},{"key": {"a14": 1}, "name": "a14"},{"key": {"a15": 1}, "name": "a15"},{"key": {"a16": 1}, "name": "a16"},{"key": {"a17": 1}, "name": "a17"},{"key": {"a18": 1}, "name": "a18"},{"key": {"a19": 1}, "name": "a19"},{"key": {"a20": 1}, "name": "a20"},{"key": {"a21": 1}, "name": "a21"},{"key": {"a22": 1}, "name": "a22"},{"key": {"a23": 1}, "name": "a23"},{"key": {"a24": 1}, "name": "a24"},{"key": {"a25": 1}, "name": "a25"},{"key": {"a26": 1}, "name": "a26"},{"key": {"a27": 1}, "name": "a27"},{"key": {"a28": 1}, "name": "a28"},{"key": {"a29": 1}, "name": "a29"},{"key": {"a30": 1}, "name": "a30"},{"key": {"a31": 1}, "name": "a31"},{"key": {"a32": 1}, "name": "a32"},{"key": {"a33": 1}, "name": "a33"},{"key": {"a34": 1}, "name": "a34"},{"key": {"a35": 1}, "name": "a35"},{"key": {"a36": 1}, "name": "a36"},{"key": {"a37": 1}, "name": "a37"},{"key": {"a38": 1}, "name": "a38"},{"key": {"a39": 1}, "name": "a39"},{"key": {"a40": 1}, "name": "a40"},{"key": {"a41": 1}, "name": "a41"},{"key": {"a42": 1}, "name": "a42"},{"key": {"a43": 1}, "name": "a43"},{"key": {"a44": 1}, "name": "a44"},{"key": {"a45": 1}, "name": "a45"},{"key": {"a46": 1}, "name": "a46"},{"key": {"a47": 1}, "name": "a47"},{"key": {"a48": 1}, "name": "a48"},{"key": {"a49": 1}, "name": "a49"},{"key": {"a50": 1}, "name": "a50"},{"key": {"a51": 1}, "name": "a51"},{"key": {"a52": 1}, "name": "a52"},{"key": {"a53": 1}, "name": "a53"},{"key": {"a54": 1}, "name": "a54"},{"key": {"a55": 1}, "name": "a55"},{"key": {"a56": 1}, "name": "a56"},{"key": {"a57": 1}, "name": "a57"},{"key": {"a58": 1}, "name": "a58"},{"key": {"a59": 1}, "name": "a59"},{"key": {"a60": 1}, "name": "a60"},{"key": {"a61": 1}, "name": "a61"},{"key": {"a62": 1}, "name": "a62"},{"key": {"a63": 1}, "name": "a63"}, {"key": {"a64": 1}, "name": "a64"}]}', true);
+NOTICE:  creating collection
+ERROR:  add index fails, too many indexes for db.too_many_indexes key:{ "a63" : 1 }
+ROLLBACK;
+SELECT documentdb_api.create_collection('db', 'too_many_indexes');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "too_many_indexes", "indexes": [{"key": {"a0": 1}, "name": "a0"},{"key": {"a1": 1}, "name": "a1"},{"key": {"a2": 1}, "name": "a2"},{"key": {"a3": 1}, "name": "a3"},{"key": {"a4": 1}, "name": "a4"},{"key": {"a5": 1}, "name": "a5"},{"key": {"a6": 1}, "name": "a6"},{"key": {"a7": 1}, "name": "a7"},{"key": {"a8": 1}, "name": "a8"},{"key": {"a9": 1}, "name": "a9"},{"key": {"a10": 1}, "name": "a10"},{"key": {"a11": 1}, "name": "a11"},{"key": {"a12": 1}, "name": "a12"},{"key": {"a13": 1}, "name": "a13"},{"key": {"a14": 1}, "name": "a14"},{"key": {"a15": 1}, "name": "a15"},{"key": {"a16": 1}, "name": "a16"},{"key": {"a17": 1}, "name": "a17"},{"key": {"a18": 1}, "name": "a18"},{"key": {"a19": 1}, "name": "a19"},{"key": {"a20": 1}, "name": "a20"},{"key": {"a21": 1}, "name": "a21"},{"key": {"a22": 1}, "name": "a22"},{"key": {"a23": 1}, "name": "a23"},{"key": {"a24": 1}, "name": "a24"},{"key": {"a25": 1}, "name": "a25"},{"key": {"a26": 1}, "name": "a26"},{"key": {"a27": 1}, "name": "a27"},{"key": {"a28": 1}, "name": "a28"},{"key": {"a29": 1}, "name": "a29"},{"key": {"a30": 1}, "name": "a30"},{"key": {"a31": 1}, "name": "a31"},{"key": {"a32": 1}, "name": "a32"},{"key": {"a33": 1}, "name": "a33"},{"key": {"a34": 1}, "name": "a34"},{"key": {"a35": 1}, "name": "a35"},{"key": {"a36": 1}, "name": "a36"},{"key": {"a37": 1}, "name": "a37"},{"key": {"a38": 1}, "name": "a38"},{"key": {"a39": 1}, "name": "a39"},{"key": {"a40": 1}, "name": "a40"},{"key": {"a41": 1}, "name": "a41"},{"key": {"a42": 1}, "name": "a42"},{"key": {"a43": 1}, "name": "a43"},{"key": {"a44": 1}, "name": "a44"},{"key": {"a45": 1}, "name": "a45"},{"key": {"a46": 1}, "name": "a46"},{"key": {"a47": 1}, "name": "a47"},{"key": {"a48": 1}, "name": "a48"},{"key": {"a49": 1}, "name": "a49"},{"key": {"a50": 1}, "name": "a50"},{"key": {"a51": 1}, "name": "a51"},{"key": {"a52": 1}, "name": "a52"},{"key": {"a53": 1}, "name": "a53"},{"key": {"a54": 1}, "name": "a54"},{"key": {"a55": 1}, "name": "a55"},{"key": {"a56": 1}, "name": "a56"},{"key": {"a57": 1}, "name": "a57"},{"key": {"a58": 1}, "name": "a58"},{"key": {"a59": 1}, "name": "a59"},{"key": {"a60": 1}, "name": "a60"},{"key": {"a61": 1}, "name": "a61"},{"key": {"a62": 1}, "name": "a62"},{"key": {"a63": 1}, "name": "a63"}, {"key": {"a64": 1}, "name": "a64"}]}', true);
+ERROR:  add index fails, too many indexes for db.too_many_indexes key:{ "a63" : 1 }
+SET documentdb.enable_large_unique_index_keys TO false;
+-- dropDups is ignored.
+SELECT documentdb_api.insert_one('db','dropdups_ignore','{"_id": "1", "a": "dup" }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dropdups_ignore','{"_id": "2", "a": "dup" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "dropdups_ignore", "indexes": [{"key": {"a": 1}, "name": "dropdups_ignore_idx_1", "dropDups": true, "unique": true }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
+ERROR:  could not create exclusion constraint "documents_rum_index_11032_110068"
+DETAIL:  Key (document, (ROW(shard_key_value, document)::shard_key_and_document))=({ "_id" : "1", "a" : "dup" }, (11004,"{ ""_id"" : ""1"", ""a"" : ""dup"" }")) conflicts with key (document, (ROW(shard_key_value, document)::shard_key_and_document))=({ "_id" : "2", "a" : "dup" }, (11004,"{ ""_id"" : ""2"", ""a"" : ""dup"" }")).
+CONTEXT:  SQL statement "ALTER TABLE documentdb_data.documents_11004 ADD CONSTRAINT documents_rum_index_11032 EXCLUDE USING documentdb_rum ( document documentdb_api_catalog.bson_rum_single_path_ops(path='a', generateNotFoundTerm=true) WITH OPERATOR(documentdb_api_catalog.=?=), ((shard_key_value, document)::documentdb_api_catalog.shard_key_and_document) documentdb_api_catalog.bson_rum_exclusion_ops(path='a') WITH OPERATOR(documentdb_api_catalog.=)) "
+select documentdb_api.delete('db', '{"delete":"dropdups_ignore", "deletes":[{"q":{"_id": "2"}, "limit": 0 } ] }');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(p_arg=>'{"createIndexes": "dropdups_ignore", "indexes": [{"key": {"a": 1}, "name": "dropdups_ignore_idx_1", "dropDups": true, "unique": true }]}', p_database_name=>'db', p_skip_check_collection_create=>true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SET documentdb.enable_large_unique_index_keys TO true;
+-- tests with ignoreUnknownIndexOptions
+-- -- invalid values of ignoreUnknownIndexOptions
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1"}], "ignoreUnknownIndexOptions": "hello" }', true);
+ERROR:  BSON field 'createIndexes.ignoreUnknownIndexOptions' is the wrong type 'string', expected types '[bool, long, int, decimal, double']
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1"}], "ignoreUnknownIndexOptions": {"b":1} }', true);
+ERROR:  BSON field 'createIndexes.ignoreUnknownIndexOptions' is the wrong type 'object', expected types '[bool, long, int, decimal, double']
+-- -- ignoreUnknownIndexOptions of false (default value) will trigger error if there is any unknown field in index options. (unknown field is "dog" in these examples)
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1", "dog": "pazu"}] }', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" } :: caused by :: The field 'dog' is not valid for an index specification. Specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": false }', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" } :: caused by :: The field 'dog' is not valid for an index specification. Specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": 0.0 }', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" } :: caused by :: The field 'dog' is not valid for an index specification. Specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": null }', true);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" } :: caused by :: The field 'dog' is not valid for an index specification. Specification: { "key" : { "a" : 1 }, "name" : "a_1", "dog" : "pazu" }
+-- -- ignoreUnknownIndexOptions of true will ignore any unknown field in index options. (unknown field is "dog" in these examples)
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"a": 1}, "name": "a_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": true }', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"b": 1}, "name": "b_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": 0.1 }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"c": 1}, "name": "c_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": -5.6 }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "indexColl_1", "indexes": [{"key": {"d": 1}, "name": "d_1", "dog": "pazu"}], "ignoreUnknownIndexOptions": 1 }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- index term options
+-- we flow index term size option to the indexes that should truncate only
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "indexTermSizeLimit", "indexes": [ { "key" : { "a": 1 }, "name": "indexa"}] }', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "indexTermSizeLimit", "indexes": [ { "key" : { "$**": 1 }, "name": "indexwildcard"}] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "indexTermSizeLimit", "indexes": [ { "key" : { "a": 1, "b": 1 }, "name": "indexcompound"}] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "indexTermSizeLimit", "indexes": [ { "key" : { "$**": 1 }, "wildcardProjection": {"a": 0}, "name": "index_wildcard_projection"}] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+WITH c1 AS (SELECT collection_id from documentdb_api_catalog.collections where collection_name = 'indexTermSizeLimit' and database_name = 'db')
+SELECT indexdef FROM pg_indexes, c1 where tablename = 'documents' || '_' || c1.collection_id and schemaname = 'documentdb_data' ORDER BY indexname ASC;
+                                                                                                            indexdef                                                                                                            
+---------------------------------------------------------------------
+ CREATE UNIQUE INDEX collection_pk_11006 ON documentdb_data.documents_11006 USING btree (shard_key_value, object_id)
+ CREATE INDEX documents_rum_index_11040 ON documentdb_data.documents_11006 USING documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699'))
+ CREATE INDEX documents_rum_index_11041 ON documentdb_data.documents_11006 USING documentdb_rum (document bson_rum_single_path_ops (path='', iswildcard='true', tl='2699', wkl='200'))
+ CREATE INDEX documents_rum_index_11042 ON documentdb_data.documents_11006 USING documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2691'), document bson_rum_single_path_ops (path=b, tl='2691'))
+ CREATE INDEX documents_rum_index_11043 ON documentdb_data.documents_11006 USING documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a" ]', isexclusion='true'))
+(5 rows)
+
+SET documentdb.enable_large_unique_index_keys TO false;
+-- for hashed, unique and text indexes we should not see the limit as those shouldn't be truncated
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": "text" }, "name": "a_text" } ] }', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": "hashed" }, "name": "a_hashed" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "noIndexTermSizeLimit", "indexes": [ { "key": { "a": 1 }, "name": "a_unique", "unique": true } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SET documentdb.enable_large_unique_index_keys TO true;
+WITH c1 AS (SELECT collection_id from documentdb_api_catalog.collections where collection_name = 'noIndexTermSizeLimit' and database_name = 'db')
+SELECT indexdef FROM pg_indexes, c1 where tablename = 'documents' || '_' || c1.collection_id and schemaname = 'documentdb_data' ORDER BY indexname ASC;
+                                                                                                                              indexdef                                                                                                                              
+---------------------------------------------------------------------
+ CREATE UNIQUE INDEX collection_pk_11007 ON documentdb_data.documents_11007 USING btree (shard_key_value, object_id)
+ CREATE INDEX documents_rum_index_11045 ON documentdb_data.documents_11007 USING documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }'))
+ CREATE INDEX documents_rum_index_11046 ON documentdb_data.documents_11007 USING documentdb_rum (document documentdb_rum_hashed_ops (path=a))
+ CREATE INDEX documents_rum_index_11047 ON documentdb_data.documents_11007 USING documentdb_rum (document bson_rum_single_path_ops (path=a, generatenotfoundterm='true'), (ROW(shard_key_value, document)::shard_key_and_document) bson_rum_exclusion_ops (path=a))
+(4 rows)
+
+SELECT ('{ "createIndexes": "indexColl_1", "indexes": [{ "key": { "description1": 1, "description2": 1, "description3": 1, "description4": 1, "description5": 1, "description6": 1, "description7": 1, "description8": 1, ' ||
+ ' "description9": 1, "description10": 1, "description11": 1, "description12": 1, "description13": 1, "description14": 1, "description15": 1, "description16": 1, "description17": 1, ' ||
+ ' "description18": 1, "description19": 1, "description20": 1 } ' || 
+ ', "name": "description1_1_description2_1_description3_1_description4_1_description5_1_description6_1_description7_1_description8_1_description9_1_description10_1' ||
+ '_description11_1_description12_1_description13_1_description14_1_description15_1_description16_1_description17_1_description18_1_description19_1_description20_1" } ]}')::bson;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 bson                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ { "createIndexes" : "indexColl_1", "indexes" : [ { "key" : { "description1" : { "$numberInt" : "1" }, "description2" : { "$numberInt" : "1" }, "description3" : { "$numberInt" : "1" }, "description4" : { "$numberInt" : "1" }, "description5" : { "$numberInt" : "1" }, "description6" : { "$numberInt" : "1" }, "description7" : { "$numberInt" : "1" }, "description8" : { "$numberInt" : "1" }, "description9" : { "$numberInt" : "1" }, "description10" : { "$numberInt" : "1" }, "description11" : { "$numberInt" : "1" }, "description12" : { "$numberInt" : "1" }, "description13" : { "$numberInt" : "1" }, "description14" : { "$numberInt" : "1" }, "description15" : { "$numberInt" : "1" }, "description16" : { "$numberInt" : "1" }, "description17" : { "$numberInt" : "1" }, "description18" : { "$numberInt" : "1" }, "description19" : { "$numberInt" : "1" }, "description20" : { "$numberInt" : "1" } }, "name" : "description1_1_description2_1_description3_1_description4_1_description5_1_description6_1_description7_1_description8_1_description9_1_description10_1_description11_1_description12_1_description13_1_description14_1_description15_1_description16_1_description17_1_description18_1_description19_1_description20_1" } ] }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', 
+ '{ "createIndexes" : "indexColl_1", "indexes" : [ { "key" : { "description1" : 1, "description2" : 1, "description3" : 1, "description4" : 1, "description5" : 1, "description6" : 1, "description7" : 1, "description8" : 1, "description9" : 1, "description10" : 1, "description11" : 1, "description12" : 1, "description13" : 1, "description14" : 1, "description15" : 1, "description16" : 1, "description17" : 1, "description18" : 1, "description19" : 1, "description20" : 1 }, "name" : "description1_1_description2_1_description3_1_description4_1_description5_1_description6_1_description7_1_description8_1_description9_1_description10_1_description11_1_description12_1_description13_1_description14_1_description15_1_description16_1_description17_1_description18_1_description19_1_description20_1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', FORMAT('{ "createIndexes" : "indexColl_1", "indexes" : [ { "key" : { "%s" : 1 }, "name" : "%s_1" } ] }', repeat('a', 1200), repeat('a', 1200))::bson, true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- try 2 columns (super long)
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', FORMAT('{ "createIndexes" : "indexColl_1", "indexes" : [ { "key" : { "%s" : 1, "b_%s": 1 }, "name" : "%s_1_b_%s_1" } ] }',
+    repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200))::bson, true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "7" }, "numIndexesAfter" : { "$numberInt" : "8" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- 4/5 super long columns
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', FORMAT('{ "createIndexes" : "indexColl_1", "indexes" : [ { "key" : { "a_%s" : 1, "b_%s": 1, "c_%s": 1, "d_%s": 1 }, "name" : "a_b_c_d_%s_1" } ] }',
+    repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200))::bson, true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "8" }, "numIndexesAfter" : { "$numberInt" : "9" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- 10 super long columns
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', FORMAT('{ "createIndexes" : "indexColl_1", "indexes" : [ { "key" : { "a_%s" : 1, "b_%s": 1, "c_%s": 1, "d_%s": 1, "e_%s": 1, "f_%s": 1, "g_%s": 1, "h_%s": 1, "i_%s": 1, "j_%s": 1 }, "name" : "a_b_c_d_e_f_g_h_i_j_%s_1" } ] }',
+    repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200), repeat('a', 1200))::bson, true);
+                                                                                                    create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "9" }, "numIndexesAfter" : { "$numberInt" : "10" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- but 1 super long name fails
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', FORMAT('{ "createIndexes" : "indexColl_1", "indexes" : [ { "key" : { "a_%s" : 1 }, "name" : "a_%s_1" } ] }',
+    repeat('a', 1500), repeat('a', 1200))::bson, true);
+ERROR:  The index path or expression is too long. Try a shorter path or reducing paths by 76 characters.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', FORMAT('{ "createIndexes" : "indexColl_1", "indexes" : [ { "key" : { "a_%s" : 1, "b_%s": 1 }, "name" : "a_b_%s_1" } ] }',
+    repeat('a', 1500), repeat('a', 1500), repeat('a', 1200))::bson, true);
+ERROR:  The index path or expression is too long. Try a shorter path or reducing paths by 76 characters.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', FORMAT('{ "createIndexes" : "indexColl_1", "indexes" : [ { "key" : { "a_%s" : 1, "b_%s": 1 }, "name" : "a_b_%s_1" } ] }',
+    repeat('a', 1200), repeat('a', 1500), repeat('a', 1200))::bson, true);
+ERROR:  The index path or expression is too long. Try a shorter path or reducing paths by 77 characters.
+-- however the name can be however long we want
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', FORMAT('{ "createIndexes" : "indexColl_1", "indexes" : [ { "key" : { "a_%s" : 1, "b_%s": 1 }, "name" : "a_b_%s_1" } ] }',
+    repeat('a', 1200), repeat('a', 1200), repeat('a', 9000))::bson, true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "10" }, "numIndexesAfter" : { "$numberInt" : "11" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- tests with blocking
+-- -- invalid values of blocking
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"a": 1}, "name": "a_1"}], "blocking": "hello" }', true);
+ERROR:  BSON field 'blocking' is the wrong type 'string', expected types '[bool, long, int, decimal, double']
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"b": 1}, "name": "b_1"}], "blocking": {"b":1} }', true);
+ERROR:  BSON field 'blocking' is the wrong type 'object', expected types '[bool, long, int, decimal, double']
+-- -- blocking of false (default value) will trigger create index concurrently.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"c": 1}, "name": "c_1"}] }', true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"d": 1}, "name": "d_1"}], "blocking": false }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"e": 1}, "name": "e_1"}], "blocking": 0.0 }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"f": 1}, "name": "f_1"}], "blocking": null }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- -- blocking of true will trigger create index non-concurrently.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"g": 1}, "name": "g_1"}], "blocking": true }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"h": 1}, "name": "h_1"}], "blocking": 1.0 }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- Collection is not created in the same call
+---- when blocking:true, we will let create index execute even if collection is not created in the call
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"i": 1}, "name": "i_1"}], "blocking": true }');
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "7" }, "numIndexesAfter" : { "$numberInt" : "8" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "blocking_index", "indexes": [{"key": {"j": 1}, "name": "j_1"}], "blocking": false }');
+ERROR:  Cannot create new indexes on existing collection db.blocking_index in a multi-document transaction.
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'blocking_index') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                      index_spec_as_bson                                       | index_is_valid 
+---------------------------------------------------------------------
+         11008 |    11057 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } | t
+         11008 |    11058 | { "v" : { "$numberInt" : "2" }, "key" : { "c" : { "$numberInt" : "1" } }, "name" : "c_1" }    | t
+         11008 |    11059 | { "v" : { "$numberInt" : "2" }, "key" : { "d" : { "$numberInt" : "1" } }, "name" : "d_1" }    | t
+         11008 |    11060 | { "v" : { "$numberInt" : "2" }, "key" : { "e" : { "$numberInt" : "1" } }, "name" : "e_1" }    | t
+         11008 |    11061 | { "v" : { "$numberInt" : "2" }, "key" : { "f" : { "$numberInt" : "1" } }, "name" : "f_1" }    | t
+         11008 |    11062 | { "v" : { "$numberInt" : "2" }, "key" : { "g" : { "$numberInt" : "1" } }, "name" : "g_1" }    | t
+         11008 |    11063 | { "v" : { "$numberInt" : "2" }, "key" : { "h" : { "$numberInt" : "1" } }, "name" : "h_1" }    | t
+         11008 |    11064 | { "v" : { "$numberInt" : "2" }, "key" : { "i" : { "$numberInt" : "1" } }, "name" : "i_1" }    | t
+(8 rows)
+

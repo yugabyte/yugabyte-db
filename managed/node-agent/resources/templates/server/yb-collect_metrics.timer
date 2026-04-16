@@ -1,0 +1,15 @@
+[Unit]
+Description=Yugabyte collect metrics
+
+[Timer]
+{% set use_system_level_systemd = use_system_level_systemd | default(false) %}
+{% if use_system_level_systemd == 'True' %}
+User={{ user_name }}
+Group={{ user_name }}
+{% endif %}
+Unit=yb-collect_metrics.service
+# Run every 1 minute
+OnCalendar=*:0/1:0
+
+[Install]
+WantedBy=timers.target

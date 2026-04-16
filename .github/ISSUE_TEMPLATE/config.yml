@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: YugabyteDB Managed
+    about: Create a YugabyteDB Managed issue.
+    url: https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431
+  - name: YugabyteDB Anywhere
+    about: Create a YugabyteDB Anywhere issue.
+    url: https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360001955891

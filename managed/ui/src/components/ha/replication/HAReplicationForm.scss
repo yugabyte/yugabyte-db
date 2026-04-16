@@ -1,0 +1,121 @@
+@use '../../../_style/colors';
+
+.ha-replication-form {
+  &__row {
+    margin-bottom: 25px;
+    position: relative;
+
+    &,
+    & > div {
+      display: flex;
+      align-items: top;
+    }
+
+    .yb-field-group {
+      padding: 0;
+    }
+
+    // tooltip
+    .yb-info-tip {
+      margin-left: 12px;
+      font-size: 1.2em; // copy rule from forms.scss
+    }
+
+    .btn-group-radio .btn {
+      font-weight: 400;
+    }
+
+    .standard-error {
+      position: absolute;
+      bottom: -20px;
+    }
+  }
+
+  &__action-bar {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  &__alert {
+    font-weight: 500;
+    opacity: 1;
+    transition: opacity 400ms;
+  }
+
+  &__label {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  &__input {
+    width: 500px;
+
+    &--frequency {
+      margin-right: 12px;
+    }
+  }
+
+  &__key-input {
+    display: inline-flex;
+    position: relative;
+
+    input {
+      padding-right: 62px;
+    }
+
+    .btn-copy,
+    .btn-paste {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+    }
+  }
+
+  &__generate-key-btn {
+    min-width: 125px;
+    margin-left: 12px;
+  }
+
+  .radio-label {
+    margin: 0;
+    line-height: unset;
+  }
+
+  &__certs {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  &__no-cert--add-button {
+    background: none;
+    border: none;
+    padding: 0;
+
+    color: colors.$YB_ORANGE;
+    &:hover {
+      color: colors.$YB_ORANGE_HOVER;
+      text-decoration: underline;
+    }
+    cursor: pointer;
+  }
+
+  &__cert-container {
+    display: flex;
+    &--identifier {
+      min-width: 750px;
+    }
+    &--ellipse {
+      min-width: 35px;
+    }
+  }
+
+  &__footer {
+    .btn {
+      min-width: 120px;
+      margin-left: 8px;
+    }
+
+    justify-content: flex-end;
+  }
+}

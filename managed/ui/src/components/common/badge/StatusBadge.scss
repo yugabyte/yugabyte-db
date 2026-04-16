@@ -1,0 +1,48 @@
+.status-badge {
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-family: 'Inter';
+  background: #e9eef2;
+  color: #4e5f6d;
+  font-style: normal;
+  font-weight: normal;
+  font-size: 12px;
+  line-height: 16px;
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  justify-content: space-between;
+  .badge-icon {
+    margin-left: 4px;
+    margin-right: 6px;
+  }
+
+  &.Completed,
+  &.Success {
+    background: #cdefe1;
+    color: #097245;
+  }
+
+  &.Failed,
+  &.FailedToDelete {
+    color: #da1515;
+    background: #fde2e2;
+  }
+
+  &.InProgress,
+  &.DeleteInProgress {
+    background: #cbdaff;
+    color: #1a44a5;
+  }
+
+  &.QueuedForDeletion,
+  &.Stopping {
+    background: #ffeec8;
+    color: #9d6c00;
+  }
+
+  &.Expired {
+    background: #e9eef2;
+    color: #4e5f6d;
+  }
+}

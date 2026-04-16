@@ -1,0 +1,6 @@
+# hypopg extension
+comment = 'Hypothetical indexes for PostgreSQL'
+default_version = '1.4.1'
+module_pathname = '$libdir/hypopg'
+relocatable = true
+

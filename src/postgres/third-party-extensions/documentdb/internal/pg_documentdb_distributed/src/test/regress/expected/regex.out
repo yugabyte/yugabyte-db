@@ -1,0 +1,524 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 335000;
+SET documentdb.next_collection_id TO 3350;
+SET documentdb.next_collection_index_id TO 3350;
+SELECT create_collection('db','regex');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 99, "sku": "abc123"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 100, "sku" : "abc123", "description" : "Single line description." }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 101, "sku" : "abc789", "description" : "single line\nSecond line" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 102, "sku" : "xyz456", "description" : "Many spaces before     line" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 103, "sku" : "xyz789", "description" : "Multiple\nline description" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 104, "sku" : "xyz790", "description" : "Multiple\n incline description" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 105, "sku" : "xyz800", "description" : "Multiple\n in\bcline \bdescription" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 106, "a" : "hello a\bcde world" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 107, "a" : {"$regularExpression" : {"pattern" : "a\bcde\b", "options" : ""}}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 108, "a" : {"$regularExpression" : {"pattern" : "hello", "options" : ""}} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 109, "sku" : "xyz810", "description" : "Multiple\n in\\ycline \bdescription"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 110, "a" : {"$regularExpression" : {"pattern" : "a\\ycde\\y", "options" : ""}}}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 111, "a" : "a value", "b": "b value"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 112, "a" : "v2", "b": "bv2"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 113, "a" : "v3", "b": "bv3"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 114, "a" : "v4", "b": "bv4"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 115, "a" : "v5", "b": "bv5"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 116, "a" : "v6", "b": "bv6"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 117, "a" : "a value7", "b": "b value7"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Some unicodes & mixed numerical
+SELECT insert_one('db','regex', '{"_id" : 120, "number" : "༢༣༤༥"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 121, "number" : "02191996"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 122, "number" : "9୩୪୬୯6"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Some unicode text
+SELECT insert_one('db','regex', '{"_id" : 130, "text" : "kyle"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 131, "text" : "박정수"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 132, "text" : "suárez"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document from collection('db', 'regex') where document @@ '{"sku": {"$regex": true} }';
+ERROR:  invalid input syntax JSON for BSON: Code: '2', Message 'Invalid read of boolean in state IN_BSON_TYPE'
+LINE 1: ... from collection('db', 'regex') where document @@ '{"sku": {...
+                                                             ^
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"sku": 1}, "name": "index_on_sku"}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"x": 1},   "name": "index_on_x"  }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"F1": 1},  "name": "index_on_F1"  }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"a": 1, "b": 1},  "name": "Compound_index_on_a_and_b"  }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- avoid plans that use the primary key index
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','regex');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document from collection('db', 'regex') where document @@ '{"sku": {"$regex": true} }';
+ERROR:  invalid input syntax JSON for BSON: Code: '2', Message 'Invalid read of boolean in state IN_BSON_TYPE'
+LINE 1: ... from collection('db', 'regex') where document @@ '{"sku": {...
+                                                             ^
+-- SELECT sku
+SELECT count(*) sku from collection('db', 'regex') where document @@ '{"sku": {"$regex": "", "$options": ""} }';
+ sku 
+---------------------------------------------------------------------
+   8
+(1 row)
+
+-- 100 to 103
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "\\bline\\b", "$options" : "" } }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "sku" : "abc123", "description" : "Single line description." }
+ { "_id" : { "$numberInt" : "101" }, "sku" : "abc789", "description" : "single line\nSecond line" }
+ { "_id" : { "$numberInt" : "102" }, "sku" : "xyz456", "description" : "Many spaces before     line" }
+ { "_id" : { "$numberInt" : "103" }, "sku" : "xyz789", "description" : "Multiple\nline description" }
+(4 rows)
+
+-- No records. Will try to match \\y (as a char) in the document
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "\\\\yline\\\\y", "$options" : "" } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- 109 Match \y as a char. For libbson \y is a special char. So to \y it needs to be escaped as \\y and for \\y, we need to provide as \\\\y
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "in\\\\ycline", "$options" : "" } }';
+                                                   document                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "109" }, "sku" : "xyz810", "description" : "Multiple\n in\\ycline \bdescription" }
+(1 row)
+
+-- 107 Match a where a's value was inserted as a Regular expression object. Here \b will not be used as a flag. This entire regular expression object (/a\bcde\b/) will be compared (as such) against the regular expression object that was inserted. This is like regex is compared with another regex.
+SELECT document from collection('db', 'regex') where document @@ '{"a" : { "$regularExpression" : { "pattern" : "a\bcde\b", "options" : "" } }}';
+                                                     document                                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$regularExpression" : { "pattern" : "a\bcde\b", "options" : "" } } }
+(1 row)
+
+-- 110 (Same as 107 match above.)
+--SELECT document from collection('db', 'regex') where document @@ '{"a" : { "$regularExpression" : { "pattern": "a\\ycde\\y", "options" : ""} } }';
+-- 100 and 101
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "le.*\\bline\\b", "$options" : "" } }';
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "sku" : "abc123", "description" : "Single line description." }
+ { "_id" : { "$numberInt" : "101" }, "sku" : "abc789", "description" : "single line\nSecond line" }
+(2 rows)
+
+-- 105 Matching \b as a normal char inside the string.
+SELECT document from collection('db', 'regex') where document @@ '{ "description": { "$regex": "in\bcline \bdescription", "$options" : "" } }';
+                                                   document                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "105" }, "sku" : "xyz800", "description" : "Multiple\n in\bcline \bdescription" }
+(1 row)
+
+-- 100
+SELECT document from collection('db', 'regex') where document @@ '{"description": {  "$options": "i",   "$regex": " line " } }';
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "sku" : "abc123", "description" : "Single line description." }
+(1 row)
+
+-- 100
+SELECT document from collection('db', 'regex') where document @@ '{"description": {"$regex": " line ","$options": "i"}}';
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "sku" : "abc123", "description" : "Single line description." }
+(1 row)
+
+-- 106 108
+SELECT document from collection('db', 'regex') where document @@ '{ "a" : { "$regularExpression" : { "pattern" : "hello", "options" : "" } } } ';
+                                                    document                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "106" }, "a" : "hello a\bcde world" }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$regularExpression" : { "pattern" : "hello", "options" : "" } } }
+(2 rows)
+
+-- 120
+SELECT document from collection('db', 'regex') where document @@ '{ "number" : { "$regularExpression" : { "pattern" : "༣", "options" : "" } } } ';
+                        document                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "120" }, "number" : "༢༣༤༥" }
+(1 row)
+
+-- 121 122 if ascii digits are present
+SELECT document from collection('db', 'regex') where document @@ '{ "number" : { "$regularExpression" : { "pattern" : "[[:digit:]]", "options" : "" } } } ';
+                          document                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "121" }, "number" : "02191996" }
+ { "_id" : { "$numberInt" : "122" }, "number" : "9୩୪୬୯6" }
+(2 rows)
+
+-- 131
+SELECT document from collection('db', 'regex') where document @@ '{ "text" : { "$regularExpression" : { "pattern" : "(*UTF)정", "options" : "" } } } ';
+                        document                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "131" }, "text" : "박정수" }
+(1 row)
+
+-- 131
+SELECT document from collection('db', 'regex') where document @@ '{ "text" : { "$regularExpression" : { "pattern" : "\\p{Hangul}", "options" : "" } } } ';
+                        document                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "131" }, "text" : "박정수" }
+(1 row)
+
+-- 130 131 132
+SELECT document from collection('db', 'regex') where document @@ '{ "text" : { "$regularExpression" : { "pattern" : "^\\p{Xan}+$", "options" : "" } } } ';
+                        document                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "130" }, "text" : "kyle" }
+ { "_id" : { "$numberInt" : "131" }, "text" : "박정수" }
+ { "_id" : { "$numberInt" : "132" }, "text" : "suárez" }
+(3 rows)
+
+-- 130 132
+SELECT document from collection('db', 'regex') where document @@ '{ "text" : { "$regularExpression" : { "pattern" : "^\\p{Latin}", "options" : "" } } } ';
+                        document                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "130" }, "text" : "kyle" }
+ { "_id" : { "$numberInt" : "132" }, "text" : "suárez" }
+(2 rows)
+
+ 
+-- 111 117   Multiple regex in a single query. Ensuring multiple regexes, in the same query, are cached as separate entry in the cache.
+SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                 document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "111" }, "a" : "a value", "b" : "b value" }
+ { "_id" : { "$numberInt" : "117" }, "a" : "a value7", "b" : "b value7" }
+(2 rows)
+
+BEGIN;
+/* Make use of Index */
+SET LOCAL enable_seqscan to OFF;
+SET LOCAL documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
+-- 111 117   Multiple regex in a single query. Ensuring multiple regexes, in the same query, are cached as separate entry in the cache
+SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                 document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "111" }, "a" : "a value", "b" : "b value" }
+ { "_id" : { "$numberInt" : "117" }, "a" : "a value7", "b" : "b value7" }
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                                                                                                                                        QUERY PLAN                                                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using "Compound_index_on_a_and_b" on documents_3350_335000 collection
+               Index Cond: ((document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::documentdb_core.bson))
+(7 rows)
+
+ROLLBACK;
+-- shard the collection by "_id"
+select documentdb_api.shard_collection('db', 'regex', '{"_id": "hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+SET LOCAL enable_seqscan to OFF;
+SET LOCAL documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
+-- 111 117   Multiple regex in a single query on sharded collection. Index Path. Ensuring multiple regexes, in the same query, are cached as separate entry in the cache
+SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                 document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "111" }, "a" : "a value", "b" : "b value" }
+ { "_id" : { "$numberInt" : "117" }, "a" : "a value7", "b" : "b value7" }
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                                                                                                                                        QUERY PLAN                                                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using "Compound_index_on_a_and_b" on documents_3350_335016 documents_3350
+               Index Cond: ((document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::documentdb_core.bson))
+(7 rows)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL enable_seqscan to ON;
+-- 111 117   Multiple regex in a single query on sharded collection. Seq Scan Path. Ensuring multiple regexes, in the same query, are cached as separate entry in the cache
+SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                 document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "111" }, "a" : "a value", "b" : "b value" }
+ { "_id" : { "$numberInt" : "117" }, "a" : "a value7", "b" : "b value7" }
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                                                                                                                                      QUERY PLAN                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_3350_335016 documents_3350
+               Filter: ((document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::documentdb_core.bson))
+(7 rows)
+
+ROLLBACK;
+SELECT drop_collection('db','regex') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT create_collection('db','regex');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "regex", "indexes": [{"key": {"a": 1}, "name": "index_on_a"}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- shard the collection by "a"
+select documentdb_api.shard_collection('db', 'regex', '{"a": "hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 106, "a" : "hello a\bcde world" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 108, "a" : {"$regularExpression" : {"pattern" : "hello", "options" : ""}} }');
+                                                                                                     insert_one                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain a regex." } ] }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 111, "a" : "a value", "b": "b value"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 116, "a" : "v6", "b": "bv6"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex', '{"_id" : 117, "a" : "a value7", "b": "b value7"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+BEGIN;
+SET LOCAL enable_seqscan to OFF;
+-- 111 117   Multiple regex in a single query on sharded collection, where query is on the shard id column. Index Path
+SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                 document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "117" }, "a" : "a value7", "b" : "b value7" }
+ { "_id" : { "$numberInt" : "111" }, "a" : "a value", "b" : "b value" }
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                                                                  QUERY PLAN                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_3351_335040 documents_3351
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson)
+               Filter: (document OPERATOR(documentdb_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on index_on_a
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson)
+(10 rows)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL enable_seqscan to ON;
+SET LOCAL documentdb.ForceUseIndexIfAvailable to OFF;
+-- 111 117   Multiple regex in a single query on sharded collection, where query is on the shard id column. Seq Scan Path
+SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                 document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "117" }, "a" : "a value7", "b" : "b value7" }
+ { "_id" : { "$numberInt" : "111" }, "a" : "a value", "b" : "b value" }
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT document from collection('db', 'regex') where document @@ '{ "a": {"$regex": "a.vaLue", "$options": "i"}, "b": {"$regex": "b va.ue", "$options": ""}}';
+                                                                                                                                                      QUERY PLAN                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_3351_335040 documents_3351
+               Filter: ((document OPERATOR(documentdb_api_catalog.@~) '{ "a" : { "$regularExpression" : { "pattern" : "a.vaLue", "options" : "i" } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@~) '{ "b" : { "$regularExpression" : { "pattern" : "b va.ue", "options" : "" } } }'::documentdb_core.bson))
+(7 rows)
+
+ROLLBACK;
+SELECT drop_collection('db','regex') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+

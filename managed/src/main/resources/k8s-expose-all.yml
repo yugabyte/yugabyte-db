@@ -1,0 +1,22 @@
+serviceEndpoints:
+  - name: "yb-master-service"
+    type: "LoadBalancer"
+    app: "yb-master"
+    ports:
+      ui: "7000"
+
+  - name: "yb-tserver-service"
+    type: "LoadBalancer"
+    app: "yb-tserver"
+    ports:
+      ycql-port: "9042"
+      yedis-port: "6379"
+      ysql-port: "5433"
+
+storage:
+  master:
+    count: 1
+    size: 50Gi
+  tserver:
+    count: 2
+    size: 100Gi

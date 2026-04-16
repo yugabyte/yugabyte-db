@@ -1,0 +1,536 @@
+-- tests specific to pushing down to the right index the $sort
+-- at the moment $sort is not pushed down to index unless it is a $sort on the _id field
+-- on an unsharded collection or we have a shard key filter and all the filters can be pushed to the _id index.
+-- once we support sort pushdown to the index we need to revisit the strategy to push down sort on _id.
+SET search_path TO documentdb_api,documentdb_api_internal,documentdb_api_catalog,documentdb_core;
+SET citus.next_shard_id TO 9640000;
+SET documentdb.next_collection_id TO 964000;
+SET documentdb.next_collection_index_id TO 964000;
+DO $$
+DECLARE i int;
+DECLARE a int;
+DECLARE modres int;
+BEGIN
+FOR i IN 1..10000 LOOP
+    SELECT MOD(i, 3) into modres;
+    CASE
+        WHEN modres = 0 THEN
+            a:=12;
+        WHEN modres = 1 THEN
+            a:=14;
+        ELSE
+            a:=22;
+    END CASE;
+    PERFORM documentdb_api.insert_one('sort_pushdown', 'coll', FORMAT('{ "_id": %s, "a": %s}',  i, a)::documentdb_core.bson);
+END LOOP;
+END;
+$$;
+NOTICE:  creating collection
+SELECT 1 FROM documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT count(*) from documentdb_api.collection('sort_pushdown', 'coll');
+ count 
+---------------------------------------------------------------------
+ 10000
+(1 row)
+
+-- force the analyzer to kick in to have real statistics after we did the insertion.
+ANALYZE documentdb_data.documents_964001;
+-- sort by id with no filters uses the _id_ index and returns the right results
+SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": 1}, "limit": 20 }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "15" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "16" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "17" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "18" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "19" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "20" }, "a" : { "$numberInt" : "22" } }
+(20 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": 1} }');
+                                        QUERY PLAN                                        
+---------------------------------------------------------------------
+ Index Scan using _id_ on documents_964001_9640002 collection (actual rows=10000 loops=1)
+   Index Cond: (shard_key_value = '964001'::bigint)
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": -1}, "limit": 20 }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10000" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9999" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9998" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9997" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9996" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9995" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9994" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9993" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9992" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9991" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9990" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9989" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9988" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9987" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9986" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9985" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9984" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9983" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9982" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9981" }, "a" : { "$numberInt" : "12" } }
+(20 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": -1} }');
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------
+ Index Scan Backward using _id_ on documents_964001_9640002 collection (actual rows=10000 loops=1)
+   Index Cond: (shard_key_value = '964001'::bigint)
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                             get_feature_counter_pretty                                              
+---------------------------------------------------------------------
+ {"Feature_usage":[{"limit" : 2}, {"match" : 4}, {"sort" : 4}, {"sort_by_id" : 4}, {"sort_by_id_pushdownable" : 4}]}
+(1 row)
+
+-- filter on _id_
+SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 5}}, "sort": {"_id": 1}, "limit":20 }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "15" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "16" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "17" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "18" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "19" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "20" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "21" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "22" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "23" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "24" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "25" }, "a" : { "$numberInt" : "14" } }
+(20 rows)
+
+SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 5}}, "sort": {"_id": -1}, "limit":20 }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10000" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9999" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9998" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9997" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9996" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9995" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9994" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9993" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9992" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9991" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9990" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9989" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9988" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9987" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9986" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9985" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9984" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "9983" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "9982" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "9981" }, "a" : { "$numberInt" : "12" } }
+(20 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 5}}, "sort": {"_id": 1} }');
+                                                         QUERY PLAN                                                         
+---------------------------------------------------------------------
+ Sort (actual rows=9995 loops=1)
+   Sort Key: object_id
+   Sort Method: quicksort  Memory: 1243kB
+   ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9995 loops=1)
+         Recheck Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
+         Filter: (document @> '{ "_id" : { "$numberInt" : "5" } }'::bson)
+         Heap Blocks: exact=104
+         ->  Bitmap Index Scan on _id_ (actual rows=9995 loops=1)
+               Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 5}}, "sort": {"_id": -1} }');
+                                                         QUERY PLAN                                                         
+---------------------------------------------------------------------
+ Sort (actual rows=9995 loops=1)
+   Sort Key: object_id DESC
+   Sort Method: quicksort  Memory: 1243kB
+   ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9995 loops=1)
+         Recheck Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
+         Filter: (document @> '{ "_id" : { "$numberInt" : "5" } }'::bson)
+         Heap Blocks: exact=104
+         ->  Bitmap Index Scan on _id_ (actual rows=9995 loops=1)
+               Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
+(9 rows)
+
+-- filter on a with no index
+SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 22}}, "sort": {"_id": 1}, "limit": 20 }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "17" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "20" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "23" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "26" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "29" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "32" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "35" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "38" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "41" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "44" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "47" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "50" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "53" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "56" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "59" }, "a" : { "$numberInt" : "22" } }
+(20 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 22}}, "sort": {"_id": 1}, "limit": 20 }');
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------
+ Limit (actual rows=20 loops=1)
+   ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
+         Index Cond: (shard_key_value = '964001'::bigint)
+         Filter: (document @= '{ "a" : { "$numberInt" : "22" } }'::bson)
+         Rows Removed by Filter: 39
+(5 rows)
+
+-- create compound index on a and _id and filter on a and on _id
+SELECT documentdb_api_internal.create_indexes_non_concurrently('sort_pushdown', '{ "createIndexes": "coll", "indexes": [ { "key": { "a": 1, "_id": 1 }, "name": "a_id" }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+ANALYZE documentdb_data.documents_964001;
+SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "16" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "19" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "22" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "25" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "28" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "31" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "34" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "37" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "40" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "43" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "46" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "49" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "52" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "55" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "58" }, "a" : { "$numberInt" : "14" } }
+(20 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------
+ Limit (actual rows=20 loops=1)
+   ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
+         Index Cond: (shard_key_value = '964001'::bigint)
+         Filter: (document @= '{ "a" : { "$numberInt" : "14" } }'::bson)
+         Rows Removed by Filter: 38
+(5 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$in": [12, 14]}}, "sort": {"_id": 1}, "limit": 20 }');
+                                              QUERY PLAN                                               
+---------------------------------------------------------------------
+ Limit (actual rows=20 loops=1)
+   ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
+         Index Cond: (shard_key_value = '964001'::bigint)
+         Filter: (document @*= '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::bson)
+         Rows Removed by Filter: 10
+(5 rows)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                             get_feature_counter_pretty                                              
+---------------------------------------------------------------------
+ {"Feature_usage":[{"limit" : 7}, {"match" : 9}, {"sort" : 9}, {"sort_by_id" : 9}, {"sort_by_id_pushdownable" : 9}]}
+(1 row)
+
+BEGIN;
+SET LOCAL documentdb.enableSortbyIdPushDownToPrimaryKey = 'false';
+---- should not use  Index Scan using _id_ 
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
+                                                                      QUERY PLAN                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 420 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 420 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit (actual rows=20 loops=1)
+               ->  Sort (actual rows=20 loops=1)
+                     Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                     Sort Method: top-N heapsort  Memory: 26kB
+                     ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=3334 loops=1)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+                           Heap Blocks: exact=104
+                           ->  Bitmap Index Scan on a_id (actual rows=3334 loops=1)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+(16 rows)
+
+---- should not use  Index Scan using _id_ with $in
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$in": [12, 14]}}, "sort": {"_id": 1}, "limit": 20 }');
+                                                                                     QUERY PLAN                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 420 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 420 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit (actual rows=20 loops=1)
+               ->  Sort (actual rows=20 loops=1)
+                     Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                     Sort Method: top-N heapsort  Memory: 26kB
+                     ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=6667 loops=1)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::documentdb_core.bson)
+                           Heap Blocks: exact=104
+                           ->  Bitmap Index Scan on a_id (actual rows=6667 loops=1)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::documentdb_core.bson)
+(16 rows)
+
+SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
+                                             get_feature_counter_pretty                                              
+---------------------------------------------------------------------
+ {"Feature_usage":[{"limit" : 2}, {"match" : 2}, {"sort" : 2}, {"sort_by_id" : 2}, {"sort_by_id_pushdownable" : 2}]}
+(1 row)
+
+END;
+SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 100}}, "sort": {"_id": 1}, "limit": 20 }');
+                              document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "102" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "103" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "104" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "105" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "106" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "111" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "112" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "113" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "114" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "115" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "116" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "117" }, "a" : { "$numberInt" : "12" } }
+ { "_id" : { "$numberInt" : "118" }, "a" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "119" }, "a" : { "$numberInt" : "22" } }
+ { "_id" : { "$numberInt" : "120" }, "a" : { "$numberInt" : "12" } }
+(20 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 100}}, "sort": {"_id": 1}, "limit": 20 }');
+                                                                                          QUERY PLAN                                                                                           
+---------------------------------------------------------------------
+ Limit (actual rows=20 loops=1)
+   ->  Sort (actual rows=20 loops=1)
+         Sort Key: object_id
+         Sort Method: top-N heapsort  Memory: 26kB
+         ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9900 loops=1)
+               Recheck Cond: ((document @> '{ "_id" : { "$numberInt" : "100" } }'::bson) AND (shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "100" } }'::bson))
+               Heap Blocks: exact=103
+               ->  BitmapAnd (actual rows=0 loops=1)
+                     ->  Bitmap Index Scan on a_id (actual rows=9900 loops=1)
+                           Index Cond: (document @> '{ "_id" : { "$numberInt" : "100" } }'::bson)
+                     ->  Bitmap Index Scan on _id_ (actual rows=9900 loops=1)
+                           Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "100" } }'::bson))
+(12 rows)
+
+-- no filter should still prefer the _id index
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": 1}, "limit": 20 }');
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------
+ Limit (actual rows=20 loops=1)
+   ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
+         Index Cond: (shard_key_value = '964001'::bigint)
+(3 rows)
+
+-- shard the collection on a, should sort on object_id only when there is a shard filter.
+SELECT documentdb_api.shard_collection('{ "shardCollection": "sort_pushdown.coll", "key": { "a": "hashed" }, "numInitialChunks": 2 }');
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SET citus.explain_all_tasks to on;
+SET citus.max_adaptive_executor_pool_size to 1;
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
+                                                                                                QUERY PLAN                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 420 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 420 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit (actual rows=20 loops=1)
+               ->  Sort (actual rows=20 loops=1)
+                     Sort Key: object_id
+                     Sort Method: top-N heapsort  Memory: 26kB
+                     ->  Bitmap Heap Scan on documents_964001_9640004 collection (actual rows=3334 loops=1)
+                           Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson) AND (shard_key_value = '3904677705083871083'::bigint))
+                           Heap Blocks: exact=104
+                           ->  BitmapAnd (actual rows=0 loops=1)
+                                 ->  Bitmap Index Scan on a_id (actual rows=3334 loops=1)
+                                       Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+                                 ->  Bitmap Index Scan on _id_ (actual rows=3334 loops=1)
+                                       Index Cond: (shard_key_value = '3904677705083871083'::bigint)
+(19 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$gt": 14}}, "sort": {"_id": 1}, "limit": 20 }');
+                                                                            QUERY PLAN                                                                             
+---------------------------------------------------------------------
+ Limit (actual rows=20 loops=1)
+   ->  Sort (actual rows=20 loops=1)
+         Sort Key: remote_scan."?sort?" NULLS FIRST
+         Sort Method: quicksort  Memory: 26kB
+         ->  Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+               Task Count: 2
+               Tuple data received from nodes: 700 bytes
+               Tasks Shown: All
+               ->  Task
+                     Tuple data received from node: 700 bytes
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Limit (actual rows=20 loops=1)
+                           ->  Sort (actual rows=20 loops=1)
+                                 Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                                 Sort Method: top-N heapsort  Memory: 26kB
+                                 ->  Bitmap Heap Scan on documents_964001_9640004 collection (actual rows=3333 loops=1)
+                                       Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+                                       Heap Blocks: exact=104
+                                       ->  Bitmap Index Scan on a_id (actual rows=3333 loops=1)
+                                             Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+               ->  Task
+                     Tuple data received from node: 0 bytes
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Limit (actual rows=0 loops=1)
+                           ->  Sort (actual rows=0 loops=1)
+                                 Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                                 Sort Method: quicksort  Memory: 25kB
+                                 ->  Bitmap Heap Scan on documents_964001_9640005 collection (actual rows=0 loops=1)
+                                       Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+                                       ->  Bitmap Index Scan on a_id (actual rows=0 loops=1)
+                                             Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+(31 rows)
+
+-- no filter on sharded collection should not sort on object_id
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": 1}, "limit": 20 }');
+                                                                            QUERY PLAN                                                                             
+---------------------------------------------------------------------
+ Limit (actual rows=20 loops=1)
+   ->  Sort (actual rows=20 loops=1)
+         Sort Key: remote_scan."?sort?" NULLS FIRST
+         Sort Method: quicksort  Memory: 26kB
+         ->  Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+               Task Count: 2
+               Tuple data received from nodes: 700 bytes
+               Tasks Shown: All
+               ->  Task
+                     Tuple data received from node: 700 bytes
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Limit (actual rows=20 loops=1)
+                           ->  Sort (actual rows=20 loops=1)
+                                 Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                                 Sort Method: top-N heapsort  Memory: 26kB
+                                 ->  Seq Scan on documents_964001_9640004 collection (actual rows=10000 loops=1)
+               ->  Task
+                     Tuple data received from node: 0 bytes
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Limit (actual rows=0 loops=1)
+                           ->  Sort (actual rows=0 loops=1)
+                                 Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                                 Sort Method: quicksort  Memory: 25kB
+                                 ->  Seq Scan on documents_964001_9640005 collection (actual rows=0 loops=1)
+(24 rows)
+
+-- drop compound index, should use the _id index
+CALL documentdb_api.drop_indexes('sort_pushdown', '{ "dropIndexes": "coll", "index": "a_id"}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+ANALYZE documentdb_data.documents_964001;
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
+                                                              QUERY PLAN                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 420 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 420 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit (actual rows=20 loops=1)
+               ->  Index Scan using _id_ on documents_964001_9640004 collection (actual rows=20 loops=1)
+                     Index Cond: (shard_key_value = '3904677705083871083'::bigint)
+                     Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
+(11 rows)
+
+-- or should push down to the shards and use object_id
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"$or": [{"a": {"$eq": 14}}, {"a": {"$eq": 22}}]}, "sort": {"_id": 1}, "limit": 20 }');
+                                                                                                                                        QUERY PLAN                                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=20 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 420 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 420 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit (actual rows=20 loops=1)
+               ->  Sort (actual rows=20 loops=1)
+                     Sort Key: object_id
+                     Sort Method: top-N heapsort  Memory: 26kB
+                     ->  Seq Scan on documents_964001_9640004 collection (actual rows=6667 loops=1)
+                           Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "14" }, { "$numberInt" : "22" } ] }'::documentdb_core.bson) AND ((shard_key_value = '3904677705083871083'::bigint) OR (shard_key_value = '-8641956760761651950'::bigint)))
+                           Rows Removed by Filter: 3333
+(14 rows)
+
+RESET citus.explain_all_tasks;
+RESET citus.max_adaptive_executor_pool_size;

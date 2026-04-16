@@ -1,0 +1,31 @@
+######################################################################
+#
+# src/tools/perlcheck/perlcriticrc
+#
+# config  file for perlcritic for Postgres project
+#
+#####################################################################
+
+severity = 5
+
+theme = core
+
+# print the policy name as well as the normal output
+verbose = %f: %m at line %l, column %c.  %e.  ([%p] Severity: %s)\n
+
+# Note: for policy descriptions see https://metacpan.org/release/Perl-Critic
+
+
+# allow octal constants with leading zeros
+[-ValuesAndExpressions::ProhibitLeadingZeros]
+
+# insist on use of the warnings pragma
+[TestingAndDebugging::RequireUseWarnings]
+severity = 5
+
+# forbid grep and map in void context
+[BuiltinFunctions::ProhibitVoidGrep]
+severity = 5
+
+[BuiltinFunctions::ProhibitVoidMap]
+severity = 5

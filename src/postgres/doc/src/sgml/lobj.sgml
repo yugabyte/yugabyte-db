@@ -1,0 +1,996 @@
+<!-- doc/src/sgml/lobj.sgml -->
+
+ <chapter id="largeobjects">
+  <title>Large Objects</title>
+
+  <indexterm zone="largeobjects"><primary>large object</primary></indexterm>
+  <indexterm><primary>BLOB</primary><see>large object</see></indexterm>
+
+   <para>
+    <productname>PostgreSQL</productname> has a <firstterm>large object</firstterm>
+    facility, which provides stream-style access to user data that is stored
+    in a special large-object structure.  Streaming access is useful
+    when working with data values that are too large to manipulate
+    conveniently as a whole.
+   </para>
+
+   <para>
+    This chapter describes the implementation and the programming and
+    query language interfaces to <productname>PostgreSQL</productname>
+    large object data.  We use the <application>libpq</application> C
+    library for the examples in this chapter, but most programming
+    interfaces native to <productname>PostgreSQL</productname> support
+    equivalent functionality.  Other interfaces might use the large
+    object interface internally to provide generic support for large
+    values.  This is not described here.
+   </para>
+
+  <sect1 id="lo-intro">
+   <title>Introduction</title>
+
+   <indexterm>
+    <primary>TOAST</primary>
+    <secondary>versus large objects</secondary>
+   </indexterm>
+
+   <para>
+    All large objects are stored in a single system table named <link
+    linkend="catalog-pg-largeobject"><structname>pg_largeobject</structname></link>.
+    Each large object also has an entry in the system table <link
+    linkend="catalog-pg-largeobject-metadata"><structname>pg_largeobject_metadata</structname></link>.
+    Large objects can be created, modified, and deleted using a read/write API
+    that is similar to standard operations on files.
+   </para>
+
+   <para>
+    <productname>PostgreSQL</productname> also supports a storage system called
+    <link
+    linkend="storage-toast"><quote><acronym>TOAST</acronym></quote></link>,
+    which automatically stores values
+    larger than a single database page into a secondary storage area per table.
+    This makes the large object facility partially obsolete.  One
+    remaining advantage of the large object facility is that it allows values
+    up to 4 TB in size, whereas <acronym>TOAST</acronym>ed fields can be at
+    most 1 GB.  Also, reading and updating portions of a large object can be
+    done efficiently, while most operations on a <acronym>TOAST</acronym>ed
+    field will read or write the whole value as a unit.
+   </para>
+
+  </sect1>
+
+  <sect1 id="lo-implementation">
+   <title>Implementation Features</title>
+
+   <para>
+    The large object implementation breaks large
+    objects up into <quote>chunks</quote> and stores the chunks in
+    rows in the database.  A B-tree index guarantees fast
+    searches for the correct chunk number when doing random
+    access reads and writes.
+   </para>
+
+   <para>
+    The chunks stored for a large object do not have to be contiguous.
+    For example, if an application opens a new large object, seeks to offset
+    1000000, and writes a few bytes there, this does not result in allocation
+    of 1000000 bytes worth of storage; only of chunks covering the range of
+    data bytes actually written.  A read operation will, however, read out
+    zeroes for any unallocated locations preceding the last existing chunk.
+    This corresponds to the common behavior of <quote>sparsely allocated</quote>
+    files in <acronym>Unix</acronym> file systems.
+   </para>
+
+   <para>
+    As of <productname>PostgreSQL</productname> 9.0, large objects have an owner
+    and a set of access permissions, which can be managed using
+    <xref linkend="sql-grant"/> and
+    <xref linkend="sql-revoke"/>.
+    <literal>SELECT</literal> privileges are required to read a large
+    object, and
+    <literal>UPDATE</literal> privileges are required to write or
+    truncate it.
+    Only the large object's owner (or a database superuser) can delete,
+    comment on, or change the owner of a large object.
+    To adjust this behavior for compatibility with prior releases, see the
+    <xref linkend="guc-lo-compat-privileges"/> run-time parameter.
+   </para>
+  </sect1>
+
+  <sect1 id="lo-interfaces">
+   <title>Client Interfaces</title>
+
+   <para>
+    This section describes the facilities that
+    <productname>PostgreSQL</productname>'s <application>libpq</application>
+    client interface library provides for accessing large objects.
+    The <productname>PostgreSQL</productname> large object interface is
+    modeled after the <acronym>Unix</acronym> file-system interface, with
+    analogues of <function>open</function>,  <function>read</function>,
+    <function>write</function>,
+    <function>lseek</function>, etc.
+   </para>
+
+   <para>
+    All large object manipulation using these functions
+    <emphasis>must</emphasis> take place within an SQL transaction block,
+    since large object file descriptors are only valid for the duration of
+    a transaction.
+   </para>
+
+   <para>
+    If an error occurs while executing any one of these functions, the
+    function will return an otherwise-impossible value, typically 0 or -1.
+    A message describing the error is stored in the connection object and
+    can be retrieved with <xref linkend="libpq-PQerrorMessage"/>.
+   </para>
+
+   <para>
+    Client applications that use these functions should include the header file
+    <filename>libpq/libpq-fs.h</filename> and link with the
+    <application>libpq</application> library.
+   </para>
+
+   <para>
+    Client applications cannot use these functions while a libpq connection is in pipeline mode.
+   </para>
+
+   <sect2 id="lo-create">
+    <title>Creating a Large Object</title>
+
+    <para>
+     <indexterm><primary>lo_create</primary></indexterm>
+     The function
+<synopsis>
+Oid lo_create(PGconn *conn, Oid lobjId);
+</synopsis>
+     creates a new large object.  The OID to be assigned can be
+     specified by <replaceable class="parameter">lobjId</replaceable>;
+     if so, failure occurs if that OID is already in use for some large
+     object.  If <replaceable class="parameter">lobjId</replaceable>
+     is <symbol>InvalidOid</symbol> (zero) then <function>lo_create</function>
+     assigns an unused OID.
+     The return value is the OID that was assigned to the new large object,
+     or <symbol>InvalidOid</symbol> (zero) on failure.
+    </para>
+
+    <para>
+     An example:
+<programlisting>
+inv_oid = lo_create(conn, desired_oid);
+</programlisting>
+    </para>
+
+    <para>
+     <indexterm><primary>lo_creat</primary></indexterm>
+     The older function
+<synopsis>
+Oid lo_creat(PGconn *conn, int mode);
+</synopsis>
+     also creates a new large object, always assigning an unused OID.
+     The return value is the OID that was assigned to the new large object,
+     or <symbol>InvalidOid</symbol> (zero) on failure.
+    </para>
+
+    <para>
+     In <productname>PostgreSQL</productname> releases 8.1 and later,
+     the <replaceable class="parameter">mode</replaceable> is ignored,
+     so that <function>lo_creat</function> is exactly equivalent to
+     <function>lo_create</function> with a zero second argument.
+     However, there is little reason to use <function>lo_creat</function>
+     unless you need to work with servers older than 8.1.
+     To work with such an old server, you must
+     use <function>lo_creat</function> not <function>lo_create</function>,
+     and you must set <replaceable class="parameter">mode</replaceable> to
+     one of <symbol>INV_READ</symbol>, <symbol>INV_WRITE</symbol>,
+     or <symbol>INV_READ</symbol> <literal>|</literal> <symbol>INV_WRITE</symbol>.
+     (These symbolic constants are defined
+     in the header file <filename>libpq/libpq-fs.h</filename>.)
+    </para>
+
+    <para>
+     An example:
+<programlisting>
+inv_oid = lo_creat(conn, INV_READ|INV_WRITE);
+</programlisting>
+    </para>
+   </sect2>
+
+   <sect2 id="lo-import">
+    <title>Importing a Large Object</title>
+
+    <para>
+     <indexterm><primary>lo_import</primary></indexterm>
+     To import an operating system file as a large object, call
+<synopsis>
+Oid lo_import(PGconn *conn, const char *filename);
+</synopsis>
+     <replaceable class="parameter">filename</replaceable>
+     specifies the operating system name of
+     the file to be imported as a large object.
+     The return value is the OID that was assigned to the new large object,
+     or <symbol>InvalidOid</symbol> (zero) on failure.
+     Note that the file is read by the client interface library, not by
+     the server; so it must exist in the client file system and be readable
+     by the client application.
+    </para>
+
+    <para>
+     <indexterm><primary>lo_import_with_oid</primary></indexterm>
+     The function
+<synopsis>
+Oid lo_import_with_oid(PGconn *conn, const char *filename, Oid lobjId);
+</synopsis>
+     also imports a new large object.  The OID to be assigned can be
+     specified by <replaceable class="parameter">lobjId</replaceable>;
+     if so, failure occurs if that OID is already in use for some large
+     object.  If <replaceable class="parameter">lobjId</replaceable>
+     is <symbol>InvalidOid</symbol> (zero) then <function>lo_import_with_oid</function> assigns an unused
+     OID (this is the same behavior as <function>lo_import</function>).
+     The return value is the OID that was assigned to the new large object,
+     or <symbol>InvalidOid</symbol> (zero) on failure.
+    </para>
+
+    <para>
+     <function>lo_import_with_oid</function> is new as of <productname>PostgreSQL</productname>
+     8.4 and uses <function>lo_create</function> internally which is new in 8.1; if this function is run against 8.0 or before, it will
+     fail and return <symbol>InvalidOid</symbol>.
+    </para>
+   </sect2>
+
+   <sect2 id="lo-export">
+    <title>Exporting a Large Object</title>
+
+    <para>
+     <indexterm><primary>lo_export</primary></indexterm>
+     To export a large object
+     into an operating system file, call
+<synopsis>
+int lo_export(PGconn *conn, Oid lobjId, const char *filename);
+</synopsis>
+     The <parameter>lobjId</parameter> argument specifies the OID of the large
+     object to export and the <parameter>filename</parameter> argument
+     specifies the operating system name of the file.  Note that the file is
+     written by the client interface library, not by the server.  Returns 1
+     on success, -1 on failure.
+    </para>
+   </sect2>
+
+   <sect2 id="lo-open">
+    <title>Opening an Existing Large Object</title>
+
+    <para>
+     <indexterm><primary>lo_open</primary></indexterm>
+     To open an existing large object for reading or writing, call
+<synopsis>
+int lo_open(PGconn *conn, Oid lobjId, int mode);
+</synopsis>
+     The <parameter>lobjId</parameter> argument specifies the OID of the large
+     object to open.   The <parameter>mode</parameter> bits control whether the
+     object is opened for reading (<symbol>INV_READ</symbol>), writing
+     (<symbol>INV_WRITE</symbol>), or both.
+     (These symbolic constants are defined
+     in the header file <filename>libpq/libpq-fs.h</filename>.)
+     <function>lo_open</function> returns a (non-negative) large object
+     descriptor for later use in <function>lo_read</function>,
+     <function>lo_write</function>, <function>lo_lseek</function>,
+     <function>lo_lseek64</function>, <function>lo_tell</function>,
+     <function>lo_tell64</function>, <function>lo_truncate</function>,
+     <function>lo_truncate64</function>, and <function>lo_close</function>.
+     The descriptor is only valid for
+     the duration of the current transaction.
+     On failure, -1 is returned.
+    </para>
+
+    <para>
+     The server currently does not distinguish between modes
+     <symbol>INV_WRITE</symbol> and <symbol>INV_READ</symbol> <literal>|</literal>
+     <symbol>INV_WRITE</symbol>: you are allowed to read from the descriptor
+     in either case.  However there is a significant difference between
+     these modes and <symbol>INV_READ</symbol> alone: with <symbol>INV_READ</symbol>
+     you cannot write on the descriptor, and the data read from it will
+     reflect the contents of the large object at the time of the transaction
+     snapshot that was active when <function>lo_open</function> was executed,
+     regardless of later writes by this or other transactions.  Reading
+     from a descriptor opened with <symbol>INV_WRITE</symbol> returns
+     data that reflects all writes of other committed transactions as well
+     as writes of the current transaction.  This is similar to the behavior
+     of <literal>REPEATABLE READ</literal> versus <literal>READ COMMITTED</literal> transaction
+     modes for ordinary SQL <command>SELECT</command> commands.
+    </para>
+
+    <para>
+     <function>lo_open</function> will fail if <literal>SELECT</literal>
+     privilege is not available for the large object, or
+     if <symbol>INV_WRITE</symbol> is specified and <literal>UPDATE</literal>
+     privilege is not available.
+     (Prior to <productname>PostgreSQL</productname> 11, these privilege
+     checks were instead performed at the first actual read or write call
+     using the descriptor.)
+     These privilege checks can be disabled with the
+     <xref linkend="guc-lo-compat-privileges"/> run-time parameter.
+    </para>
+
+    <para>
+     An example:
+<programlisting>
+inv_fd = lo_open(conn, inv_oid, INV_READ|INV_WRITE);
+</programlisting>
+    </para>
+</sect2>
+
+<sect2 id="lo-write">
+<title>Writing Data to a Large Object</title>
+
+<para>
+     <indexterm><primary>lo_write</primary></indexterm>
+     The function
+<synopsis>
+int lo_write(PGconn *conn, int fd, const char *buf, size_t len);
+</synopsis>
+     writes <parameter>len</parameter> bytes from <parameter>buf</parameter>
+     (which must be of size <parameter>len</parameter>) to large object
+     descriptor <parameter>fd</parameter>.  The <parameter>fd</parameter> argument must
+     have been returned by a previous <function>lo_open</function>.  The
+     number of bytes actually written is returned (in the current
+     implementation, this will always equal <parameter>len</parameter> unless
+     there is an error).  In the event of an error, the return value is -1.
+</para>
+
+<para>
+     Although the <parameter>len</parameter> parameter is declared as
+     <type>size_t</type>, this function will reject length values larger than
+     <literal>INT_MAX</literal>.  In practice, it's best to transfer data in chunks
+     of at most a few megabytes anyway.
+</para>
+</sect2>
+
+<sect2 id="lo-read">
+<title>Reading Data from a Large Object</title>
+
+<para>
+     <indexterm><primary>lo_read</primary></indexterm>
+     The function
+<synopsis>
+int lo_read(PGconn *conn, int fd, char *buf, size_t len);
+</synopsis>
+     reads up to <parameter>len</parameter> bytes from large object descriptor
+     <parameter>fd</parameter> into <parameter>buf</parameter> (which must be
+     of size <parameter>len</parameter>).  The <parameter>fd</parameter>
+     argument must have been returned by a previous
+     <function>lo_open</function>.  The number of bytes actually read is
+     returned; this will be less than <parameter>len</parameter> if the end of
+     the large object is reached first.  In the event of an error, the return
+     value is -1.
+</para>
+
+<para>
+     Although the <parameter>len</parameter> parameter is declared as
+     <type>size_t</type>, this function will reject length values larger than
+     <literal>INT_MAX</literal>.  In practice, it's best to transfer data in chunks
+     of at most a few megabytes anyway.
+</para>
+</sect2>
+
+<sect2 id="lo-seek">
+<title>Seeking in a Large Object</title>
+
+<para>
+     <indexterm><primary>lo_lseek</primary></indexterm>
+     To change the current read or write location associated with a
+     large object descriptor, call
+<synopsis>
+int lo_lseek(PGconn *conn, int fd, int offset, int whence);
+</synopsis>
+     This function moves the
+     current location pointer for the large object descriptor identified by
+     <parameter>fd</parameter> to the new location specified by
+     <parameter>offset</parameter>.  The valid values for <parameter>whence</parameter>
+     are <symbol>SEEK_SET</symbol> (seek from object start),
+     <symbol>SEEK_CUR</symbol> (seek from current position), and
+     <symbol>SEEK_END</symbol> (seek from object end).  The return value is
+     the new location pointer, or -1 on error.
+</para>
+
+<para>
+     <indexterm><primary>lo_lseek64</primary></indexterm>
+     When dealing with large objects that might exceed 2GB in size,
+     instead use
+<synopsis>
+pg_int64 lo_lseek64(PGconn *conn, int fd, pg_int64 offset, int whence);
+</synopsis>
+     This function has the same behavior
+     as <function>lo_lseek</function>, but it can accept an
+     <parameter>offset</parameter> larger than 2GB and/or deliver a result larger
+     than 2GB.
+     Note that <function>lo_lseek</function> will fail if the new location
+     pointer would be greater than 2GB.
+</para>
+
+<para>
+     <function>lo_lseek64</function> is new as of <productname>PostgreSQL</productname>
+     9.3.  If this function is run against an older server version, it will
+     fail and return -1.
+</para>
+
+</sect2>
+
+<sect2 id="lo-tell">
+<title>Obtaining the Seek Position of a Large Object</title>
+
+<para>
+     <indexterm><primary>lo_tell</primary></indexterm>
+     To obtain the current read or write location of a large object descriptor,
+     call
+<synopsis>
+int lo_tell(PGconn *conn, int fd);
+</synopsis>
+     If there is an error, the return value is -1.
+</para>
+
+<para>
+     <indexterm><primary>lo_tell64</primary></indexterm>
+     When dealing with large objects that might exceed 2GB in size,
+     instead use
+<synopsis>
+pg_int64 lo_tell64(PGconn *conn, int fd);
+</synopsis>
+     This function has the same behavior
+     as <function>lo_tell</function>, but it can deliver a result larger
+     than 2GB.
+     Note that <function>lo_tell</function> will fail if the current
+     read/write location is greater than 2GB.
+</para>
+
+<para>
+     <function>lo_tell64</function> is new as of <productname>PostgreSQL</productname>
+     9.3.  If this function is run against an older server version, it will
+     fail and return -1.
+</para>
+</sect2>
+
+<sect2 id="lo-truncate">
+<title>Truncating a Large Object</title>
+
+<para>
+     <indexterm><primary>lo_truncate</primary></indexterm>
+     To truncate a large object to a given length, call
+<synopsis>
+int lo_truncate(PGconn *conn, int fd, size_t len);
+</synopsis>
+     This function truncates the large object
+     descriptor <parameter>fd</parameter> to length <parameter>len</parameter>.  The
+     <parameter>fd</parameter> argument must have been returned by a
+     previous <function>lo_open</function>.  If <parameter>len</parameter> is
+     greater than the large object's current length, the large object
+     is extended to the specified length with null bytes ('\0').
+     On success, <function>lo_truncate</function> returns
+     zero.  On error, the return value is -1.
+</para>
+
+<para>
+     The read/write location associated with the descriptor
+     <parameter>fd</parameter> is not changed.
+</para>
+
+<para>
+     Although the <parameter>len</parameter> parameter is declared as
+     <type>size_t</type>, <function>lo_truncate</function> will reject length
+     values larger than <literal>INT_MAX</literal>.
+</para>
+
+<para>
+     <indexterm><primary>lo_truncate64</primary></indexterm>
+     When dealing with large objects that might exceed 2GB in size,
+     instead use
+<synopsis>
+int lo_truncate64(PGconn *conn, int fd, pg_int64 len);
+</synopsis>
+     This function has the same
+     behavior as <function>lo_truncate</function>, but it can accept a
+     <parameter>len</parameter> value exceeding 2GB.
+</para>
+
+<para>
+     <function>lo_truncate</function> is new as of <productname>PostgreSQL</productname>
+     8.3; if this function is run against an older server version, it will
+     fail and return -1.
+</para>
+
+<para>
+     <function>lo_truncate64</function> is new as of <productname>PostgreSQL</productname>
+     9.3; if this function is run against an older server version, it will
+     fail and return -1.
+</para>
+</sect2>
+
+<sect2 id="lo-close">
+<title>Closing a Large Object Descriptor</title>
+
+<para>
+     <indexterm><primary>lo_close</primary></indexterm>
+     A large object descriptor can be closed by calling
+<synopsis>
+int lo_close(PGconn *conn, int fd);
+</synopsis>
+     where <parameter>fd</parameter> is a
+     large object descriptor returned by <function>lo_open</function>.
+     On success, <function>lo_close</function> returns zero.  On
+     error, the return value is -1.
+</para>
+
+<para>
+     Any large  object  descriptors that remain open at the end of a
+     transaction will be closed automatically.
+</para>
+</sect2>
+
+   <sect2 id="lo-unlink">
+    <title>Removing a Large Object</title>
+
+    <para>
+     <indexterm><primary>lo_unlink</primary></indexterm>
+     To remove a large object from the database, call
+<synopsis>
+int lo_unlink(PGconn *conn, Oid lobjId);
+</synopsis>
+     The <parameter>lobjId</parameter> argument specifies the OID of the
+     large object to remove.  Returns 1 if successful, -1 on failure.
+    </para>
+   </sect2>
+
+</sect1>
+
+<sect1 id="lo-funcs">
+<title>Server-Side Functions</title>
+
+  <para>
+   Server-side functions tailored for manipulating large objects from SQL are
+   listed in <xref linkend="lo-funcs-table"/>.
+  </para>
+
+   <table id="lo-funcs-table">
+    <title>SQL-Oriented Large Object Functions</title>
+    <tgroup cols="1">
+     <thead>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        Function
+       </para>
+       <para>
+        Description
+       </para>
+       <para>
+        Example(s)
+       </para></entry>
+      </row>
+     </thead>
+
+     <tbody>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>lo_from_bytea</primary>
+        </indexterm>
+        <function>lo_from_bytea</function> ( <parameter>loid</parameter> <type>oid</type>, <parameter>data</parameter> <type>bytea</type> )
+        <returnvalue>oid</returnvalue>
+       </para>
+       <para>
+        Creates a large object and stores <parameter>data</parameter> in it.
+        If <parameter>loid</parameter> is zero then the system will choose a
+        free OID, otherwise that OID is used (with an error if some large
+        object already has that OID).  On success, the large object's OID is
+        returned.
+       </para>
+       <para>
+        <literal>lo_from_bytea(0, '\xffffff00')</literal>
+        <returnvalue>24528</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>lo_put</primary>
+        </indexterm>
+        <function>lo_put</function> ( <parameter>loid</parameter> <type>oid</type>, <parameter>offset</parameter> <type>bigint</type>, <parameter>data</parameter> <type>bytea</type> )
+        <returnvalue>void</returnvalue>
+       </para>
+       <para>
+        Writes <parameter>data</parameter> starting at the given offset within
+        the large object; the large object is enlarged if necessary.
+       </para>
+       <para>
+        <literal>lo_put(24528, 1, '\xaa')</literal>
+        <returnvalue></returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>lo_get</primary>
+        </indexterm>
+        <function>lo_get</function> ( <parameter>loid</parameter> <type>oid</type> <optional>, <parameter>offset</parameter> <type>bigint</type>, <parameter>length</parameter> <type>integer</type> </optional> )
+        <returnvalue>bytea</returnvalue>
+       </para>
+       <para>
+        Extracts the large object's contents, or a substring thereof.
+       </para>
+       <para>
+        <literal>lo_get(24528, 0, 3)</literal>
+        <returnvalue>\xffaaff</returnvalue>
+       </para></entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </table>
+
+  <para>
+   There are additional server-side functions corresponding to each of the
+   client-side functions described earlier; indeed, for the most part the
+   client-side functions are simply interfaces to the equivalent server-side
+   functions.  The ones just as convenient to call via SQL commands are
+   <function>lo_creat</function><indexterm><primary>lo_creat</primary></indexterm>,
+   <function>lo_create</function>,
+   <function>lo_unlink</function><indexterm><primary>lo_unlink</primary></indexterm>,
+   <function>lo_import</function><indexterm><primary>lo_import</primary></indexterm>, and
+   <function>lo_export</function><indexterm><primary>lo_export</primary></indexterm>.
+   Here are examples of their use:
+
+<programlisting>
+CREATE TABLE image (
+    name            text,
+    raster          oid
+);
+
+SELECT lo_creat(-1);       -- returns OID of new, empty large object
+
+SELECT lo_create(43213);   -- attempts to create large object with OID 43213
+
+SELECT lo_unlink(173454);  -- deletes large object with OID 173454
+
+INSERT INTO image (name, raster)
+    VALUES ('beautiful image', lo_import('/etc/motd'));
+
+INSERT INTO image (name, raster)  -- same as above, but specify OID to use
+    VALUES ('beautiful image', lo_import('/etc/motd', 68583));
+
+SELECT lo_export(image.raster, '/tmp/motd') FROM image
+    WHERE name = 'beautiful image';
+</programlisting>
+  </para>
+
+  <para>
+    The server-side <function>lo_import</function> and
+    <function>lo_export</function> functions behave considerably differently
+    from their client-side analogs.  These two functions read and write files
+    in the server's file system, using the permissions of the database's
+    owning user.  Therefore, by default their use is restricted to superusers.
+    In contrast, the client-side import and export functions read and write
+    files in the client's file system, using the permissions of the client
+    program.  The client-side functions do not require any database
+    privileges, except the privilege to read or write the large object in
+    question.
+  </para>
+
+  <caution>
+   <para>
+    It is possible to <xref linkend="sql-grant"/> use of the
+    server-side <function>lo_import</function>
+    and <function>lo_export</function> functions to non-superusers, but
+    careful consideration of the security implications is required.  A
+    malicious user of such privileges could easily parlay them into becoming
+    superuser (for example by rewriting server configuration files), or could
+    attack the rest of the server's file system without bothering to obtain
+    database superuser privileges as such.  <emphasis>Access to roles having
+    such privilege must therefore be guarded just as carefully as access to
+    superuser roles.</emphasis>  Nonetheless, if use of
+    server-side <function>lo_import</function>
+    or <function>lo_export</function> is needed for some routine task, it's
+    safer to use a role with such privileges than one with full superuser
+    privileges, as that helps to reduce the risk of damage from accidental
+    errors.
+   </para>
+  </caution>
+
+  <para>
+    The functionality of <function>lo_read</function> and
+    <function>lo_write</function> is also available via server-side calls,
+    but the names of the server-side functions differ from the client side
+    interfaces in that they do not contain underscores.  You must call
+    these functions as <function>loread</function> and <function>lowrite</function>.
+  </para>
+
+</sect1>
+
+<sect1 id="lo-examplesect">
+<title>Example Program</title>
+
+<para>
+     <xref linkend="lo-example"/> is a sample program which shows how the large object
+     interface
+     in <application>libpq</application> can be used.  Parts of the program are
+     commented out but are left in the source for  the  reader's
+     benefit.  This program can also be found in
+     <filename>src/test/examples/testlo.c</filename> in the source distribution.
+</para>
+
+  <example id="lo-example">
+   <title>Large Objects with <application>libpq</application> Example Program</title>
+<programlisting><![CDATA[
+/*-----------------------------------------------------------------
+ *
+ * testlo.c
+ *    test using large objects with libpq
+ *
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ *
+ * IDENTIFICATION
+ *    src/test/examples/testlo.c
+ *
+ *-----------------------------------------------------------------
+ */
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+#include "libpq-fe.h"
+#include "libpq/libpq-fs.h"
+
+#define BUFSIZE         1024
+
+/*
+ * importFile -
+ *    import file "in_filename" into database as large object "lobjOid"
+ *
+ */
+static Oid
+importFile(PGconn *conn, char *filename)
+{
+    Oid         lobjId;
+    int         lobj_fd;
+    char        buf[BUFSIZE];
+    int         nbytes,
+                tmp;
+    int         fd;
+
+    /*
+     * open the file to be read in
+     */
+    fd = open(filename, O_RDONLY, 0666);
+    if (fd < 0)
+    {                           /* error */
+        fprintf(stderr, "cannot open unix file\"%s\"\n", filename);
+    }
+
+    /*
+     * create the large object
+     */
+    lobjId = lo_creat(conn, INV_READ | INV_WRITE);
+    if (lobjId == 0)
+        fprintf(stderr, "cannot create large object");
+
+    lobj_fd = lo_open(conn, lobjId, INV_WRITE);
+
+    /*
+     * read in from the Unix file and write to the inversion file
+     */
+    while ((nbytes = read(fd, buf, BUFSIZE)) > 0)
+    {
+        tmp = lo_write(conn, lobj_fd, buf, nbytes);
+        if (tmp < nbytes)
+            fprintf(stderr, "error while reading \"%s\"", filename);
+    }
+
+    close(fd);
+    lo_close(conn, lobj_fd);
+
+    return lobjId;
+}
+
+static void
+pickout(PGconn *conn, Oid lobjId, int start, int len)
+{
+    int         lobj_fd;
+    char       *buf;
+    int         nbytes;
+    int         nread;
+
+    lobj_fd = lo_open(conn, lobjId, INV_READ);
+    if (lobj_fd < 0)
+        fprintf(stderr, "cannot open large object %u", lobjId);
+
+    lo_lseek(conn, lobj_fd, start, SEEK_SET);
+    buf = malloc(len + 1);
+
+    nread = 0;
+    while (len - nread > 0)
+    {
+        nbytes = lo_read(conn, lobj_fd, buf, len - nread);
+        buf[nbytes] = '\0';
+        fprintf(stderr, ">>> %s", buf);
+        nread += nbytes;
+        if (nbytes <= 0)
+            break;              /* no more data? */
+    }
+    free(buf);
+    fprintf(stderr, "\n");
+    lo_close(conn, lobj_fd);
+}
+
+static void
+overwrite(PGconn *conn, Oid lobjId, int start, int len)
+{
+    int         lobj_fd;
+    char       *buf;
+    int         nbytes;
+    int         nwritten;
+    int         i;
+
+    lobj_fd = lo_open(conn, lobjId, INV_WRITE);
+    if (lobj_fd < 0)
+        fprintf(stderr, "cannot open large object %u", lobjId);
+
+    lo_lseek(conn, lobj_fd, start, SEEK_SET);
+    buf = malloc(len + 1);
+
+    for (i = 0; i < len; i++)
+        buf[i] = 'X';
+    buf[i] = '\0';
+
+    nwritten = 0;
+    while (len - nwritten > 0)
+    {
+        nbytes = lo_write(conn, lobj_fd, buf + nwritten, len - nwritten);
+        nwritten += nbytes;
+        if (nbytes <= 0)
+        {
+            fprintf(stderr, "\nWRITE FAILED!\n");
+            break;
+        }
+    }
+    free(buf);
+    fprintf(stderr, "\n");
+    lo_close(conn, lobj_fd);
+}
+
+
+/*
+ * exportFile -
+ *    export large object "lobjOid" to file "out_filename"
+ *
+ */
+static void
+exportFile(PGconn *conn, Oid lobjId, char *filename)
+{
+    int         lobj_fd;
+    char        buf[BUFSIZE];
+    int         nbytes,
+                tmp;
+    int         fd;
+
+    /*
+     * open the large object
+     */
+    lobj_fd = lo_open(conn, lobjId, INV_READ);
+    if (lobj_fd < 0)
+        fprintf(stderr, "cannot open large object %u", lobjId);
+
+    /*
+     * open the file to be written to
+     */
+    fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+    if (fd < 0)
+    {                           /* error */
+        fprintf(stderr, "cannot open unix file\"%s\"",
+                filename);
+    }
+
+    /*
+     * read in from the inversion file and write to the Unix file
+     */
+    while ((nbytes = lo_read(conn, lobj_fd, buf, BUFSIZE)) > 0)
+    {
+        tmp = write(fd, buf, nbytes);
+        if (tmp < nbytes)
+        {
+            fprintf(stderr, "error while writing \"%s\"",
+                    filename);
+        }
+    }
+
+    lo_close(conn, lobj_fd);
+    close(fd);
+}
+
+static void
+exit_nicely(PGconn *conn)
+{
+    PQfinish(conn);
+    exit(1);
+}
+
+int
+main(int argc, char **argv)
+{
+    char       *in_filename,
+               *out_filename;
+    char       *database;
+    Oid         lobjOid;
+    PGconn     *conn;
+    PGresult   *res;
+
+    if (argc != 4)
+    {
+        fprintf(stderr, "Usage: %s database_name in_filename out_filename\n",
+                argv[0]);
+        exit(1);
+    }
+
+    database = argv[1];
+    in_filename = argv[2];
+    out_filename = argv[3];
+
+    /*
+     * set up the connection
+     */
+    conn = PQsetdb(NULL, NULL, NULL, NULL, database);
+
+    /* check to see that the backend connection was successfully made */
+    if (PQstatus(conn) != CONNECTION_OK)
+    {
+        fprintf(stderr, "%s", PQerrorMessage(conn));
+        exit_nicely(conn);
+    }
+
+    /* Set always-secure search path, so malicious users can't take control. */
+    res = PQexec(conn,
+                 "SELECT pg_catalog.set_config('search_path', '', false)");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        fprintf(stderr, "SET failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        exit_nicely(conn);
+    }
+    PQclear(res);
+
+    res = PQexec(conn, "begin");
+    PQclear(res);
+    printf("importing file \"%s\" ...\n", in_filename);
+/*  lobjOid = importFile(conn, in_filename); */
+    lobjOid = lo_import(conn, in_filename);
+    if (lobjOid == 0)
+        fprintf(stderr, "%s\n", PQerrorMessage(conn));
+    else
+    {
+        printf("\tas large object %u.\n", lobjOid);
+
+        printf("picking out bytes 1000-2000 of the large object\n");
+        pickout(conn, lobjOid, 1000, 1000);
+
+        printf("overwriting bytes 1000-2000 of the large object with X's\n");
+        overwrite(conn, lobjOid, 1000, 1000);
+
+        printf("exporting large object to file \"%s\" ...\n", out_filename);
+/*      exportFile(conn, lobjOid, out_filename); */
+        if (lo_export(conn, lobjOid, out_filename) < 0)
+            fprintf(stderr, "%s\n", PQerrorMessage(conn));
+    }
+
+    res = PQexec(conn, "end");
+    PQclear(res);
+    PQfinish(conn);
+    return 0;
+}
+]]>
+</programlisting>
+</example>
+
+</sect1>
+</chapter>

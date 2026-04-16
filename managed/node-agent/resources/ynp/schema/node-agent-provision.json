@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Node Agent Provision",
+  "type": "object",
+  "properties": {
+    "ynp": {
+      "type": "object",
+      "properties": {
+        "yb_home_dir": {
+          "type": "string",
+          "description": "Home directory for the 'yugabyte' user. This is where the YugabyteDB software and data will reside."
+        },
+        "chrony_servers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "NTP servers for time synchronization."
+        },
+        "yb_user_id": {
+          "type": "integer",
+          "description": "User ID for the 'yugabyte' user."
+        },
+        "no_proxy_list": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of addresses to exclude from proxying."
+        },
+        "is_airgap": {
+          "type": "boolean",
+          "description": "Indicates if the node is in an air-gapped environment."
+        },
+        "use_system_level_systemd": {
+          "type": "boolean",
+          "description": "Use system-level systemd for service management."
+        },
+        "node_ip": {
+          "type": "string",
+          "description": "The IP address of the node."
+        },
+        "tmp_directory": {
+          "type": "string",
+          "description": "Temporary directory for provisioning tasks."
+        },
+        "is_install_node_agent": {
+          "type": "boolean",
+          "description": "Install node_agent as part of provisioning."
+        },
+        "node_agent_port": {
+          "type": "integer",
+          "description": "Port for node_agent."
+        },
+        "node_exporter_port": {
+          "type": "integer",
+          "description": "Port for node_exporter."
+        },
+        "is_configure_clockbound": {
+          "type": "boolean",
+          "description": "Configure clockbound as part of provisioning."
+        },
+        "configure_thp_settings": {
+          "type": "boolean",
+          "description": "Whether to configure THP (Transparent Huge Pages) settings."
+        },
+        "is_ybcontroller_disabled": {
+          "type": "boolean",
+          "description": "YB Controller backup agent is disabled."
+        }
+      }
+    },
+    "yba": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The base URL of the Yugabyte Anywhere instance."
+        },
+        "skip_tls_verify": {
+          "type": "boolean",
+          "description": "Skip TLS certificate verification."
+        },
+        "customer_uuid": {
+          "type": "string",
+          "description": "The UUID of the customer in Yugabyte Anywhere."
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key for authenticating with Yugabyte Anywhere."
+        },
+        "node_name": {
+          "type": "string",
+          "description": "The name to assign to this node within YBA."
+        },
+        "node_external_fqdn": {
+          "type": "string",
+          "description": "The external FQDN or IP address of the node."
+        },
+        "provider": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of the cloud or infrastructure provider."
+            },
+            "region": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Name of the region."
+                },
+                "zone": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Name of the availability zone."
+                    }
+                  }
+                },
+                "latitude": {
+                  "type": "number",
+                  "description": "Latitude for the region."
+                },
+                "longitude": {
+                  "type": "number",
+                  "description": "Longitude for the region."
+                }
+              }
+            }
+          }
+        },
+        "instance_type": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of the instance type."
+            },
+            "cores": {
+              "type": "integer",
+              "description": "Number of CPU cores allocated to the instance."
+            },
+            "memory_size": {
+              "type": "integer",
+              "description": "Amount of memory (in GB) allocated to the instance."
+            },
+            "volume_size": {
+              "type": "integer",
+              "description": "Size of the storage volume (in GB)."
+            },
+            "mount_points": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of mount points for data storage."
+            }
+          }
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "description": "Logging configuration for the node agent.",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "description": "Logging level for the application."
+        },
+        "directory": {
+          "type": "string",
+          "description": "Directory where log files will be stored."
+        },
+        "file": {
+          "type": "string",
+          "description": "Name of the log file."
+        }
+      }
+    }
+  }
+}

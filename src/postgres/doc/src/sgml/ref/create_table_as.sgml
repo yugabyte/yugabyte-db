@@ -1,0 +1,362 @@
+<!--
+doc/src/sgml/ref/create_table_as.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createtableas">
+ <indexterm zone="sql-createtableas">
+  <primary>CREATE TABLE AS</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE TABLE AS</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE TABLE AS</refname>
+  <refpurpose>define a new table from the results of a query</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXISTS ] <replaceable>table_name</replaceable>
+    [ (<replaceable>column_name</replaceable> [, ...] ) ]
+    [ USING <replaceable class="parameter">method</replaceable> ]
+    [ WITH ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) | WITHOUT OIDS ]
+    [ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
+    [ TABLESPACE <replaceable class="parameter">tablespace_name</replaceable> ]
+    AS <replaceable>query</replaceable>
+    [ WITH [ NO ] DATA ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CREATE TABLE AS</command> creates a table and fills it
+   with data computed by a <command>SELECT</command> command.
+   The table columns have the
+   names and data types associated with the output columns of the
+   <command>SELECT</command> (except that you can override the column
+   names by giving an explicit list of new column names).
+  </para>
+
+  <para>
+   <command>CREATE TABLE AS</command> bears some resemblance to
+   creating a view, but it is really quite different: it creates a new
+   table and evaluates the query just once to fill the new table
+   initially.  The new table will not track subsequent changes to the
+   source tables of the query.  In contrast, a view re-evaluates its
+   defining <command>SELECT</command> statement whenever it is
+   queried.
+  </para>
+
+  <para>
+   <command>CREATE TABLE AS</command> requires <literal>CREATE</literal>
+   privilege on the schema used for the table.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>GLOBAL</literal> or <literal>LOCAL</literal></term>
+    <listitem>
+     <para>
+      Ignored for compatibility.  Use of these keywords is deprecated;
+      refer to <xref linkend="sql-createtable"/> for details.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>TEMPORARY</literal> or <literal>TEMP</literal></term>
+    <listitem>
+     <para>
+      If specified, the table is created as a temporary table.
+      Refer to <xref linkend="sql-createtable"/> for details.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>UNLOGGED</literal></term>
+    <listitem>
+     <para>
+      If specified, the table is created as an unlogged table.
+      Refer to <xref linkend="sql-createtable"/> for details.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>IF NOT EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if a relation with the same name already
+      exists; simply issue a notice and leave the table unmodified.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable>table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of the table to be created.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable>column_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a column in the new table.  If column names are not
+      provided, they are taken from the output column names of the query.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>USING <replaceable class="parameter">method</replaceable></literal></term>
+    <listitem>
+     <para>
+      This optional clause specifies the table access method to use to store
+      the contents for the new table; the method needs be an access method of
+      type <literal>TABLE</literal>. See <xref linkend="tableam"/> for more
+      information.  If this option is not specified, the default table access
+      method is chosen for the new table. See <xref
+      linkend="guc-default-table-access-method"/> for more information.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>WITH ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This clause specifies optional storage parameters for the new table;
+      see <xref linkend="sql-createtable-storage-parameters"/> in the
+      <xref linkend="sql-createtable"/> documentation for more
+      information.   For backward-compatibility the <literal>WITH</literal>
+      clause for a table can also include <literal>OIDS=FALSE</literal> to
+      specify that rows of the new table should contain no OIDs (object
+      identifiers), <literal>OIDS=TRUE</literal> is not supported anymore.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>WITHOUT OIDS</literal></term>
+    <listitem>
+     <para>
+      This is backward-compatible syntax for declaring a table
+      <literal>WITHOUT OIDS</literal>, creating a table <literal>WITH
+      OIDS</literal> is not supported anymore.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ON COMMIT</literal></term>
+    <listitem>
+     <para>
+      The behavior of temporary tables at the end of a transaction
+      block can be controlled using <literal>ON COMMIT</literal>.
+      The three options are:
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>PRESERVE ROWS</literal></term>
+        <listitem>
+         <para>
+          No special action is taken at the ends of transactions.
+          This is the default behavior.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>DELETE ROWS</literal></term>
+        <listitem>
+         <para>
+          All rows in the temporary table will be deleted at the end
+          of each transaction block.  Essentially, an automatic <link
+          linkend="sql-truncate"><command>TRUNCATE</command></link> is done
+          at each commit.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>DROP</literal></term>
+        <listitem>
+         <para>
+          The temporary table will be dropped at the end of the current
+          transaction block.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist></para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>TABLESPACE <replaceable class="parameter">tablespace_name</replaceable></literal></term>
+    <listitem>
+     <para>
+      The <replaceable class="parameter">tablespace_name</replaceable> is the name
+      of the tablespace in which the new table is to be created.
+      If not specified,
+      <xref linkend="guc-default-tablespace"/> is consulted, or
+      <xref linkend="guc-temp-tablespaces"/> if the table is temporary.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable>query</replaceable></term>
+    <listitem>
+     <para>
+      A <link linkend="sql-select"><command>SELECT</command></link>, <link
+      linkend="sql-table"><command>TABLE</command></link>, or <link linkend="sql-values"><command>VALUES</command></link>
+      command, or an <link linkend="sql-execute"><command>EXECUTE</command></link> command that runs a
+      prepared <command>SELECT</command>, <command>TABLE</command>, or
+      <command>VALUES</command> query.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>WITH [ NO ] DATA</literal></term>
+    <listitem>
+     <para>
+      This clause specifies whether or not the data produced by the query
+      should be copied into the new table.  If not, only the table structure
+      is copied.  The default is to copy the data.
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   This command is functionally similar to <xref
+   linkend="sql-selectinto"/>, but it is
+   preferred since it is less likely to be confused with other uses of
+   the <command>SELECT INTO</command> syntax. Furthermore, <command>CREATE
+   TABLE AS</command> offers a superset of the functionality offered
+   by <command>SELECT INTO</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Create a new table <literal>films_recent</literal> consisting of only
+   recent entries from the table <literal>films</literal>:
+
+<programlisting>
+CREATE TABLE films_recent AS
+  SELECT * FROM films WHERE date_prod &gt;= '2002-01-01';
+</programlisting>
+  </para>
+
+  <para>
+   To copy a table completely, the short form using
+   the <literal>TABLE</literal> command can also be used:
+
+<programlisting>
+CREATE TABLE films2 AS
+  TABLE films;
+</programlisting>
+  </para>
+
+  <para>
+   Create a new temporary table <literal>films_recent</literal>, consisting of
+   only recent entries from the table <literal>films</literal>, using a
+   prepared statement.  The new table will be dropped at commit:
+
+<programlisting>
+PREPARE recentfilms(date) AS
+  SELECT * FROM films WHERE date_prod &gt; $1;
+CREATE TEMP TABLE films_recent ON COMMIT DROP AS
+  EXECUTE recentfilms('2002-01-01');
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>CREATE TABLE AS</command> conforms to the <acronym>SQL</acronym>
+   standard.  The following are nonstandard extensions:
+
+   <itemizedlist spacing="compact">
+    <listitem>
+     <para>
+      The standard requires parentheses around the subquery clause; in
+      <productname>PostgreSQL</productname>, these parentheses are
+      optional.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      In the standard, the <literal>WITH [ NO ] DATA</literal> clause
+      is required; in PostgreSQL it is optional.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para><productname>PostgreSQL</productname> handles temporary tables in a way
+      rather different from the standard; see
+      <xref linkend="sql-createtable"/>
+      for details.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The <literal>WITH</literal> clause is a <productname>PostgreSQL</productname>
+      extension; storage parameters are not in the standard.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The <productname>PostgreSQL</productname> concept of tablespaces is not
+      part of the standard.  Hence, the clause <literal>TABLESPACE</literal>
+      is an extension.
+     </para>
+    </listitem>
+   </itemizedlist></para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-creatematerializedview"/></member>
+   <member><xref linkend="sql-createtable"/></member>
+   <member><xref linkend="sql-execute"/></member>
+   <member><xref linkend="sql-select"/></member>
+   <member><xref linkend="sql-selectinto"/></member>
+   <member><xref linkend="sql-values"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

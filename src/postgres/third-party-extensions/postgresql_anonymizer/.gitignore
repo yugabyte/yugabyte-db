@@ -1,0 +1,54 @@
+# pgxn
+_pgxn
+# unit tests
+results/*
+tests/results/*
+tests/tmp/*
+# vim
+*.swp
+*.swo
+# tests
+*.out
+*.diffs
+_dump1.sql
+_dump2.sql
+_blackbox_*
+contrib_regression_test_restore.pgsql
+# C objects
+*.bc
+*.o
+*.so
+# python
+_venv/
+# artefacts
+_build/
+docs/how-to/_build/
+_pgddl/
+anon/*
+anon_*/
+anon*.zip
+anon_standalone.sql
+anon_standalone_PG*
+# jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+docs/how-to/_venv
+docs/how-to/_build
+docs/how-to/_tmp
+docs/how-to/*.tsv
+docs/how-to/*.log
+# Vagrant
+.vagrant
+# debian
+debian/usr/
+debian/files
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/postgresql-??-anonymizer.substvars
+debian/postgresql-??-anonymizer/
+dput
+# Rust
+/target
+*.iml
+**/*.rs.bk
+Cargo.lock

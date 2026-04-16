@@ -1,0 +1,1295 @@
+'/customers/{cUUID}/universes/{uniUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getUniverse
+    summary: Get a YugabyteDB Universe
+    description: Get details of a single YugabyteDB Universe.
+    tags:
+      - Universe
+    responses:
+      '200':
+        $ref: "../components/responses/UniverseResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  put:
+    operationId: editUniverse
+    summary: Edit a YugabyteDB Universe
+    description: Edit the clusters of a single YugabyteDB Universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseEditReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: Update
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: deleteUniverse
+    summary: Delete a universe
+    description: Delete Universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseDeleteReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: Delete
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: DELETE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createUniverse
+    summary: Create a YugabyteDB Universe
+    description: Create all the clusters of a YugabyteDB universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseCreateReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: obj.getResourceUuid().toString()
+      auditActionType: CreateCluster
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: CREATE
+        resourceLocation:
+          path: UNIVERSE_UUID
+          sourceType: REQUEST_BODY
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/clusters':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: addCluster
+    summary: Add a cluster to a YugabyteDB Universe
+    description: Add a cluster (eg. read replica cluster) to a YugabyteDB universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/ClusterAddReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: CreateReadOnlyCluster
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/clusters/{clsUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: clsUUID
+      in: path
+      description: Cluster UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: isForceDelete
+      in: query
+      description: Whether to force delete the cluster
+      schema:
+        type: boolean
+        default: false
+      required: false
+  delete:
+    operationId: deleteCluster
+    summary: Delete an additional cluster(s) of a YugabyteDB Universe
+    description: Delete an additional cluster (eg. read replica cluster) of a YugabyteDB universe. Primary cluster is deleted along with Universe.
+    tags:
+      - Universe
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: DeleteReadOnlyCluster
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/fetch-universe-resources':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: getUniverseResources
+    summary: Get resource utilisation of a YugabyteDB Universe
+    description: Fetches an estimate of pricing and cpu/memory/storage resource utilisation for the Universe. This is meant to be used before creating the Universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/UniverseResourceDetailsResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Customer
+      auditTargetId: cUUID.toString()
+      auditActionType: GetUniverseResources
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: READ
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/gflags':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: editGFlags
+    summary: Edit GFlags
+    description: 'Queues a task to edit GFlags of a universe. The input set of GFlags will replace any existing GFlags in the universe. Refer [YB-Master configuration flags](https://docs.yugabyte.com/preview/reference/configuration/yb-master/#configuration-flags) and [YB-TServer configuration flags](https://docs.yugabyte.com/preview/reference/configuration/yb-tserver/#configuration-flags).'
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseEditGFlagsReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeGFlags
+      taskUuid: obj.getTaskUuid()
+      additionalDetails: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2.20.2.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/upgrade/software':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: startSoftwareUpgrade
+    summary: Upgrade YugabyteDB version
+    description: Queues a task to perform a YugabyteDB Software upgrade.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseSoftwareUpgradeReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeSoftware
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/upgrade/software/finalize':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: finalizeSoftwareUpgrade
+    summary: Finalize the Upgrade YugabyteDB
+    description: Queues a task to perform finalize of a YugabyteDB Software upgrade.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseSoftwareUpgradeFinalize.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeSoftware
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  get:
+    operationId: getFinalizeSoftwareUpgradeInfo
+    summary: Get finalize information on the YugabyteDB upgrade
+    description: Get finalize info of a YugabyteDB Software upgrade.
+    tags:
+      - Universe
+    responses:
+      '200':
+        $ref: "../components/responses/UniverseSoftwareUpgradeFinalizeResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/upgrade/third-party-software':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: startThirdPartySoftwareUpgrade
+    summary: Upgrade third party software
+    description: Queues a task to perform a third party software upgrade.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseThirdPartySoftwareUpgradeReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: ThirdpartySoftwareUpgrade
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/upgrade/software/rollback':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: rollbackSoftwareUpgrade
+    summary: Rollback YugabyteDB version
+    description: Queues a task to rollback a YugabyteDB Software upgrade.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseRollbackUpgradeReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: RollbackUpgrade
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/upgrade/software/precheck':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: precheckSoftwareUpgrade
+    summary: Precheck YugabyteDB version upgrade
+    description: Queues a task to perform a precheck for a YugabyteDB Software upgrade.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseSoftwareUpgradePrecheckReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/UniverseSoftwareUpgradePrecheckResponse.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/restart':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: restartUniverse
+    summary: Restart a YugabyteDB Universe
+    description: Restart a YugabyteDB Universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseRestartReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: Restart
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/systemd':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: systemdEnable
+    summary: Migrate to Systemd controlled services
+    description: |
+      Use Systemd to control YugabyteDB services for this universe. This is a 1 way migration from
+      cron-based service management to systemd, and will involve a rolling restart of the universe.
+
+      This is not supported for on prem manual provisioned universes or kubernetes universes.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseSystemdEnableReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input or the universe is already is already using systemd services
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeSystemd
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/encryption/in-transit':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: encryptionInTransitToggle
+    summary: Enable or disable encryption in transit
+    description: |
+      Enable or disable encryption in transit. Encryption in transit can be both node to node or
+      node to client.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseEncryptionInTransitReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeTLS
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/encryption/in-transit/rotate':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: encryptionInTransitCertRotate
+    summary: Rotate TLS Certs
+    description: Rotate the certs used for encryption in transit.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseCertRotateReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeCerts
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/kubernetes-overrides':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: editKubernetesOverrides
+    summary: Edit Kubernetes Helm Overrides
+    description: |
+      Update the kubernetes helm override values. This can be used to add custom settings to
+      kubernetes resources managed by YugabyteDB Anywhere. These override values can apply globally
+      to a universe or per AZ.
+
+      See https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml for possible
+      override options.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseKubernetesOverridesReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeKubernetesOverrides
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/detach':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: detachUniverse
+    summary: Detach universe
+    description: Export universe metadata to a tgz file from (source) YBA
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/DetachUniverseReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/DetachUniverseResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: Detach
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: rollbackDetachUniverse
+    summary: Rollback detach universe
+    description: |
+      Invoke this from the YBA that should reclaim ownership of a universe that is currently in a detached
+      state (ie. if this API has been invoked on the universe POST /customers/{cUUID}/universes/{uniUUID}/detach, 
+      on that YBA instance). A Universe can be managed only by a single instance of YBA at any time. So, 
+      for cases where the universe was attached to another YBA 
+      (ie. using POST /customers/{cUUID}/universes/{uniUUID}/attach), only isForceRollback=true 
+      can be used to rollback the detach operation in such case.
+    tags:
+      - Universe
+    parameters:
+      - name: isForceRollback
+        in: query
+        description: Force rollback without checking current owner or detached state.
+        schema:
+          type: boolean
+          default: false
+        required: false
+    responses:
+      '200':
+        description: Successfully rolled back detach universe operation
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: RollbackDetach
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: update
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/attach':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: attachUniverse
+    summary: Attach universe
+    description: Import universe metadata to (destination) YBA using a given tgz file
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/AttachUniverseReq.yaml"
+    responses:
+      '200':
+        description: Successfully attached universe.
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: Attach
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: create
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+    x-yba-api-multipart: true
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/attach-detach-metadata':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  delete:
+    operationId: deleteAttachDetachMetadata
+    summary: Delete attach/detach metadata
+    description: Delete metadata of a universe from (source) YBA
+    tags:
+      - Universe
+    responses:
+      '200':
+        description: Successfully deleted attach/detach metadata of universe
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: DeleteAttachDetachMetadata
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/query-log-config':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: configureQueryLogging
+    summary: Configure Query Log for YugabyteDB Universe
+    description: Configure Query Log for a YugabyteDB Universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseQueryLogsExportReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: ModifyQueryLogging
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/metrics-export-config':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: configureMetricsExport
+    summary: Configure metrics export
+    description: Configure metrics export from a universe to a metrics export telemetry provider
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/ConfigureMetricsExportReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: ConfigureMetricsExport
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/operator-import':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: operatorImportUniverse
+    summary: Import universe to operator
+    description: Import universe to operator
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseOperatorImportReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: OperatorImportUniverse
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/operator-import/precheck':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: operatorImportUniversePrecheck
+    summary: Precheck universe import to operator
+    description: Run precheck to ensure the universe can be imported to the operator
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseOperatorImportReq.yaml"
+    responses:
+      '200':
+        description: Successfully prechecked universe import to operator.
+      '400':
+        description: Universe and its related resources are not in a valid state to be imported to the operator
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview

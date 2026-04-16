@@ -1,0 +1,72 @@
+CREATE OR REPLACE FUNCTION generate_histogram()
+    RETURNS TABLE (
+    range TEXT, freq INT, bar TEXT
+  )  AS $$
+Declare
+    bucket_id integer;
+    query_id text;
+BEGIN
+    select bucket into bucket_id from pg_stat_monitor order by calls desc limit 1;
+    select queryid into query_id from pg_stat_monitor order by calls desc limit 1;
+    --RAISE INFO 'bucket_id %', bucket_id;
+    --RAISE INFO 'query_id %', query_id;
+    return query
+    SELECT * FROM histogram(bucket_id, query_id) AS a(range TEXT, freq INT, bar TEXT);
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION run_pg_sleep(INTEGER) RETURNS VOID AS $$
+DECLARE
+    loops ALIAS FOR $1;
+BEGIN
+    FOR i IN 1..loops LOOP
+	--RAISE INFO 'Current timestamp: %', timeofday()::TIMESTAMP;
+	RAISE INFO 'Sleep % seconds', i;
+	PERFORM pg_sleep(i);
+    END LOOP;
+END;
+$$ LANGUAGE 'plpgsql' STRICT;
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+Set pg_stat_monitor.pgsm_track='all';
+select run_pg_sleep(5);
+INFO:  Sleep 1 seconds
+INFO:  Sleep 2 seconds
+INFO:  Sleep 3 seconds
+INFO:  Sleep 4 seconds
+INFO:  Sleep 5 seconds
+ run_pg_sleep 
+--------------
+ 
+(1 row)
+
+SELECT substr(query, 0,50) as query, calls, resp_calls FROM pg_stat_monitor ORDER BY query COLLATE "C";
+                query                 | calls |      resp_calls       
+--------------------------------------+-------+-----------------------
+ SELECT pg_sleep(i)                   |     2 | {0,0,0,0,0,0,2,0,0,0}
+ SELECT pg_sleep(i)                   |     3 | {0,0,0,0,0,0,1,2,0,0}
+ SELECT pg_stat_monitor_reset()       |     1 | {1,0,0,0,0,0,0,0,0,0}
+ Set pg_stat_monitor.pgsm_track='all' |     1 | {1,0,0,0,0,0,0,0,0,0}
+ select run_pg_sleep(5)               |     1 | {0,0,0,0,0,0,0,0,1,0}
+(5 rows)
+
+select * from generate_histogram();
+       range        | freq |              bar               
+--------------------+------+--------------------------------
+ (0 - 3)}           |    0 | 
+  (3 - 10)}         |    0 | 
+  (10 - 31)}        |    0 | 
+  (31 - 100)}       |    0 | 
+  (100 - 316)}      |    0 | 
+  (316 - 1000)}     |    0 | 
+  (1000 - 3162)}    |    1 | ■■■■■■■■■■■■■■■
+  (3162 - 10000)}   |    2 | ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  (10000 - 31622)}  |    0 | 
+  (31622 - 100000)} |    0 | 
+(10 rows)
+
+DROP EXTENSION pg_stat_monitor;

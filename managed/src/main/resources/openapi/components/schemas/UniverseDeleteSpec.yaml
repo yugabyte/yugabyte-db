@@ -1,0 +1,22 @@
+title: UniverseDeleteSpec
+description: |
+  UniverseDeleteSpec
+
+  Optional addtional parameters for deleting a universe.
+type: object
+properties:
+  is_force_delete:
+    description: Whether to force delete the universe
+    type: boolean
+    example: false
+    default: false
+  is_delete_backups:
+    description: Whether to delete backups associated with the universe
+    type: boolean
+    example: false
+    default: false
+  is_delete_associated_certs:
+    description: Whether to delete associated Encryption In Transit certificates
+    type: boolean
+    example: false
+    default: false

@@ -1,0 +1,213 @@
+<!-- doc/src/sgml/pgbuffercache.sgml -->
+
+<sect1 id="pgbuffercache" xreflabel="pg_buffercache">
+ <title>pg_buffercache</title>
+
+ <indexterm zone="pgbuffercache">
+  <primary>pg_buffercache</primary>
+ </indexterm>
+
+ <para>
+  The <filename>pg_buffercache</filename> module provides a means for
+  examining what's happening in the shared buffer cache in real time.
+ </para>
+
+ <indexterm>
+  <primary>pg_buffercache_pages</primary>
+ </indexterm>
+
+ <para>
+  The module provides a C function <function>pg_buffercache_pages</function>
+  that returns a set of records, plus a view
+  <structname>pg_buffercache</structname> that wraps the function for
+  convenient use.
+ </para>
+
+ <para>
+  By default, use is restricted to superusers and roles with privileges of the
+  <literal>pg_monitor</literal> role. Access may be granted to others
+  using <command>GRANT</command>.
+ </para>
+
+ <sect2>
+  <title>The <structname>pg_buffercache</structname> View</title>
+
+  <para>
+   The definitions of the columns exposed by the view are shown in <xref linkend="pgbuffercache-columns"/>.
+  </para>
+
+  <table id="pgbuffercache-columns">
+   <title><structname>pg_buffercache</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>bufferid</structfield> <type>integer</type>
+      </para>
+      <para>
+       ID, in the range 1..<varname>shared_buffers</varname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>relfilenode</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-class"><structname>pg_class</structname></link>.<structfield>relfilenode</structfield>)
+      </para>
+      <para>
+       Filenode number of the relation
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>reltablespace</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-tablespace"><structname>pg_tablespace</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Tablespace OID of the relation
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>reldatabase</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-database"><structname>pg_database</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Database OID of the relation
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>relforknumber</structfield> <type>smallint</type>
+      </para>
+      <para>
+       Fork number within the relation;  see
+       <filename>common/relpath.h</filename>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>relblocknumber</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Page number within the relation
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>isdirty</structfield> <type>boolean</type>
+      </para>
+      <para>
+       Is the page dirty?
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>usagecount</structfield> <type>smallint</type>
+      </para>
+      <para>
+       Clock-sweep access count
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pinning_backends</structfield> <type>integer</type>
+      </para>
+      <para>
+       Number of backends pinning this buffer
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   There is one row for each buffer in the shared cache. Unused buffers are
+   shown with all fields null except <structfield>bufferid</structfield>.  Shared system
+   catalogs are shown as belonging to database zero.
+  </para>
+
+  <para>
+   Because the cache is shared by all the databases, there will normally be
+   pages from relations not belonging to the current database.  This means
+   that there may not be matching join rows in <structname>pg_class</structname> for
+   some rows, or that there could even be incorrect joins.  If you are
+   trying to join against <structname>pg_class</structname>, it's a good idea to
+   restrict the join to rows having <structfield>reldatabase</structfield> equal to
+   the current database's OID or zero.
+  </para>
+
+  <para>
+   Since buffer manager locks are not taken to copy the buffer state data that
+   the view will display, accessing <structname>pg_buffercache</structname> view
+   has less impact on normal buffer activity but it doesn't provide a consistent
+   set of results across all buffers.  However, we ensure that the information of
+   each buffer is self-consistent.
+  </para>
+ </sect2>
+
+ <sect2>
+  <title>Sample Output</title>
+
+<screen>
+regression=# SELECT n.nspname, c.relname, count(*) AS buffers
+             FROM pg_buffercache b JOIN pg_class c
+             ON b.relfilenode = pg_relation_filenode(c.oid) AND
+                b.reldatabase IN (0, (SELECT oid FROM pg_database
+                                      WHERE datname = current_database()))
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             GROUP BY n.nspname, c.relname
+             ORDER BY 3 DESC
+             LIMIT 10;
+
+  nspname   |        relname         | buffers
+------------+------------------------+---------
+ public     | delete_test_table      |     593
+ public     | delete_test_table_pkey |     494
+ pg_catalog | pg_attribute           |     472
+ public     | quad_poly_tbl          |     353
+ public     | tenk2                  |     349
+ public     | tenk1                  |     349
+ public     | gin_test_idx           |     306
+ pg_catalog | pg_largeobject         |     206
+ public     | gin_test_tbl           |     188
+ public     | spgist_text_tbl        |     182
+(10 rows)
+</screen>
+ </sect2>
+
+ <sect2>
+  <title>Authors</title>
+
+  <para>
+   Mark Kirkwood <email>markir@paradise.net.nz</email>
+  </para>
+
+  <para>
+   Design suggestions: Neil Conway <email>neilc@samurai.com</email>
+  </para>
+
+  <para>
+   Debugging advice: Tom Lane <email>tgl@sss.pgh.pa.us</email>
+  </para>
+ </sect2>
+
+</sect1>

@@ -1,0 +1,132 @@
+error[E0277]: the trait bound `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>: ArgAbi<'_>` is not satisfied
+  --> tests/todo/composite-types-broken-on-spi.rs:60:9
+   |
+58 |     #[pg_extern]
+   |     ------------ in this procedural macro expansion
+59 |     fn sum_scritches_for_names_strict_optional_items(
+60 |         dogs: Vec<Option<pgrx::composite_type!("Dog")>>,
+   |         ^^^^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>`
+   |
+   = help: the following other types implement trait `ArgAbi<'fcx>`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>: ArgAbi<'_>` is not satisfied
+  --> tests/todo/composite-types-broken-on-spi.rs:77:9
+   |
+75 |     #[pg_extern]
+   |     ------------ in this procedural macro expansion
+76 |     fn sum_scritches_for_names_default_optional_items(
+77 |         dogs: pgrx::default!(
+   |         ^^^^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>`
+   |
+   = help: the following other types implement trait `ArgAbi<'fcx>`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>: ArgAbi<'_>` is not satisfied
+  --> tests/todo/composite-types-broken-on-spi.rs:97:9
+   |
+95 |     #[pg_extern]
+   |     ------------ in this procedural macro expansion
+96 |     fn sum_scritches_for_names_optional_items(
+97 |         dogs: Option<Vec<Option<pgrx::composite_type!("Dog")>>>,
+   |         ^^^^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>`
+   |
+   = help: the following other types implement trait `ArgAbi<'fcx>`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+   = note: required for `Option<Vec<Option<pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>>>` to implement `ArgAbi<'_>`
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `Array<'_, pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>` is not an iterator
+   --> tests/todo/composite-types-broken-on-spi.rs:125:20
+    |
+125 |         for dog in dogs {
+    |                    ^^^^ `Array<'_, pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>` is not an iterator
+    |
+    = help: the trait `IntoIterator` is not implemented for `Array<'_, pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>`
+            but trait `IntoIterator` is implemented for it
+
+error[E0277]: `Array<'_, pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>` is not an iterator
+   --> tests/todo/composite-types-broken-on-spi.rs:145:20
+    |
+145 |         for dog in dogs {
+    |                    ^^^^ `Array<'_, pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>` is not an iterator
+    |
+    = help: the trait `IntoIterator` is not implemented for `Array<'_, pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>`
+            but trait `IntoIterator` is implemented for it
+
+error[E0277]: `Array<'_, pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>` is not an iterator
+   --> tests/todo/composite-types-broken-on-spi.rs:162:20
+    |
+162 |         for dog in dogs {
+    |                    ^^^^ `Array<'_, pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>` is not an iterator
+    |
+    = help: the trait `IntoIterator` is not implemented for `Array<'_, pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>>`
+            but trait `IntoIterator` is implemented for it
+
+error[E0308]: mismatched types
+  --> tests/todo/composite-types-broken-on-spi.rs:11:5
+   |
+11 |     #[pg_extern]
+   |     ^^^^^^^^^^^^ one type is more general than the other
+   |
+   = note: expected struct `pgrx::prelude::PgHeapTuple<'arr, pgrx::AllocatedByRust>`
+              found struct `pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>`
+note: the lifetime requirement is introduced here
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> tests/todo/composite-types-broken-on-spi.rs:28:5
+   |
+28 |     #[pg_extern]
+   |     ^^^^^^^^^^^^ one type is more general than the other
+   |
+   = note: expected struct `pgrx::prelude::PgHeapTuple<'arr, pgrx::AllocatedByRust>`
+              found struct `pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>`
+note: the lifetime requirement is introduced here
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> tests/todo/composite-types-broken-on-spi.rs:44:5
+   |
+44 |     #[pg_extern]
+   |     ^^^^^^^^^^^^ one type is more general than the other
+   |
+   = note: expected struct `pgrx::prelude::PgHeapTuple<'arr, pgrx::AllocatedByRust>`
+              found struct `pgrx::prelude::PgHeapTuple<'_, pgrx::AllocatedByRust>`
+note: the lifetime requirement is introduced here
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)

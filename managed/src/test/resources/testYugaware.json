@@ -1,0 +1,697 @@
+{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "annotations": {
+            "checksum/config": "be6ed74cd25768edf63927c11bb47f7403e9b46e0dd5543ac9687db3a40d568d"
+        },
+        "creationTimestamp": "2023-02-14T21:20:16Z",
+        "generateName": "yw-ns-jenk-i3082-20230214-211928-yugaware-",
+        "labels": {
+            "app": "yw-ns-jenk-i3082-20230214-211928-yugaware",
+            "controller-revision-hash": "yw-ns-jenk-i3082-20230214-211928-yugaware-6f4bb8f44f",
+            "statefulset.kubernetes.io/pod-name": "yw-ns-jenk-i3082-20230214-211928-yugaware-0"
+        },
+        "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-0",
+        "namespace": "yw-ns-jenk-i3082-20230214-211928",
+        "ownerReferences": [
+            {
+                "apiVersion": "apps/v1",
+                "blockOwnerDeletion": true,
+                "controller": true,
+                "kind": "StatefulSet",
+                "name": "yw-ns-jenk-i3082-20230214-211928-yugaware",
+                "uid": "e6f6a6b6-0b57-4f27-9108-2844129ce720"
+            }
+        ],
+        "resourceVersion": "137716233",
+        "uid": "79d31f87-d210-4246-a718-25c420f01554"
+    },
+    "spec": {
+        "containers": [
+            {
+                "args": [
+                    "-c",
+                    "huge_pages=off"
+                ],
+                "env": [
+                    {
+                        "name": "POSTGRES_USER",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "key": "postgres_user",
+                                "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-global-config"
+                            }
+                        }
+                    },
+                    {
+                        "name": "POSTGRES_PASSWORD",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "key": "postgres_password",
+                                "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-global-config"
+                            }
+                        }
+                    },
+                    {
+                        "name": "POSTGRES_DB",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "key": "postgres_db",
+                                "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-global-config"
+                            }
+                        }
+                    },
+                    {
+                        "name": "PGDATA",
+                        "value": "/var/lib/postgresql/data/pgdata"
+                    }
+                ],
+                "image": "postgres:14.6",
+                "imagePullPolicy": "Always",
+                "name": "postgres",
+                "ports": [
+                    {
+                        "containerPort": 5432,
+                        "name": "postgres",
+                        "protocol": "TCP"
+                    }
+                ],
+                "resources": {
+                    "requests": {
+                        "cpu": "500m",
+                        "memory": "1Gi"
+                    }
+                },
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                    {
+                        "mountPath": "/var/lib/postgresql/data",
+                        "name": "yugaware-storage",
+                        "subPath": "postgres_data_14"
+                    },
+                    {
+                        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                        "name": "kube-api-access-w2r5r",
+                        "readOnly": true
+                    }
+                ]
+            },
+            {
+                "args": [
+                    "--config.file=/prometheus_configs/prometheus.yml",
+                    "--storage.tsdb.path=/prometheus/",
+                    "--web.enable-admin-api",
+                    "--web.enable-lifecycle",
+                    "--storage.tsdb.retention.time=15d",
+                    "--query.max-concurrency=20",
+                    "--query.max-samples=5e+06",
+                    "--query.timeout=30s"
+                ],
+                "image": "prom/prometheus:v2.41.0",
+                "imagePullPolicy": "Always",
+                "name": "prometheus",
+                "ports": [
+                    {
+                        "containerPort": 9090,
+                        "protocol": "TCP"
+                    }
+                ],
+                "resources": {
+                    "requests": {
+                        "cpu": "500m",
+                        "memory": "4Gi"
+                    }
+                },
+                "securityContext": {
+                    "runAsUser": 0
+                },
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                    {
+                        "mountPath": "/prometheus_configs",
+                        "name": "yugaware-storage",
+                        "subPath": "prometheus.yml"
+                    },
+                    {
+                        "mountPath": "/prometheus/",
+                        "name": "yugaware-storage"
+                    },
+                    {
+                        "mountPath": "/opt/yugabyte/prometheus/targets",
+                        "name": "yugaware-storage",
+                        "subPath": "swamper_targets"
+                    },
+                    {
+                        "mountPath": "/opt/yugabyte/prometheus/rules",
+                        "name": "yugaware-storage",
+                        "subPath": "swamper_rules"
+                    },
+                    {
+                        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                        "name": "kube-api-access-w2r5r",
+                        "readOnly": true
+                    }
+                ]
+            },
+            {
+                "args": [
+                    "bin/yugaware",
+                    "-Dconfig.file=/data/application.docker.conf"
+                ],
+                "command": [
+                    "/sbin/tini",
+                    "--"
+                ],
+                "env": [
+                    {
+                        "name": "POSTGRES_USER",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "key": "postgres_user",
+                                "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-global-config"
+                            }
+                        }
+                    },
+                    {
+                        "name": "POSTGRES_PASSWORD",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "key": "postgres_password",
+                                "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-global-config"
+                            }
+                        }
+                    },
+                    {
+                        "name": "POSTGRES_DB",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "key": "postgres_db",
+                                "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-global-config"
+                            }
+                        }
+                    },
+                    {
+                        "name": "APP_SECRET",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "key": "app_secret",
+                                "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-global-config"
+                            }
+                        }
+                    }
+                ],
+                "image": "quay.io/yugabyte/yugaware-itest:2.16.2.0-b25",
+                "imagePullPolicy": "Always",
+                "name": "yugaware",
+                "ports": [
+                    {
+                        "containerPort": 9000,
+                        "name": "yugaware",
+                        "protocol": "TCP"
+                    }
+                ],
+                "resources": {
+                    "requests": {
+                        "cpu": "5",
+                        "memory": "8Gi"
+                    }
+                },
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                    {
+                        "mountPath": "/data",
+                        "name": "yugaware-config"
+                    },
+                    {
+                        "mountPath": "/opt/yugabyte/yugaware/data/",
+                        "name": "yugaware-storage",
+                        "subPath": "data"
+                    },
+                    {
+                        "mountPath": "/opt/yugaware_data/",
+                        "name": "yugaware-storage",
+                        "subPath": "data"
+                    },
+                    {
+                        "mountPath": "/opt/yugabyte/releases/",
+                        "name": "yugaware-storage",
+                        "subPath": "releases"
+                    },
+                    {
+                        "mountPath": "/opt/yugabyte/ybc/releases/",
+                        "name": "yugaware-storage",
+                        "subPath": "ybc_releases"
+                    },
+                    {
+                        "mountPath": "/opt/releases/",
+                        "name": "yugaware-storage",
+                        "subPath": "releases"
+                    },
+                    {
+                        "mountPath": "/opt/yugabyte/prometheus/targets",
+                        "name": "yugaware-storage",
+                        "subPath": "swamper_targets"
+                    },
+                    {
+                        "mountPath": "/opt/yugabyte/prometheus/rules",
+                        "name": "yugaware-storage",
+                        "subPath": "swamper_rules"
+                    },
+                    {
+                        "mountPath": "/prometheus_configs",
+                        "name": "yugaware-storage",
+                        "subPath": "prometheus.yml"
+                    },
+                    {
+                        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                        "name": "kube-api-access-w2r5r",
+                        "readOnly": true
+                    }
+                ]
+            },
+            {
+                "image": "nginxinc/nginx-unprivileged:1.23.3",
+                "imagePullPolicy": "Always",
+                "name": "nginx",
+                "ports": [
+                    {
+                        "containerPort": 8080,
+                        "protocol": "TCP"
+                    }
+                ],
+                "resources": {
+                    "requests": {
+                        "cpu": "250m",
+                        "memory": "300Mi"
+                    }
+                },
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                    {
+                        "mountPath": "/etc/nginx/conf.d/",
+                        "name": "nginx-config"
+                    },
+                    {
+                        "mountPath": "/etc/nginx/nginx.conf",
+                        "name": "nginx-main-config",
+                        "subPath": "nginx.conf"
+                    },
+                    {
+                        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                        "name": "kube-api-access-w2r5r",
+                        "readOnly": true
+                    }
+                ]
+            }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": true,
+        "hostname": "yw-ns-jenk-i3082-20230214-211928-yugaware-0",
+        "imagePullSecrets": [
+            {
+                "name": "yugabyte-k8s-pull-secret"
+            }
+        ],
+        "initContainers": [
+            {
+                "command": [
+                    "cp",
+                    "/default_prometheus_config/prometheus.yml",
+                    "/prometheus_configs/prometheus.yml"
+                ],
+                "image": "quay.io/yugabyte/yugaware-itest:2.16.2.0-b25",
+                "imagePullPolicy": "Always",
+                "name": "prometheus-configuration",
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                    {
+                        "mountPath": "/default_prometheus_config",
+                        "name": "prometheus-config"
+                    },
+                    {
+                        "mountPath": "/prometheus_configs",
+                        "name": "yugaware-storage",
+                        "subPath": "prometheus.yml"
+                    },
+                    {
+                        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                        "name": "kube-api-access-w2r5r",
+                        "readOnly": true
+                    }
+                ]
+            },
+            {
+                "command": [
+                    "bash",
+                    "-c",
+                    "/bin/bash /pg_upgrade_11_to_14/pg-upgrade-11-to-14.sh;"
+                ],
+                "env": [
+                    {
+                        "name": "PGDATANEW",
+                        "value": "/var/lib/postgresql/14/pgdata"
+                    },
+                    {
+                        "name": "PGDATAOLD",
+                        "value": "/var/lib/postgresql/11/pgdata"
+                    },
+                    {
+                        "name": "PGUSER",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "key": "postgres_user",
+                                "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-global-config"
+                            }
+                        }
+                    },
+                    {
+                        "name": "POSTGRES_INITDB_ARGS",
+                        "value": "-U $PGUSER"
+                    }
+                ],
+                "image": "tianon/postgres-upgrade:11-to-14",
+                "imagePullPolicy": "Always",
+                "name": "postgres-upgrade",
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                    {
+                        "mountPath": "/var/lib/postgresql/11/",
+                        "name": "yugaware-storage",
+                        "subPath": "postgres_data"
+                    },
+                    {
+                        "mountPath": "/var/lib/postgresql/14/",
+                        "name": "yugaware-storage",
+                        "subPath": "postgres_data_14"
+                    },
+                    {
+                        "mountPath": "/pg_upgrade_11_to_14",
+                        "name": "pg-upgrade-11-to-14"
+                    },
+                    {
+                        "mountPath": "/pg_upgrade_logs",
+                        "name": "yugaware-storage",
+                        "subPath": "postgres_data_14"
+                    },
+                    {
+                        "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                        "name": "kube-api-access-w2r5r",
+                        "readOnly": true
+                    }
+                ]
+            }
+        ],
+        "nodeName": "gke-itest-release-default-pool-36021bc1-9978",
+        "preemptionPolicy": "PreemptLowerPriority",
+        "priority": 0,
+        "restartPolicy": "Always",
+        "schedulerName": "default-scheduler",
+        "securityContext": {},
+        "serviceAccount": "yw-ns-jenk-i3082-20230214-211928",
+        "serviceAccountName": "yw-ns-jenk-i3082-20230214-211928",
+        "subdomain": "yw-ns-jenk-i3082-20230214-211928-yugaware",
+        "terminationGracePeriodSeconds": 30,
+        "tolerations": [
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/not-ready",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            },
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/unreachable",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            }
+        ],
+        "volumes": [
+            {
+                "name": "yugaware-storage",
+                "persistentVolumeClaim": {
+                    "claimName": "yw-ns-jenk-i3082-20230214-211928-yugaware-storage"
+                }
+            },
+            {
+                "emptyDir": {},
+                "name": "yugaware-ui"
+            },
+            {
+                "name": "yugaware-config",
+                "projected": {
+                    "defaultMode": 420,
+                    "sources": [
+                        {
+                            "configMap": {
+                                "items": [
+                                    {
+                                        "key": "application.docker.conf",
+                                        "path": "application.docker.conf"
+                                    }
+                                ],
+                                "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-app-config"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "configMap": {
+                    "defaultMode": 420,
+                    "items": [
+                        {
+                            "key": "default.conf",
+                            "path": "default.conf"
+                        }
+                    ],
+                    "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-nginx-config"
+                },
+                "name": "nginx-config"
+            },
+            {
+                "configMap": {
+                    "defaultMode": 420,
+                    "items": [
+                        {
+                            "key": "nginx.conf",
+                            "path": "nginx.conf"
+                        }
+                    ],
+                    "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-nginx-main-config"
+                },
+                "name": "nginx-main-config"
+            },
+            {
+                "configMap": {
+                    "defaultMode": 420,
+                    "items": [
+                        {
+                            "key": "prometheus.yml",
+                            "path": "prometheus.yml"
+                        }
+                    ],
+                    "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-prometheus-config"
+                },
+                "name": "prometheus-config"
+            },
+            {
+                "configMap": {
+                    "defaultMode": 420,
+                    "items": [
+                        {
+                            "key": "pg-upgrade-11-to-14.sh",
+                            "path": "pg-upgrade-11-to-14.sh"
+                        }
+                    ],
+                    "name": "yw-ns-jenk-i3082-20230214-211928-yugaware-pg-upgrade"
+                },
+                "name": "pg-upgrade-11-to-14"
+            },
+            {
+                "name": "kube-api-access-w2r5r",
+                "projected": {
+                    "defaultMode": 420,
+                    "sources": [
+                        {
+                            "serviceAccountToken": {
+                                "expirationSeconds": 3607,
+                                "path": "token"
+                            }
+                        },
+                        {
+                            "configMap": {
+                                "items": [
+                                    {
+                                        "key": "ca.crt",
+                                        "path": "ca.crt"
+                                    }
+                                ],
+                                "name": "kube-root-ca.crt"
+                            }
+                        },
+                        {
+                            "downwardAPI": {
+                                "items": [
+                                    {
+                                        "fieldRef": {
+                                            "apiVersion": "v1",
+                                            "fieldPath": "metadata.namespace"
+                                        },
+                                        "path": "namespace"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "status": {
+        "conditions": [
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2023-02-14T21:21:13Z",
+                "status": "True",
+                "type": "Initialized"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2023-02-14T21:21:16Z",
+                "status": "True",
+                "type": "Ready"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2023-02-14T21:21:16Z",
+                "status": "True",
+                "type": "ContainersReady"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2023-02-14T21:20:20Z",
+                "status": "True",
+                "type": "PodScheduled"
+            }
+        ],
+        "containerStatuses": [
+            {
+                "containerID": "containerd://8f91af66b9d1cf2a19243e571a4e57ad",
+                "image": "docker.io/nginxinc/nginx-unprivileged:1.23.3",
+                "imageID": "docker.io/nginxinc/nginx-unprivileged@sha256:097313923c0f29fd09",
+                "lastState": {},
+                "name": "nginx",
+                "ready": true,
+                "restartCount": 0,
+                "started": true,
+                "state": {
+                    "running": {
+                        "startedAt": "2023-02-14T21:21:16Z"
+                    }
+                }
+            },
+            {
+                "containerID": "containerd://ea2e767a15935ebe6e08dfdab912df62030",
+                "image": "docker.io/library/postgres:14.6",
+                "imageID": "docker.io/library/postgres@sha256:f565573d74aedc9b218e1d191b04",
+                "lastState": {},
+                "name": "postgres",
+                "ready": true,
+                "restartCount": 0,
+                "started": true,
+                "state": {
+                    "running": {
+                        "startedAt": "2023-02-14T21:21:13Z"
+                    }
+                }
+            },
+            {
+                "containerID": "containerd://3acd37fc33e8b81ed08617c80236d604122275",
+                "image": "docker.io/prom/prometheus:v2.41.0",
+                "imageID": "docker.io/prom/prometheus@sha256:1a3e9a",
+                "lastState": {},
+                "name": "prometheus",
+                "ready": true,
+                "restartCount": 0,
+                "started": true,
+                "state": {
+                    "running": {
+                        "startedAt": "2023-02-14T21:21:14Z"
+                    }
+                }
+            },
+            {
+                "containerID": "containerd://d5ac6ec891bd71d2e6397a3970a00a41b463d6ff0291857",
+                "image": "quay.io/yugabyte/yugaware-itest:2.16.2.0-b25",
+                "imageID": "quay.io/yugabyte/yugaware-itest@sha256:3bc8039cbf",
+                "lastState": {},
+                "name": "yugaware",
+                "ready": true,
+                "restartCount": 0,
+                "started": true,
+                "state": {
+                    "running": {
+                        "startedAt": "2023-02-14T21:21:15Z"
+                    }
+                }
+            }
+        ],
+        "hostIP": "10.150.0.237",
+        "initContainerStatuses": [
+            {
+                "containerID": "containerd://10e056ff9596b5fb1158332f4",
+                "image": "quay.io/yugabyte/yugaware-itest:2.16.2.0-b25",
+                "imageID": "quay.io/yugabyte/yugaware-itest@sha256:3bc8039cbfc99c94de95",
+                "lastState": {},
+                "name": "prometheus-configuration",
+                "ready": true,
+                "restartCount": 0,
+                "state": {
+                    "terminated": {
+                        "containerID": "containerd://10e056ff9596b5fb1158332f40c1d5",
+                        "exitCode": 0,
+                        "finishedAt": "2023-02-14T21:21:02Z",
+                        "reason": "Completed",
+                        "startedAt": "2023-02-14T21:21:02Z"
+                    }
+                }
+            },
+            {
+                "containerID": "containerd://d5ca7ce756ff9f883c6609d21e66cef8a238100281f",
+                "image": "docker.io/tianon/postgres-upgrade:11-to-14",
+                "imageID": "docker.io/tianon/postgres-upgrade@sha256:35853b5b4968",
+                "lastState": {},
+                "name": "postgres-upgrade",
+                "ready": true,
+                "restartCount": 0,
+                "state": {
+                    "terminated": {
+                        "containerID": "containerd://d5ca7ce756ff9f883c6609d21e",
+                        "exitCode": 0,
+                        "finishedAt": "2023-02-14T21:21:12Z",
+                        "reason": "Completed",
+                        "startedAt": "2023-02-14T21:21:12Z"
+                    }
+                }
+            }
+        ],
+        "phase": "Running",
+        "podIP": "10.180.14.79",
+        "podIPs": [
+            {
+                "ip": "10.180.14.79"
+            }
+        ],
+        "qosClass": "Burstable",
+        "startTime": "2023-02-14T21:20:20Z"
+    }
+}

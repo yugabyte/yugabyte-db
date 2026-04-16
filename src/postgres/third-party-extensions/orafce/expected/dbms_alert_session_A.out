@@ -1,0 +1,165 @@
+\set ECHO none
+SELECT pg_sleep(3);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+/* 
+ * DBMS_ALERT is used for one-way communication of one session to other.
+ *
+ * This session mainly sends signals for testing the alert functionality in 
+ * session B and C.
+ *
+ * The following alerts are used to ensure that signals are sent at correct 
+ * times to session B for testing. These signals are sent from session B 
+ * indicating completion of an event. 
+ * After the signal is received, the next required signal for testing is sent
+ * from this session. 
+ */
+SELECT dbms_alert.register('b1');
+ register 
+----------
+ 
+(1 row)
+
+SELECT dbms_alert.register('b2');
+ register 
+----------
+ 
+(1 row)
+
+SELECT dbms_alert.register('b3');
+ register 
+----------
+ 
+(1 row)
+
+SELECT dbms_alert.register('b4');
+ register 
+----------
+ 
+(1 row)
+
+SELECT dbms_alert.register('b5');
+ register 
+----------
+ 
+(1 row)
+
+SELECT dbms_alert.signal('a1','Msg1 for a1');
+ signal 
+--------
+ 
+(1 row)
+
+SELECT dbms_alert.signal('a2','Msg1 for a2');
+ signal 
+--------
+ 
+(1 row)
+
+/* 
+ * Test: defered_signal 
+ * The signal is received only when the signalling transaction commits.
+ * To test this, an explict BEGIN-COMMIT block is used. 
+ */ 
+SELECT dbms_alert.signal('tds','Begin defered_signal test');
+ signal 
+--------
+ 
+(1 row)
+
+BEGIN;
+SELECT dbms_alert.signal('tds','Testing defered_signal');
+ signal 
+--------
+ 
+(1 row)
+
+/* The signal is received while transaction is running */
+SELECT dbms_alert.waitone('b1',20);
+             waitone             
+---------------------------------
+ ("Transaction still running",0)
+(1 row)
+
+COMMIT;
+/* The signal is received after transaction completed.
+ * After this the tds signal is received in session B indicating that the
+ * signal is received only after commit.
+ */
+SELECT dbms_alert.waitone('b1',20);
+           waitone           
+-----------------------------
+ ("Transaction committed",0)
+(1 row)
+
+SELECT dbms_alert.waitone('b2',20);
+                waitone                 
+----------------------------------------
+ ("to check unregistered alert wait",0)
+(1 row)
+
+/* This signals a3 which is not registered in Session B */
+SELECT dbms_alert.signal('a3','Msg1 for a3');
+ signal 
+--------
+ 
+(1 row)
+
+/* alert a4 is signalled soon after a3 */
+SELECT dbms_alert.signal('a4','Test- Register after signal');
+ signal 
+--------
+ 
+(1 row)
+
+/* This signal indicates at remove() is called */
+SELECT dbms_alert.waitone('b3',20);
+         waitone         
+-------------------------
+ ("remove(a1) called",0)
+(1 row)
+
+/* Send signal which is removed in session B */
+SELECT dbms_alert.signal('a1','Msg2 for a1');
+ signal 
+--------
+ 
+(1 row)
+
+SELECT dbms_alert.waitone('b4',20);
+            waitone             
+--------------------------------
+ ("to check unremoved alert",0)
+(1 row)
+
+/* Send signal which is registered in B and not removed */
+SELECT dbms_alert.signal('a4','Msg1 for a4');
+ signal 
+--------
+ 
+(1 row)
+
+/* This signal inidcates that removeall() is called */
+SELECT dbms_alert.waitone('b5',20);
+        waitone         
+------------------------
+ ("removeall called",0)
+(1 row)
+
+/* Send a signal to test if session B receives it after removeall() */
+SELECT dbms_alert.signal('a2','Msg2 for a2');
+ signal 
+--------
+ 
+(1 row)
+
+/* cleanup */
+SELECT dbms_alert.removeall();
+ removeall 
+-----------
+ 
+(1 row)
+

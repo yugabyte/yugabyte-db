@@ -1,0 +1,146 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="regress">
+      <UniqueIdentifier>{c12fa9ac-05f6-45cb-bb38-f575a3a78f47}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="script">
+      <UniqueIdentifier>{bc5d92fe-cfa8-4220-b3cf-c63aede7db41}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\sqlscan.l">
+      <Filter>src</Filter>
+    </None>
+    <None Include="..\sqlparse.y">
+      <Filter>src</Filter>
+    </None>
+    <None Include="..\sql\dbms_output.sql">
+      <Filter>regress</Filter>
+    </None>
+    <None Include="..\sql\dbms_pipe.sql">
+      <Filter>regress</Filter>
+    </None>
+    <None Include="..\sql\files.sql">
+      <Filter>regress</Filter>
+    </None>
+    <None Include="..\expected\dbms_output.out">
+      <Filter>regress</Filter>
+    </None>
+    <None Include="..\expected\files.out">
+      <Filter>regress</Filter>
+    </None>
+    <None Include="..\COPYRIGHT.orafce" />
+    <None Include="..\expected\orafce.out" />
+    <None Include="..\INSTALL.orafce" />
+    <None Include="..\orafce-8.1.sql" />
+    <None Include="..\orafce-8.2.sql" />
+    <None Include="..\orafce-8.3.sql" />
+    <None Include="..\orafce-8.4.sql" />
+    <None Include="..\orafce-9.0.sql" />
+    <None Include="..\orafce-9.1.sql" />
+    <None Include="..\orafce-common.sql" />
+    <None Include="..\README.orafce" />
+    <None Include="..\sql\orafce.sql" />
+    <None Include="..\uninstall_orafce.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\aggregate.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\alert.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\assert.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\convert.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\datefce.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\file.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\magic.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\others.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\pipe.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\plunit.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\plvdate.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\plvlex.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\plvstr.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\plvsubst.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\putline.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\random.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\shmmc.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\utility.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\charlen.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\charpad.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\nvarchar2.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\varchar2.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\orafce.c">
+      <Filter>src</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\assert.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\builtins.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\pipe.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plvlex.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shmmc.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\orafce.h">
+      <Filter>include</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

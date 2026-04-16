@@ -1,0 +1,206 @@
+<!-- doc/src/sgml/contrib.sgml -->
+
+<appendix id="contrib">
+ <title>Additional Supplied Modules</title>
+
+ <para>
+  This appendix and the next one contain information regarding the modules that
+  can be found in the <literal>contrib</literal> directory of the
+  <productname>PostgreSQL</productname> distribution.
+  These include porting tools, analysis utilities,
+  and plug-in features that are not part of the core PostgreSQL system,
+  mainly because they address a limited audience or are too experimental
+  to be part of the main source tree.  This does not preclude their
+  usefulness.
+ </para>
+
+ <para>
+  This appendix covers extensions and other server plug-in modules found in
+  <literal>contrib</literal>.  <xref linkend="contrib-prog"/> covers utility
+  programs.
+ </para>
+
+ <para>
+  When building from the source distribution, these components are not built
+  automatically, unless you build the "world" target
+  (see <xref linkend="build"/>).
+  You can build and install all of them by running:
+<screen>
+<userinput>make</userinput>
+<userinput>make install</userinput>
+</screen>
+  in the <literal>contrib</literal> directory of a configured source tree;
+  or to build and install
+  just one selected module, do the same in that module's subdirectory.
+  Many of the modules have regression tests, which can be executed by
+  running:
+<screen>
+<userinput>make check</userinput>
+</screen>
+  before installation or
+<screen>
+<userinput>make installcheck</userinput>
+</screen>
+  once you have a <productname>PostgreSQL</productname> server running.
+ </para>
+
+ <para>
+  If you are using a pre-packaged version of <productname>PostgreSQL</productname>,
+  these modules are typically made available as a separate subpackage,
+  such as <literal>postgresql-contrib</literal>.
+ </para>
+
+ <para>
+  Many modules supply new user-defined functions, operators, or types.
+  To make use of one of these modules, after you have installed the code
+  you need to register the new SQL objects in the database system.
+  This is done by executing
+  a <xref linkend="sql-createextension"/> command.  In a fresh database,
+  you can simply do
+
+<programlisting>
+CREATE EXTENSION <replaceable>module_name</replaceable>;
+</programlisting>
+
+  This command registers the new SQL objects in the current database only,
+  so you need to run it in each database that you want
+  the module's facilities to be available in.  Alternatively, run it in
+  database <literal>template1</literal> so that the extension will be copied into
+  subsequently-created databases by default.
+ </para>
+
+ <para>
+  For all these modules, <command>CREATE EXTENSION</command> must be run
+  by a database superuser, unless the module is
+  considered <quote>trusted</quote>, in which case it can be run by any
+  user who has <literal>CREATE</literal> privilege on the current
+  database.  Modules that are trusted are identified as such in the
+  sections that follow.  Generally, trusted modules are ones that cannot
+  provide access to outside-the-database functionality.
+ </para>
+
+ <para>
+  Many modules allow you to install their objects in a schema of your
+  choice.  To do that, add <literal>SCHEMA
+  <replaceable>schema_name</replaceable></literal> to the <command>CREATE EXTENSION</command>
+  command.  By default, the objects will be placed in your current creation
+  target schema, which in turn defaults to <literal>public</literal>.
+ </para>
+
+ <para>
+  Note, however, that some of these modules are not <quote>extensions</quote>
+  in this sense, but are loaded into the server in some other way, for instance
+  by way of
+  <xref linkend="guc-shared-preload-libraries"/>.  See the documentation of each
+  module for details.
+ </para>
+
+ &adminpack;
+ &amcheck;
+ &auth-delay;
+ &auto-explain;
+ &basebackup-to-shell;
+ &basic-archive;
+ &bloom;
+ &btree-gin;
+ &btree-gist;
+ &citext;
+ &cube;
+ &dblink;
+ &dict-int;
+ &dict-xsyn;
+ &earthdistance;
+ &file-fdw;
+ &fuzzystrmatch;
+ &hstore;
+ &intagg;
+ &intarray;
+ &isn;
+ &lo;
+ &ltree;
+ &oldsnapshot;
+ &pageinspect;
+ &passwordcheck;
+ &pgbuffercache;
+ &pgcrypto;
+ &pgfreespacemap;
+ &pgprewarm;
+ &pgrowlocks;
+ &pgstatstatements;
+ &pgstattuple;
+ &pgsurgery;
+ &pgtrgm;
+ &pgvisibility;
+ &pgwalinspect;
+ &postgres-fdw;
+ &seg;
+ &sepgsql;
+ &contrib-spi;
+ &sslinfo;
+ &tablefunc;
+ &tcn;
+ &test-decoding;
+ &tsm-system-rows;
+ &tsm-system-time;
+ &unaccent;
+ &uuid-ossp;
+ &xml2;
+
+</appendix>
+
+<!--
+These are two separate appendixes because it is difficult to mix regular
+sections (for extensions) and refentries (for programs) in one chapter or
+appendix.  And we do want the programs as refentries so that we can produce man
+pages.
+-->
+
+<appendix id="contrib-prog">
+ <title>Additional Supplied Programs</title>
+
+ <para>
+  This appendix and the previous one contain information regarding the modules that
+  can be found in the <literal>contrib</literal> directory of the
+  <productname>PostgreSQL</productname> distribution.  See <xref linkend="contrib"/> for
+  more information about the <literal>contrib</literal> section in general and
+  server extensions and plug-ins found in <literal>contrib</literal>
+  specifically.
+ </para>
+
+ <para>
+  This appendix covers utility programs found in <literal>contrib</literal>.
+  Once installed, either from source or a packaging system, they are found in
+  the <filename>bin</filename> directory of the
+  <productname>PostgreSQL</productname> installation and can be used like any
+  other program.
+ </para>
+
+ <sect1 id="contrib-prog-client">
+  <title>Client Applications</title>
+
+  <para>
+   This section covers <productname>PostgreSQL</productname> client
+   applications in <literal>contrib</literal>.  They can be run from anywhere,
+   independent of where the database server resides.  See
+   also <xref linkend="reference-client"/> for information about client
+   applications that are part of the core <productname>PostgreSQL</productname>
+   distribution.
+  </para>
+
+ &oid2name;
+ &vacuumlo;
+ </sect1>
+
+ <sect1 id="contrib-prog-server">
+  <title>Server Applications</title>
+
+  <para>
+   Some applications run on the <productname>PostgreSQL</productname> server
+   itself.  Currently, no such applications are included in the
+   <literal>contrib</literal> directory.  See also <xref
+   linkend="reference-server"/> for information about server applications that
+   are part of the core <productname>PostgreSQL</productname> distribution.
+  </para>
+
+ </sect1>
+</appendix>

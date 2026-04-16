@@ -1,0 +1,17 @@
+title: AvailabilityZoneNodeSpec
+description: Properties for each node in the cluster. The settings can be configured at top-level for uniform node settings for both tserver and master nodes. Granular settings for tserver and master will be honored if provided (and dedicated_nodes is true or this is k8s cluster). Part of ClusterNodeSpec.
+type: object
+allOf:
+  - $ref: "./PerProcessNodeSpec.yaml"
+  - properties:
+      cgroup_size:
+        description: 'Amount of memory in MB to limit the postgres process using the ysql cgroup. The value should be greater than 0. When set to 0 it results in no cgroup limits. For a read replica cluster, setting this value to null or -1 would inherit this value from the primary cluster. Applicable only for nodes running as Linux VMs on AWS/GCP/Azure Cloud Provider. Only used internally by YBM.'
+        type: integer
+        example: 1024
+        x-yba-api-visibility: internal
+      tserver:
+        description: Instance spec for tserver nodes of cluster.
+        $ref: "./PerProcessNodeSpec.yaml"
+      master:
+        description: Instance spec for master nodes of cluster
+        $ref: "./PerProcessNodeSpec.yaml"

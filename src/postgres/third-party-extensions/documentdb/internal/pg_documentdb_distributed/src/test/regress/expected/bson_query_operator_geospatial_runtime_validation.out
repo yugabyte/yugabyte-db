@@ -1,0 +1,741 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 1605000;
+SET documentdb.next_collection_id TO 160500;
+SET documentdb.next_collection_index_id TO 160500;
+SELECT documentdb_api.drop_collection('db', 'geoquerytest') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'geoquerytest') IS NOT NULL;
+NOTICE:  creating collection
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- avoid plans that use the primary key index
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','geoquerytest');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Top level validations
+-- Insert so that validations kick in
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "z" : { "y": [10, 10] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": 1 }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { "$numberInt": "1" } }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { "$numberLong": "1" } }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { "$numberDouble": "1" } }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { "$numberDecimal": "1" } }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": [10, 10] }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": true }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": false }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { "$undefined": true } }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": "Geometry" }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"a": [10, 20]}}}';
+ERROR:  unknown geo specifier: a: [ 10, 20 ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"box": [10, 20]}}}';
+ERROR:  unknown geo specifier: box: [ 10, 20 ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"center": [10, 20]}}}';
+ERROR:  unknown geo specifier: center: [ 10, 20 ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"polygon": [10, 20]}}}';
+ERROR:  unknown geo specifier: polygon: [ 10, 20 ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": 1 }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": { "$numberInt": "1" } }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": { "$numberLong": "1" } }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": { "$numberDouble": "1" } }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": { "$numberDecimal": "1" } }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": [10, 10] }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": true }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": false }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": { "$undefined": true } }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": "Geometry" }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"a": [10, 20]}}}';
+ERROR:  unknown geo specifier: a: [ 10, 20 ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"box": [10, 20]}}}';
+ERROR:  unknown geo specifier: box: [ 10, 20 ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"center": [10, 20]}}}';
+ERROR:  unknown geo specifier: center: [ 10, 20 ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"polygon": [10, 20]}}}';
+ERROR:  unknown geo specifier: polygon: [ 10, 20 ]
+-- Valid Shape operator validations
+-- $box
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": "Points" }}}';
+ERROR:  unknown geo specifier: $box: "Points"
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { }}}';
+ERROR:  geo query doesn't have any geometry
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": 1 }}}';
+ERROR:  unknown geo specifier: $box: 1
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": true }}}';
+ERROR:  unknown geo specifier: $box: true
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": {"w": 10, "x": 10, "y": 11, "z": 12}}}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": {"bottomLeftX": 10, "bottomLeftY": 10, "topRightX": 11, "topRightY": 12}}}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": {"bottomLeft": { "x": [10], "y": 10 }, "topRight": { "x": 11, "y": 11}}}}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": {"bottomLeft": { "x": 10, "y": "10" }, "topRight": { "x": 11, "y": 11}}}}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": {"bottomLeft": { "x": 10, "y": 10 }, "topRight": { "x": true, "y": 11}}}}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": {"bottomLeft": { "x": 10, "y": 10 }, "topRight": { "x": 11, "y": {"y": 10}}}}}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [10, 11, 12, 13] }}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[[10], 10], [11, 11]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, "10"], [11, 11]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, 10], [true, 11]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, 10], [11, {"y": 11}]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, 10]] }}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, { "$numberDouble": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, { "$numberDouble": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, { "$numberDecimal": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, { "$numberDecimal": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$box": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": "Points" }}}';
+ERROR:  unknown geo specifier: $box: "Points"
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": { }}}';
+ERROR:  geo query doesn't have any geometry
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": 1 }}}';
+ERROR:  unknown geo specifier: $box: 1
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": true }}}';
+ERROR:  unknown geo specifier: $box: true
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": {"w": 10, "x": 10, "y": 11, "z": 12}}}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": {"bottomLeftX": 10, "bottomLeftY": 10, "topRightX": 11, "topRightY": 12}}}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": {"bottomLeft": { "x": [10], "y": 10 }, "topRight": { "x": 11, "y": 11}}}}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": {"bottomLeft": { "x": 10, "y": "10" }, "topRight": { "x": 11, "y": 11}}}}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": {"bottomLeft": { "x": 10, "y": 10 }, "topRight": { "x": true, "y": 11}}}}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": {"bottomLeft": { "x": 10, "y": 10 }, "topRight": { "x": 11, "y": {"y": 10}}}}}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [10, 11, 12, 13] }}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[[10], 10], [11, 11]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, "10"], [11, 11]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, 10], [true, 11]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, 10], [11, {"y": 11}]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, 10]] }}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, { "$numberDouble": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, { "$numberDouble": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, { "$numberDecimal": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, { "$numberDecimal": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$box": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+-- $center
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": "Points" }}}';
+ERROR:  unknown geo specifier: $center: "Points"
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": 1 }}}';
+ERROR:  unknown geo specifier: $center: 1
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": true }}}';
+ERROR:  unknown geo specifier: $center: true
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": { "center": { "x": [10], "y": 10 }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": { "center": { "x": 10, "y": "10" }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": { "center": { "x": { "xx": 10 }, "y": "10" }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": { "center": { "x": 10, "y": 10 }, "radius": "10" } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": { "center": { "x": 10, "y": 10 }, "radius": -10 } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": { "center": { "x": 10, "y": 10 }, "radius": true } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [ [ [10], 10], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [ [10, "10"], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [ [ {"x": 10 } , 10], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [ [10, 10], "10" ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [ [10, 10], -10 ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [ [10, 10], true ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": { "center": { "x": 10, "y": 10 }, "radius": 10, "extra": 10 } }}}';
+ERROR:  Only 2 fields allowed for circular region
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [ [10, 10], 10, 10 ] }}}';
+ERROR:  Only 2 fields allowed for circular region
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": { "center": { "x": 10, "y": 10 }}}}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [ [10, 10] ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [[10, { "$numberDouble": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [[10, { "$numberDouble": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [[10, { "$numberDecimal": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [[10, { "$numberDecimal": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": {} }}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$center": [] }}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": "Points" }}}';
+ERROR:  unknown geo specifier: $center: "Points"
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": 1 }}}';
+ERROR:  unknown geo specifier: $center: 1
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": true }}}';
+ERROR:  unknown geo specifier: $center: true
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": { "center": { "x": [10], "y": 10 }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": { "center": { "x": 10, "y": "10" }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": { "center": { "x": { "xx": 10 }, "y": "10" }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": { "center": { "x": 10, "y": 10 }, "radius": "10" } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": { "center": { "x": 10, "y": 10 }, "radius": -10 } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": { "center": { "x": 10, "y": 10 }, "radius": true } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [ [ [10], 10], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [ [10, "10"], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [ [ {"x": 10 } , 10], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [ [10, 10], "10" ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [ [10, 10], -10 ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [ [10, 10], true ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": { "center": { "x": 10, "y": 10 }, "radius": 10, "extra": 10 } }}}';
+ERROR:  Only 2 fields allowed for circular region
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [ [10, 10], 10, 10 ] }}}';
+ERROR:  Only 2 fields allowed for circular region
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": { "center": { "x": 10, "y": 10 }}}}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [ [10, 10] ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [[10, { "$numberDouble": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [[10, { "$numberDouble": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [[10, { "$numberDecimal": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [[10, { "$numberDecimal": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$center": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$within": {"$center": [[10, 10], { "$numberDecimal": "NaN" }] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$within": {"$center": [[10, 10], { "$numberDecimal": "-NaN" }] }}}'; 
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$within": {"$center": [[10, 10], { "$numberDecimal": "-Infinity" }] }}}'; 
+ERROR:  radius must be a non-negative number
+-- $centerSphere
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": "Points" }}}';
+ERROR:  unknown geo specifier: $centerSphere: "Points"
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": 1 }}}';
+ERROR:  unknown geo specifier: $centerSphere: 1
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": true }}}';
+ERROR:  unknown geo specifier: $centerSphere: true
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": { "centerSphere": { "x": [10], "y": 10 }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": { "centerSphere": { "x": 10, "y": "10" }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": { "centerSphere": { "x": { "xx": 10 }, "y": "10" }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": { "centerSphere": { "x": 10, "y": 10 }, "radius": "10" } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": { "centerSphere": { "x": 10, "y": 10 }, "radius": -10 } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": { "centerSphere": { "x": 10, "y": 10 }, "radius": true } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [ [ [10], 10], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [ [10, "10"], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [ [ {"x": 10 } , 10], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [ [10, 10], "10" ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [ [10, 10], -10 ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [ [10, 10], true ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": { "centerSphere": { "x": 10, "y": 10 }, "radius": 10, "extra": 10 } }}}';
+ERROR:  Only 2 fields allowed for circular region
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [ [10, 10], 10, 10 ] }}}';
+ERROR:  Only 2 fields allowed for circular region
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": { "centerSphere": { "x": 10, "y": 10 }}}}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [ [10, 10] ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [[10, { "$numberDouble": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [[10, { "$numberDouble": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [[10, { "$numberDecimal": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [[10, { "$numberDecimal": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": [] }}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$centerSphere": {} }}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": "Points" }}}';
+ERROR:  unknown geo specifier: $centerSphere: "Points"
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": 1 }}}';
+ERROR:  unknown geo specifier: $centerSphere: 1
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": true }}}';
+ERROR:  unknown geo specifier: $centerSphere: true
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": { "centerSphere": { "x": [10], "y": 10 }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": { "centerSphere": { "x": 10, "y": "10" }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": { "centerSphere": { "x": { "xx": 10 }, "y": "10" }, "radius": 10 } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": { "centerSphere": { "x": 10, "y": 10 }, "radius": "10" } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": { "centerSphere": { "x": 10, "y": 10 }, "radius": -10 } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": { "centerSphere": { "x": 10, "y": 10 }, "radius": true } }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [ [ [10], 10], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [ [10, "10"], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [ [ {"x": 10 } , 10], 10 ] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [ [10, 10], "10" ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [ [10, 10], -10 ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [ [10, 10], true ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": { "centerSphere": { "x": 10, "y": 10 }, "radius": 10, "extra": 10 } }}}';
+ERROR:  Only 2 fields allowed for circular region
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [ [10, 10], 10, 10 ] }}}';
+ERROR:  Only 2 fields allowed for circular region
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": { "centerSphere": { "x": 10, "y": 10 }}}}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [ [10, 10] ] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [[10, { "$numberDouble": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [[10, { "$numberDouble": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [[10, { "$numberDecimal": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [[10, { "$numberDecimal": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$centerSphere": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$within": {"$centerSphere": [[10, 10], { "$numberDecimal": "NaN" }] }}}';
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$within": {"$centerSphere": [[10, 10], { "$numberDecimal": "-NaN" }] }}}'; 
+ERROR:  radius must be a non-negative number
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$within": {"$centerSphere": [[10, 10], { "$numberDecimal": "-Infinity" }] }}}'; 
+ERROR:  radius must be a non-negative number
+-- $polygon
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": "Points" }}}';
+ERROR:  unknown geo specifier: $polygon: "Points"
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": 1 }}}';
+ERROR:  unknown geo specifier: $polygon: 1
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": true }}}';
+ERROR:  unknown geo specifier: $polygon: true
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": { "first": {"x": 10, "y": 10}, "second": {"x": 10, "y": 10} } }}}';
+ERROR:  Polygon must have at least 3 points
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": { "first": {"x": [10], "y": 10}, "second": {"x": 10, "y": 10}, "third": {"x": 10, "y": 10} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": { "first": {"x": 10, "y": "10"}, "second": {"x": 10, "y": 10}, "third": {"x": 10, "y": 10} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": { "first": {"x": 10, "y": 10}, "second": {"x": { "xx" : 10 }, "y": 10}, "third": {"x": 10, "y": 10} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": { "first": {"x": 10, "y": 10}, "second": {"x": 10, "y": 10}, "third": {"x": true, "y": 10} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": { "first": {"x": 10, "y": 10}, "second": {"x": 10, "y": 10}, "third": {"x": 10, "y": false} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, 10], [11, 11]] }}}';
+ERROR:  Polygon must have at least 3 points
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[[10], 10], [11, 11], [12, 12]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, {"y": 10}], [11, 11], [12, 12]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, 10], ["11", 11], [12, 12]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, 10], [11, 11], [true, 12]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, 10], [11, 11], [12, false]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, { "$numberDouble": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, { "$numberDouble": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, { "$numberDecimal": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, { "$numberDecimal": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$polygon": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": "Points" }}}';
+ERROR:  unknown geo specifier: $polygon: "Points"
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": 1 }}}';
+ERROR:  unknown geo specifier: $polygon: 1
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": true }}}';
+ERROR:  unknown geo specifier: $polygon: true
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": { "first": {"x": 10, "y": 10}, "second": {"x": 10, "y": 10} } }}}';
+ERROR:  Polygon must have at least 3 points
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": { "first": {"x": [10], "y": 10}, "second": {"x": 10, "y": 10}, "third": {"x": 10, "y": 10} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": { "first": {"x": 10, "y": "10"}, "second": {"x": 10, "y": 10}, "third": {"x": 10, "y": 10} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": { "first": {"x": 10, "y": 10}, "second": {"x": { "xx" : 10 }, "y": 10}, "third": {"x": 10, "y": 10} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": { "first": {"x": 10, "y": 10}, "second": {"x": 10, "y": 10}, "third": {"x": true, "y": 10} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": { "first": {"x": 10, "y": 10}, "second": {"x": 10, "y": 10}, "third": {"x": 10, "y": false} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, 10], [11, 11]] }}}';
+ERROR:  Polygon must have at least 3 points
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[[10], 10], [11, 11], [12, 12]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, {"y": 10}], [11, 11], [12, 12]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, 10], ["11", 11], [12, 12]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, 10], [11, 11], [true, 12]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, 10], [11, 11], [12, false]] }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, { "$numberDouble": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, { "$numberDouble": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, { "$numberDecimal": "inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, { "$numberDecimal": "-inf" }]] }}}';
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$within": {"$polygon": [[10, { "$numberDecimal": "1e309" }]] }}}'; -- This is overflow and hence inf
+ERROR:  Point coordinates must be finite numbers
+-- $geoIntersects operator validations
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": 1 }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { } }}';
+ERROR:  geo query doesn't have any geometry
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": [{ "$geometry": {} }] }}';
+ERROR:  geometry must be an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": {"$box": [[10, 20], [30, 40]] }}}';
+ERROR:  $geoIntersect not supported with provided geometry: { "$box" : [ [ 10, 20 ], [ 30, 40 ] ] }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": {"$polygon": [[10, 20], [30, 40]] }}}';
+ERROR:  $geoIntersect not supported with provided geometry: { "$polygon" : [ [ 10, 20 ], [ 30, 40 ] ] }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": {"$centerSphere": [[10, 20], [30, 40]] }}}';
+ERROR:  $geoIntersect not supported with provided geometry: { "$centerSphere" : [ [ 10, 20 ], [ 30, 40 ] ] }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": 1 }}}';
+ERROR:  unknown geo specifier: $geometry: 1
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": {} }}}';
+ERROR:  Unknwown GeoJSON type: { }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "point" } }}}';
+ERROR:  unknown GeoJSON type: { "type" : "point" }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "linestring" } }}}';
+ERROR:  unknown GeoJSON type: { "type" : "linestring" }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "polygon" } }}}';
+ERROR:  unknown GeoJSON type: { "type" : "polygon" }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "multipoint" } }}}';
+ERROR:  unknown GeoJSON type: { "type" : "multipoint" }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "multilinestring" } }}}';
+ERROR:  unknown GeoJSON type: { "type" : "multilinestring" }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "multipolygon" } }}}';
+ERROR:  unknown GeoJSON type: { "type" : "multipolygon" }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "geometrycollection" } }}}';
+ERROR:  unknown GeoJSON type: { "type" : "geometrycollection" }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "invalidGeoJsonType" } }}}';
+ERROR:  unknown GeoJSON type: { "type" : "invalidGeoJsonType" }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point" } }}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "LineString" } }}}';
+ERROR:  GeoJSON coordinates must be an array of coordinates
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon" } }}}';
+ERROR:  Polygon coordinates must be an array
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPoint" } }}}';
+ERROR:  GeoJSON coordinates must be an array of coordinates
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiLineString" } }}}';
+ERROR:  MultiLineString coordinates must be an array
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPolygon" } }}}';
+ERROR:  MultiPolygon coordinates must be an array
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "GeometryCollection" } }}}';
+ERROR:  GeometryCollection geometries must be an array
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "Coordinates": [10, 10] } }}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "coordinates": {"x": 10, "y": "Text"} } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "coordinates": [[1, 2], [3, 4]] } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "coordinates": [1, "text"] } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "coordinates": [{"x": 10, "y": 10}] } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "LineString", "coordinates": [1, 2] } }}}';
+ERROR:  GeoJSON coordinates must be an array
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "LineString", "coordinates": [[1, 2]] } }}}';
+ERROR:  GeoJSON LineString must have at least 2 vertices: [ [ 1, 2 ] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "LineString", "coordinates": [[1, 2], [3, "text"]] } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "LineString", "coordinates": [[1, 2], {"x": 10, "y": 10}] } }}}';
+ERROR:  GeoJSON coordinates must be an array
+-- Polygon extra validations
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [1, 2] } }}}';
+ERROR:  GeoJSON coordinates must be an array of coordinates
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[1, 2], [3, 4]] }}}}';
+ERROR:  GeoJSON coordinates must be an array
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[]] }}}}';
+ERROR:  Loop has no vertices: []
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[1, 2], [3, 4]]] }}}}';
+ERROR:  Loop is not closed: [ [ 1, 2 ], [ 3, 4 ] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[1, 2], [3, 4], [5, 6], [1, 3]]] }}}}';
+ERROR:  Loop is not closed: [ [ 1, 2 ], [ 3, 4 ], [ 5, 6 ], [ 1, 3 ] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[1, 2], [3, 4], [5, 6], [2, 1]]] }}}}';
+ERROR:  Loop is not closed: [ [ 1, 2 ], [ 3, 4 ], [ 5, 6 ], [ 2, 1 ] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[1, 2], [3, 4], [1, 2]]] }}}}';
+ERROR:  Loop must have at least 3 different vertices: [ [ 1, 2 ], [ 3, 4 ], [ 1, 2 ] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[1, 1], [1, 5], [3, 4], [0, 3], [1, 1]]] }}}}';
+ERROR:   Loop is not valid: [ [1.000000, 1.000000], [1.000000, 5.000000], [3.000000, 4.000000], [0.000000, 3.000000], [1.000000, 1.000000] ] - Edges cross
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 1], [1, 1], [-2, -1], [0, 0]]] }}}}'; -- Edges of polygon intersect, 2d area is 0
+ERROR:   Loop is not valid: [ [0.000000, 0.000000], [-2.000000, -1.000000], [1.000000, 1.000000], [0.000000, 1.000000], [0.000000, 0.000000] ] - Edges cross
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[1, 0], [0, 10], [10, 10], [0, 0], [1, 0]]]}}}}'; -- Edges of polygon intersect, 2d area is not 0
+ERROR:   Loop is not valid: [ [1.000000, 0.000000], [0.000000, 10.000000], [10.000000, 10.000000], [0.000000, 0.000000], [1.000000, 0.000000] ] - Edges cross
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 80], [80, 80], [80, 0], [0, 0]],[[0, 10], [0, 70], [75, 75], [75, 25], [0, 10]]]}}}}'; -- Polygon with hole edge part of (overlapping) outer ring
+ERROR:   Secondary loops not contained by first exterior loop - secondary loops must be holes: [ [0.000000, 10.000000], [75.000000, 25.000000], [75.000000, 75.000000], [0.000000, 70.000000], [0.000000, 10.000000] ] first loop: [ [0.000000, 0.000000], [0.000000, 80.000000], [80.000000, 80.000000], [80.000000, 0.000000], [0.000000, 0.000000] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 80], [80, 80], [80, 0], [0, 0]],[[0, 0], [0, 80], [75, 75], [75, 25], [0, 0]]]}}}}'; -- Polygon with hole having 1 edge common with outer ring
+ERROR:   Secondary loops not contained by first exterior loop - secondary loops must be holes: [ [0.000000, 0.000000], [75.000000, 25.000000], [75.000000, 75.000000], [0.000000, 80.000000], [0.000000, 0.000000] ] first loop: [ [0.000000, 0.000000], [0.000000, 80.000000], [80.000000, 80.000000], [80.000000, 0.000000], [0.000000, 0.000000] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[0, 2], [2, 0], [2, 2], [0, 0], [1, 2], [3, 2], [4, 2], [0, 2]]]}}}}'; -- Combination polygon - both intersection and overlap
+ERROR:   Loop is not valid: [ [0.000000, 2.000000], [4.000000, 2.000000], [3.000000, 2.000000], [1.000000, 2.000000], [0.000000, 0.000000], [2.000000, 2.000000], [2.000000, 0.000000], [0.000000, 2.000000] ] - Edges cross
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[1, 1], [1, 5], [5, 5], [5, 1], [1, 1]], []] }}}}';
+ERROR:  Loop has no vertices: []
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[1, 1], [1, 5], [5, 5], [5, 1], [1, 1]], [[0, 0], [0, 6], [6, 6], [6, 0], [0, 0]]] }}}}';
+ERROR:  Secondary loops not contained by first exterior loop - secondary loops must be holes
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]], [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] }}}}'; --Holes covering the polygon
+ERROR:   Secondary loops not contained by first exterior loop - secondary loops must be holes: [ [0.000000, 0.000000], [1.000000, 0.000000], [1.000000, 1.000000], [0.000000, 1.000000], [0.000000, 0.000000] ] first loop: [ [0.000000, 0.000000], [0.000000, 1.000000], [1.000000, 1.000000], [1.000000, 0.000000], [0.000000, 0.000000] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [ [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]], [[0, 0], [0, 0.5], [1, 0.5], [1, 0], [0, 0]], [[0, 0.5], [0, 1], [1, 1], [1, 0.5], [0, 0.5]] ] }}}}'; -- Multi holes covering the polygon
+ERROR:   Secondary loops not contained by first exterior loop - secondary loops must be holes: [ [0.000000, 0.000000], [1.000000, 0.000000], [1.000000, 0.500000], [0.000000, 0.500000], [0.000000, 0.000000] ] first loop: [ [0.000000, 0.000000], [0.000000, 1.000000], [1.000000, 1.000000], [1.000000, 0.000000], [0.000000, 0.000000] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[1, 2], [2, 3], [1, 2], [3, 4], [1, 2]]] }}}}'; -- Duplicate non adjacent vertices
+ERROR:  Loop is not valid: [ [ 1, 2 ], [ 2, 3 ], [ 1, 2 ], [ 3, 4 ], [ 1, 2 ] ] Duplicate vertices: 0 and 2
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPoint", "coordinates": [1, 2] } }}}';
+ERROR:  GeoJSON coordinates must be an array
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPoint", "coordinates": {} } }}}';
+ERROR:  GeoJSON coordinates must be an array of coordinates
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPoint", "coordinates": [[1, 2], [3, "text"]] } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPoint", "coordinates": [[[1, 2], [3, 4]]] } }}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPolygon", "coordinates": [ [[[1, 2], [3,4]]], [] ] } }}}';
+ERROR:  Loop is not closed: [ [ 1, 2 ], [ 3, 4 ] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPolygon", "coordinates": [ [], [] ] } }}}';
+ERROR:  Polygon has no loops.
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPolygon", "coordinates": [ [[[1, 2], [3, 4], [1, 2]]], [] ] } }}}';
+ERROR:  Loop must have at least 3 different vertices: [ [ 1, 2 ], [ 3, 4 ], [ 1, 2 ] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPolygon", "coordinates": [ [[[1, 1], [1, 5], [5, 5], [5, 1], [1, 1]], []], []] } }}}';
+ERROR:  Loop has no vertices: []
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiPolygon", "coordinates": [ [[[1, 1], [1, 5], [5, 5], [5, 1], [1, 1]]], [[[1, 1], [1, 5], [5, 5], [5, 1], [1, 1]], [[0, 0], [0, 6], [6, 6], [6, 0], [0, 0]]]] } }}}';
+ERROR:  Secondary loops not contained by first exterior loop - secondary loops must be holes
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "MultiLineString", "coordinates": [[[1, 1], [1, 5], [3, 4], [0, 3], [1, 1]], [[1, 2]]] }}}}';
+ERROR:  GeoJSON LineString must have at least 2 vertices: [ [ 1, 2 ] ]
+-- Geometry Collections
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "GeometryCollection", "geometries": {} }}}}';
+ERROR:  GeometryCollection geometries must be an array
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "GeometryCollection", "geometries": [] }}}}';
+ERROR:  GeometryCollection geometries must have at least 1 element
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "GeometryCollection", "geometries": [{ "type": "Point", "coords": [10, 10] }] }}}}';
+ERROR:  Point must be an array or object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "GeometryCollection", "geometries": [{ "type": "unknownPoint", "coords": [10, 10] }] }}}}';
+ERROR:  unknown GeoJSON type: { "type" : "unknownPoint", "coords" : [ 10, 10 ] }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "GeometryCollection", "geometries": [{ "type": "Point", "coordinates": [10, "text"] }] }}}}';
+ERROR:  Point must only contain numeric elements
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "GeometryCollection", "geometries": [{ "type": "Point", "coordinates": [10, 10] }, {"type": "LineString", "coordinates": [[1, 2], [2, 3]]}, {"type": "Polygon", "coordinates": [[[1, 1], [5, 5], [2, 6], [1, 1]]]}, {"type": "LineString", "coordinates": [[10, 10]]}] }}}}';
+ERROR:  GeoJSON LineString must have at least 2 vertices: [ [ 10, 10 ] ]
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "GeometryCollection", "geometries": [{ "type": "GeometryCollection", "geometries": [{"type": "Point", "coordinates": [10, 10]}]}] }}}}';
+ERROR:  GeometryCollections cannot be nested: [ { "type" : "Point", "coordinates" : [ 10, 10 ] } ]
+--CRS checks
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "crs": [], "coordinates": [1, 2] } }}}';
+ERROR:  GeoJSON CRS must be an object.
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "crs": {}, "coordinates": [1, 2] } }}}';
+ERROR:  GeoJSON CRS must have field "type": "name"
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "crs": {"type": 1, "name": 1}, "coordinates": [1, 2] } }}}';
+ERROR:  GeoJSON CRS must have field "type": "name"
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "crs": {"type": "name"}, "coordinates": [1, 2] } }}}';
+ERROR:  CRS must have field "properties" which is an object
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "crs": {"type": "name", "properties": {}}, "coordinates": [1, 2] } }}}';
+ERROR:  In CRS, "properties.name" must be a string
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "crs": {"type": "name", "properties": { "name": 2 }}, "coordinates": [1, 2] } }}}';
+ERROR:  In CRS, "properties.name" must be a string
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "crs": {"type": "name", "properties": {"name": "UnknownCRS"}}, "coordinates": [1, 2] } }}}';
+ERROR:  Unknown CRS name: UnknownCRS
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "crs": {"type": "name", "properties": {"name": "urn:x-mongodb:crs:STRICTWINDING:EPSG:4326" } }, "coordinates": [1, 2] } }}}';
+ERROR:  Unknown CRS name: urn:x-mongodb:crs:STRICTWINDING:EPSG:4326
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "crs": {"properties": {}, "type": "name"}, "coordinates": [1, 2] } }}}';
+ERROR:  In CRS, "properties.name" must be a string
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Point", "crs": { "type": "name", "properties": { "name": "urn:x-mongodb:crs:strictwinding:EPSG:4326" } }, "coordinates": [1, 2] } }}}';
+ERROR:  Strict winding order is only supported by Polygon.
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[1, 1], [5, 5], [2, 6], [1, 1]]], "crs": { "type": "name", "properties": { "name": "urn:x-mongodb:crs:strictwinding:EPSG:4326" } }} }}}';
+ERROR:  Custom CRS for big polygon is not supported yet.
+-- $geoWithin with non polygon GeoJSON don't work
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { "$geometry": { "type": "Point", "coordinates": [10, 10] } }}}';
+ERROR:  $geoWithin not supported with provided geometry: { "type" : "Point", "coordinates" : [ 10, 10 ] }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { "$geometry": { "type": "MultiPoint", "coordinates": [[10, 10], [20, 20]] } }}}';
+ERROR:  $geoWithin not supported with provided geometry: { "type" : "MultiPoint", "coordinates" : [ [ 10, 10 ], [ 20, 20 ] ] }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { "$geometry": { "type": "LineString", "coordinates": [[7.1, 7.2], [4.1, 4.2], [7.3, 7.4], [2.1, 2.2]] } }}}';
+ERROR:  $geoWithin not supported with provided geometry: { "type" : "LineString", "coordinates" : [ [ 7.0999999999999996447, 7.2000000000000001776 ], [ 4.0999999999999996447, 4.2000000000000001776 ], [ 7.2999999999999998224, 7.4000000000000003553 ], [ 2.1000000000000000888, 2.2000000000000001776 ] ] }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { "$geometry": { "type": "MultiLineString", "coordinates": [[[7.1, 7.2], [4.1, 4.2], [7.3, 7.4], [2.1, 2.2]]] } }}}';
+ERROR:  $geoWithin not supported with provided geometry: { "type" : "MultiLineString", "coordinates" : [ [ [ 7.0999999999999996447, 7.2000000000000001776 ], [ 4.0999999999999996447, 4.2000000000000001776 ], [ 7.2999999999999998224, 7.4000000000000003553 ], [ 2.1000000000000000888, 2.2000000000000001776 ] ] ] }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": { "$geometry": { "type": "GeometryCollection", "geometries": [ {"type": "LineString", "coordinates": [[-25, -25], [25, 25]]}, {"type": "Point", "coordinates": [2.1, 2.2]} ] } }}}';
+ERROR:  $geoWithin not supported with provided geometry: { "type" : "GeometryCollection", "geometries" : [ { "type" : "LineString", "coordinates" : [ [ -25, -25 ], [ 25, 25 ] ] }, { "type" : "Point", "coordinates" : [ 2.1000000000000000888, 2.2000000000000001776 ] } ] }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$geometry": { "lon": 50, "lat": 50 } }}}';
+ERROR:  $geoWithin not supported with provided geometry: { "lon" : 50, "lat" : 50 }
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$geometry": [51, 51] }}}';
+ERROR:  $geoWithin not supported with provided geometry: [ 51, 51 ]
+-- Out of bounds checks for GeoJSON
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$geometry": {"type": "Point", "coordinates": [200, 200]} }}}';
+ERROR:  longitude/latitude is out of bounds, lng: 200 lat: 200
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$geometry": {"type": "LineString", "coordinates": [[-200, -200], [50, 50]]} }}}';
+ERROR:  longitude/latitude is out of bounds, lng: -200 lat: -200
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a": {"$geoWithin": {"$geometry": {"type": "Polygon", "coordinates": [[[-200, -200], [50, 50], [30, 30], [-200, -200]]] } }}}';
+ERROR:  longitude/latitude is out of bounds, lng: -200 lat: -200
+-- Also check some cases which are specific to runtime
+-- e.g. GeoJson point type is matched only during runtime if there is no 2d index on the field
+-- If the index is created then it would simply error out as this is not a proper point format for the index
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 100, "a" : { "b": { "type": "Point", "coordinates": [60, 60] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 101, "a" : [{ "b": { "type": "Point", "coordinates": [65, 65] } }, { "b": { "type": "Point", "coordinates": [70, 70] } }, { "b": { "type": "Point", "coordinates": [75, 75] } }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- This is Geojson Polygon which should not match for 2d planar calculations using $box, $polygon, $center in $geowithin
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 102, "a" : { "b": {"type": "Polygon", "coordinates": [[ [10, 10], [10, 10], [10, 10], [10, 10] ]] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$box": [[10, 10], [100, 100]]}}}' ORDER BY object_id;
+                                                                                                                                                                             document                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "60" }, { "$numberInt" : "60" } ] } } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "65" }, { "$numberInt" : "65" } ] } }, { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "70" }, { "$numberInt" : "70" } ] } }, { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "75" }, { "$numberInt" : "75" } ] } } ] }
+(2 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$center": [[10, 10], 100]}}}' ORDER BY object_id;
+                                                                                                                                                                             document                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "60" }, { "$numberInt" : "60" } ] } } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "65" }, { "$numberInt" : "65" } ] } }, { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "70" }, { "$numberInt" : "70" } ] } }, { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "75" }, { "$numberInt" : "75" } ] } } ] }
+(2 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$polygon": [[10, 10], [10, 100], [100, 100], [100, 10]]}}}' ORDER BY object_id;
+                                                                                                                                                                             document                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "60" }, { "$numberInt" : "60" } ] } } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "65" }, { "$numberInt" : "65" } ] } }, { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "70" }, { "$numberInt" : "70" } ] } }, { "b" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "75" }, { "$numberInt" : "75" } ] } } ] }
+(2 rows)
+
+-- insert some invalid polygons - don't error out on runtime as polygon validation during inserting happens only in index case
+SELECT documentdb_api.insert_one('db','geoquerytest','{"_id": 501, "geo" : { "loc" : {"type": "Polygon", "coordinates": [[[0, 0], [0, 1], [1, 1], [-2, -1], [0, 0]]] } } }', NULL); -- self intersecting polygon with 0 geometrical area
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{"_id": 502, "geo" : { "loc" : {"type": "Polygon", "coordinates": [[[1, 0], [0, 10], [10, 10], [0, 0], [1, 0]]] } } }', NULL); -- self intersecting polygon with non-zero geometrical area
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{"_id": 503, "geo" : { "loc" : {"type": "Polygon", "coordinates": [[[0, 0], [0, 80], [80, 80], [80, 0], [0, 0]],[[0, 10], [0, 70], [75, 75], [75, 25], [0, 10]]] } } }', NULL); -- hole edge lies on outer ring edge
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{"_id": 504, "geo" : { "loc" : {"type": "Polygon", "coordinates": [[[0, 0], [0, 80], [80, 80], [80, 0], [0, 0]],[[0, 0], [0, 80], [75, 75], [75, 25], [0, 0]]] } } }', NULL); -- hole shares an edge with outer ring
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{"_id": 505, "geo" : { "loc" : {"type": "Polygon", "coordinates": [[[0, 0], [0, 80], [80, 80], [80, 0], [0, 0]],[[10, 10], [10, 70], [75, 75], [75, 25], [10, 10]],[[10,20], [10,30], [50, 50], [10, 20]]] } } }', NULL); -- 3rd ring edge lies on 2nd ring edge
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+

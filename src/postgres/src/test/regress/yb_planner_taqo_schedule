@@ -1,0 +1,7 @@
+# src/test/regress/yb_planner_taqo_schedule
+#
+####################################################################################################
+# Testsuite for TAQO workloads covering planner/optimizer behavior.
+####################################################################################################
+test: yb.orig.planner_taqo_seek_next_estimation
+test: yb.orig.planner_taqo_tuning_tests

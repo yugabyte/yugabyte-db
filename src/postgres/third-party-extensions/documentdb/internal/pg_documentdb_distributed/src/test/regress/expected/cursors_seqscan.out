@@ -1,0 +1,206 @@
+SET search_path TO documentdb_api_catalog, documentdb_api, documentdb_core, documentdb_api_internal, public;
+SET citus.next_shard_id TO 6710000;
+SET documentdb.next_collection_id TO 6710;
+SET documentdb.next_collection_index_id TO 6710;
+-- create a collection
+SELECT documentdb_api.create_collection('db', 'cursors_seqscan');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- insert 20 documents
+WITH r1 AS (SELECT FORMAT('{"_id": %I, "a": { "b": { "$numberInt": %I }, "c": { "$numberInt" : %I }, "d": [ { "$numberInt" : %I }, { "$numberInt" : %I } ] }}', g.Id, g.Id, g.Id, g.Id, g.Id)::bson AS formatDoc FROM generate_series(1, 20) AS g (id) ORDER BY g.Id desc) 
+SELECT documentdb_api.insert_one('db', 'cursors_seqscan', r1.formatDoc) FROM r1;
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(20 rows)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'cursors_seqscan');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- limit it by batchSize
+SELECT document, length(document::bytea) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchSizeHint": 1 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+ERROR:  both batchSizeHint and batchSizeAttr must be set - or neither
+SELECT document, length(document::bytea) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchSizeHint": 100 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+ERROR:  both batchSizeHint and batchSizeAttr must be set - or neither
+-- specify getpage_batchSizeAttr
+SELECT document, length(document::bytea) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchSizeHint": 1, "getpage_batchSizeAttr": 1 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       | length 
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } } |     61
+(1 row)
+
+SELECT document, length(document::bytea) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchSizeHint": 100, "getpage_batchSizeAttr": 1 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       | length 
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } } |     61
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } } |     61
+(2 rows)
+
+-- run the default test.
+-- now query them with varying page sizes using cursors.
+SELECT document FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 3 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } }
+(3 rows)
+
+-- query with page sizes and get cursor state.
+SELECT document, current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 3 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       |                                                current_cursor_state                                                
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAEA", "subType" : "00" } } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAIA", "subType" : "00" } } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } }
+(3 rows)
+
+SELECT document, current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 7 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       |                                                current_cursor_state                                                
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAEA", "subType" : "00" } } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAIA", "subType" : "00" } } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } }
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAQA", "subType" : "00" } } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAUA", "subType" : "00" } } }
+ { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" }, "c" : { "$numberInt" : "15" }, "d" : [ { "$numberInt" : "15" }, { "$numberInt" : "15" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAYA", "subType" : "00" } } }
+ { "_id" : "14", "a" : { "b" : { "$numberInt" : "14" }, "c" : { "$numberInt" : "14" }, "d" : [ { "$numberInt" : "14" }, { "$numberInt" : "14" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAcA", "subType" : "00" } } }
+(7 rows)
+
+-- query with page sizes, projection and get cursor state.
+SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       |                    bson_dollar_project                    |                                                current_cursor_state                                                
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } } | { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAEA", "subType" : "00" } } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } } | { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAIA", "subType" : "00" } } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } } | { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } }
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } } | { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAQA", "subType" : "00" } } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } } | { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAUA", "subType" : "00" } } }
+(5 rows)
+
+SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 3 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       |                    bson_dollar_project                    |                                                current_cursor_state                                                
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } } | { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAEA", "subType" : "00" } } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } } | { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAIA", "subType" : "00" } } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } } | { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } }
+(3 rows)
+
+-- now test resume from continuation
+SELECT document, current_cursor_state(document) AS cursor1 INTO TEMPORARY d1 FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 3 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+SELECT r2 FROM (SELECT $$'$$ || row_get_bson(rec) || $$'$$ AS r2 FROM (SELECT 3 AS "getpage_batchCount", array_append('{}'::bson[], cursor1) AS "continuation" FROM d1 OFFSET 2 LIMIT 1) rec) r2 \gset
+-- print the continuation
+\echo :r2
+'{ "getpage_batchCount" : { "$numberInt" : "3" }, "continuation" : [ { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } } ] }'
+-- now run the query with the continuation.
+SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, :r2) AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       |                    bson_dollar_project                    |                                                current_cursor_state                                                
+---------------------------------------------------------------------
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } } | { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAQA", "subType" : "00" } } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } } | { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAUA", "subType" : "00" } } }
+ { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" }, "c" : { "$numberInt" : "15" }, "d" : [ { "$numberInt" : "15" }, { "$numberInt" : "15" } ] } } | { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAYA", "subType" : "00" } } }
+(3 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF ) SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, :r2) AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document, remote_scan.bson_dollar_project, remote_scan.current_cursor_state
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document, documentdb_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson) AS bson_dollar_project, documentdb_api_internal.current_cursor_state(document) AS current_cursor_state FROM documentdb_data.documents_6710_6710001 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "3" }, "continuation" : [ { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "12" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6710'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document, documentdb_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson), documentdb_api_internal.current_cursor_state(document)
+               Page Row Count: 3 rows
+               Continuation: { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } }
+               ->  Tid Range Scan on documentdb_data.documents_6710_6710001 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     TID Cond: (collection.ctid >= '(0,3)'::tid)
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "3" }, "continuation" : [ { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } } ] }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "12" } }'::documentdb_core.bson))
+(15 rows)
+
+-- now try with multi-continuation with a different table
+SELECT r3 FROM (SELECT $$'$$ || row_get_bson(rec) || $$'$$ AS r3 FROM (SELECT 3 AS "getpage_batchCount", array_append('{}'::bson[], '{ "table_name": "someOtherTable" }'::bson) AS "continuation" FROM d1 OFFSET 2 LIMIT 1) rec) r3 \gset
+-- print the continuation
+\echo :r3
+'{ "getpage_batchCount" : { "$numberInt" : "3" }, "continuation" : [ { "table_name" : "someOtherTable" } ] }'
+-- now run the query with the continuation (Should have no continuation).
+SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, :r3) AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       |                    bson_dollar_project                    |                                                current_cursor_state                                                
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } } | { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAEA", "subType" : "00" } } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } } | { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAIA", "subType" : "00" } } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } } | { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } }
+(3 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF ) SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, :r3) AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document, remote_scan.bson_dollar_project, remote_scan.current_cursor_state
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document, documentdb_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson) AS bson_dollar_project, documentdb_api_internal.current_cursor_state(document) AS current_cursor_state FROM documentdb_data.documents_6710_6710001 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "3" }, "continuation" : [ { "table_name" : "someOtherTable" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>) '{ "a.b" : { "$numberInt" : "12" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6710'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiScan)
+               Output: document, documentdb_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson), documentdb_api_internal.current_cursor_state(document)
+               Page Row Count: 3 rows
+               ->  Tid Range Scan on documentdb_data.documents_6710_6710001 collection
+                     Output: shard_key_value, object_id, document, creation_time
+                     TID Cond: (collection.ctid >= '(0,0)'::tid)
+                     Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "3" }, "continuation" : [ { "table_name" : "someOtherTable" } ] }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "12" } }'::documentdb_core.bson))
+(14 rows)
+
+-- run with remote execution
+set citus.enable_local_execution to off;
+SELECT document, current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 3 }') AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       |                                                current_cursor_state                                                
+---------------------------------------------------------------------
+ { "_id" : "20", "a" : { "b" : { "$numberInt" : "20" }, "c" : { "$numberInt" : "20" }, "d" : [ { "$numberInt" : "20" }, { "$numberInt" : "20" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAEA", "subType" : "00" } } }
+ { "_id" : "19", "a" : { "b" : { "$numberInt" : "19" }, "c" : { "$numberInt" : "19" }, "d" : [ { "$numberInt" : "19" }, { "$numberInt" : "19" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAIA", "subType" : "00" } } }
+ { "_id" : "18", "a" : { "b" : { "$numberInt" : "18" }, "c" : { "$numberInt" : "18" }, "d" : [ { "$numberInt" : "18" }, { "$numberInt" : "18" } ] } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } }
+(3 rows)
+
+SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, :r2) AND document @@ '{ "a.b": { "$gt": 12 }}';
+                                                                       document                                                                       |                    bson_dollar_project                    |                                                current_cursor_state                                                
+---------------------------------------------------------------------
+ { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" }, "c" : { "$numberInt" : "17" }, "d" : [ { "$numberInt" : "17" }, { "$numberInt" : "17" } ] } } | { "_id" : "17", "a" : { "b" : { "$numberInt" : "17" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAQA", "subType" : "00" } } }
+ { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" }, "c" : { "$numberInt" : "16" }, "d" : [ { "$numberInt" : "16" }, { "$numberInt" : "16" } ] } } | { "_id" : "16", "a" : { "b" : { "$numberInt" : "16" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAUA", "subType" : "00" } } }
+ { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" }, "c" : { "$numberInt" : "15" }, "d" : [ { "$numberInt" : "15" }, { "$numberInt" : "15" } ] } } | { "_id" : "15", "a" : { "b" : { "$numberInt" : "15" } } } | { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAYA", "subType" : "00" } } }
+(3 rows)
+

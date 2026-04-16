@@ -1,0 +1,40 @@
+[
+    {
+        "ClusterUUID": "<cluster-uuid>",
+        "ClusterType": "PRIMARY",
+        "SpecificGFlags": {
+            "inheritFromPrimary": false,
+            "perAZ": {
+                "<az-uuid-1>": {
+                    "MASTER": {
+                        "key-1": "value-1"
+                    },
+                    "TSERVER": {
+                        "key-1": "value-1"
+                    }
+                }
+            },
+            "perProcessFlags": {
+                "MASTER": {
+                    "key-1": "value-1",
+                    "key-2": "value-2",
+                    "key-3": "value-3"
+                },
+                "TSERVER": {
+                    "key-1": "value-1",
+                    "key-2": "value-2",
+                    "key-3": "value-3"
+                }
+            }
+        }
+    },
+    {
+        "ClusterUUID": "<cluster-uuid>",
+        "ClusterType": "ASYNC",
+        "SpecificGFlags": {
+            "inheritFromPrimary": true,
+            "perAZ": {},
+            "perProcessFlags": {}
+        }
+    }
+]

@@ -1,0 +1,36 @@
+@use '../../../_style/colors.scss';
+
+.yb-tag {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 13px;
+  color: colors.$YB_DARKER_GRAY;
+  min-width: 40px;
+  min-height: 17px;
+  user-select: none;
+  padding: 2px 6px;
+  margin: 0px 5px;
+  align-self: center;
+
+  &.yb-orange {
+    background: colors.$YB_ORANGE;
+    border: 1px solid colors.$YB_ORANGE;
+    border-radius: 4px;
+    color: colors.$YB_BG_WHITE_3;
+  }
+
+  &.primary {
+    background: colors.$YB_BG_WHITE_3;
+    border: 1px solid colors.$YB_GRAY_HOVER;
+    border-radius: 4px;
+  }
+
+  &.yb-gray {
+    background: colors.$YB_GRAY_HOVER;
+    border: 1px solid colors.$YB_GRAY_HOVER;
+    border-radius: 4px;
+    color: colors.$YB_DARKER_GRAY;
+  }
+}

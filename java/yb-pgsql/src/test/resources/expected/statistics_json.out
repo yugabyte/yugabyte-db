@@ -1,0 +1,11 @@
+{
+    "version": "1.0.0",
+    "pg_class": [
+        {"relname":"table1","relpages":0,"reltuples":6,"relallvisible":0,"nspname":"test_schema"},
+        {"relname":"table2","relpages":0,"reltuples":5,"relallvisible":0,"nspname":"test_schema"}
+    ],
+    "pg_statistic": [
+        {"nspname":"test_schema","relname":"table1","attname":"id","typnspname":"pg_catalog","typname":"int4","stainherit":false,"stanullfrac":0.16666667,"stawidth":4,"stadistinct":-0.6666667,"stakind1":1,"stakind2":2,"stakind3":3,"stakind4":0,"stakind5":0,"staop1":"96","staop2":"97","staop3":"97","staop4":"0","staop5":"0","stanumbers1":[0.33333334],"stanumbers2":null,"stanumbers3":[0.9],"stanumbers4":null,"stanumbers5":null,"stacoll1":"0","stacoll2":"0","stacoll3":"0","stacoll4":"0","stacoll5":"0","stavalues1":[2],"stavalues2":[1,3,4],"stavalues3":null,"stavalues4":null,"stavalues5":null},
+        {"nspname":"test_schema","relname":"table2","attname":"name","typnspname":"pg_catalog","typname":"text","stainherit":false,"stanullfrac":0.2,"stawidth":6,"stadistinct":-0.6,"stakind1":1,"stakind2":2,"stakind3":3,"stakind4":0,"stakind5":0,"staop1":"98","staop2":"664","staop3":"664","staop4":"0","staop5":"0","stanumbers1":[0.4],"stanumbers2":null,"stanumbers3":[0.4],"stanumbers4":null,"stanumbers5":null,"stacoll1":"100","stacoll2":"100","stacoll3":"100","stacoll4":"0","stacoll5":"0","stavalues1":["Alice"],"stavalues2":["Bob","Charlie"],"stavalues3":null,"stavalues4":null,"stavalues5":null}
+    ]
+}

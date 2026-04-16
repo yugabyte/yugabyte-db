@@ -1,0 +1,27 @@
+#----------------------------------------------------------------------
+#
+# pg_collation.dat
+#    Initial contents of the pg_collation system catalog.
+#
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+# Portions Copyright (c) 1994, Regents of the University of California
+#
+# src/include/catalog/pg_collation.dat
+#
+#----------------------------------------------------------------------
+
+[
+
+{ oid => '100', oid_symbol => 'DEFAULT_COLLATION_OID',
+  descr => 'database\'s default collation',
+  collname => 'default', collprovider => 'd', collencoding => '-1' },
+{ oid => '950', oid_symbol => 'C_COLLATION_OID',
+  descr => 'standard C collation',
+  collname => 'C', collprovider => 'c', collencoding => '-1',
+  collcollate => 'C', collctype => 'C' },
+{ oid => '951', oid_symbol => 'POSIX_COLLATION_OID',
+  descr => 'standard POSIX collation',
+  collname => 'POSIX', collprovider => 'c', collencoding => '-1',
+  collcollate => 'POSIX', collctype => 'POSIX' },
+
+]

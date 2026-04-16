@@ -1,0 +1,5 @@
+description: Software Upgrade Precheck success
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/UniverseSoftwareUpgradePrecheckResp.yaml"

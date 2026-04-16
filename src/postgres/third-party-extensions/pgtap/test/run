@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+set -e -u -o pipefail 
+
+make install
+psql -Ec 'DROP EXTENSION IF EXISTS pgtap; CREATE EXTENSION pgtap;'
+make test

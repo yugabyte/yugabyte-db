@@ -1,0 +1,45 @@
+Run build first.
+
+Run individual tests like
+
+    pg15_tests/test_D29226.sh
+
+Run all tests once like
+
+    pg15_tests/run_tests.sh
+
+run_tests.sh can alternatively take test specs as input, where a test spec is
+of the form <program><tab><descriptor>[<tab><flaky>]:
+
+    # Run passing tests once:
+    pg15_tests/run_tests.sh <pg15_tests/passing_tests.tsv
+    # Run flaky tests once:
+    pg15_tests/get_flaky_test_specs.sh | pg15_tests/run_tests.sh
+    # Run shell tests once:
+    pg15_tests/get_shell_test_specs.sh | pg15_tests/run_tests.sh
+    # Run the first flaky test:
+    pg15_tests/get_flaky_test_specs.sh | head -1 | pg15_tests/run_tests.sh
+    # Run the first flaky test n times:
+    for _ in {1..10}; do pg15_tests/get_flaky_test_specs.sh | head -1; done | pg15_tests/run_tests.sh
+    # Run any tests that historically failed:
+    grep -v '^0' build/latest/pg15_test/results.tsv | cut -f 3,4,5 | pg15_tests/run_tests.sh
+    # Same thing but deduplicated:
+    grep -v '^0' build/latest/pg15_test/results.tsv | cut -f 3,4,5 | sort -u | pg15_tests/run_tests.sh
+
+Add passing tests into passing_tests.tsv.  Add <5% flaky tests into
+flaky_tests.tsv.  >5% flaky and failing tests can be tracked in shell tests.
+Add shell tests by adding a new test_*.sh file following the existing
+conventions.
+
+Make sure new tests pass 10x in a row to avoid introducing flaky tests, and
+make sure all tests pass (at least once) to avoid regressions.  Note: it may be
+more convenient to use jenkins to cover passing and flaky tests:
+
+    pg15_tests/get_shell_test_specs.sh | pg15_tests/run_tests.sh
+    # ...and trigger jenkins
+
+In the later stages of pg15, there will be no more need for these tests because
+the underlying tests will pass.
+
+(When, in the future, deactivating these tests, don't forget to remove the line
+in .arclint.)

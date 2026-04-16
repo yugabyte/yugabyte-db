@@ -1,0 +1,261 @@
+-- ----------------------------------------------------------------
+-- Tests for Metadata Functions.
+-- ----------------------------------------------------------------
+SELECT hll_set_output_version(1);
+ hll_set_output_version 
+------------------------
+                      1
+(1 row)
+
+SELECT hll_schema_version(NULL);
+ hll_schema_version 
+--------------------
+                   
+(1 row)
+
+SELECT hll_schema_version(E'\\x108b7f');
+ hll_schema_version 
+--------------------
+                  1
+(1 row)
+
+SELECT hll_schema_version(E'\\x118b7f');
+ hll_schema_version 
+--------------------
+                  1
+(1 row)
+
+SELECT hll_schema_version(hll_empty(10,4,32,0));
+ hll_schema_version 
+--------------------
+                  1
+(1 row)
+
+SELECT hll_schema_version(E'\\x128b498895a3f5af28cafe');
+ hll_schema_version 
+--------------------
+                  1
+(1 row)
+
+SELECT hll_schema_version(E'\\x138b400061');
+ hll_schema_version 
+--------------------
+                  1
+(1 row)
+
+SELECT hll_schema_version(E'\\x14857f0840008001000020000008042000062884120021');
+ hll_schema_version 
+--------------------
+                  1
+(1 row)
+
+SELECT hll_type(NULL);
+ hll_type 
+----------
+         
+(1 row)
+
+SELECT hll_type(E'\\x108b7f');
+ hll_type 
+----------
+        0
+(1 row)
+
+SELECT hll_type(E'\\x118b7f');
+ hll_type 
+----------
+        1
+(1 row)
+
+SELECT hll_type(hll_empty(10,4,32,0));
+ hll_type 
+----------
+        1
+(1 row)
+
+SELECT hll_type(E'\\x128b498895a3f5af28cafe');
+ hll_type 
+----------
+        2
+(1 row)
+
+SELECT hll_type(E'\\x138b400061');
+ hll_type 
+----------
+        3
+(1 row)
+
+SELECT hll_type(E'\\x14857f0840008001000020000008042000062884120021');
+ hll_type 
+----------
+        4
+(1 row)
+
+SELECT hll_log2m(NULL);
+ hll_log2m 
+-----------
+          
+(1 row)
+
+SELECT hll_log2m(E'\\x108b7f');
+ hll_log2m 
+-----------
+        11
+(1 row)
+
+SELECT hll_log2m(E'\\x118b7f');
+ hll_log2m 
+-----------
+        11
+(1 row)
+
+SELECT hll_log2m(hll_empty(10,4,32,0));
+ hll_log2m 
+-----------
+        10
+(1 row)
+
+SELECT hll_log2m(E'\\x128b498895a3f5af28cafe');
+ hll_log2m 
+-----------
+        11
+(1 row)
+
+SELECT hll_log2m(E'\\x138b400061');
+ hll_log2m 
+-----------
+        11
+(1 row)
+
+SELECT hll_log2m(E'\\x14857f0840008001000020000008042000062884120021');
+ hll_log2m 
+-----------
+         5
+(1 row)
+
+SELECT hll_regwidth(NULL);
+ hll_regwidth 
+--------------
+             
+(1 row)
+
+SELECT hll_regwidth(E'\\x108b7f');
+ hll_regwidth 
+--------------
+            5
+(1 row)
+
+SELECT hll_regwidth(E'\\x118b7f');
+ hll_regwidth 
+--------------
+            5
+(1 row)
+
+SELECT hll_regwidth(hll_empty(10,4,32,0));
+ hll_regwidth 
+--------------
+            4
+(1 row)
+
+SELECT hll_regwidth(E'\\x128b498895a3f5af28cafe');
+ hll_regwidth 
+--------------
+            5
+(1 row)
+
+SELECT hll_regwidth(E'\\x138b400061');
+ hll_regwidth 
+--------------
+            5
+(1 row)
+
+SELECT hll_regwidth(E'\\x14857f0840008001000020000008042000062884120021');
+ hll_regwidth 
+--------------
+            5
+(1 row)
+
+SELECT hll_expthresh(NULL);
+ hll_expthresh 
+---------------
+ 
+(1 row)
+
+SELECT hll_expthresh(E'\\x108b7f');
+ hll_expthresh 
+---------------
+ (-1,160)
+(1 row)
+
+SELECT hll_expthresh(E'\\x118b7f');
+ hll_expthresh 
+---------------
+ (-1,160)
+(1 row)
+
+SELECT hll_expthresh(hll_empty(10,4,32,0));
+ hll_expthresh 
+---------------
+ (32,32)
+(1 row)
+
+SELECT hll_expthresh(E'\\x128b498895a3f5af28cafe');
+ hll_expthresh 
+---------------
+ (256,256)
+(1 row)
+
+SELECT hll_expthresh(E'\\x138b400061');
+ hll_expthresh 
+---------------
+ (0,0)
+(1 row)
+
+SELECT hll_expthresh(E'\\x14857f0840008001000020000008042000062884120021');
+ hll_expthresh 
+---------------
+ (-1,2)
+(1 row)
+
+SELECT hll_sparseon(NULL);
+ hll_sparseon 
+--------------
+             
+(1 row)
+
+SELECT hll_sparseon(E'\\x108b7f');
+ hll_sparseon 
+--------------
+            1
+(1 row)
+
+SELECT hll_sparseon(E'\\x118b7f');
+ hll_sparseon 
+--------------
+            1
+(1 row)
+
+SELECT hll_sparseon(hll_empty(10,4,32,0));
+ hll_sparseon 
+--------------
+            0
+(1 row)
+
+SELECT hll_sparseon(E'\\x128b498895a3f5af28cafe');
+ hll_sparseon 
+--------------
+            1
+(1 row)
+
+SELECT hll_sparseon(E'\\x138b400061');
+ hll_sparseon 
+--------------
+            1
+(1 row)
+
+SELECT hll_sparseon(E'\\x14857f0840008001000020000008042000062884120021');
+ hll_sparseon 
+--------------
+            1
+(1 row)
+

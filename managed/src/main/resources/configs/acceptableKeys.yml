@@ -1,0 +1,59 @@
+provider:
+  azu:
+    - AZURE_TENANT_ID
+    - AZURE_CLIENT_ID
+    - AZURE_CLIENT_SECRET
+    - AZURE_SUBSCRIPTION_ID
+    - AZURE_RG
+    - AZURE_NETWORK_SUBSCRIPTION_ID
+    - AZURE_NETWORK_RG
+    - HOSTED_ZONE_ID
+    - airGapInstall
+
+  aws:
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+    - HOSTED_ZONE_ID
+    - airGapInstall
+
+  gcp:
+    - YB_FIREWALL_TAGS
+    - airGapInstall
+    - config_file_contents
+    - host_project_id
+    - network
+    - sshPort
+    - use_host_credentials
+    - use_host_vpc
+    - project_id
+    - private_key_id
+    - private_key
+    - GCE_HOST_PROJECT
+    - GCE_PROJECT
+    - GCE_EMAIL
+    - GOOGLE_APPLICATION_CREDENTIALS
+    - client_email
+    - client_id
+    - type
+    - auth_uri
+    - token_uri
+    - auth_provider_x509_cert_url
+    - client_x509_cert_url
+
+  onprem:
+    - USE_HOSTNAME
+    - airGapInstall
+    - YB_HOME_DIR
+
+  kubernetes:
+    - KUBECONFIG_NAME
+    - KUBECONFIG_IMAGE_REGISTRY
+    - KUBECONFIG_IMAGE_PULL_SECRET_NAME
+    - KUBECONFIG_PROVIDER
+    - KUBECONFIG_PULL_SECRET_CONTENT
+    - KUBECONFIG_PULL_SECRET_NAME
+    - KUBECONFIG_SERVICE_ACCOUNT
+    - KUBECONFIG_STORAGE_CLASSES
+    - KUBECONFIG_CONTENT
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY

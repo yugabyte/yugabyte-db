@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# src/tools/pgindent/pgperltidy
+
+set -e
+
+# set this to override default perltidy program:
+PERLTIDY=${PERLTIDY:-perltidy}
+
+. src/tools/perlcheck/find_perl_files
+
+find_perl_files | xargs $PERLTIDY --profile=src/tools/pgindent/perltidyrc

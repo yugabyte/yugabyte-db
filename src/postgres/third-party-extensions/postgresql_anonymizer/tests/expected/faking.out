@@ -1,0 +1,152 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+SELECT anon.init();
+ init 
+------
+ t
+(1 row)
+
+--
+-- Personal Data (First Name, etc.)
+--
+--- Address
+SELECT pg_typeof(anon.fake_address()) = 'TEXT'::REGTYPE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- First Name
+SELECT pg_typeof(anon.fake_first_name()) = 'TEXT'::REGTYPE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Last Name
+SELECT pg_typeof(anon.fake_last_name()) = 'TEXT'::REGTYPE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Email
+SELECT pg_typeof(anon.fake_email()) = 'TEXT'::REGTYPE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- City
+SELECT pg_typeof(anon.fake_city()) = 'TEXT'::REGTYPE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Company
+SELECT pg_typeof(anon.fake_company()) = 'TEXT'::REGTYPE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Country
+SELECT pg_typeof(anon.fake_country()) = 'TEXT'::REGTYPE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- IBAN
+SELECT pg_typeof(anon.fake_iban()) = 'TEXT'::REGTYPE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- postcode
+SELECT pg_typeof(anon.fake_postcode()) = 'TEXT'::REGTYPE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- SIRET
+SELECT pg_typeof(anon.fake_siret()) = 'TEXT'::REGTYPE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Lorem Ipsum
+SELECT COUNT(*) = 5-1
+FROM (
+  SELECT regexp_matches(anon.lorem_ipsum(), E'\n', 'g')
+) AS l;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT COUNT(*) = 19-1
+FROM (
+  SELECT regexp_matches(anon.lorem_ipsum(19), E'\n', 'g')
+) AS l;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT COUNT(*) = 7-1
+FROM (
+  SELECT regexp_matches(anon.lorem_ipsum( paragraphs := 7 ), E'\n', 'g')
+) AS l;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT COUNT(*) = 20
+FROM unnest(string_to_array( anon.lorem_ipsum( words := 20 ), ' ') )
+AS l;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT char_length(anon.lorem_ipsum( characters := 7 )) = 7;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT char_length(anon.lorem_ipsum( characters := 7 , words := 100)) = 7;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT char_length(anon.lorem_ipsum( characters := 7 , paragraphs := 100)) = 7;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Issue #223 : fake_* function should not return NULL
+TRUNCATE anon.last_name;
+INSERT INTO anon.last_name VALUES ( 1,'joan' ), (2,'ken');
+SELECT setval('anon.last_name_oid_seq', 2, true);
+ setval 
+--------
+      2
+(1 row)
+
+SELECT bool_and(anon.fake_last_name() IS NOT NULL) FROM generate_series(1,100);
+ bool_and 
+----------
+ t
+(1 row)
+
+DROP EXTENSION anon CASCADE;
+ROLLBACK;

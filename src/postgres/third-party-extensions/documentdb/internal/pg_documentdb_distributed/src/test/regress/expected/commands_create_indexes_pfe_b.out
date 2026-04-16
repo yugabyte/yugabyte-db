@@ -1,0 +1,424 @@
+SET citus.next_shard_id TO 120000;
+SET documentdb.next_collection_id TO 12000;
+SET documentdb.next_collection_index_id TO 12000;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('compound_index_test', 'compound_index', '{"a.b": 1, "c.d": 1}'), true);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','compound_index_test');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+  set local enable_seqscan TO off;
+  EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'compound_index_test') WHERE document @@ '{ "a.b": { "$gte" : 1 }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_12000_120001 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on compound_index
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+ROLLBACK;
+-- supported "partialFilterExpression" operators --
+-- note that inner $and is not an operator
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb',
+  '{
+     "createIndexes": "collection_10",
+     "indexes": [
+       {
+         "key": {"a.$**": 1}, "name": "my_idx_1",
+         "partialFilterExpression":
+         {
+           "$and": [
+             { "a": { "b": { "x": {"$and": [ {"$eq": 1} ] }, "y": [1]} , "c": 3} },
+             { "b": {"$gte": 10} }
+           ]
+         }
+       }
+     ]
+   }',
+   true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_1');
+                                                                                                                                                                                                 mongo_index_get_pg_def                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_12003 ON documentdb_data.documents_12001 USING documentdb_rum (document bson_rum_single_path_ops (path=a, iswildcard='true', tl='2699')) WHERE ((document #= '{ "a" : { "b" : { "x" : { "$and" : [ { "$eq" : { "$numberInt" : "1" } } ] }, "y" : [ { "$numberInt" : "1" } ] }, "c" : { "$numberInt" : "3" } } }'::bsonquery) AND (document #>= '{ "b" : { "$numberInt" : "10" } }'::bsonquery))
+(1 row)
+
+-- note that it's not the $regex operator
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb',
+  '{
+     "createIndexes": "collection_10",
+     "indexes": [
+       {
+         "key": {"f.$**": 1}, "name": "my_idx_2",
+         "partialFilterExpression":
+         {
+           "item": {"a": {"$regex": "^p.*", "$options": "si"}}
+         }
+       }
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_2');
+                                                                                                                                   mongo_index_get_pg_def                                                                                                                                    
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_12004 ON documentdb_data.documents_12001 USING documentdb_rum (document bson_rum_single_path_ops (path=f, iswildcard='true', tl='2699')) WHERE (document #= '{ "item" : { "a" : { "$regularExpression" : { "pattern" : "^p.*", "options" : "is" } } } }'::bsonquery)
+(1 row)
+
+-- $exists: true is supported
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb',
+  '{
+     "createIndexes": "collection_10",
+     "indexes": [
+       {
+         "key": {"r.$**": 1}, "name": "my_idx_3",
+         "partialFilterExpression":
+         {
+           "$and": [
+             {"b": 55},
+             {"a": {"$exists": true}},
+             {"c": {"$exists": 1}},
+             {"d": {"$exists": -1}}
+            ]
+         }
+       }
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_3');
+                                                                                                                                                                                                  mongo_index_get_pg_def                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_12005 ON documentdb_data.documents_12001 USING documentdb_rum (document bson_rum_single_path_ops (path=r, iswildcard='true', tl='2699')) WHERE ((document #= '{ "b" : { "$numberInt" : "55" } }'::bsonquery) AND (document #>= '{ "a" : { "$minKey" : 1 } }'::bsonquery) AND (document #>= '{ "c" : { "$minKey" : 1 } }'::bsonquery) AND (document #>= '{ "d" : { "$minKey" : 1 } }'::bsonquery))
+(1 row)
+
+-- While Mongo throws an error for the following:
+--
+-- "partialFilterExpression" {
+--   "$and": [{"p": 1}, {"q": 2}],
+--   "b": [{"z": 1}, {"t": 2}]
+-- }
+--
+-- , doesn't throw an error for below by ignoring the first $and expression.
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb',
+  '{
+     "createIndexes": "collection_10",
+     "indexes": [
+       {
+         "key": {"p.$**": 1}, "name": "my_idx_4",
+         "partialFilterExpression":
+         {
+           "$and": [{"p": 1}, {"q": 2}],
+           "$and": [{"z": 1}, {"t": 2}]
+         }
+       }
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_4');
+                                                                                                                                       mongo_index_get_pg_def                                                                                                                                        
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_12006 ON documentdb_data.documents_12001 USING documentdb_rum (document bson_rum_single_path_ops (path=p, iswildcard='true', tl='2699')) WHERE ((document #= '{ "z" : { "$numberInt" : "1" } }'::bsonquery) AND (document #= '{ "t" : { "$numberInt" : "2" } }'::bsonquery))
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb_4',
+  '{
+     "createIndexes": "collection_10",
+     "indexes": [
+       {
+         "key": {"a.$**": 1}, "name": "my_idx_5",
+         "partialFilterExpression":
+         {
+           "a": [
+             {"a": "b"}, "c", 1
+           ],
+           "b": {
+             "c": {"d": [1,2,3]},
+             "e": {"f": 0}
+           },
+           "c": {"$exists": 1}
+         }
+       }
+     ]
+   }',
+   true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb_4', 'collection_10', 'my_idx_5');
+                                                                                                                                                                                                                                         mongo_index_get_pg_def                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_12009 ON documentdb_data.documents_12003 USING documentdb_rum (document bson_rum_single_path_ops (path=a, iswildcard='true', tl='2699')) WHERE ((document #= '{ "a" : [ { "a" : "b" }, "c", { "$numberInt" : "1" } ] }'::bsonquery) AND (document #= '{ "b" : { "c" : { "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "e" : { "f" : { "$numberInt" : "0" } } } }'::bsonquery) AND (document #>= '{ "c" : { "$minKey" : 1 } }'::bsonquery))
+(1 row)
+
+-- force using my_idx_5 when possible
+SELECT documentdb_distributed_test_helpers.drop_primary_key('mydb_4', 'collection_10');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT SUM(1) FROM documentdb_api.insert_one('mydb_4','collection_10', '{"c":"foo"}'), generate_series(1, 10);
+ sum 
+---------------------------------------------------------------------
+  10
+(1 row)
+
+BEGIN;
+  set local enable_seqscan TO OFF;
+  SET seq_page_cost TO 10000000;
+  -- uses my_idx_5
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  WHERE document @@ '
+  {
+    "a": [
+      {"a": "b"}, "c", 1
+    ],
+    "b": {
+      "c": {"d": [1,2,3]},
+      "e": {"f": 0}
+    },
+    "c": {"$exists": 1}
+  }
+  ';
+                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Bitmap Heap Scan on documents_12003_120020 collection
+                     Recheck Cond: ((document OPERATOR(documentdb_api_catalog.#=) '{ "a" : [ { "a" : "b" }, "c", { "$numberInt" : "1" } ] }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "b" : { "c" : { "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "e" : { "f" : { "$numberInt" : "0" } } } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "c" : { "$minKey" : 1 } }'::documentdb_core.bsonquery))
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : [ { "a" : "b" }, "c", { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "c" : { "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "e" : { "f" : { "$numberInt" : "0" } } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>=) '{ "c" : { "$minKey" : 1 } }'::documentdb_core.bson))
+                     ->  Bitmap Index Scan on my_idx_5
+(10 rows)
+
+  -- cannot use my_idx_5 since "b.e" is missing
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  WHERE document @@ '
+  {
+    "a": [
+      {"a": "b"}, "c", 1
+    ],
+    "b": {
+      "c": {"d": [1,2,3]}
+    },
+    "c": {"$exists": 1}
+  }
+  ';
+                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Seq Scan on documents_12003_120020 collection
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : [ { "a" : "b" }, "c", { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "c" : { "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>=) '{ "c" : { "$minKey" : 1 } }'::documentdb_core.bson))
+(8 rows)
+
+  -- cannot use my_idx_5 since the filter on "c" is missing
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  WHERE document @@ '
+  {
+    "a": [
+      {"a": "b"}, "c", 1
+    ],
+    "b": {
+      "c": {"d": [1,2,3]},
+      "e": {"f": 0}
+    }
+  }
+  ';
+                                                                                                                                                                              QUERY PLAN                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Seq Scan on documents_12003_120020 collection
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : [ { "a" : "b" }, "c", { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "c" : { "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "e" : { "f" : { "$numberInt" : "0" } } } }'::documentdb_core.bson))
+(8 rows)
+
+  -- uses my_idx_5 even if we added a filter on "another_field"
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "b": { "c": { "d": [1,2,3] }, "e": { "f": 0 } } },
+      { "c": { "$exists": 1 } },
+      { "another_field" : 6},
+      { "a": [ { "a": "b" }, "c", 1 ] }
+    ]
+  }
+  ';
+                                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Bitmap Heap Scan on documents_12003_120020 collection
+                     Recheck Cond: ((document OPERATOR(documentdb_api_catalog.#=) '{ "a" : [ { "a" : "b" }, "c", { "$numberInt" : "1" } ] }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "b" : { "c" : { "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "e" : { "f" : { "$numberInt" : "0" } } } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "c" : { "$minKey" : 1 } }'::documentdb_core.bsonquery))
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "c" : { "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "e" : { "f" : { "$numberInt" : "0" } } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>=) '{ "c" : { "$minKey" : 1 } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "another_field" : { "$numberInt" : "6" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : [ { "a" : "b" }, "c", { "$numberInt" : "1" } ] }'::documentdb_core.bson))
+                     ->  Bitmap Index Scan on my_idx_5
+(10 rows)
+
+  -- cannot use my_idx_5 due to order of the fields under "b"
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "b": { "e": { "f": 0 } }, "c": { "d": [1,2,3] } },
+      { "c": { "$exists": 1 } },
+      { "another_field" : 6},
+      { "a": [ { "a": "b" }, "c", 1 ] }
+    ]
+  }
+  ';
+                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Seq Scan on documents_12003_120020 collection
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "e" : { "f" : { "$numberInt" : "0" } } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>=) '{ "c" : { "$minKey" : 1 } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "another_field" : { "$numberInt" : "6" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : [ { "a" : "b" }, "c", { "$numberInt" : "1" } ] }'::documentdb_core.bson))
+(8 rows)
+
+  -- cannot use my_idx_5 due to order of the elements in array "b.c.d"
+  EXPLAIN (COSTS OFF) SELECT COUNT(*)
+  FROM documentdb_api.collection('mydb_4', 'collection_10')
+  WHERE document @@ '
+  {
+    "$and": [
+      { "b": { "e": { "f": 0 } }, "c": { "d": [1,3,2] } },
+      { "c": { "$exists": 1 } },
+      { "another_field" : 6},
+      { "a": [ { "a": "b" }, "c", 1 ] }
+    ]
+  }
+  ';
+                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Aggregate
+               ->  Seq Scan on documents_12003_120020 collection
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "e" : { "f" : { "$numberInt" : "0" } } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "d" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "2" } ] } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>=) '{ "c" : { "$minKey" : 1 } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "another_field" : { "$numberInt" : "6" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : [ { "a" : "b" }, "c", { "$numberInt" : "1" } ] }'::documentdb_core.bson))
+(8 rows)
+
+COMMIT;
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb',
+  '{
+     "createIndexes": "collection_10",
+     "indexes": [
+       {
+         "key": {"h.$**": 1}, "name": "my_idx_6",
+         "partialFilterExpression": {}
+       }
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_6');
+                                                                     mongo_index_get_pg_def                                                                      
+---------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_12010 ON documentdb_data.documents_12001 USING documentdb_rum (document bson_rum_single_path_ops (path=h, iswildcard='true', tl='2699'))
+(1 row)
+
+-- this is normally not supported due to $or
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'mydb',
+  '{
+     "createIndexes": "collection_10",
+     "indexes": [
+       {
+         "key": {"z.$**": 1}, "name": "my_idx_7",
+         "partialFilterExpression": {
+           "$and": [
+             {"$or": [{"a": 1}]}
+           ]
+         }
+       }
+     ]
+   }',
+   true
+);
+ERROR:  Error in specification { "key" : { "z.$**" : 1 }, "name" : "my_idx_7", "partialFilterExpression" : { "$and" : [ { "$or" : [ { "a" : 1 } ] } ] } } :: caused by :: unsupported expression in partial index: $or
+    a $eq 1
+
+SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_7');
+ mongo_index_get_pg_def 
+---------------------------------------------------------------------
+(0 rows)
+

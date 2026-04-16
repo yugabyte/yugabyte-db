@@ -1,0 +1,656 @@
+name: Run PGRX tests
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+
+env:
+  # NB: Don't modify `RUSTFLAGS` here, since it would override the ones
+  # configured by `.cargo/config.toml` on macOS.
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: "false"
+  SCCACHE_MAX_FRAME_LENGTH: 100000000
+  # CARGO_LOG: cargo::core::compiler::fingerprint=info # Uncomment this to output compiler fingerprint info
+  TOOL_DIR: ./tools
+
+jobs:
+  lintck:
+    name: rustfmt, clippy, et al.
+    runs-on: ubuntu-22.04
+    if: "!contains(github.event.head_commit.message, 'nogha')"
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_DIR: /home/runner/.cache/sccache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up prerequisites and environment
+        run: |
+          sudo apt-get update -y -qq --fix-missing
+          
+          echo ""
+          
+          echo "----- Install / Set up sccache -----"
+          mkdir -p $HOME/.local/bin
+          curl -L https://github.com/mozilla/sccache/releases/download/v0.2.15/sccache-v0.2.15-x86_64-unknown-linux-musl.tar.gz | tar xz
+          mv -f sccache-v0.2.15-x86_64-unknown-linux-musl/sccache $HOME/.local/bin/sccache
+          chmod +x $HOME/.local/bin/sccache
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          mkdir -p /home/runner/.cache/sccache
+          echo ""
+
+          "$TOOL_DIR"/rustup.sh
+
+          # https://stackoverflow.com/questions/57968497/how-do-i-set-an-env-var-with-a-bash-expression-in-github-actions/57969570#57969570
+
+          echo "----- Outputting env -----"
+          env
+          echo ""
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: pgrx-lintck-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
+
+      - name: Cache sccache directory
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: /home/runner/.cache/sccache
+          key: pgrx-lintck-sccache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
+
+      - name: Start sccache server
+        run: sccache --start-server
+
+      - name: Print sccache stats (before)
+        run: sccache --show-stats
+
+      - name: Run rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: Run license check
+        run: cargo install cargo-deny --locked && "$TOOL_DIR"/license-check.sh
+
+      # We can't lint most crates because they require "cargo pgrx init" to build
+      - name: Clippy -Dwarnings sql-entity-graph
+        run: cargo clippy -p pgrx-sql-entity-graph -- -Dwarnings
+
+      - name: Check doc-links in pgrx-macros
+        run: |
+          cargo rustdoc -p pgrx-macros -- \
+            --document-private-items \
+            -Drustdoc::broken-intra-doc-links \
+            -Drustdoc::invalid-html-tags
+
+      - name: Stop sccache server
+        run: sccache --stop-server || true
+
+  pgrx_tests:
+    name: Linux tests & examples
+    needs: lintck
+    runs-on: ubuntu-22.04
+    if: "!contains(github.event.head_commit.message, 'nogha')"
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_DIR: /home/runner/.cache/sccache
+      PG_VER: ${{ matrix.postgres }}
+      RUST_TOOLCHAIN: ${{ matrix.rust || 'stable' }}
+
+    strategy:
+      matrix:
+        postgres: [ 13, 14, 15, 16, 17 ]
+        include:
+          - postgres: 16
+            rust: "beta"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up prerequisites and environment
+        run: |
+          sudo apt-get update -y -qq --fix-missing
+          
+          echo ""
+          echo "----- Install sccache -----"
+          mkdir -p $HOME/.local/bin
+          curl -L https://github.com/mozilla/sccache/releases/download/v0.2.15/sccache-v0.2.15-x86_64-unknown-linux-musl.tar.gz | tar xz
+          mv -f sccache-v0.2.15-x86_64-unknown-linux-musl/sccache $HOME/.local/bin/sccache
+          chmod +x $HOME/.local/bin/sccache
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          mkdir -p /home/runner/.cache/sccache
+          echo ""
+          
+          echo "----- Set up dynamic variables -----"
+          cat $GITHUB_ENV
+          echo ""
+          
+          echo "----- Remove old postgres -----"
+          sudo apt remove -y '^postgres.*' '^libpq.*' '^clang.*' '^llvm.*' '^libclang.*' '^libllvm.*' '^mono-llvm.*'
+          echo ""
+          
+          echo "----- Install system dependencies -----"
+          sudo apt-get install -y \
+            build-essential \
+            llvm-14-dev libclang-14-dev clang-14 \
+            gcc \
+            libssl-dev \
+            libz-dev \
+            make \
+            pkg-config \
+            strace \
+            zlib1g-dev
+          echo ""
+
+          "$TOOL_DIR"/rustup.sh
+
+          echo "----- Set up cross compilation -----"
+          sudo apt-get install -y --fix-missing crossbuild-essential-arm64
+
+          echo 'CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc' >> $GITHUB_ENV
+          # TODO: not all of these should be needed, but for now it's likely fine.
+          echo 'BINDGEN_EXTRA_CLANG_ARGS_aarch64-unknown-linux-gnu=-target aarch64-unknown-linux-gnu -isystem /usr/aarch64-linux-gnu/include/ -ccc-gcc-name aarch64-linux-gnu-gcc' >> $GITHUB_ENV
+          
+          echo "----- Print env -----"
+          env
+          echo ""
+
+      - name: Setup release Postgres apt repo
+        if: matrix.postgres != '18'
+        run: |
+          sudo apt-get install -y wget gnupg
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update -y -qq --fix-missing
+
+      - name: Setup beta Postgres apt repo
+        if: matrix.postgres == '18'
+        run: |
+          sudo apt-get install -y wget gnupg
+          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 7FCC7D46ACCC4CF8
+          sudo add-apt-repository "deb https://apt.postgresql.org/pub/repos/apt/ $(lsb_release -s -c)-pgdg-snapshot main $PG_VER"
+          sudo add-apt-repository "deb https://apt.postgresql.org/pub/repos/apt/ $(lsb_release -s -c)-pgdg main $PG_VER"
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update -y -qq --fix-missing
+
+      - name: Install Postgres
+        run: |
+          sudo apt-get install -y \
+            postgresql-$PG_VER \
+            postgresql-server-dev-$PG_VER
+
+      - name: pg_config details
+        run: |
+          echo ""
+          echo "----- pg_config -----"
+          pg_config
+          echo ""
+
+      - name: Set up PostgreSQL permissions
+        run: sudo chmod a+rwx `/usr/lib/postgresql/$PG_VER/bin/pg_config --pkglibdir` `/usr/lib/postgresql/$PG_VER/bin/pg_config --sharedir`/extension /var/run/postgresql/
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: pgrx-tests-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
+
+      - name: Cache sccache directory
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: /home/runner/.cache/sccache
+          key: pgrx-tests-sccache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
+
+      - name: Start sccache server
+        run: sccache --start-server
+
+      - name: Print sccache stats (before run)
+        run: sccache --show-stats
+
+      - name: Install cargo-pgrx
+        run: cargo install --path cargo-pgrx/ --debug --force
+
+      - name: Run 'cargo pgrx init' against system-level ${{ matrix.postgres }}
+        run: cargo pgrx init --pg$PG_VER /usr/lib/postgresql/$PG_VER/bin/pg_config
+
+      - name: Run base-level tests
+        run: |
+          cargo test \
+            --features "pg$PG_VER" \
+            --package cargo-pgrx \
+            --package pgrx \
+            --package pgrx-macros \
+            --package pgrx-pg-sys \
+            --package pgrx-sql-entity-graph
+
+      - name: Check that cross-compiled pgrx-tests can build
+        run: |
+          cargo build --tests \
+            --features "pg$PG_VER" \
+            --package pgrx-tests \
+            --target aarch64-unknown-linux-gnu
+
+      - name: Run pgrx-tests with cshim enabled
+        run: |
+          cargo test \
+            --features "pg$PG_VER cshim proptest" \
+            --package pgrx-tests --lib
+
+      - name: Run pgrx-tests with cshim disabled
+        run: |
+          cargo test \
+            --features "pg$PG_VER proptest" \
+            --package pgrx-tests --lib
+
+      - name: Run UI tests
+        if: ${{ matrix.rust == null }}
+        run: |
+          cargo test \
+            --features "pg$PG_VER proptest" \
+            --package pgrx-tests --test ui
+
+
+      - name: Run aggregate example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/aggregate/Cargo.toml --features "pg$PG_VER" --no-default-features
+
+      - name: Run arrays example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/arrays/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run bad_ideas example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/bad_ideas/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run bgworker example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/bgworker/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run bytea example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/bytea/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run composite_type example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/composite_type/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run custom_libname example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/custom_libname/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run custom_types example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/custom_types/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run custom_types without schema generation example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/custom_types/Cargo.toml  --features "pg$PG_VER no-schema-generation" --no-default-features
+
+      - name: Run custom_sql example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/custom_sql/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run datetime example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/datetime/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run errors example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/errors/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run nostd example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/nostd/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run numeric example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/numeric/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run pgtrybuilder example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/pgtrybuilder/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run operators example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/operators/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run range example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/range/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run schemas example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/schemas/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run shmem example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/shmem/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run spi example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/spi/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run spi_srf example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/spi_srf/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run srf example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/srf/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run strings example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/strings/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run triggers example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/triggers/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run versioned_custom_libname_so example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/versioned_custom_libname_so/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run versioned_so example tests
+        run: CARGO_TARGET_DIR="$(pwd)/target" cargo test --manifest-path=pgrx-examples/versioned_so/Cargo.toml  --features "pg$PG_VER" --no-default-features
+
+      - name: Run `cargo pgrx schema` against the versioned_custom_libname_so example
+        run: cd pgrx-examples/versioned_custom_libname_so && cargo pgrx schema pg$PG_VER
+
+      # Attempt to make the cache payload slightly smaller.
+      - name: Clean up built PGRX files
+        run: |
+          cd target/debug/deps/
+          for built_file in $(find * -type f -executable -print | grep -v "\.so$"); do
+            base_name=$(echo $built_file | cut -d- -f1);
+            for basefile in "$base_name".*; do
+              [ -f "$basefile" ] || continue;
+              echo "Removing $basefile"
+              rm $basefile
+            done;
+            echo "Removing $built_file"
+            rm $built_file
+          done
+
+      - name: Stop sccache server
+        run: sccache --stop-server || true
+
+  cargo_pgrx_init:
+    name: cargo pgrx init
+    runs-on: ubuntu-22.04
+    if: "!contains(github.event.head_commit.message, 'nogha')"
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_DIR: /home/runner/.cache/sccache
+      PG_VER: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up prerequisites and environment
+        run: |
+          sudo apt-get update -y -qq --fix-missing
+          
+          echo ""
+          
+          echo "----- Install / Set up sccache -----"
+          mkdir -p $HOME/.local/bin
+          curl -L https://github.com/mozilla/sccache/releases/download/v0.2.15/sccache-v0.2.15-x86_64-unknown-linux-musl.tar.gz | tar xz
+          mv -f sccache-v0.2.15-x86_64-unknown-linux-musl/sccache $HOME/.local/bin/sccache
+          chmod +x $HOME/.local/bin/sccache
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          mkdir -p /home/runner/.cache/sccache
+          echo ""
+
+          cat $GITHUB_ENV
+          echo ""
+          
+          cat $GITHUB_ENV
+          echo ""
+          
+          echo "----- Remove old postgres -----"
+          sudo apt remove -y '^postgres.*' '^libpq.*' '^clang.*' '^llvm.*' '^libclang.*' '^libllvm.*' '^mono-llvm.*'
+          echo ""
+          
+          echo "----- Install system dependencies -----"
+          sudo apt-get install -y \
+            build-essential \
+            llvm-14-dev libclang-14-dev clang-14 \
+            gcc \
+            libssl-dev \
+            libz-dev \
+            make \
+            pkg-config \
+            strace \
+            zlib1g-dev
+          echo ""
+
+          "$TOOL_DIR"/rustup.sh
+
+          echo "----- Outputting env -----"
+          env
+          echo ""
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: pgrx-cargo_init_tests-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
+
+      - name: Cache sccache directory
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: /home/runner/.cache/sccache
+          key: pgrx-cargo_init_tests-sccache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml') }}
+
+      - name: Start sccache server
+        run: sccache --start-server
+
+      - name: Print sccache stats (before)
+        run: sccache --show-stats
+
+      - name: Install cargo-pgrx
+        run: cargo install --path cargo-pgrx/ --debug --force
+
+      - name: Run 'cargo pgrx init'
+        run: cargo pgrx init --pg$PG_VER download
+
+      # We can't do this with other lints because we need $PGRX_HOME
+      - name: Clippy -Awarnings
+        run: cargo clippy --tests --features pg$PG_VER --no-default-features -- -Awarnings
+
+      # This also requires $PGRX_HOME
+      - name: Check doc-links
+        run: |
+          cargo rustdoc -p pgrx --features pg$PG_VER -- \
+            --document-private-items \
+            -Drustdoc::broken-intra-doc-links \
+            -Drustdoc::invalid-html-tags
+
+      - name: create new sample extension
+        run: cd /tmp/ && cargo pgrx new sample
+
+      # hack Cargo.toml to use this version of pgrx from github
+      - name: hack Cargo.toml
+        run: |
+          echo "[patch.crates-io]" >> /tmp/sample/Cargo.toml
+          echo "pgrx        = { path = \"${GITHUB_WORKSPACE}/pgrx\"        }" >> /tmp/sample/Cargo.toml
+          echo "pgrx-macros = { path = \"${GITHUB_WORKSPACE}/pgrx-macros\" }" >> /tmp/sample/Cargo.toml
+          echo "pgrx-tests  = { path = \"${GITHUB_WORKSPACE}/pgrx-tests\"  }" >> /tmp/sample/Cargo.toml
+
+      - name: show Cargo.toml
+        run: cat /tmp/sample/Cargo.toml
+
+      - name: Test sample
+        run: cd /tmp/sample && cargo pgrx test pg$PG_VER
+
+      - name: Stop sccache server
+        run: sccache --stop-server || true
+
+  build_mac:
+    name: MacOS build & test
+    needs: lintck
+    runs-on: ${{ matrix.os }}
+    if: "!contains(github.event.head_commit.message, 'nogha')"
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_DIR: /Users/runner/Library/Caches/Mozilla.sccache
+      SCCACHE_IDLE_TIMEOUT: 0
+
+    strategy:
+      matrix:
+        os: [ "macos-13", "macos-14" ] # macos-14 is M1
+        # Since Postgres 16 on macOS the dynamic library extension is "dylib" (instead of "so" on older versions),
+        # so it's important to test against both versions (with "old" and "new" extensions).
+        #
+        # See https://github.com/pgcentralfoundation/pgrx/pull/1300
+        postgresql: [ 15, 16 ]
+
+    steps:
+      - uses: Homebrew/actions/setup-homebrew@master
+
+      # install postgres with homebrew, but do't let homebrew do an update too.  The update
+      # process not only takes forever, but it tends to fail when the internet changes
+      #       https://github.com/Homebrew/brew/issues/1670#issuecomment-267096602
+      - name: brew install postgresql
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 brew install ${FORMULA}
+          
+          echo "$(brew --prefix ${FORMULA})/bin" >> $GITHUB_PATH
+        env:
+          FORMULA: postgresql@${{ matrix.postgresql }}
+
+      - uses: actions/checkout@v4
+
+      - name: Set up prerequisites and environment
+        run: |
+          echo ""
+          
+          echo "----- Install sccache -----"
+          curl -L https://github.com/mozilla/sccache/releases/download/v0.5.4/sccache-v0.5.4-x86_64-apple-darwin.tar.gz | tar xz
+          mv -f sccache-v0.5.4-x86_64-apple-darwin/sccache /usr/local/bin
+          chmod +x /usr/local/bin/sccache
+          mkdir -p $SCCACHE_DIR
+          sccache --version
+          
+          echo "----- Getting pre-installed Postgres major version -----"
+          PG_VER=$(pg_config --version | awk '{split($2,a,"."); print a[1]}')
+          echo "PG_VER=$PG_VER" >> $GITHUB_ENV
+          cat $GITHUB_ENV
+          
+          echo "----- Set up Postgres permissions -----"
+          sudo chmod a+rwx `$(which pg_config) --pkglibdir` `$(which pg_config) --sharedir`/extension
+          # ls -lath `$(which pg_config) --pkglibdir` `$(which pg_config) --sharedir`/extension
+          echo ""
+
+          "$TOOL_DIR"/rustup.sh
+
+          echo "----- Outputting env -----"
+          env
+          echo ""
+
+
+      - name: Cache sccache directory
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: /Users/runner/Library/Caches/Mozilla.sccache
+          key: pgrx-sccache-${{matrix.os}}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml', '.cargo/config.toml') }}
+
+      - name: Cache cargo directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+          key: pgrx-cargo-${{matrix.os}}-tests-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml', '.cargo/config.toml') }}
+
+      - name: Start sccache server
+        run: sccache --start-server
+
+      - name: Print sccache stats
+        run: sccache --show-stats
+
+      - name: Install cargo-pgrx
+        run: cargo install --path cargo-pgrx/ --debug --force
+
+      - name: Print sccache stats
+        run: sccache --show-stats
+
+      - name: Run 'cargo pgrx init'
+        run: |
+          set -x
+          cargo pgrx init --pg$PG_VER $(which pg_config)
+
+      - name: Run tests
+        run: cargo test --all --features "pg$PG_VER pg_test cshim proptest" --no-default-features
+
+      - name: Print sccache stats
+        run: sccache --show-stats
+
+      - name: Stop sccache server
+        run: sccache --stop-server || true
+
+  build_windows:
+    name: Windows build & test
+    needs: lintck
+    runs-on: ${{ matrix.os }}
+    if: "!contains(github.event.head_commit.message, 'nogha')"
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_DIR: C:\Users\runneradmin\sccache
+      SCCACHE_IDLE_TIMEOUT: 0
+      PG_VER: ${{ matrix.postgresql }}
+
+    strategy:
+      matrix:
+        os: [ "windows-2022" ]
+        postgresql: [ 13, 17 ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up prerequisites and environment
+        run: |
+          Write-Output ""
+
+          echo "----- Install sccache -----"
+          Invoke-WebRequest -Uri "https://github.com/mozilla/sccache/releases/download/v0.5.4/sccache-v0.5.4-x86_64-pc-windows-msvc.tar.gz" -OutFile "sccache.tar.gz"
+          tar -xzvf sccache.tar.gz
+          Move-Item -Force "sccache-v0.5.4-x86_64-pc-windows-msvc\sccache.exe" -Destination "C:\Windows\System32"
+          New-Item -ItemType Directory -Force -Path $env:SCCACHE_DIR | Out-Null
+          sccache --version
+
+          rustup update
+
+          Write-Output "----- Outputting env -----"
+          Get-ChildItem Env:
+          Write-Output ""
+
+
+      - name: Cache sccache directory
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          path: C:\Users\runneradmin\sccache
+          key: pgrx-sccache-${{matrix.os}}-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml', '.cargo/config.toml') }}
+
+      - name: Cache cargo directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+          key: pgrx-cargo-${{matrix.os}}-tests-${{ hashFiles('**/Cargo.lock', '.github/workflows/tests.yml', '.cargo/config.toml') }}
+
+      - name: Start sccache server
+        run: sccache --start-server
+
+      - name: Print sccache stats
+        run: sccache --show-stats
+
+      - name: Install cargo-pgrx
+        run: cargo install --path cargo-pgrx/ --debug --force
+
+      - name: Print sccache stats
+        run: sccache --show-stats
+
+      - name: Run 'cargo pgrx init'
+        run: cargo pgrx init --pg$env:PG_VER=download
+
+      - name: Run tests
+        run: cargo test --all --no-default-features --features "pg$env:PG_VER pg_test cshim proptest" --all-targets
+
+      - name: Print sccache stats
+        run: sccache --show-stats
+
+      - name: Stop sccache server
+        run: sccache --stop-server || true

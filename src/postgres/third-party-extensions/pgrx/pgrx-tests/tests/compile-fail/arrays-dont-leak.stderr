@@ -1,0 +1,108 @@
+error[E0505]: cannot move out of `a` because it is borrowed
+ --> tests/compile-fail/arrays-dont-leak.rs:8:10
+  |
+6 | fn array_echo_a<'a>(a: Array<'a, &'a str>) -> Vec<Option<&'a str>> {
+  |                 --  - binding `a` declared here
+  |                 |
+  |                 lifetime `'a` defined here
+7 |     let v = a.iter().collect();
+  |             - borrow of `a` occurs here
+8 |     drop(a);
+  |          ^ move out of `a` occurs here
+9 |     v
+  |     - returning this value requires that `a` is borrowed for `'a`
+
+error[E0515]: cannot return value referencing function parameter `a`
+ --> tests/compile-fail/arrays-dont-leak.rs:9:5
+  |
+7 |     let v = a.iter().collect();
+  |             - `a` is borrowed here
+8 |     drop(a);
+9 |     v
+  |     ^ returns a value referencing data owned by the current function
+
+error[E0505]: cannot move out of `a` because it is borrowed
+  --> tests/compile-fail/arrays-dont-leak.rs:15:10
+   |
+13 | fn array_echo_aba<'a, 'b>(a: Array<'a, &'b str>) -> Vec<Option<&'a str>> {
+   |                   --      - binding `a` declared here
+   |                   |
+   |                   lifetime `'a` defined here
+14 |     let v = a.iter().collect();
+   |             - borrow of `a` occurs here
+15 |     drop(a);
+   |          ^ move out of `a` occurs here
+16 |     v
+   |     - returning this value requires that `a` is borrowed for `'a`
+
+error: lifetime may not live long enough
+  --> tests/compile-fail/arrays-dont-leak.rs:16:5
+   |
+13 | fn array_echo_aba<'a, 'b>(a: Array<'a, &'b str>) -> Vec<Option<&'a str>> {
+   |                   --  -- lifetime `'b` defined here
+   |                   |
+   |                   lifetime `'a` defined here
+...
+16 |     v
+   |     ^ function was supposed to return data with lifetime `'a` but it is returning data with lifetime `'b`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error[E0515]: cannot return value referencing function parameter `a`
+  --> tests/compile-fail/arrays-dont-leak.rs:16:5
+   |
+14 |     let v = a.iter().collect();
+   |             - `a` is borrowed here
+15 |     drop(a);
+16 |     v
+   |     ^ returns a value referencing data owned by the current function
+
+error[E0505]: cannot move out of `a` because it is borrowed
+  --> tests/compile-fail/arrays-dont-leak.rs:22:10
+   |
+20 | fn array_echo_baa<'a, 'b>(a: Array<'b, &'a str>) -> Vec<Option<&'a str>> {
+   |                   --      - binding `a` declared here
+   |                   |
+   |                   lifetime `'a` defined here
+21 |     let v = a.iter().collect();
+   |             - borrow of `a` occurs here
+22 |     drop(a);
+   |          ^ move out of `a` occurs here
+23 |     v
+   |     - returning this value requires that `a` is borrowed for `'a`
+
+error: lifetime may not live long enough
+  --> tests/compile-fail/arrays-dont-leak.rs:23:5
+   |
+20 | fn array_echo_baa<'a, 'b>(a: Array<'b, &'a str>) -> Vec<Option<&'a str>> {
+   |                   --  -- lifetime `'b` defined here
+   |                   |
+   |                   lifetime `'a` defined here
+...
+23 |     v
+   |     ^ function was supposed to return data with lifetime `'a` but it is returning data with lifetime `'b`
+   |
+   = help: consider adding the following bound: `'b: 'a`
+
+error[E0515]: cannot return value referencing function parameter `a`
+  --> tests/compile-fail/arrays-dont-leak.rs:23:5
+   |
+21 |     let v = a.iter().collect();
+   |             - `a` is borrowed here
+22 |     drop(a);
+23 |     v
+   |     ^ returns a value referencing data owned by the current function
+
+error[E0505]: cannot move out of `array` because it is borrowed
+  --> tests/compile-fail/arrays-dont-leak.rs:34:10
+   |
+31 |     let array = Spi::get_one::<Array<&str>>("SELECT array_echo(a) FROM test_leak_after_drop")?
+   |         ----- binding `array` declared here
+32 |         .expect("datum was null");
+33 |     let top_5 = array.iter().take(5).collect::<Vec<_>>();
+   |                 ----- borrow of `array` occurs here
+34 |     drop(array);
+   |          ^^^^^ move out of `array` occurs here
+...
+37 |     assert_eq!(top_5, &[Some("1"), Some("2"), Some("3"), Some("4"), Some("5")]);
+   |     --------------------------------------------------------------------------- borrow later used here

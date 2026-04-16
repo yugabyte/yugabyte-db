@@ -1,0 +1,11 @@
+title: Sleep time after restart
+description: Time to wait after restarting a tserver or master process
+properties:
+  sleep_after_master_restart_millis:
+    description: Applicable for rolling restarts. Time to wait between master restarts. Defaults to 180000.
+    type: integer
+    default: 180000
+  sleep_after_tserver_restart_millis:
+    description: Applicable for rolling restarts. Time to wait between tserver restarts. Defaults to 180000.
+    type: integer
+    default: 180000

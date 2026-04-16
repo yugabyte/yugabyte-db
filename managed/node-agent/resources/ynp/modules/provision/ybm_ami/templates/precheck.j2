@@ -1,0 +1,13 @@
+# Check if yb_software folder is configured properly.
+yb_software_dir="{{ yb_home_dir }}/yb-software"
+package={{ package }}
+package_name="$(basename "$package")"
+package_folder="${package_name%.tar.gz}"
+
+if [ ! -d "$yb_software_dir/$package_folder" ]; then
+    add_result "YB Software is not correctly configured" "FAIL" \
+        "YB Software directory is not correctly configured"
+else
+    add_result "YB Software is correctly configured" "PASS" \
+        "YB Software directory is correctly configured"
+fi

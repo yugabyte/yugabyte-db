@@ -1,0 +1,36 @@
+title: JobInstanceInfo
+description: Job instance info representing the execution instance of a JobSchedule.
+type: object
+properties:
+  created_at:
+    description: Creation time
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+    readOnly: true
+  end_time:
+    description: End time
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+    readOnly: true
+  job_schedule_uuid:
+    description: Job schedule UUID
+    type: string
+    format: uuid
+    readOnly: true
+  start_time:
+    description: Start time
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+    readOnly: true
+  state:
+    description: Job instance state
+    $ref: "./JobInstanceState.yaml"
+    readOnly: true
+  uuid:
+    description: Job instance UUID
+    type: string
+    format: uuid
+    readOnly: true

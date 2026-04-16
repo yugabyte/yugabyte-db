@@ -1,0 +1,3 @@
+test: nowait-4
+test: nowait-5
+test: skip-locked-4

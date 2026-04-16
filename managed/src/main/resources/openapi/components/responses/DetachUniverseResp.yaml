@@ -1,0 +1,8 @@
+description: Successfully detached universe.
+content:
+  application/gzip:
+    schema:
+      type: string
+      format: binary
+x-yba-api-since: 2025.2.0.0
+x-yba-api-visibility: preview

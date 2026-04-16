@@ -1,0 +1,12 @@
+# src/test/regress/yb_proc_schedule
+#
+####################################################################################################
+# This suite includes postgres proc tests.
+####################################################################################################
+test: yb.orig.hash_code
+test: yb.orig.function
+test: yb.orig.functional_indexes
+test: yb.orig.functional_index_multiple_column
+test: yb.orig.get_current_transaction_priority
+test: yb.orig.lock_status
+test: yb.orig.lock_row_for_update

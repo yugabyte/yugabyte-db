@@ -1,0 +1,54 @@
+src/test/ldap/README
+
+Tests for LDAP functionality
+============================
+
+This directory contains a test suite for LDAP functionality.  This
+requires a full OpenLDAP installation, including server and client
+tools, and is therefore kept separate and not run by default.  You
+might need to adjust some paths in the test file to have it find
+OpenLDAP in a place that hadn't been thought of yet.
+
+Also, this test suite creates an LDAP server that listens for TCP/IP
+connections on localhost without any real access control, so it is not
+safe to run this on a system where there might be untrusted local
+users.
+
+Running the tests
+=================
+
+NOTE: You must have given the --enable-tap-tests argument to configure.
+
+Run
+    make check
+or
+    make installcheck
+You can use "make installcheck" if you previously did "make install".
+In that case, the code in the installation tree is tested.  With
+"make check", a temporary installation tree is built from the current
+sources and then tested.
+
+Either way, this test initializes, starts, and stops a test Postgres
+cluster, as well as a test LDAP server.
+
+See src/test/perl/README for more info about running these tests.
+
+Requirements
+============
+
+LDAP server and client tools are required.
+
+Debian/Ubuntu packages: slapd ldap-utils
+
+RHEL/CentOS/Fedora packages: openldap-clients openldap-servers
+(You will already have needed openldap and openldap-devel to build.)
+
+FreeBSD: openldap-server
+(You will already have needed openldap-client to build.  If building
+from the ports source tree, you want to build net/openldap24-client
+and net/openldap24-server.)
+
+macOS: We do not recommend trying to use the Apple-provided version of
+OpenLDAP; it's very old, plus Apple seem to have changed the launching
+conventions for slapd.  The paths in the test file are set on the
+assumption that you installed OpenLDAP using Homebrew or MacPorts.

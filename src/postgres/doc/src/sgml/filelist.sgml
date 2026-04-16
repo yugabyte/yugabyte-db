@@ -1,0 +1,201 @@
+<!-- doc/src/sgml/filelist.sgml -->
+
+<!ENTITY history    SYSTEM "history.sgml">
+<!ENTITY info       SYSTEM "info.sgml">
+<!ENTITY intro      SYSTEM "intro.sgml">
+<!ENTITY legal      SYSTEM "legal.sgml">
+<!ENTITY notation   SYSTEM "notation.sgml">
+<!ENTITY problems   SYSTEM "problems.sgml">
+
+<!-- tutorial -->
+<!ENTITY advanced   SYSTEM "advanced.sgml">
+<!ENTITY query      SYSTEM "query.sgml">
+<!ENTITY start      SYSTEM "start.sgml">
+
+<!-- user's guide -->
+<!ENTITY array      SYSTEM "array.sgml">
+<!ENTITY datatype   SYSTEM "datatype.sgml">
+<!ENTITY ddl        SYSTEM "ddl.sgml">
+<!ENTITY dml        SYSTEM "dml.sgml">
+<!ENTITY func       SYSTEM "func.sgml">
+<!ENTITY indices    SYSTEM "indices.sgml">
+<!ENTITY json       SYSTEM "json.sgml">
+<!ENTITY mvcc       SYSTEM "mvcc.sgml">
+<!ENTITY parallel   SYSTEM "parallel.sgml">
+<!ENTITY perform    SYSTEM "perform.sgml">
+<!ENTITY queries    SYSTEM "queries.sgml">
+<!ENTITY rangetypes SYSTEM "rangetypes.sgml">
+<!ENTITY rowtypes   SYSTEM "rowtypes.sgml">
+<!ENTITY syntax     SYSTEM "syntax.sgml">
+<!ENTITY textsearch SYSTEM "textsearch.sgml">
+<!ENTITY typeconv   SYSTEM "typeconv.sgml">
+
+<!-- administrator's guide -->
+<!ENTITY backup        SYSTEM "backup.sgml">
+<!ENTITY charset       SYSTEM "charset.sgml">
+<!ENTITY client-auth   SYSTEM "client-auth.sgml">
+<!ENTITY diskusage     SYSTEM "diskusage.sgml">
+<!ENTITY high-availability      SYSTEM "high-availability.sgml">
+<!ENTITY installbin    SYSTEM "install-binaries.sgml">
+<!ENTITY installation  SYSTEM "installation.sgml">
+<!ENTITY installw      SYSTEM "install-windows.sgml">
+<!ENTITY maintenance   SYSTEM "maintenance.sgml">
+<!ENTITY manage-ag     SYSTEM "manage-ag.sgml">
+<!ENTITY monitoring    SYSTEM "monitoring.sgml">
+<!ENTITY regress       SYSTEM "regress.sgml">
+<!ENTITY runtime       SYSTEM "runtime.sgml">
+<!ENTITY config        SYSTEM "config.sgml">
+<!ENTITY user-manag    SYSTEM "user-manag.sgml">
+<!ENTITY wal           SYSTEM "wal.sgml">
+<!ENTITY logical-replication    SYSTEM "logical-replication.sgml">
+<!ENTITY jit    SYSTEM "jit.sgml">
+
+<!-- programmer's guide -->
+<!ENTITY bgworker   SYSTEM "bgworker.sgml">
+<!ENTITY dfunc      SYSTEM "dfunc.sgml">
+<!ENTITY ecpg       SYSTEM "ecpg.sgml">
+<!ENTITY extend     SYSTEM "extend.sgml">
+<!ENTITY external-projects SYSTEM "external-projects.sgml">
+<!ENTITY func-ref   SYSTEM "func-ref.sgml">
+<!ENTITY infoschema SYSTEM "information_schema.sgml">
+<!ENTITY libpq      SYSTEM "libpq.sgml">
+<!ENTITY lobj       SYSTEM "lobj.sgml">
+<!ENTITY rules      SYSTEM "rules.sgml">
+<!ENTITY spi        SYSTEM "spi.sgml">
+<!ENTITY trigger    SYSTEM "trigger.sgml">
+<!ENTITY event-trigger SYSTEM "event-trigger.sgml">
+<!ENTITY xaggr      SYSTEM "xaggr.sgml">
+<!ENTITY xfunc      SYSTEM "xfunc.sgml">
+<!ENTITY xindex     SYSTEM "xindex.sgml">
+<!ENTITY xplang     SYSTEM "xplang.sgml">
+<!ENTITY xoper      SYSTEM "xoper.sgml">
+<!ENTITY xtypes     SYSTEM "xtypes.sgml">
+<!ENTITY plperl     SYSTEM "plperl.sgml">
+<!ENTITY plpython   SYSTEM "plpython.sgml">
+<!ENTITY plsql      SYSTEM "plpgsql.sgml">
+<!ENTITY pltcl      SYSTEM "pltcl.sgml">
+
+<!-- reference pages -->
+<!ENTITY % allfiles   SYSTEM "ref/allfiles.sgml">
+%allfiles;
+
+<!-- developer's guide -->
+<!ENTITY arch-dev   SYSTEM "arch-dev.sgml">
+<!ENTITY bki        SYSTEM "bki.sgml">
+<!ENTITY catalogs   SYSTEM "catalogs.sgml">
+<!ENTITY system-views  SYSTEM "system-views.sgml">
+<!ENTITY geqo       SYSTEM "geqo.sgml">
+<!ENTITY btree      SYSTEM "btree.sgml">
+<!ENTITY gist       SYSTEM "gist.sgml">
+<!ENTITY spgist     SYSTEM "spgist.sgml">
+<!ENTITY gin        SYSTEM "gin.sgml">
+<!ENTITY brin       SYSTEM "brin.sgml">
+<!ENTITY hash       SYSTEM "hash.sgml">
+<!ENTITY planstats    SYSTEM "planstats.sgml">
+<!ENTITY tableam    SYSTEM "tableam.sgml">
+<!ENTITY indexam    SYSTEM "indexam.sgml">
+<!ENTITY nls        SYSTEM "nls.sgml">
+<!ENTITY plhandler  SYSTEM "plhandler.sgml">
+<!ENTITY fdwhandler SYSTEM "fdwhandler.sgml">
+<!ENTITY custom-scan SYSTEM "custom-scan.sgml">
+<!ENTITY logicaldecoding SYSTEM "logicaldecoding.sgml">
+<!ENTITY replication-origins SYSTEM "replication-origins.sgml">
+<!ENTITY archive-modules SYSTEM "archive-modules.sgml">
+<!ENTITY protocol   SYSTEM "protocol.sgml">
+<!ENTITY sources    SYSTEM "sources.sgml">
+<!ENTITY storage    SYSTEM "storage.sgml">
+<!ENTITY tablesample-method SYSTEM "tablesample-method.sgml">
+<!ENTITY generic-wal SYSTEM "generic-wal.sgml">
+<!ENTITY custom-rmgr SYSTEM "custom-rmgr.sgml">
+<!ENTITY backup-manifest SYSTEM "backup-manifest.sgml">
+
+<!-- contrib information -->
+<!ENTITY contrib         SYSTEM "contrib.sgml">
+<!ENTITY adminpack       SYSTEM "adminpack.sgml">
+<!ENTITY amcheck         SYSTEM "amcheck.sgml">
+<!ENTITY auth-delay      SYSTEM "auth-delay.sgml">
+<!ENTITY auto-explain    SYSTEM "auto-explain.sgml">
+<!ENTITY basic-archive   SYSTEM "basic-archive.sgml">
+<!ENTITY basebackup-to-shell SYSTEM "basebackup-to-shell.sgml">
+<!ENTITY bloom           SYSTEM "bloom.sgml">
+<!ENTITY btree-gin       SYSTEM "btree-gin.sgml">
+<!ENTITY btree-gist      SYSTEM "btree-gist.sgml">
+<!ENTITY citext          SYSTEM "citext.sgml">
+<!ENTITY cube            SYSTEM "cube.sgml">
+<!ENTITY dblink          SYSTEM "dblink.sgml">
+<!ENTITY dict-int        SYSTEM "dict-int.sgml">
+<!ENTITY dict-xsyn       SYSTEM "dict-xsyn.sgml">
+<!ENTITY dummy-seclabel  SYSTEM "dummy-seclabel.sgml">
+<!ENTITY earthdistance   SYSTEM "earthdistance.sgml">
+<!ENTITY file-fdw        SYSTEM "file-fdw.sgml">
+<!ENTITY fuzzystrmatch   SYSTEM "fuzzystrmatch.sgml">
+<!ENTITY hstore          SYSTEM "hstore.sgml">
+<!ENTITY intagg          SYSTEM "intagg.sgml">
+<!ENTITY intarray        SYSTEM "intarray.sgml">
+<!ENTITY isn             SYSTEM "isn.sgml">
+<!ENTITY lo              SYSTEM "lo.sgml">
+<!ENTITY ltree           SYSTEM "ltree.sgml">
+<!ENTITY oid2name        SYSTEM "oid2name.sgml">
+<!ENTITY oldsnapshot     SYSTEM "oldsnapshot.sgml">
+<!ENTITY pageinspect     SYSTEM "pageinspect.sgml">
+<!ENTITY passwordcheck   SYSTEM "passwordcheck.sgml">
+<!ENTITY pgbuffercache   SYSTEM "pgbuffercache.sgml">
+<!ENTITY pgcrypto        SYSTEM "pgcrypto.sgml">
+<!ENTITY pgfreespacemap  SYSTEM "pgfreespacemap.sgml">
+<!ENTITY pgprewarm       SYSTEM "pgprewarm.sgml">
+<!ENTITY pgrowlocks      SYSTEM "pgrowlocks.sgml">
+<!ENTITY pgstatstatements SYSTEM "pgstatstatements.sgml">
+<!ENTITY pgstattuple     SYSTEM "pgstattuple.sgml">
+<!ENTITY pgsurgery       SYSTEM "pgsurgery.sgml">
+<!ENTITY pgtrgm          SYSTEM "pgtrgm.sgml">
+<!ENTITY pgvisibility    SYSTEM "pgvisibility.sgml">
+<!ENTITY pgwalinspect    SYSTEM "pgwalinspect.sgml">
+<!ENTITY postgres-fdw    SYSTEM "postgres-fdw.sgml">
+<!ENTITY seg             SYSTEM "seg.sgml">
+<!ENTITY contrib-spi     SYSTEM "contrib-spi.sgml">
+<!ENTITY sepgsql         SYSTEM "sepgsql.sgml">
+<!ENTITY sslinfo         SYSTEM "sslinfo.sgml">
+<!ENTITY tablefunc       SYSTEM "tablefunc.sgml">
+<!ENTITY tcn             SYSTEM "tcn.sgml">
+<!ENTITY test-decoding   SYSTEM "test-decoding.sgml">
+<!ENTITY test-parser     SYSTEM "test-parser.sgml">
+<!ENTITY test-shm-mq     SYSTEM "test-shm-mq.sgml">
+<!ENTITY tsm-system-rows SYSTEM "tsm-system-rows.sgml">
+<!ENTITY tsm-system-time SYSTEM "tsm-system-time.sgml">
+<!ENTITY unaccent      SYSTEM "unaccent.sgml">
+<!ENTITY uuid-ossp       SYSTEM "uuid-ossp.sgml">
+<!ENTITY vacuumlo        SYSTEM "vacuumlo.sgml">
+<!ENTITY xml2            SYSTEM "xml2.sgml">
+
+<!-- appendixes -->
+<!ENTITY datetime   SYSTEM "datetime.sgml">
+<!ENTITY docguide   SYSTEM "docguide.sgml">
+<!ENTITY errcodes   SYSTEM "errcodes.sgml">
+<!ENTITY features   SYSTEM "features.sgml">
+<!ENTITY keywords   SYSTEM "keywords.sgml">
+<!ENTITY sourcerepo SYSTEM "sourcerepo.sgml">
+
+<!ENTITY release    SYSTEM "release.sgml">
+<!ENTITY release-15     SYSTEM "release-15.sgml">
+
+<!ENTITY limits     SYSTEM "limits.sgml">
+<!ENTITY acronyms   SYSTEM "acronyms.sgml">
+<!ENTITY glossary   SYSTEM "glossary.sgml">
+<!ENTITY color      SYSTEM "color.sgml">
+
+<!ENTITY features-supported   SYSTEM "features-supported.sgml">
+<!ENTITY features-unsupported SYSTEM "features-unsupported.sgml">
+
+<!ENTITY errcodes-table SYSTEM "errcodes-table.sgml">
+<!ENTITY keywords-table SYSTEM "keywords-table.sgml">
+
+<!-- back matter -->
+<!ENTITY biblio     SYSTEM "biblio.sgml">
+
+<!-- Stubs for removed entries to preserve public links -->
+<!ENTITY obsolete SYSTEM "appendix-obsolete.sgml">
+<!ENTITY obsolete-recovery-config SYSTEM "appendix-obsolete-recovery-config.sgml">
+<!ENTITY obsolete-default-roles SYSTEM "appendix-obsolete-default-roles.sgml">
+<!ENTITY obsolete-pgxlogdump SYSTEM "appendix-obsolete-pgxlogdump.sgml">
+<!ENTITY obsolete-pgresetxlog SYSTEM "appendix-obsolete-pgresetxlog.sgml">
+<!ENTITY obsolete-pgreceivexlog SYSTEM "appendix-obsolete-pgreceivexlog.sgml">

@@ -1,0 +1,55 @@
+change_in_place: true
+excludes:
+  - Cargo.lock
+  - LICENSE
+  - pgrx-sql-entity-graph/assets/ansi.tmTheme
+  - ".envrc"
+  - ".gitignore"
+  - ".dockerignore"
+  - "flake\\..*"
+  - "logo.*"
+  - "rustfmt.toml"
+  - ".github/**/*"
+  - ".cargo/config.toml"
+  - "cargo-pgrx/src/templates/*"
+  - "cargo-pgrx/tests/fixtures/macos-universal-binary"
+  - ".*\\.control"
+  - ".*\\.md"
+  - ".*\\.nix"
+  - ".*\\.yml"
+licenses:
+  - files: any
+    ident: MIT
+    authors:
+      - name: PgCentral Foundation, Inc.
+        email: contact@pgcentral.org
+    template: |-
+      Portions Copyright 2019-2021 ZomboDB, LLC.
+      
+      Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+      
+      Portions Copyright 2023-[year] [name of author]
+      
+      All rights reserved.
+      
+      Use of this source code is governed by the [ident] license that can be found in the LICENSE file.
+comments:
+  - extensions:
+      - rs
+      - c
+      - h
+    trailing_lines: 0
+    commenter:
+      type: line
+      comment_char: "//LICENSE"
+  - extension: sql
+    trailing_lines: 0
+    commenter:
+      type: line
+      comment_char: "--LICENSE"
+  - extension: any
+    trailing_lines: 0
+    commenter:
+      type: line
+      comment_char: "#LICENSE"
+    

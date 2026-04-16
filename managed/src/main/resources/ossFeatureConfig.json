@@ -1,0 +1,50 @@
+{
+  "universe": {
+    "import": "disabled",
+    "create": "disabled",
+    "defaultYSQL": "enabled",
+    "defaultYEDIS": "disabled"
+  },
+  "config": {
+    "infra": "hidden",
+    "backup": "disabled"
+  },
+  "costs": {
+    "universe_list": "hidden",
+    "stats_panel": "hidden"
+  },
+  "main": {
+    "dropdown": "hidden",
+    "stats": "hidden",
+    "landing_page": "universes"
+  },
+  "menu": {
+    "dashboard": "hidden",
+    "config": "disabled",
+    "administration": "disabled",
+    "metrics": "disabled"
+  },
+  "universes": {
+    "details": {
+      "tasks": "hidden",
+      "backups": "disabled",
+      "health": "disabled",
+      "metrics": "hidden",
+      "overview": {
+        "costs": "hidden",
+        "upgradeSoftware": "disabled",
+        "demo": "enabled",
+        "editGFlags": "disabled",
+        "readReplica": "disabled",
+        "manageEncryption": "disabled",
+        "restartUniverse": "disabled",
+        "metricsInterval": 15000,
+        "editUniverse": "hidden",
+        "pausedUniverse": "hidden",
+        "deleteUniverse": "disabled",
+        "systemdUpgrade": "hidden"
+      }
+    },
+    "tableActions": "disabled"
+  }
+}

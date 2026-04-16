@@ -1,0 +1,3 @@
+-- Copyright (c) YugaByte, Inc.
+ALTER TABLE alert
+ADD COLUMN err_code TEXT NOT NULL DEFAULT 'UNIDENTIFIED_ALERT';

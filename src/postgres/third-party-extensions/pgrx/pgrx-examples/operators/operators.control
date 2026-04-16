@@ -1,0 +1,5 @@
+comment = 'operators:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/operators'
+relocatable = false
+superuser = false

@@ -1,0 +1,24 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin s1_select s1_alter s1_sleep s2_insert s1_select s1_commit
+step s1_begin: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_select: SELECT * FROM test;
+k|v
+-+-
+(0 rows)
+
+step s1_alter: ALTER TABLE test2 ADD COLUMN v int;
+step s1_sleep: SELECT pg_sleep(1);
+pg_sleep
+--------
+        
+(1 row)
+
+step s2_insert: insert into test values (1, 1);
+step s1_select: SELECT * FROM test;
+k|v
+-+-
+1|1
+(1 row)
+
+step s1_commit: commit;

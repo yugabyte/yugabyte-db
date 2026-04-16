@@ -1,0 +1,6 @@
+comment = 'wal_decoder:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/wal_decoder'
+relocatable = false
+superuser = true
+trusted = false

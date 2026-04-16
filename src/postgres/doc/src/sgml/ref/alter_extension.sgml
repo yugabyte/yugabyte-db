@@ -1,0 +1,334 @@
+<!--
+doc/src/sgml/ref/alter_extension.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterextension">
+ <indexterm zone="sql-alterextension">
+  <primary>ALTER EXTENSION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER EXTENSION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER EXTENSION</refname>
+  <refpurpose>
+   change the definition of an extension
+  </refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER EXTENSION <replaceable class="parameter">name</replaceable> UPDATE [ TO <replaceable class="parameter">new_version</replaceable> ]
+ALTER EXTENSION <replaceable class="parameter">name</replaceable> SET SCHEMA <replaceable class="parameter">new_schema</replaceable>
+ALTER EXTENSION <replaceable class="parameter">name</replaceable> ADD <replaceable class="parameter">member_object</replaceable>
+ALTER EXTENSION <replaceable class="parameter">name</replaceable> DROP <replaceable class="parameter">member_object</replaceable>
+
+<phrase>where <replaceable class="parameter">member_object</replaceable> is:</phrase>
+
+  ACCESS METHOD <replaceable class="parameter">object_name</replaceable> |
+  AGGREGATE <replaceable class="parameter">aggregate_name</replaceable> ( <replaceable>aggregate_signature</replaceable> ) |
+  CAST (<replaceable>source_type</replaceable> AS <replaceable>target_type</replaceable>) |
+  COLLATION <replaceable class="parameter">object_name</replaceable> |
+  CONVERSION <replaceable class="parameter">object_name</replaceable> |
+  DOMAIN <replaceable class="parameter">object_name</replaceable> |
+  EVENT TRIGGER <replaceable class="parameter">object_name</replaceable> |
+  FOREIGN DATA WRAPPER <replaceable class="parameter">object_name</replaceable> |
+  FOREIGN TABLE <replaceable class="parameter">object_name</replaceable> |
+  FUNCTION <replaceable class="parameter">function_name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ] |
+  MATERIALIZED VIEW <replaceable class="parameter">object_name</replaceable> |
+  OPERATOR <replaceable class="parameter">operator_name</replaceable> (<replaceable class="parameter">left_type</replaceable>, <replaceable class="parameter">right_type</replaceable>) |
+  OPERATOR CLASS <replaceable class="parameter">object_name</replaceable> USING <replaceable class="parameter">index_method</replaceable> |
+  OPERATOR FAMILY <replaceable class="parameter">object_name</replaceable> USING <replaceable class="parameter">index_method</replaceable> |
+  [ PROCEDURAL ] LANGUAGE <replaceable class="parameter">object_name</replaceable> |
+  PROCEDURE <replaceable class="parameter">procedure_name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ] |
+  ROUTINE <replaceable class="parameter">routine_name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ] |
+  SCHEMA <replaceable class="parameter">object_name</replaceable> |
+  SEQUENCE <replaceable class="parameter">object_name</replaceable> |
+  SERVER <replaceable class="parameter">object_name</replaceable> |
+  TABLE <replaceable class="parameter">object_name</replaceable> |
+  TEXT SEARCH CONFIGURATION <replaceable class="parameter">object_name</replaceable> |
+  TEXT SEARCH DICTIONARY <replaceable class="parameter">object_name</replaceable> |
+  TEXT SEARCH PARSER <replaceable class="parameter">object_name</replaceable> |
+  TEXT SEARCH TEMPLATE <replaceable class="parameter">object_name</replaceable> |
+  TRANSFORM FOR <replaceable>type_name</replaceable> LANGUAGE <replaceable>lang_name</replaceable> |
+  TYPE <replaceable class="parameter">object_name</replaceable> |
+  VIEW <replaceable class="parameter">object_name</replaceable>
+
+<phrase>and <replaceable>aggregate_signature</replaceable> is:</phrase>
+
+* |
+[ <replaceable>argmode</replaceable> ] [ <replaceable>argname</replaceable> ] <replaceable>argtype</replaceable> [ , ... ] |
+[ [ <replaceable>argmode</replaceable> ] [ <replaceable>argname</replaceable> ] <replaceable>argtype</replaceable> [ , ... ] ] ORDER BY [ <replaceable>argmode</replaceable> ] [ <replaceable>argname</replaceable> ] <replaceable>argtype</replaceable> [ , ... ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER EXTENSION</command> changes the definition of an installed
+   extension.  There are several subforms:
+
+   <variablelist>
+   <varlistentry>
+    <term><literal>UPDATE</literal></term>
+    <listitem>
+     <para>
+      This form updates the extension to a newer version.  The extension
+      must supply a suitable update script (or series of scripts) that can
+      modify the currently-installed version into the requested version.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET SCHEMA</literal></term>
+    <listitem>
+     <para>
+      This form moves the extension's objects into another schema. The
+      extension has to be <firstterm>relocatable</firstterm> for this command to
+      succeed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ADD <replaceable class="parameter">member_object</replaceable></literal></term>
+    <listitem>
+     <para>
+      This form adds an existing object to the extension.  This is mainly
+      useful in extension update scripts.  The object will subsequently
+      be treated as a member of the extension; notably, it can only be
+      dropped by dropping the extension.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DROP <replaceable class="parameter">member_object</replaceable></literal></term>
+    <listitem>
+     <para>
+      This form removes a member object from the extension.  This is mainly
+      useful in extension update scripts.  The object is not dropped, only
+      disassociated from the extension.
+     </para>
+    </listitem>
+   </varlistentry>
+   </variablelist>
+
+   See <xref linkend="extend-extensions"/> for more information about these
+   operations.
+  </para>
+
+  <para>
+   You must own the extension to use <command>ALTER EXTENSION</command>.
+   The <literal>ADD</literal>/<literal>DROP</literal> forms require ownership of the
+   added/dropped object as well.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <para>
+   <variablelist>
+    <varlistentry>
+     <term><replaceable class="parameter">name</replaceable></term>
+     <listitem>
+      <para>
+       The name of an installed extension.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">new_version</replaceable></term>
+     <listitem>
+      <para>
+       The desired new version of the extension.  This can be written as
+       either an identifier or a string literal.  If not specified,
+       <command>ALTER EXTENSION UPDATE</command> attempts to update to whatever is
+       shown as the default version in the extension's control file.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">new_schema</replaceable></term>
+     <listitem>
+      <para>
+       The new schema for the extension.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">object_name</replaceable></term>
+     <term><replaceable class="parameter">aggregate_name</replaceable></term>
+     <term><replaceable class="parameter">function_name</replaceable></term>
+     <term><replaceable class="parameter">operator_name</replaceable></term>
+     <term><replaceable class="parameter">procedure_name</replaceable></term>
+     <term><replaceable class="parameter">routine_name</replaceable></term>
+     <listitem>
+      <para>
+       The name of an object to be added to or removed from the extension.
+       Names of tables,
+       aggregates, domains, foreign tables, functions, operators,
+       operator classes, operator families, procedures, routines, sequences, text search objects,
+       types, and views can be schema-qualified.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>source_type</replaceable></term>
+     <listitem>
+      <para>
+       The name of the source data type of the cast.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>target_type</replaceable></term>
+     <listitem>
+      <para>
+       The name of the target data type of the cast.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">argmode</replaceable></term>
+
+     <listitem>
+      <para>
+       The mode of a function, procedure, or aggregate
+       argument: <literal>IN</literal>, <literal>OUT</literal>,
+       <literal>INOUT</literal>, or <literal>VARIADIC</literal>.
+       If omitted, the default is <literal>IN</literal>.
+       Note that <command>ALTER EXTENSION</command> does not actually pay
+       any attention to <literal>OUT</literal> arguments, since only the input
+       arguments are needed to determine the function's identity.
+       So it is sufficient to list the <literal>IN</literal>, <literal>INOUT</literal>,
+       and <literal>VARIADIC</literal> arguments.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">argname</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of a function, procedure, or aggregate argument.
+       Note that <command>ALTER EXTENSION</command> does not actually pay
+       any attention to argument names, since only the argument data
+       types are needed to determine the function's identity.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">argtype</replaceable></term>
+
+     <listitem>
+      <para>
+       The data type of a function, procedure, or aggregate argument.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">left_type</replaceable></term>
+     <term><replaceable class="parameter">right_type</replaceable></term>
+     <listitem>
+      <para>
+       The data type(s) of the operator's arguments (optionally
+       schema-qualified).  Write <literal>NONE</literal> for the missing argument
+       of a prefix operator.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>PROCEDURAL</literal></term>
+
+     <listitem>
+      <para>
+       This is a noise word.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>type_name</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of the data type of the transform.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>lang_name</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of the language of the transform.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To update the <literal>hstore</literal> extension to version 2.0:
+<programlisting>
+ALTER EXTENSION hstore UPDATE TO '2.0';
+</programlisting>
+  </para>
+
+  <para>
+   To change the schema of the <literal>hstore</literal> extension
+   to <literal>utils</literal>:
+<programlisting>
+ALTER EXTENSION hstore SET SCHEMA utils;
+</programlisting>
+  </para>
+
+  <para>
+   To add an existing function to the <literal>hstore</literal> extension:
+<programlisting>
+ALTER EXTENSION hstore ADD FUNCTION populate_record(anyelement, hstore);
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER EXTENSION</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-alterextension-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createextension"/></member>
+   <member><xref linkend="sql-dropextension"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

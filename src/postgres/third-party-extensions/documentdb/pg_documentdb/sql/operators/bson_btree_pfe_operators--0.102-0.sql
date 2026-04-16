@@ -1,0 +1,60 @@
+CREATE OPERATOR __API_SCHEMA_INTERNAL_V2__.##= (
+    LEFTARG = __CORE_SCHEMA__.bson,
+    RIGHTARG = __API_SCHEMA_INTERNAL_V2__.bsonindexbounds,
+    PROCEDURE = __API_SCHEMA_INTERNAL_V2__.bson_dollar_eq
+);
+
+CREATE OPERATOR __API_SCHEMA_INTERNAL_V2__.##> (
+    LEFTARG = __CORE_SCHEMA__.bson,
+    RIGHTARG = __API_SCHEMA_INTERNAL_V2__.bsonindexbounds,
+    PROCEDURE = __API_SCHEMA_INTERNAL_V2__.bson_dollar_gt
+);
+
+CREATE OPERATOR __API_SCHEMA_INTERNAL_V2__.##>= (
+    LEFTARG = __CORE_SCHEMA__.bson,
+    RIGHTARG = __API_SCHEMA_INTERNAL_V2__.bsonindexbounds,
+    PROCEDURE = __API_SCHEMA_INTERNAL_V2__.bson_dollar_gte
+);
+
+CREATE OPERATOR __API_SCHEMA_INTERNAL_V2__.##< (
+    LEFTARG = __CORE_SCHEMA__.bson,
+    RIGHTARG = __API_SCHEMA_INTERNAL_V2__.bsonindexbounds,
+    PROCEDURE = __API_SCHEMA_INTERNAL_V2__.bson_dollar_lt
+);
+
+CREATE OPERATOR __API_SCHEMA_INTERNAL_V2__.##<= (
+    LEFTARG = __CORE_SCHEMA__.bson,
+    RIGHTARG = __API_SCHEMA_INTERNAL_V2__.bsonindexbounds,
+    PROCEDURE = __API_SCHEMA_INTERNAL_V2__.bson_dollar_lte
+);
+
+CREATE OPERATOR __API_SCHEMA_INTERNAL_V2__.< (
+    LEFTARG = __CORE_SCHEMA__.bsonquery,
+    RIGHTARG = __API_SCHEMA_INTERNAL_V2__.bsonindexbounds,
+    PROCEDURE = __API_SCHEMA_INTERNAL_V2__.bsonquery_lt
+);
+
+CREATE OPERATOR __API_SCHEMA_INTERNAL_V2__.<= (
+    LEFTARG = __CORE_SCHEMA__.bsonquery,
+    RIGHTARG = __API_SCHEMA_INTERNAL_V2__.bsonindexbounds,
+    PROCEDURE = __API_SCHEMA_INTERNAL_V2__.bsonquery_lte
+);
+
+CREATE OPERATOR __API_SCHEMA_INTERNAL_V2__.> (
+    LEFTARG = __CORE_SCHEMA__.bsonquery,
+    RIGHTARG = __API_SCHEMA_INTERNAL_V2__.bsonindexbounds,
+    PROCEDURE = __API_SCHEMA_INTERNAL_V2__.bsonquery_gt
+);
+
+CREATE OPERATOR __API_SCHEMA_INTERNAL_V2__.>= (
+    LEFTARG = __CORE_SCHEMA__.bsonquery,
+    RIGHTARG = __API_SCHEMA_INTERNAL_V2__.bsonindexbounds,
+    PROCEDURE = __API_SCHEMA_INTERNAL_V2__.bsonquery_gte
+);
+
+
+CREATE OPERATOR __API_SCHEMA_INTERNAL_V2__.= (
+    LEFTARG = __CORE_SCHEMA__.bsonquery,
+    RIGHTARG = __API_SCHEMA_INTERNAL_V2__.bsonindexbounds,
+    PROCEDURE = __API_SCHEMA_INTERNAL_V2__.bsonquery_eq
+);

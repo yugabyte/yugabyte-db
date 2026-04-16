@@ -1,0 +1,45 @@
+error: lifetime may not live long enough
+  --> tests/compile-fail/escaping-spiclient-1209-cursor.rs:9:9
+   |
+8  |       let mut res = Spi::connect(|c| {
+   |                                   -- return type of closure is SpiTupleTable<'2>
+   |                                   |
+   |                                   has type `&SpiClient<'1>`
+9  | /         c.open_cursor("select 'hello world' from generate_series(1, 1000)", &[])
+10 | |             .fetch(1000)
+11 | |             .unwrap()
+   | |_____________________^ returning this value requires that `'1` must outlive `'2`
+
+error[E0515]: cannot return value referencing temporary value
+  --> tests/compile-fail/escaping-spiclient-1209-cursor.rs:9:9
+   |
+9  |           c.open_cursor("select 'hello world' from generate_series(1, 1000)", &[])
+   |           ^-----------------------------------------------------------------------
+   |           |
+   |  _________temporary value created here
+   | |
+10 | |             .fetch(1000)
+11 | |             .unwrap()
+   | |_____________________^ returns a value referencing data owned by the current function
+   |
+   = help: use `.collect()` to allocate the iterator
+
+error: lifetime may not live long enough
+  --> tests/compile-fail/escaping-spiclient-1209-cursor.rs:16:26
+   |
+16 |         Spi::connect(|c| c.open_cursor("select 1", &[]).fetch(1).unwrap());
+   |                       -- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ returning this value requires that `'1` must outlive `'2`
+   |                       ||
+   |                       |return type of closure is SpiTupleTable<'2>
+   |                       has type `&SpiClient<'1>`
+
+error[E0515]: cannot return value referencing temporary value
+  --> tests/compile-fail/escaping-spiclient-1209-cursor.rs:16:26
+   |
+16 |         Spi::connect(|c| c.open_cursor("select 1", &[]).fetch(1).unwrap());
+   |                          ------------------------------^^^^^^^^^^^^^^^^^^
+   |                          |
+   |                          returns a value referencing data owned by the current function
+   |                          temporary value created here
+   |
+   = help: use `.collect()` to allocate the iterator

@@ -1,0 +1,10 @@
+# src/test/regress/yb_pushdown_serial_schedule
+#
+####################################################################################################
+# LARGE TABLE Testsuite
+# Test for table whose index key columns are not in the same order with the table.
+####################################################################################################
+test: yb.orig.dml_systable_scan
+test: yb.orig.create_table_scattering_keys
+test: yb.orig.large_copy
+test: yb.orig.dml_key_pushdown

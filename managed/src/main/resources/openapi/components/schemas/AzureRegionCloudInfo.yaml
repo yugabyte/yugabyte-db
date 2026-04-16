@@ -1,0 +1,16 @@
+title: AzureRegionCloudInfo
+description: Region in Azure provider. Part of RegionCloudInfo.
+type: object
+properties:
+  security_group_id:
+    description: Azure security group id
+    type: string
+  vnet:
+    description: Azure vnet
+    type: string
+  azu_network_rg_override:
+    description: Azure network resource group overriden at region level
+    type: string
+  rg_override:
+    description: Azure resource group overriden at region level
+    type: string

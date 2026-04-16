@@ -1,0 +1,186 @@
+#!/usr/bin/perl -w
+
+use strict;
+use warnings;
+
+my $invert = shift;
+my %keep = map { chomp; $_ => 1 } <DATA>;
+my ($name, $type) = $invert ? ('Schema', 'schema-testing') : ('Core', 'assertion');
+
+print qq{
+-- This file defines pgTAP $name, a portable collection of $type
+-- functions for TAP-based unit testing on PostgreSQL 9.1 or higher. It is
+-- distributed under the revised FreeBSD license. The home page for the pgTAP
+-- project is:
+
+--
+-- https://pgtap.org/
+--
+
+};
+
+print "-- Requires pgtap-core.sql\n--\n" if $invert;
+
+my $print = 0;
+while (<>) {
+    if (/^CREATE OR REPLACE \w+ (\w+)/) {
+        if ($1 eq 'os_name' || $1 eq 'pg_typeof') {
+            # Never keep this one.
+            $print = 0;
+        } elsif ($invert ? !$keep{$1} : $keep{$1}) {
+            $print = 1;
+            print;
+        } else {
+            $print = 0;
+        }
+    } else {
+        print if $print;
+    }
+}
+
+__DATA__
+pg_version
+pg_version_num
+pgtap_version
+plan
+no_plan
+_get
+_get_latest
+_get_note
+_set
+_add
+add_result
+num_failed
+_finish
+finish
+diag
+diag_test_name
+ok
+is
+isnt
+_alike
+matches
+imatches
+alike
+ialike
+_unalike
+doesnt_match
+doesnt_imatch
+unalike
+unialike
+cmp_ok
+pass
+fail
+todo
+todo_start
+in_todo
+todo_end
+_todo
+skip
+_query
+throws_ok
+lives_ok
+performs_ok
+performs_within
+_time_trial_type
+_time_trials
+_ident_array_to_string
+_prokind
+tap_funky
+_funkargs
+_got_func
+has_function
+hasnt_function
+_pg_sv_type_array
+can
+_has_type
+has_type
+hasnt_type
+has_domain
+hasnt_domain
+has_enum
+hasnt_enum
+enum_has_labels
+display_type
+_cmp_types
+_cast_exists
+has_cast
+hasnt_cast
+_expand_context
+_get_context
+cast_context_is
+_op_exists
+has_operator
+has_leftop
+has_rightop
+_is_trusted
+has_language
+hasnt_language
+language_is_trusted
+_opc_exists
+has_opclass
+hasnt_opclass
+_nosuch
+_func_compare
+_lang
+function_lang_is
+_returns
+function_returns
+_definer
+is_definer
+isnt_definer
+_type_func
+is_aggregate
+isnt_aggregate
+is_normal_function
+isnt_normal_function
+is_window
+isnt_window
+is_procedure
+isnt_procedure
+_strict
+is_strict
+isnt_strict
+_expand_vol
+_refine_vol
+_vol
+volatility_is
+findfuncs
+_runem
+_is_verbose
+do_tap
+_currtest
+_cleanup
+_runner
+runtests
+_temptable
+_temptypes
+_docomp
+_relcomp
+set_eq
+bag_eq
+_do_ne
+_relne
+set_ne
+bag_ne
+set_has
+bag_has
+set_hasnt
+bag_hasnt
+results_eq
+results_ne
+isa_ok
+is_empty
+collect_tap
+_tlike
+throws_like
+throws_ilike
+throws_matching
+throws_imatching
+_dexists
+_get_dtype
+domain_type_is
+domain_type_isnt
+row_eq
+_error_diag
+

@@ -1,0 +1,39 @@
+@use '../../../_style/colors.scss';
+
+.storage-config {
+  .storage-location-path {
+    background: colors.$YB_BACKGROUND;
+    border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+    border-radius: 8px;
+    padding: 10px 20px;
+  }
+
+  .title {
+    font-weight: 600;
+  }
+
+  .help-text {
+    margin-top: 32px;
+    margin-left: 8px;
+    .storage-link {
+      text-decoration: underline;
+      color: colors.$YB_ORANGE;
+      cursor: pointer;
+    }
+  }
+
+  .storage-config-table {
+    background: colors.$YB_BG_WHITE_3;
+    padding: 24px 24px;
+    border: 1px solid #dcdcde;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    margin-top: 12px;
+    max-height: 300px;
+    overflow: scroll;
+  }
+  .err-msg {
+    color: colors.$YB_ERROR_TEXT_COLOR;
+    margin-bottom: 10px;
+  }
+}

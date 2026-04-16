@@ -1,0 +1,131 @@
+# node-agent-provision.yaml
+
+ynp:
+  # Home directory for the 'yugabyte' user.
+  # This is where the YugabyteDB software and data will reside.
+  yb_home_dir: /home/yugabyte
+
+  # NTP (Network Time Protocol) servers for time synchronization.
+  # Example: ["0.pool.ntp.org", "1.pool.ntp.org"]
+  chrony_servers: []
+
+  # User ID for the 'yugabyte' user.
+  # Specifies the UID to ensure consistency across nodes.
+  yb_user_id: 994
+  no_proxy_list: []
+  # Indicates if the node is in an air-gapped environment (no internet access).
+  # Set to 'true' if the node cannot access external networks.
+  # Airgapped
+  is_airgap: false
+
+  # Determines whether to use system-level systemd for service management.
+  # Set to 'true' to integrate with the system's init system.
+  use_system_level_systemd: false
+
+  # The IP address of the node.
+  # Should be the address that other nodes will use to communicate.
+  node_ip: 127.0.0.1
+
+  # Temporary directory for provisioning tasks.
+  # Used for storing temporary files during setup.
+  tmp_directory: /tmp
+
+  # Install node_agent as part of provisioning.
+  is_install_node_agent: true
+
+  # node_agent_port defaults to 9070
+  # needs to also be updated in YBA using runtime config.
+  # Validate all nodes are consistent for this port
+  node_agent_port: 9070
+
+  # node_exporter_port defaults to 9300
+  # needs to also be updated in YBA during universe port mapping as well.
+  # Validate all nodes are consistent for this port
+  node_exporter_port: 9300
+
+  # Configure clockbound as part of provisioning.
+  # Clockbound in sync with a reliable NTP server reduces read-restart errors.
+  # Ref: https://github.com/aws/clock-bound
+  is_configure_clockbound: false
+
+  configure_thp_settings: true
+
+  # YB Controller backup agent is disabled.
+  is_ybcontroller_disabled: false
+yba:
+  # The base URL of the Yugabyte Anywhere instance.
+  # Example: 'https://yba.example.com'.
+  url: <url>
+
+  # Skip TLS certificate verification.
+  skip_tls_verify: false
+
+  # The UUID of the customer in Yugabyte Anywhere.
+  # This is a unique identifier provided by YBA.
+  customer_uuid: <customer_uuid>
+
+  # API key for authenticating with Yugabyte Anywhere.
+  # Used for secure communication and operations.
+  api_key: <api_key>
+
+  # The name to assign to this node within YBA.
+  # Helps in identifying the node in the YBA interface.
+  node_name: <name>
+
+  # The external FQDN or IP address of the node.
+  # Must be accessible by the YBA server.
+  node_external_fqdn: <ip/dns>
+
+  # Provider configuration details.
+  provider:
+    # Name of the cloud or infrastructure provider.
+    # Examples: 'aws', 'gcp', 'azure', 'onprem'.
+    name: provider_name
+
+    # Region-specific settings.
+    region:
+      # Name of the region where the node is located.
+      # Example: 'us-west-1'.
+      name: region_name
+
+      # Zone-specific settings within the region.
+      zone:
+        # Name of the availability zone.
+        # Example: 'us-west-1a'.
+        name: zone_name
+
+      # Latitude for the region.
+      latitude: 360
+
+      # Longitude for the region.
+      longitude: 360
+
+  # Instance type specifications.
+  instance_type:
+    # Name of the instance type.
+    # Example: 'c5.large' for AWS, 'n1-standard-4' for GCP.
+    name: instance_name
+
+    # Number of CPU cores allocated to the instance.
+    cores: <number_of_cores>
+
+    # Amount of memory (in GB) allocated to the instance.
+    memory_size: <memory_in_gb>
+
+    # Size of the storage volume (in GB).
+    volume_size: <volume_in_gb>
+
+    # List of mount points for data storage.
+    # Data directories should be mounted here.
+    mount_points: []
+
+logging:
+  # Logging level for the application.
+  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+  level: INFO
+
+  # Directory where log files will be stored.
+  directory: ./logs
+
+  # Name of the log file.
+  file: app.log

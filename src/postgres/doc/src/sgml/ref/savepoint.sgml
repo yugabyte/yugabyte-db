@@ -1,0 +1,165 @@
+<!--
+doc/src/sgml/ref/savepoint.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-savepoint">
+ <indexterm zone="sql-savepoint">
+  <primary>SAVEPOINT</primary>
+ </indexterm>
+
+ <indexterm zone="sql-savepoint">
+  <primary>savepoints</primary>
+  <secondary>defining</secondary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>SAVEPOINT</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>SAVEPOINT</refname>
+  <refpurpose>define a new savepoint within the current transaction</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+SAVEPOINT <replaceable>savepoint_name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>SAVEPOINT</command> establishes a new savepoint within
+   the current transaction.
+  </para>
+
+  <para>
+   A savepoint is a special mark inside a transaction that allows all commands
+   that are executed after it was established to be rolled back, restoring
+   the transaction state to what it was at the time of the savepoint.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable>savepoint_name</replaceable></term>
+    <listitem>
+     <para>
+      The name to give to the new savepoint.  If savepoints with the
+      same name already exist, they will be inaccessible until newer
+      identically-named savepoints are released.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Use <link linkend="sql-rollback-to"><command>ROLLBACK TO</command></link> to
+   rollback to a savepoint.  Use <link linkend="sql-release-savepoint"><command>RELEASE SAVEPOINT</command></link>
+   to destroy a savepoint, keeping
+   the effects of commands executed after it was established.
+  </para>
+
+  <para>
+   Savepoints can only be established when inside a transaction block.
+   There can be multiple savepoints defined within a transaction.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To establish a savepoint and later undo the effects of all commands executed
+   after it was established:
+<programlisting>
+BEGIN;
+    INSERT INTO table1 VALUES (1);
+    SAVEPOINT my_savepoint;
+    INSERT INTO table1 VALUES (2);
+    ROLLBACK TO SAVEPOINT my_savepoint;
+    INSERT INTO table1 VALUES (3);
+COMMIT;
+</programlisting>
+   The above transaction will insert the values 1 and 3, but not 2.
+  </para>
+
+  <para>
+   To establish and later destroy a savepoint:
+<programlisting>
+BEGIN;
+    INSERT INTO table1 VALUES (3);
+    SAVEPOINT my_savepoint;
+    INSERT INTO table1 VALUES (4);
+    RELEASE SAVEPOINT my_savepoint;
+COMMIT;
+</programlisting>
+   The above transaction will insert both 3 and 4.
+  </para>
+
+  <para>
+  To use a single savepoint name:
+<programlisting>
+BEGIN;
+    INSERT INTO table1 VALUES (1);
+    SAVEPOINT my_savepoint;
+    INSERT INTO table1 VALUES (2);
+    SAVEPOINT my_savepoint;
+    INSERT INTO table1 VALUES (3);
+
+    -- rollback to the second savepoint
+    ROLLBACK TO SAVEPOINT my_savepoint;
+    SELECT * FROM table1;               -- shows rows 1 and 2
+
+    -- release the second savepoint
+    RELEASE SAVEPOINT my_savepoint;
+
+    -- rollback to the first savepoint
+    ROLLBACK TO SAVEPOINT my_savepoint;
+    SELECT * FROM table1;               -- shows only row 1
+COMMIT;
+</programlisting>
+  The above transaction shows row 3 being rolled back first, then row 2.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   SQL requires a savepoint to be destroyed automatically when another
+   savepoint with the same name is established.  In
+   <productname>PostgreSQL</productname>, the old savepoint is kept, though only the more
+   recent one will be used when rolling back or releasing.  (Releasing the
+   newer savepoint with <command>RELEASE SAVEPOINT</command> will cause the older one
+   to again become accessible to <command>ROLLBACK TO SAVEPOINT</command> and
+   <command>RELEASE SAVEPOINT</command>.) Otherwise, <command>SAVEPOINT</command> is
+   fully SQL conforming.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-begin"/></member>
+   <member><xref linkend="sql-commit"/></member>
+   <member><xref linkend="sql-release-savepoint"/></member>
+   <member><xref linkend="sql-rollback"/></member>
+   <member><xref linkend="sql-rollback-to"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

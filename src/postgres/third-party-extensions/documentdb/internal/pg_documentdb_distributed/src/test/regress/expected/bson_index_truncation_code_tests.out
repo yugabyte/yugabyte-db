@@ -1,0 +1,842 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 1160000;
+SET documentdb.next_collection_id TO 11600;
+SET documentdb.next_collection_index_id TO 11600;
+-- Set configs to something reasonable for testing.
+SET documentdb.indexTermLimitOverride to 20;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_code_tests", "indexes": [ { "key": { "ikey": 1 }, "name": "ikey_1", "enableLargeIndexKeys": true } ] }');
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_11600
+                     Table "documentdb_data.documents_11600"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_11600" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_11601" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='20'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '11600'::bigint)
+
+-- Insert code BSON data
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests', '{ "_id": 1, "ikey": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item": "A" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests', '{ "_id": 2, "ikey": { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests', '{ "_id": 3, "ikey": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests', '{ "_id": 4, "ikey": { "$code" : "YWJvYm9yYQ==" } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests', '{ "_id": 5, "ikey": { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests', '{ "_id": 6, "ikey": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item": "F", "customKey": 6 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests', '{ "_id": 7, "ikey": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item": "G", "customKey": 6 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests', '{ "_id": 8, "ikey": { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests', '{ "_id": 9, "ikey": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item": "H", "customKey": 8 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests', '{ "_id": 10, "ikey": { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, "item": "H", "customKey": 9 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* All terms should be truncated */
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 20) term, document-> '_id' as did from documentdb_data.documents_11600) docs;
+               did                | length |                     term                      
+---------------------------------------------------------------------
+ { "" : { "$numberInt" : "1" } }  |     20 | { "$" : { "$code" : "eyAiZXh" }, "t" : true }
+ { "" : { "$numberInt" : "1" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "1" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "2" } }  |     20 | { "$" : { "$code" : "eyAiYSI" }, "t" : true }
+ { "" : { "$numberInt" : "2" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "2" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "3" } }  |     20 | { "$" : { "$code" : "eyAiZXh" }, "t" : true }
+ { "" : { "$numberInt" : "3" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "3" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "4" } }  |     20 | { "$" : { "$code" : "YWJvYm9" }, "t" : true }
+ { "" : { "$numberInt" : "4" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "4" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "5" } }  |     20 | { "$" : { "$code" : "eyAiYSI" }, "t" : true }
+ { "" : { "$numberInt" : "5" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "5" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "6" } }  |     20 | { "$" : { "$code" : "eyAiZXh" }, "t" : true }
+ { "" : { "$numberInt" : "6" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "6" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "7" } }  |     20 | { "$" : { "$code" : "eyAiYSI" }, "t" : true }
+ { "" : { "$numberInt" : "7" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "7" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "8" } }  |     20 | { "$" : { "$code" : "dGhpcyB" }, "t" : true }
+ { "" : { "$numberInt" : "8" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "8" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "9" } }  |     20 | { "$" : { "$code" : "eyAiYSI" }, "t" : true }
+ { "" : { "$numberInt" : "9" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "9" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "10" } } |     20 | { "$" : { "$code" : "dGhpcyB" }, "t" : true }
+ { "" : { "$numberInt" : "10" } } |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "10" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+(30 rows)
+
+/* Only a subset of the terms should be truncated */
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey', false, true, true, 40) term, document-> '_id' as did from documentdb_data.documents_11600) docs;
+               did                | length |                               term                                
+---------------------------------------------------------------------
+ { "" : { "$numberInt" : "1" } }  |     40 | { "$" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZ" }, "t" : true }
+ { "" : { "$numberInt" : "1" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "1" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "2" } }  |     37 | { "$" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" }, "t" : false }
+ { "" : { "$numberInt" : "2" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "3" } }  |     40 | { "$" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZ" }, "t" : true }
+ { "" : { "$numberInt" : "3" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "3" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "4" } }  |     25 | { "$" : { "$code" : "YWJvYm9yYQ==" }, "t" : false }
+ { "" : { "$numberInt" : "4" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "5" } }  |     37 | { "$" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" }, "t" : false }
+ { "" : { "$numberInt" : "5" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "6" } }  |     40 | { "$" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZ" }, "t" : true }
+ { "" : { "$numberInt" : "6" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "6" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "7" } }  |     40 | { "$" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjo" }, "t" : true }
+ { "" : { "$numberInt" : "7" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "7" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "8" } }  |     40 | { "$" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5" }, "t" : true }
+ { "" : { "$numberInt" : "8" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "8" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "9" } }  |     40 | { "$" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjo" }, "t" : true }
+ { "" : { "$numberInt" : "9" } }  |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "9" } }  |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "10" } } |     40 | { "$" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5" }, "t" : true }
+ { "" : { "$numberInt" : "10" } } |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "10" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+(27 rows)
+
+/* $eq (all terms truncated) */
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code": "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }';
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "A" }
+ { "_id" : { "$numberInt" : "3" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }
+ { "_id" : { "$numberInt" : "6" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "F", "customKey" : { "$numberInt" : "6" } }
+(3 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item": "G" }';
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "G", "customKey" : { "$numberInt" : "6" } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code": "eyAiYSI6IDEsICJiIjogMyB9" } }';
+                                       document                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "5" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+(2 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code": "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }';
+                                                                    document                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }
+ { "_id" : { "$numberInt" : "10" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, "item" : "H", "customKey" : { "$numberInt" : "9" } }
+(2 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code" : "YWJvYm9yYQ==" } }';
+                                 document                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "ikey" : { "$code" : "YWJvYm9yYQ==" } }
+(1 row)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code": "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }';
+                                                                                                                                                 QUERY PLAN                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item": "G" }';
+                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "item" : "G" }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } }'::documentdb_core.bson)
+               Filter: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "item" : "G" }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } }'::documentdb_core.bson)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code": "eyAiYSI6IDEsICJiIjogMyB9" } }';
+                                                                                                                                   QUERY PLAN                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code": "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }';
+                                                                                                                                     QUERY PLAN                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$code" : "YWJvYm9yYQ==" } }';
+                                                                                                                             QUERY PLAN                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bson)
+(12 rows)
+
+/* $gt/$gte (all terms truncated) */
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gt": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } } }';
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "A" }
+ { "_id" : { "$numberInt" : "2" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "3" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }
+ { "_id" : { "$numberInt" : "5" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "6" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "F", "customKey" : { "$numberInt" : "6" } }
+(5 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gte": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } }';
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "A" }
+ { "_id" : { "$numberInt" : "3" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }
+ { "_id" : { "$numberInt" : "6" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "F", "customKey" : { "$numberInt" : "6" } }
+(3 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gt": { "$minKey" : 1 } } }';
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "A" }
+ { "_id" : { "$numberInt" : "2" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "3" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }
+ { "_id" : { "$numberInt" : "4" }, "ikey" : { "$code" : "YWJvYm9yYQ==" } }
+ { "_id" : { "$numberInt" : "5" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "6" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "F", "customKey" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "7" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "G", "customKey" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "8" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }
+ { "_id" : { "$numberInt" : "9" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "H", "customKey" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "10" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, "item" : "H", "customKey" : { "$numberInt" : "9" } }
+(10 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gt": { "$code" : "YWJvYm9yYQ==" } } }';
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "A" }
+ { "_id" : { "$numberInt" : "2" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "3" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }
+ { "_id" : { "$numberInt" : "5" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "6" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "F", "customKey" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "7" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "G", "customKey" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "8" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }
+ { "_id" : { "$numberInt" : "9" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "H", "customKey" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "10" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, "item" : "H", "customKey" : { "$numberInt" : "9" } }
+(9 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gte": { "$code" : "YWJvYm9yYQ==" } } }';
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "A" }
+ { "_id" : { "$numberInt" : "2" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "3" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }
+ { "_id" : { "$numberInt" : "4" }, "ikey" : { "$code" : "YWJvYm9yYQ==" } }
+ { "_id" : { "$numberInt" : "5" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "6" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "F", "customKey" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "7" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "G", "customKey" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "8" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }
+ { "_id" : { "$numberInt" : "9" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "H", "customKey" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "10" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, "item" : "H", "customKey" : { "$numberInt" : "9" } }
+(10 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gt": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } } }';
+                                                                                                                                                 QUERY PLAN                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#>) '{ "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gte": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } }';
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#>=) '{ "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>=) '{ "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>=) '{ "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gt": { "$minKey" : 1 } } }';
+                                                                                                                       QUERY PLAN                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#>) '{ "ikey" : { "$minKey" : 1 } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "ikey" : { "$minKey" : 1 } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "ikey" : { "$minKey" : 1 } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gt": { "$code" : "YWJvYm9yYQ==" } } }';
+                                                                                                                             QUERY PLAN                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#>) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$gte": { "$code" : "YWJvYm9yYQ==" } } }';
+                                                                                                                             QUERY PLAN                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#>=) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>=) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>=) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bson)
+(12 rows)
+
+/* $lt/$lte (all terms truncated) */
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lt": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } } }';
+                                                                    document                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "ikey" : { "$code" : "YWJvYm9yYQ==" } }
+ { "_id" : { "$numberInt" : "8" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }
+ { "_id" : { "$numberInt" : "10" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, "item" : "H", "customKey" : { "$numberInt" : "9" } }
+(3 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lte": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } }';
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "A" }
+ { "_id" : { "$numberInt" : "2" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "3" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }
+ { "_id" : { "$numberInt" : "4" }, "ikey" : { "$code" : "YWJvYm9yYQ==" } }
+ { "_id" : { "$numberInt" : "5" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "6" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "F", "customKey" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "7" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "G", "customKey" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "8" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }
+ { "_id" : { "$numberInt" : "9" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "H", "customKey" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "10" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, "item" : "H", "customKey" : { "$numberInt" : "9" } }
+(10 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lt": { "$maxKey" : 1 } } }';
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "A" }
+ { "_id" : { "$numberInt" : "2" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "3" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }
+ { "_id" : { "$numberInt" : "4" }, "ikey" : { "$code" : "YWJvYm9yYQ==" } }
+ { "_id" : { "$numberInt" : "5" }, "ikey" : { "$code" : "eyAiYSI6IDEsICJiIjogMyB9" } }
+ { "_id" : { "$numberInt" : "6" }, "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "item" : "F", "customKey" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "7" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "G", "customKey" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "8" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" } }
+ { "_id" : { "$numberInt" : "9" }, "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" }, "item" : "H", "customKey" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "10" }, "ikey" : { "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, "item" : "H", "customKey" : { "$numberInt" : "9" } }
+(10 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lt": { "$code" : "YWJvYm9yYQ==" } } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lte": { "$code" : "YWJvYm9yYQ==" } } }';
+                                 document                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "ikey" : { "$code" : "YWJvYm9yYQ==" } }
+(1 row)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lt": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } } }';
+                                                                                                                                                 QUERY PLAN                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#<) '{ "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "ikey" : { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lte": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } }';
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#<=) '{ "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@<=) '{ "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<=) '{ "ikey" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lt": { "$maxKey" : 1 } } }';
+                                                                                                                       QUERY PLAN                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#<) '{ "ikey" : { "$maxKey" : 1 } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "ikey" : { "$maxKey" : 1 } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "ikey" : { "$maxKey" : 1 } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lt": { "$code" : "YWJvYm9yYQ==" } } }';
+                                                                                                                             QUERY PLAN                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#<) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$lte": { "$code" : "YWJvYm9yYQ==" } } }';
+                                                                                                                             QUERY PLAN                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11600_1160007 collection WHERE ((document OPERATOR(documentdb_api_catalog.#<=) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11600'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11600_1160007 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@<=) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_1
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<=) '{ "ikey" : { "$code" : "YWJvYm9yYQ==" } }'::documentdb_core.bson)
+(12 rows)
+
+/* $in/$nin/$ne/$all (all terms truncated) */
+-- TODO upgrade libbson to fix seg fault errors
+-- SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$in": [{ "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, { "$code" : "MTIzNDUxMjM0NQ==" }] } }';
+-- SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$nin": [{ "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, { "$code" : "MTIzNDUxMjM0NQ==" }] } }';
+-- SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$in": [{ "$code" : "MTIzNDUxMjM0NQ==" }] } }';
+-- SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$nin": [{ "$code" : "MTIzNDUxMjM0NQ==" }] } }';
+-- SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$ne": { "$code" : "YWJvYm9yYQ==" } } }';
+-- SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$ne": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } } }';
+-- SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$all": [{ "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, { "$code" : "MTIzNDUxMjM0NQ==" }] } }';
+-- EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$in": [{ "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, { "$code" : "MTIzNDUxMjM0NQ==" }] } }';
+-- EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$nin": [{ "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, { "$code" : "MTIzNDUxMjM0NQ==" }] } }';
+-- EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$in": [{ "$code" : "MTIzNDUxMjM0NQ==" }] } }';
+-- EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$nin": [{ "$code" : "MTIzNDUxMjM0NQ==" }] } }';
+-- EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$ne": { "$code" : "YWJvYm9yYQ==" } } }';
+-- EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$ne": { "$code" : "eyAiYSI6ICIxMjM0NSIsICJiIjogMTIzMTIzMTIzMjExMjMxIH0=" } } }';
+-- EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$all": [{ "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, { "$code" : "MTIzNDUxMjM0NQ==" }] } }';
+-- insert $code BSON data in nested documents/arrays with different leaf types
+SET documentdb.enableIndexTermTruncationOnNestedObjects to ON;
+SET documentdb.indexTermLimitOverride to 100;
+/* create index on key 'ikey2' */
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_code_tests_2", "indexes": [ { "key": { "ikey2" : 1 }, "name": "ikey_2", "enableLargeIndexKeys": true } ] }');
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_11601
+                     Table "documentdb_data.documents_11601"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_11601" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_11603" documentdb_rum (document bson_rum_single_path_ops (path=ikey2, tl='100'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '11601'::bigint)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests_2', '{ "_id": 1, "test": "a", "ikey2": { "abcdefg": { "bcdef": { "cdefg": { "dhig": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } }, "item": "A" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests_2', '{ "_id": 2, "test": "b", "ikey2": [[[[[[{ "a": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }]]]]]], "item": "A" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests_2', '{ "_id": 3, "test": "c", "ikey2": [["a"]], "item": "A" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests_2', '{ "_id": 4, "test": "d", "ikey2": { "abcdefg": { "bcdef": { "cdefg": { "dhig": { "f": { "d": "abcdefghijklmnoasadasdsadasdsadsadasdsadasdaspqrstuvxzabcdefghzasaasaasaasasasasas" } } } } } }, "item": "A" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests_2', '{ "_id": 5, "test": "e", "ikey2": { "abcdeasasfg": { "bcassasdef": { "cdefsssg": { "dhsssig": { "ssssb": { "csssss": 2 } } } } } }, "item": "A" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests_2', '{ "_id": 6, "test": "f", "ikey2": { "abcdeasasfg": { "bcassasdef": { "cdefsssg": { "dhsssig": { "ssssb": { "c": [[[{ "a": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }]]] } } } } } }, "item": "A" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'index_truncation_code_tests_2', '{ "_id": 7, "test": "g", "ikey2": [[[[[[{ "a": { "b": { "c": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } ]]]]]], "item": "A" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* check for index terms */
+SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(document, 'ikey2', false, true, true, 100) term, document-> '_id' as did from documentdb_data.documents_11601) docs;
+               did               | length |                                                                term                                                                
+---------------------------------------------------------------------
+ { "" : { "$numberInt" : "1" } } |     97 | { "$" : { "abcdefg" : { "bcdef" : { "cdefg" : { "dhig" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjo" } } } } }, "t" : true }
+ { "" : { "$numberInt" : "1" } } |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "1" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "2" } } |     93 | { "$" : [ [ [ [ [ [ { "a" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywg" } } ] ] ] ] ] ], "t" : true }
+ { "" : { "$numberInt" : "2" } } |     94 | { "$" : [ [ [ [ [ { "a" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlI" } } ] ] ] ] ], "t" : true }
+ { "" : { "$numberInt" : "2" } } |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "2" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "3" } } |     30 | { "$" : [ [ "a" ] ], "t" : false }
+ { "" : { "$numberInt" : "3" } } |     22 | { "$" : [ "a" ], "t" : false }
+ { "" : { "$numberInt" : "3" } } |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "4" } } |     97 | { "$" : { "abcdefg" : { "bcdef" : { "cdefg" : { "dhig" : { "f" : { "d" : "abcdefghijklmnoasad" } } } } } }, "t" : true }
+ { "" : { "$numberInt" : "4" } } |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "4" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "5" } } |     84 | { "$" : { "abcdeasasfg" : { "bcassasdef" : { "cdefsssg" : { "dhsssig" : { "ssssb" : { "$maxKey" : 1 } } } } } }, "t" : true }
+ { "" : { "$numberInt" : "5" } } |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "5" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "6" } } |     84 | { "$" : { "abcdeasasfg" : { "bcassasdef" : { "cdefsssg" : { "dhsssig" : { "ssssb" : { "$maxKey" : 1 } } } } } }, "t" : true }
+ { "" : { "$numberInt" : "6" } } |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "6" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+ { "" : { "$numberInt" : "7" } } |     80 | { "$" : [ [ [ [ [ [ { "a" : { "b" : { "c" : { "$maxKey" : 1 } } } } ] ] ] ] ] ], "t" : true }
+ { "" : { "$numberInt" : "7" } } |     94 | { "$" : [ [ [ [ [ { "a" : { "b" : { "c" : { "$code" : "eyAiZXhhbXBsZSI6I" } } } } ] ] ] ] ], "t" : true }
+ { "" : { "$numberInt" : "7" } } |      8 | { "" : true, "t" : false }
+ { "" : { "$numberInt" : "7" } } |      7 | { "" : { "$maxKey" : 1 }, "t" : true }
+(23 rows)
+
+/* testing for equality and index usage */
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdefg": { "bcdef": { "cdefg": { "dhig": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } }, "item": "A" }';
+                                                                                                document                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "test" : "a", "ikey2" : { "abcdefg" : { "bcdef" : { "cdefg" : { "dhig" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } }, "item" : "A" }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": [[[[[[{ "a": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }]]]]]], "item": "A" }';
+                                                                                     document                                                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "test" : "b", "ikey2" : [ [ [ [ [ [ { "a" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } ] ] ] ] ] ], "item" : "A" }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": [["a"]], "item": "A" }';
+                                       document                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "test" : "c", "ikey2" : [ [ "a" ] ], "item" : "A" }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdefg": { "bcdef": { "cdefg": { "dhig": { "f": { "d": "abcdefghijklmnoasadasdsadasdsadsadasdsadasdaspqrstuvxzabcdefghzasaasaasaasasasasas" } } } } } }, "item": "A" }';
+                                                                                                                  document                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "test" : "d", "ikey2" : { "abcdefg" : { "bcdef" : { "cdefg" : { "dhig" : { "f" : { "d" : "abcdefghijklmnoasadasdsadasdsadsadasdsadasdaspqrstuvxzabcdefghzasaasaasaasasasasas" } } } } } }, "item" : "A" }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdeasasfg": { "bcassasdef": { "cdefsssg": { "dhsssig": { "ssssb": { "csssss": 2 } } } } } }, "item": "A" }';
+                                                                                               document                                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "test" : "e", "ikey2" : { "abcdeasasfg" : { "bcassasdef" : { "cdefsssg" : { "dhsssig" : { "ssssb" : { "csssss" : { "$numberInt" : "2" } } } } } } }, "item" : "A" }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdeasasfg": { "bcassasdef": { "cdefsssg": { "dhsssig": { "ssssb": { "c": [[[{ "a": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }]]] } } } } } }, "item": "A" }';
+                                                                                                                               document                                                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "test" : "f", "ikey2" : { "abcdeasasfg" : { "bcassasdef" : { "cdefsssg" : { "dhsssig" : { "ssssb" : { "c" : [ [ [ { "a" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } ] ] ] } } } } } }, "item" : "A" }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": [[[[[[{ "a": { "b": { "c": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } ]]]]]], "item": "A" }';
+                                                                                               document                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "test" : "g", "ikey2" : [ [ [ [ [ [ { "a" : { "b" : { "c" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } ] ] ] ] ] ], "item" : "A" }
+(1 row)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdefg": { "bcdef": { "cdefg": { "dhig": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } }, "item": "A" }';
+                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11601_1160019 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey2" : { "abcdefg" : { "bcdef" : { "cdefg" : { "dhig" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "item" : "A" }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11601'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11601_1160019 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : { "abcdefg" : { "bcdef" : { "cdefg" : { "dhig" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } } }'::documentdb_core.bson)
+               Filter: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "item" : "A" }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_2
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : { "abcdefg" : { "bcdef" : { "cdefg" : { "dhig" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } } }'::documentdb_core.bson)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": [[[[[[{ "a": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }]]]]]], "item": "A" }';
+                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11601_1160019 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey2" : [ [ [ [ [ [ { "a" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } ] ] ] ] ] ] }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "item" : "A" }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11601'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11601_1160019 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : [ [ [ [ [ [ { "a" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } ] ] ] ] ] ] }'::documentdb_core.bson)
+               Filter: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "item" : "A" }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_2
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : [ [ [ [ [ [ { "a" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } ] ] ] ] ] ] }'::documentdb_core.bson)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": [["a"]], "item": "A" }';
+                                                                                                                                                                QUERY PLAN                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11601_1160019 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey2" : [ [ "a" ] ] }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "item" : "A" }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11601'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11601_1160019 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : [ [ "a" ] ] }'::documentdb_core.bson)
+               Filter: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "item" : "A" }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_2
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : [ [ "a" ] ] }'::documentdb_core.bson)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdefg": { "bcdef": { "cdefg": { "dhig": { "f": { "d": "abcdefghijklmnoasadasdsadasdsadsadasdsadasdaspqrstuvxzabcdefghzasaasaasaasasasasas" } } } } } }, "item": "A" }';
+                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11601_1160019 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey2" : { "abcdefg" : { "bcdef" : { "cdefg" : { "dhig" : { "f" : { "d" : "abcdefghijklmnoasadasdsadasdsadsadasdsadasdaspqrstuvxzabcdefghzasaasaasaasasasasas" } } } } } } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "item" : "A" }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11601'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11601_1160019 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : { "abcdefg" : { "bcdef" : { "cdefg" : { "dhig" : { "f" : { "d" : "abcdefghijklmnoasadasdsadasdsadsadasdsadasdaspqrstuvxzabcdefghzasaasaasaasasasasas" } } } } } } }'::documentdb_core.bson)
+               Filter: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "item" : "A" }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_2
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : { "abcdefg" : { "bcdef" : { "cdefg" : { "dhig" : { "f" : { "d" : "abcdefghijklmnoasadasdsadasdsadsadasdsadasdaspqrstuvxzabcdefghzasaasaasaasasasasas" } } } } } } }'::documentdb_core.bson)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdeasasfg": { "bcassasdef": { "cdefsssg": { "dhsssig": { "ssssb": { "csssss": 2 } } } } } }, "item": "A" }';
+                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11601_1160019 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey2" : { "abcdeasasfg" : { "bcassasdef" : { "cdefsssg" : { "dhsssig" : { "ssssb" : { "csssss" : { "$numberInt" : "2" } } } } } } } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "item" : "A" }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11601'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11601_1160019 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : { "abcdeasasfg" : { "bcassasdef" : { "cdefsssg" : { "dhsssig" : { "ssssb" : { "csssss" : { "$numberInt" : "2" } } } } } } } }'::documentdb_core.bson)
+               Filter: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "item" : "A" }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_2
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : { "abcdeasasfg" : { "bcassasdef" : { "cdefsssg" : { "dhsssig" : { "ssssb" : { "csssss" : { "$numberInt" : "2" } } } } } } } }'::documentdb_core.bson)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": { "abcdeasasfg": { "bcassasdef": { "cdefsssg": { "dhsssig": { "ssssb": { "c": [[[{ "a": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } }]]] } } } } } }, "item": "A" }';
+                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11601_1160019 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey2" : { "abcdeasasfg" : { "bcassasdef" : { "cdefsssg" : { "dhsssig" : { "ssssb" : { "c" : [ [ [ { "a" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } ] ] ] } } } } } } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "item" : "A" }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11601'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11601_1160019 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : { "abcdeasasfg" : { "bcassasdef" : { "cdefsssg" : { "dhsssig" : { "ssssb" : { "c" : [ [ [ { "a" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } ] ] ] } } } } } } }'::documentdb_core.bson)
+               Filter: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "item" : "A" }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_2
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : { "abcdeasasfg" : { "bcassasdef" : { "cdefsssg" : { "dhsssig" : { "ssssb" : { "c" : [ [ [ { "a" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } ] ] ] } } } } } } }'::documentdb_core.bson)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests_2') WHERE document @@ '{ "ikey2": [[[[[[{ "a": { "b": { "c": { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } ]]]]]], "item": "A" }';
+                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_11601_1160019 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey2" : [ [ [ [ [ [ { "a" : { "b" : { "c" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } ] ] ] ] ] ] }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "item" : "A" }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11601'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_11601_1160019 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : [ [ [ [ [ [ { "a" : { "b" : { "c" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } ] ] ] ] ] ] }'::documentdb_core.bson)
+               Filter: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "item" : "A" }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on ikey_2
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey2" : [ [ [ [ [ [ { "a" : { "b" : { "c" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" } } } } ] ] ] ] ] ] }'::documentdb_core.bson)
+(13 rows)
+

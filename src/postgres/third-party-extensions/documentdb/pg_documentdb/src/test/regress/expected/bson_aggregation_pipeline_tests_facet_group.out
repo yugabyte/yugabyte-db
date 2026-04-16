@@ -1,0 +1,140 @@
+SET search_path TO documentdb_api,documentdb_api_catalog,documentdb_core;
+SET documentdb.next_collection_id TO 4000;
+SET documentdb.next_collection_index_id TO 4000;
+SELECT documentdb_api.insert_one('db','agg_facet_group','{ "_id": 1, "a": { "b": 1, "c": 1} }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_facet_group','{ "_id": 2, "a": { "b": 1, "c": 2} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_facet_group','{ "_id": 3, "a": { "b": 1, "c": 3} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_facet_group','{ "_id": 4, "a": { "b": 2, "c": 1} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_facet_group','{ "_id": 5, "a": { "b": 2, "c": 2} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_facet_group','{ "_id": 6, "a": { "b": 2, "c": 3} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_facet_group','{ "_id": 7, "a": { "b": 3, "c": 1} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_facet_group','{ "_id": 8, "a": { "b": 3, "c": 2} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_facet_group','{ "_id": 9, "a": { "b": 3, "c": 3} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_facet_group", "pipeline": [ { "$addFields": {"name": "$a.c"} }, { "$sort": { "a.b": 1, "name" : 1 } }, { "$facet": { "facet1" : [ { "$group": { "_id": "$a.b", "first": { "$first" : "$name" } } } ], "facet2" : [ { "$group": { "_id": "$a.b", "last": { "$last" : "$name" }}}]}} ] }');
+                                                                                                                                                                                                                             document                                                                                                                                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "facet1" : [ { "_id" : { "$numberInt" : "2" }, "first" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "3" }, "first" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "1" }, "first" : { "$numberInt" : "1" } } ], "facet2" : [ { "_id" : { "$numberInt" : "2" }, "last" : { "$numberInt" : "3" } }, { "_id" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "3" } }, { "_id" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_facet_group", "pipeline": [ { "$addFields": {"name": "$a.c"} }, { "$sort": { "a.b": 1, "name" : 1 } },  { "$group": { "_id": "$a.b", "first": { "$first" : "$name" }, "last": { "$last": "$name" } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "3" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_facet_group", "pipeline": [ { "$addFields": {"name": "$a.c"} }, { "$sort": { "a.b": 1, "name" : -1 } },  { "$group": { "_id": "$a.b", "first": { "$first" : "$name" }, "last": { "$last": "$name" } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_facet_group", "pipeline": [ { "$addFields": {"name": "$a.c"} }, { "$sort": { "a.b": -1, "name" : 1 } },  { "$group": { "_id": "$a.b", "first": { "$first" : "$name" }, "last": { "$last": "$name" } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "3" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_facet_group", "pipeline": [ { "$addFields": {"name": "$a.c"} }, { "$sort": { "a.b": -1, "name" : -1 } },  { "$group": { "_id": "$a.b", "first": { "$first" : "$name" }, "last": { "$last": "$name" } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+(3 rows)
+
+SELECT documentdb_api.shard_collection('db', 'agg_facet_group', '{ "_id": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_facet_group", "pipeline": [ { "$addFields": {"name": "$a.c"} }, { "$sort": { "a.b": 1, "name" : 1 } }, { "$facet": { "facet1" : [ { "$group": { "_id": "$a.b", "first": { "$first" : "$name" } } } ], "facet2" : [ { "$group": { "_id": "$a.b", "last": { "$last" : "$name" }}}]}} ] }');
+                                                                                                                                                                                                                             document                                                                                                                                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "facet1" : [ { "_id" : { "$numberInt" : "2" }, "first" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "3" }, "first" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "1" }, "first" : { "$numberInt" : "1" } } ], "facet2" : [ { "_id" : { "$numberInt" : "2" }, "last" : { "$numberInt" : "3" } }, { "_id" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "3" } }, { "_id" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_facet_group", "pipeline": [ { "$addFields": {"name": "$a.c"} }, { "$sort": { "a.b": 1, "name" : 1 } },  { "$group": { "_id": "$a.b", "first": { "$first" : "$name" }, "last": { "$last": "$name" } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "3" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "1" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_facet_group", "pipeline": [ { "$addFields": {"name": "$a.c"} }, { "$sort": { "a.b": 1, "name" : -1 } },  { "$group": { "_id": "$a.b", "first": { "$first" : "$name" }, "last": { "$last": "$name" } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "1" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_facet_group", "pipeline": [ { "$addFields": {"name": "$a.c"} }, { "$sort": { "a.b": -1, "name" : 1 } },  { "$group": { "_id": "$a.b", "first": { "$first" : "$name" }, "last": { "$last": "$name" } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "3" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "1" }, "first" : { "$numberInt" : "1" }, "last" : { "$numberInt" : "3" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "agg_facet_group", "pipeline": [ { "$addFields": {"name": "$a.c"} }, { "$sort": { "a.b": -1, "name" : -1 } },  { "$group": { "_id": "$a.b", "first": { "$first" : "$name" }, "last": { "$last": "$name" } } } ] }');
+                                               document                                                
+-------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "1" }, "first" : { "$numberInt" : "3" }, "last" : { "$numberInt" : "1" } }
+(3 rows)
+

@@ -1,0 +1,30 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_update_v1_4 s1_savepoint_a s1_update_v1_1 s3_update_v1_1 s1_rollback_to_a s2_update_v2_3 s1_update_v2_3 s2_update_v1_v2_1 s3_commit s2_commit s1_commit
+step s1_update_v1_4: UPDATE foo SET v1=v1+10 WHERE k=4;
+step s1_savepoint_a: SAVEPOINT a;
+step s1_update_v1_1: UPDATE foo SET v1=v1+10 WHERE k=1;
+step s3_update_v1_1: UPDATE foo SET v1=v1+20 WHERE k=1; <waiting ...>
+step s1_rollback_to_a: ROLLBACK TO a;
+step s3_update_v1_1: <... completed>
+step s2_update_v2_3: UPDATE foo SET v2=v2+300 WHERE k=3;
+step s1_update_v2_3: UPDATE foo SET v2=v2+100 WHERE k=3; <waiting ...>
+step s2_update_v1_v2_1: UPDATE foo SET v1=v1+30, v2=v2+300 WHERE k=1; <waiting ...>
+step s3_commit: COMMIT;
+step s2_update_v1_v2_1: <... completed>
+step s2_commit: COMMIT;
+step s1_update_v2_3: <... completed>
+step s1_commit: COMMIT;
+
+starting permutation: s1_update_v1_4 s1_savepoint_a s1_update_v1_1 s2_update_v2_3 s2_update_v1_v2_1 s1_rollback_to_a s1_update_v2_3 s2_commit s1_commit
+step s1_update_v1_4: UPDATE foo SET v1=v1+10 WHERE k=4;
+step s1_savepoint_a: SAVEPOINT a;
+step s1_update_v1_1: UPDATE foo SET v1=v1+10 WHERE k=1;
+step s2_update_v2_3: UPDATE foo SET v2=v2+300 WHERE k=3;
+step s2_update_v1_v2_1: UPDATE foo SET v1=v1+30, v2=v2+300 WHERE k=1; <waiting ...>
+step s1_rollback_to_a: ROLLBACK TO a;
+step s2_update_v1_v2_1: <... completed>
+step s1_update_v2_3: UPDATE foo SET v2=v2+100 WHERE k=3; <waiting ...>
+step s2_commit: COMMIT;
+step s1_update_v2_3: <... completed>
+step s1_commit: COMMIT;

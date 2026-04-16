@@ -1,0 +1,584 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 5500000;
+SET documentdb.next_collection_id TO 5500;
+SET documentdb.next_collection_index_id TO 5500;
+-- $and operator
+-- should return true
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": true}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": 1}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": { }}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": "str"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": []}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [true]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [true, true]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [true, 1]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [true, 0.1]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [true, {"$numberDecimal": "0.1"}]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [true, { }]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [true, [ ]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [true, [ 1, 2]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": true, "b": true, "c": true}', '{"result": { "$and": ["$a", "$b", "$c"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "b": true, "c": true}}', '{"result": { "$and": ["$a.b", "$a.c"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "c": true}}', '{"result": { "$and": [{"$add": [0, 1]}, "$a.c"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+-- should return false
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": false}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": 0}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": null}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": "$a"}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [false]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [false, true]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [false, 0]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [0.1, false]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$and": [false, {"$numberDecimal": "0.1"}]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": true, "b": true, "c": false}', '{"result": { "$and": ["$a", "$b", "$c"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "b": true, "c": false}}', '{"result": { "$and": ["$a.b", "$a.c"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "c": true}}', '{"result": { "$and": [{"$add": [0, 0]}, "$a.c"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+-- If nested expression parses to a constant that evaluates to an error, the error from the nested expression will be thrown. 
+SELECT * FROM bson_dollar_project('{"a": { "c": true}}', '{"result": { "$and": [false, {"$divide": [1, 0]}, "$a.c"]}}');
+ERROR:  can't $divide by zero
+SELECT * FROM bson_dollar_project('{"a": { "c": true}}', '{"result": { "$and": [false, "$a.c", {"$subtract": [1, {"$date": {"$numberLong": "11232"}}]}]}}');
+ERROR:  can't $subtract date from int
+SELECT * FROM bson_dollar_project('{"a": { "c": false}}', '{"result": { "$and": [{"$add": [0, 1]}, "$a.c", {"$not": [1,2]}]}}');
+ERROR:  Expression $not takes exactly 1 arguments. 2 were passed in.
+-- If nested expression parses to a non-constant (eg: path) that eventually evaluates to an error, shortcircuit evaluation will occur.
+SELECT * FROM bson_dollar_project('{"a": { "c": 0}}', '{"result": { "$and": [false, {"$divide": [1, "$a.c"]}, "$a.c"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "c": 0}}', '{"result": { "$and": [true, {"$divide": [1, "$a.c"]}, "$a.c"]}}');
+ERROR:  can't $divide by zero
+-- $or operator
+-- should return true
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": true}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": 1}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": -1}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": -23.453}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": { "$numberDecimal": "-0.4" }}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": { }}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": "str"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [true]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [true, true]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [true, false]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false, false, true]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false, 0.1]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false, {"$numberDecimal": "0.1"}]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [true, { }]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false, [ ]]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [[ 1, 2], true]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [null, true]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": true, "b": false, "c": true}', '{"result": { "$or": ["$a", "$b", "$c"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "b": true, "c": true}}', '{"result": { "$or": ["$z", "$a.b", "$a.c"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "c": false}}', '{"result": { "$or": [{"$add": [0, 1]}, "$a.c"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+-- should return false
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": false}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": 0}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": null}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": "$z"}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": []}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false, false]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false, false, 0]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false, 0.0]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false, {"$numberDecimal": "0.0"}]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false, null]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [false, "$d"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$or": [null, false]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": false, "b": false, "c": false}', '{"result": { "$or": ["$a", "$b", "$c"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "b": false, "c": false}}', '{"result": { "$or": ["$z", "$a.b", "$a.c"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "c": false}}', '{"result": { "$or": [{"$add": [0, 0]}, "$a.c"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+-- If nested expression parses to a constant that evaluates to an error, the error from the nested expression will be thrown. 
+SELECT * FROM bson_dollar_project('{"a": false, "b": false, "c": false}', '{"result": { "$or": ["$a", "$b", "$c", {"$divide": []}]}}');
+ERROR:  Expression $divide takes exactly 2 arguments. 0 were passed in.
+SELECT * FROM bson_dollar_project('{"a": { "c": true}}', '{"result": { "$or": [false, {"$divide": [1, 0]}, "$a.c"]}}');
+ERROR:  can't $divide by zero
+SELECT * FROM bson_dollar_project('{"a": { "c": true}}', '{"result": { "$or": [false, "$a.c", {"$subtract": [1, {"$date": {"$numberLong": "11232"}}]}]}}');
+ERROR:  can't $subtract date from int
+SELECT * FROM bson_dollar_project('{"a": { "c": false}}', '{"result": { "$or": [{"$add": [0, 1]}, "$a.c", {"$not": [1,2]}]}}');
+ERROR:  Expression $not takes exactly 1 arguments. 2 were passed in.
+-- If nested expression parses to a non-constant (eg: path) that eventually evaluates to an error, shortcircuit evaluation will occur.
+SELECT * FROM bson_dollar_project('{"a": { "c": 0}}', '{"result": { "$or": [true, {"$divide": [1, "$a.c"]}, "$a.c"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "c": 0}}', '{"result": { "$or": [false, {"$divide": [1, "$a.c"]}, "$a.c"]}}');
+ERROR:  can't $divide by zero
+-- $not operator
+-- should return true
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": false}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": {"$numberDecimal": "0"}}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": [null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": [false]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": ["$z"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": {"$and": [false, true]}}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": {"$or": [false, false]}}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": false}', '{"result": { "$not": ["$a"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": { "$not": ["$a"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0.0}', '{"result": { "$not": ["$a"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+-- should return false
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": true}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": 1}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": -1}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": -1.23}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": {"$numberDecimal": "-0.3"}}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": {}}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": ["str"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": [true]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": {"$and": [true, true]}}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": {"$or": [false, true]}}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": true}', '{"result": { "$not": ["$a"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$not": ["$a"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 0.1}', '{"result": { "$not": ["$a"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+-- should return error for wrong number of args
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": []}}');
+ERROR:  Expression $not takes exactly 1 arguments. 0 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": [true, false]}}');
+ERROR:  Expression $not takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": [true, false, 2, 3]}}');
+ERROR:  Expression $not takes exactly 1 arguments. 4 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$not": [{"$divide": [1, 0]}, false, 2, 3]}}');
+ERROR:  Expression $not takes exactly 1 arguments. 4 were passed in.

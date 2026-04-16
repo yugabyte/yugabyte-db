@@ -1,0 +1,36 @@
+<!-- HTML for static distribution bundle build -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>YugabyteDB Anywhere APIs</title>
+    <link rel="icon" type="image/png" href="./favicon-32x32.png" sizes="32x32" />
+    <link rel="icon" type="image/png" href="./favicon-16x16.png" sizes="16x16" />
+    <link rel="icon" type="image/ico" href="../favicon.ico" sizes="256x256" />
+    <link rel="icon" type="image/ico" href="../favicon.ico" />
+    <!-- let's try the dev portal instead
+    <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
+-->
+    <script src="https://unpkg.com/@stoplight/elements-dev-portal/web-components.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements-dev-portal/styles.min.css" />
+  </head>
+
+  <body>
+    <!-- let's try the dev portal instead
+    <div id="swagger-ui"></div>
+    <elements-api
+      apiDescriptionUrl="/swagger.json"
+      router="hash"
+      layout="sidebar"
+      logo="../favicon.ico"
+    />
+-->
+
+    <elements-stoplight-project
+      projectId="cHJqOjgwNDQ3"
+      router="history"
+      collapseTableOfContents="true"
+    />
+  </body>
+</html>

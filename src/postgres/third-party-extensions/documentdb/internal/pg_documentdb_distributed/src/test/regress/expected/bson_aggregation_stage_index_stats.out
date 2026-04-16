@@ -1,0 +1,141 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 385000;
+SET documentdb.next_collection_id TO 3850;
+SET documentdb.next_collection_index_id TO 3850;
+CREATE OR REPLACE FUNCTION query_and_flush(field text)
+RETURNS bson
+set enable_seqscan to false
+AS $$
+DECLARE
+    docText bson;
+BEGIN
+    SELECT cursorPage INTO docText FROM documentdb_api.aggregate_cursor_first_page('db', 
+        FORMAT('{ "aggregate": "indexstats1", "pipeline": [ { "$match": { "%s": { "$gt": 500 } } }, { "$count": "c" } ], "cursor": {} }', field)::documentdb_core.bson);
+
+    IF VERSION() LIKE 'PostgreSQL 14%' THEN
+        PERFORM pg_sleep(3);
+    ELSE
+        PERFORM pg_stat_force_next_flush();
+    END IF;
+    RETURN docText;
+END;
+$$
+LANGUAGE plpgsql;
+SELECT documentdb_api.drop_collection('db', 'indexstats1');
+ drop_collection 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- fails on non existent collection
+SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- Create Collection
+SELECT documentdb_api.create_collection('db', 'indexstats1');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+(1 row)
+
+-- Add 1000 docs
+SELECT COUNT(*) FROM (SELECT documentdb_api.insert_one('db','indexstats1',FORMAT('{ "a" : %s, "_id": %s }', i, i)::bson, NULL) FROM generate_series(1, 10000) i) ins;
+ count 
+---------------------------------------------------------------------
+ 10000
+(1 row)
+
+-- create index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "indexstats1", "indexes": [ { "key": { "a": 1 }, "name": "a_1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+ { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
+(2 rows)
+
+-- query using index.
+SELECT query_and_flush('_id');
+                                                                            query_and_flush                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT query_and_flush('_id');
+                                                                            query_and_flush                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT query_and_flush('a');
+                                                                            query_and_flush                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "2" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+ { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "1" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
+(2 rows)
+
+-- shard
+SELECT documentdb_api.shard_collection('db', 'indexstats1', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+ { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
+(2 rows)
+
+-- query using index.
+SELECT query_and_flush('_id');
+                                                                            query_and_flush                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT query_and_flush('_id');
+                                                                            query_and_flush                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT query_and_flush('a');
+                                                                            query_and_flush                                                                             
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.indexstats1", "firstBatch" : [ { "c" : { "$numberInt" : "9500" } } ] }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": {} }, { "$project": { "accesses.since": 0 }} ]}');
+                                                                                                          document                                                                                                          
+---------------------------------------------------------------------
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "16" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+ { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "8" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
+(2 rows)
+
+-- invalid cases
+SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$indexStats": { "a": 1 } }, { "$project": { "accesses.since": 0 }} ]}');
+ERROR:  The $indexStats stage specification must be an empty object
+SELECT * FROM bson_aggregation_pipeline('db', '{ "aggregate": "indexstats1", "pipeline": [ { "$match": { "a": 1 } }, { "$indexStats": { } }, { "$project": { "accesses.since": 0 }} ]}');
+ERROR:  $indexStats is only valid as the first stage in the pipeline.

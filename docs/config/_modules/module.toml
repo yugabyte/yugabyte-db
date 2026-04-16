@@ -1,0 +1,21 @@
+# This file contains the BASE module configuration for Hugo site.
+# It is designed to be COPIED by a Node.js script to form the final
+# 'module.toml' in 'config/_default/'.
+#
+# IMPORTANT: This file MUST NOT contain a top-level '[module]' header,
+# as it's intended to be a section of the final 'module.toml'.
+[hugoVersion]
+  extended = true
+  min = "0.145.0"
+
+[[imports]]
+  path = "github.com/google/docsy"
+  disable = false
+
+[[imports]]
+  path = "github.com/google/docsy/dependencies"
+  disable = false
+
+[[imports]]
+  path = "github.com/trunkcode/hugo-seo"
+  disable = false

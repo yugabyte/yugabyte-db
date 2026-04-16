@@ -1,0 +1,26 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_begin_rr s1_select_tbl s2_begin_rr s2_insert_into_tbl s1_create_new_partition s2_commit s1_commit s3_select_tbl
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_select_tbl: select c1, c2 from parent order by c1 asc;
+ c1| c2
+---+---
+  1|  2
+201|202
+(2 rows)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_insert_into_tbl: insert into parent values (101, 102);
+step s1_create_new_partition: create table child_3 partition of parent for values from (100) to (200); <waiting ...>
+step s2_commit: COMMIT;
+step s1_create_new_partition: <... completed>
+ERROR:  updated partition constraint for default partition "child_def" would be violated by some row
+step s1_commit: COMMIT;
+step s3_select_tbl: select tableoid::regclass,c1, c2 from parent order by c1 asc;
+tableoid | c1| c2
+---------+---+---
+child_1  |  1|  2
+child_def|101|102
+child_def|201|202
+(3 rows)
+

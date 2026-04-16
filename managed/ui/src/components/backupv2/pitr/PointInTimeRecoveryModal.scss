@@ -1,0 +1,98 @@
+@use '../../../_style/colors.scss';
+
+.pitr-recovery-modal {
+  width: 1100px;
+
+  .modal-header {
+    padding: 23px 32px;
+  }
+
+  .modal-body {
+    padding: 24px 32px !important;
+
+    & > .row {
+      margin-bottom: 24px;
+    }
+  }
+
+  .notice {
+    font-size: 13px;
+    line-height: 32px;
+    color: colors.$YB_DARKER_GRAY;
+    margin-bottom: 24px;
+
+    b {
+      font-weight: 700;
+    }
+  }
+
+  .pitr-custom-radio {
+    border: 1px solid colors.$YB_GRAY_HOVER;
+    border-radius: 7px;
+    padding: 24px 24px 15px 24px;
+    display: flex;
+    align-items: baseline;
+    width: 600px;
+    &.center-align {
+      align-items: center;
+    }
+    &.active {
+      background: colors.$YB_BACKGROUND;
+    }
+
+    input[type='radio'] {
+      cursor: pointer;
+      margin-right: 32px;
+    }
+
+    .yb-field-group {
+      padding-bottom: 0;
+    }
+
+    .pitr-info-text {
+      font-size: 12px;
+      line-height: 32px;
+      color: colors.$YB_DARKER_GRAY;
+    }
+
+    .pitr-error-text {
+      font-size: 12px;
+      line-height: 32px;
+      color: colors.$YB_ORANGE;
+      display: flex;
+      align-items: center;
+    }
+
+    .relative-time-mode {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+      row-gap: 4px;
+    }
+    .exact-time-mode {
+      display: flex;
+      flex-direction: column;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .recovery_duration {
+      width: 140px;
+    }
+
+    .break {
+      flex-basis: 100%;
+      height: 0;
+    }
+  }
+
+  div.rw-datetime-picker {
+    width: 230px;
+    margin: 0;
+    margin-top: 8px;
+    min-width: none;
+    .rw-select {
+      width: fit-content;
+    }
+  }
+}

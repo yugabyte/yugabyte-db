@@ -1,0 +1,37 @@
+name: 🚀 Release
+on:
+  push:
+    tags: [v*]
+jobs:
+  release:
+    name: 🚀 Release on GitHub and PGXN
+    runs-on: ubuntu-latest
+    container: pgxn/pgxn-tools
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PGXN_USERNAME: ${{ secrets.PGXN_USERNAME }}
+      PGXN_PASSWORD: ${{ secrets.PGXN_PASSWORD }}
+    steps:
+    - name: Check out the repo
+      uses: actions/checkout@v4
+    - name: Bundle the Release
+      id: bundle
+      run: pgxn-bundle
+    - name: Release on PGXN
+      run: pgxn-release
+    - name: Generate Release Changes
+      run: make latest-changes.md
+    - name: Create GitHub Release
+      id: release
+      uses: actions/create-release@v1
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        body_path: latest-changes.md
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.release.outputs.upload_url }}
+        asset_path: ./${{ steps.bundle.outputs.bundle }}
+        asset_name: ${{ steps.bundle.outputs.bundle }}
+        asset_content_type: application/zip

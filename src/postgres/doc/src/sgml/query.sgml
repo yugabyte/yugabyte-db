@@ -1,0 +1,910 @@
+<!-- doc/src/sgml/query.sgml -->
+
+ <chapter id="tutorial-sql">
+  <title>The <acronym>SQL</acronym> Language</title>
+
+  <sect1 id="tutorial-sql-intro">
+   <title>Introduction</title>
+
+   <para>
+    This chapter provides an overview of how to use
+    <acronym>SQL</acronym> to perform simple operations.  This
+    tutorial is only intended to give you an introduction and is in no
+    way a complete tutorial on <acronym>SQL</acronym>.  Numerous books
+    have been written on <acronym>SQL</acronym>, including <xref
+    linkend="melt93"/> and <xref linkend="date97"/>.
+    You should be aware that some <productname>PostgreSQL</productname>
+    language features are extensions to the standard.
+   </para>
+
+   <para>
+    In the examples that follow, we assume that you have created a
+    database named <literal>mydb</literal>, as described in the previous
+    chapter, and have been able to start <application>psql</application>.
+   </para>
+
+   <para>
+    Examples in this manual can also be found in the
+    <productname>PostgreSQL</productname> source distribution
+    in the directory <filename>src/tutorial/</filename>.  (Binary
+    distributions of <productname>PostgreSQL</productname> might not
+    provide those files.)  To use those
+    files, first change to that directory and run <application>make</application>:
+
+<screen>
+<prompt>$</prompt> <userinput>cd <replaceable>...</replaceable>/src/tutorial</userinput>
+<prompt>$</prompt> <userinput>make</userinput>
+</screen>
+
+    This creates the scripts and compiles the C files containing user-defined
+    functions and types.  Then, to start the tutorial, do the following:
+
+<screen>
+<prompt>$</prompt> <userinput>psql -s mydb</userinput>
+<computeroutput>
+...
+</computeroutput>
+<prompt>mydb=&gt;</prompt> <userinput>\i basics.sql</userinput>
+</screen>
+
+    The <literal>\i</literal> command reads in commands from the
+    specified file. <command>psql</command>'s <literal>-s</literal> option puts you in
+    single step mode which pauses before sending each statement to the
+    server.  The commands used in this section are in the file
+    <filename>basics.sql</filename>.
+   </para>
+  </sect1>
+
+
+  <sect1 id="tutorial-concepts">
+   <title>Concepts</title>
+
+   <para>
+    <indexterm><primary>relational database</primary></indexterm>
+    <indexterm><primary>hierarchical database</primary></indexterm>
+    <indexterm><primary>object-oriented database</primary></indexterm>
+    <indexterm><primary>relation</primary></indexterm>
+    <indexterm><primary>table</primary></indexterm>
+
+    <productname>PostgreSQL</productname> is a <firstterm>relational
+    database management system</firstterm> (<acronym>RDBMS</acronym>).
+    That means it is a system for managing data stored in
+    <firstterm>relations</firstterm>.  Relation is essentially a
+    mathematical term for <firstterm>table</firstterm>.  The notion of
+    storing data in tables is so commonplace today that it might
+    seem inherently obvious, but there are a number of other ways of
+    organizing databases.  Files and directories on Unix-like
+    operating systems form an example of a hierarchical database.  A
+    more modern development is the object-oriented database.
+   </para>
+
+   <para>
+    <indexterm><primary>row</primary></indexterm>
+    <indexterm><primary>column</primary></indexterm>
+
+    Each table is a named collection of <firstterm>rows</firstterm>.
+    Each row of a given table has the same set of named
+    <firstterm>columns</firstterm>,
+    and each column is of a specific data type.  Whereas columns have
+    a fixed order in each row, it is important to remember that SQL
+    does not guarantee the order of the rows within the table in any
+    way (although they can be explicitly sorted for display).
+   </para>
+
+   <para>
+    <indexterm><primary>database cluster</primary></indexterm>
+    <indexterm><primary>cluster</primary><secondary>of databases</secondary><see>database cluster</see></indexterm>
+
+    Tables are grouped into databases, and a collection of databases
+    managed by a single <productname>PostgreSQL</productname> server
+    instance constitutes a database <firstterm>cluster</firstterm>.
+   </para>
+  </sect1>
+
+
+  <sect1 id="tutorial-table">
+   <title>Creating a New Table</title>
+
+   <indexterm zone="tutorial-table">
+    <primary>CREATE TABLE</primary>
+   </indexterm>
+
+   <para>
+    You  can  create  a  new  table by specifying the table
+    name, along with all column names and their types:
+
+<programlisting>
+CREATE TABLE weather (
+    city            varchar(80),
+    temp_lo         int,           -- low temperature
+    temp_hi         int,           -- high temperature
+    prcp            real,          -- precipitation
+    date            date
+);
+</programlisting>
+
+    You can enter this into <command>psql</command> with the line
+    breaks.  <command>psql</command> will recognize that the command
+    is not terminated until the semicolon.
+   </para>
+
+   <para>
+    White space (i.e., spaces, tabs, and newlines) can be used freely
+    in SQL commands.  That means you can type the command aligned
+    differently than above, or even all on one line.  Two dashes
+    (<quote><literal>--</literal></quote>) introduce comments.
+    Whatever follows them is ignored up to the end of the line.  SQL
+    is case insensitive about key words and identifiers, except
+    when identifiers are double-quoted to preserve the case (not done
+    above).
+   </para>
+
+   <para>
+    <type>varchar(80)</type> specifies a data type that can store
+    arbitrary character strings up to 80 characters in length.
+    <type>int</type> is the normal integer type.  <type>real</type> is
+    a type for storing single precision floating-point numbers.
+    <type>date</type> should be self-explanatory.  (Yes, the column of
+    type <type>date</type> is also named <structfield>date</structfield>.
+    This might be convenient or confusing &mdash; you choose.)
+   </para>
+
+   <para>
+    <productname>PostgreSQL</productname> supports the standard
+    <acronym>SQL</acronym> types <type>int</type>,
+    <type>smallint</type>, <type>real</type>, <type>double
+    precision</type>, <type>char(<replaceable>N</replaceable>)</type>,
+    <type>varchar(<replaceable>N</replaceable>)</type>, <type>date</type>,
+    <type>time</type>, <type>timestamp</type>, and
+    <type>interval</type>, as well as other types of general utility
+    and a rich set of geometric types.
+    <productname>PostgreSQL</productname> can be customized with an
+    arbitrary number of user-defined data types.  Consequently, type
+    names are not key words in the syntax, except where required to
+    support special cases in the <acronym>SQL</acronym> standard.
+   </para>
+
+   <para>
+    The second example will store cities and their associated
+    geographical location:
+<programlisting>
+CREATE TABLE cities (
+    name            varchar(80),
+    location        point
+);
+</programlisting>
+    The <type>point</type> type is an example of a
+    <productname>PostgreSQL</productname>-specific data type.
+   </para>
+
+   <para>
+    <indexterm>
+     <primary>DROP TABLE</primary>
+    </indexterm>
+
+    Finally, it should be mentioned that if you don't need a table any
+    longer or want to recreate it differently you can remove it using
+    the following command:
+<synopsis>
+DROP TABLE <replaceable>tablename</replaceable>;
+</synopsis>
+   </para>
+  </sect1>
+
+
+  <sect1 id="tutorial-populate">
+   <title>Populating a Table With Rows</title>
+
+   <indexterm zone="tutorial-populate">
+    <primary>INSERT</primary>
+   </indexterm>
+
+   <para>
+    The <command>INSERT</command> statement is used to populate a table  with
+    rows:
+
+<programlisting>
+INSERT INTO weather VALUES ('San Francisco', 46, 50, 0.25, '1994-11-27');
+</programlisting>
+
+    Note that all data types use rather obvious input formats.
+    Constants that are not simple numeric values usually must be
+    surrounded by single quotes (<literal>'</literal>), as in the example.
+    The
+    <type>date</type> type is actually quite flexible in what it
+    accepts, but for this tutorial we will stick to the unambiguous
+    format shown here.
+   </para>
+
+   <para>
+    The <type>point</type> type requires a coordinate pair as input,
+    as shown here:
+<programlisting>
+INSERT INTO cities VALUES ('San Francisco', '(-194.0, 53.0)');
+</programlisting>
+   </para>
+
+   <para>
+    The syntax used so far requires you to remember the order of the
+    columns.  An alternative syntax allows you to list the columns
+    explicitly:
+<programlisting>
+INSERT INTO weather (city, temp_lo, temp_hi, prcp, date)
+    VALUES ('San Francisco', 43, 57, 0.0, '1994-11-29');
+</programlisting>
+    You can list the columns in a different order if you wish or
+    even omit some columns, e.g., if the precipitation is unknown:
+<programlisting>
+INSERT INTO weather (date, city, temp_hi, temp_lo)
+    VALUES ('1994-11-29', 'Hayward', 54, 37);
+</programlisting>
+    Many developers consider explicitly listing the columns better
+    style than relying on the order implicitly.
+   </para>
+
+   <para>
+    Please enter all the commands shown above so you have some data to
+    work with in the following sections.
+   </para>
+
+   <para>
+    <indexterm>
+     <primary>COPY</primary>
+    </indexterm>
+
+    You could also have used <command>COPY</command> to load large
+    amounts of data from flat-text files.  This is usually faster
+    because the <command>COPY</command> command is optimized for this
+    application while allowing less flexibility than
+    <command>INSERT</command>.  An example would be:
+
+<programlisting>
+COPY weather FROM '/home/user/weather.txt';
+</programlisting>
+
+    where the file name for the source file must be available on the
+    machine running the backend process, not the client, since the backend process
+    reads the file directly.  You can read more about the
+    <command>COPY</command> command in <xref linkend="sql-copy"/>.
+   </para>
+  </sect1>
+
+
+  <sect1 id="tutorial-select">
+   <title>Querying a Table</title>
+
+   <para>
+    <indexterm><primary>query</primary></indexterm>
+    <indexterm><primary>SELECT</primary></indexterm>
+
+    To retrieve data from a table, the table is
+    <firstterm>queried</firstterm>.  An <acronym>SQL</acronym>
+    <command>SELECT</command> statement is used to do this.  The
+    statement is divided into a select list (the part that lists the
+    columns to be returned), a table list (the part that lists the
+    tables from which to retrieve the data), and an optional
+    qualification (the part that specifies any restrictions).  For
+    example, to retrieve all the rows of table
+    <structname>weather</structname>, type:
+<programlisting>
+SELECT * FROM weather;
+</programlisting>
+    Here <literal>*</literal> is a shorthand for <quote>all columns</quote>.
+     <footnote>
+      <para>
+       While <literal>SELECT *</literal> is useful for off-the-cuff
+       queries, it is widely considered bad style in production code,
+       since adding a column to the table would change the results.
+      </para>
+     </footnote>
+    So the same result would be had with:
+<programlisting>
+SELECT city, temp_lo, temp_hi, prcp, date FROM weather;
+</programlisting>
+
+    The output should be:
+
+<screen>
+     city      | temp_lo | temp_hi | prcp |    date
+---------------+---------+---------+------+------------
+ San Francisco |      46 |      50 | 0.25 | 1994-11-27
+ San Francisco |      43 |      57 |    0 | 1994-11-29
+ Hayward       |      37 |      54 |      | 1994-11-29
+(3 rows)
+</screen>
+   </para>
+
+   <para>
+    You can write expressions, not just simple column references, in the
+    select list.  For example, you can do:
+<programlisting>
+SELECT city, (temp_hi+temp_lo)/2 AS temp_avg, date FROM weather;
+</programlisting>
+    This should give:
+<screen>
+     city      | temp_avg |    date
+---------------+----------+------------
+ San Francisco |       48 | 1994-11-27
+ San Francisco |       50 | 1994-11-29
+ Hayward       |       45 | 1994-11-29
+(3 rows)
+</screen>
+    Notice how the <literal>AS</literal> clause is used to relabel the
+    output column.  (The <literal>AS</literal> clause is optional.)
+   </para>
+
+   <para>
+    A query can be <quote>qualified</quote> by adding a <literal>WHERE</literal>
+    clause that specifies which rows are wanted.  The <literal>WHERE</literal>
+    clause contains a Boolean (truth value) expression, and only rows for
+    which the Boolean expression is true are returned.  The usual
+    Boolean operators (<literal>AND</literal>,
+    <literal>OR</literal>, and <literal>NOT</literal>) are allowed in
+    the qualification.  For example, the following
+    retrieves the weather of San Francisco on rainy days:
+
+<programlisting>
+SELECT * FROM weather
+    WHERE city = 'San Francisco' AND prcp &gt; 0.0;
+</programlisting>
+    Result:
+<screen>
+     city      | temp_lo | temp_hi | prcp |    date
+---------------+---------+---------+------+------------
+ San Francisco |      46 |      50 | 0.25 | 1994-11-27
+(1 row)
+</screen>
+   </para>
+
+   <para>
+    <indexterm><primary>ORDER BY</primary></indexterm>
+
+    You can request that the results of a query
+    be returned in sorted order:
+
+<programlisting>
+SELECT * FROM weather
+    ORDER BY city;
+</programlisting>
+
+<screen>
+     city      | temp_lo | temp_hi | prcp |    date
+---------------+---------+---------+------+------------
+ Hayward       |      37 |      54 |      | 1994-11-29
+ San Francisco |      43 |      57 |    0 | 1994-11-29
+ San Francisco |      46 |      50 | 0.25 | 1994-11-27
+</screen>
+
+    In this example, the sort order isn't fully specified, and so you
+    might get the San Francisco rows in either order.  But you'd always
+    get the results shown above if you do:
+
+<programlisting>
+SELECT * FROM weather
+    ORDER BY city, temp_lo;
+</programlisting>
+   </para>
+
+   <para>
+    <indexterm><primary>DISTINCT</primary></indexterm>
+    <indexterm><primary>duplicate</primary></indexterm>
+
+    You can request that duplicate rows be removed from the result of
+    a query:
+
+<programlisting>
+SELECT DISTINCT city
+    FROM weather;
+</programlisting>
+
+<screen>
+     city
+---------------
+ Hayward
+ San Francisco
+(2 rows)
+</screen>
+
+    Here again, the result row ordering might vary.
+    You can ensure consistent results by using <literal>DISTINCT</literal> and
+    <literal>ORDER BY</literal> together:
+     <footnote>
+      <para>
+       In some database systems, including older versions of
+       <productname>PostgreSQL</productname>, the implementation of
+       <literal>DISTINCT</literal> automatically orders the rows and
+       so <literal>ORDER BY</literal> is unnecessary.  But this is not
+       required by the SQL standard, and current
+       <productname>PostgreSQL</productname> does not guarantee that
+       <literal>DISTINCT</literal> causes the rows to be ordered.
+      </para>
+     </footnote>
+
+<programlisting>
+SELECT DISTINCT city
+    FROM weather
+    ORDER BY city;
+</programlisting>
+   </para>
+  </sect1>
+
+
+  <sect1 id="tutorial-join">
+   <title>Joins Between Tables</title>
+
+   <indexterm zone="tutorial-join">
+    <primary>join</primary>
+   </indexterm>
+
+   <para>
+    Thus far, our queries have only accessed one table at a time.
+    Queries can access multiple tables at once, or access the same
+    table in such a way that multiple rows of the table are being
+    processed at the same time.  Queries that access multiple tables
+    (or multiple instances of the same table) at one time are called
+    <firstterm>join</firstterm> queries.  They combine rows from one table
+    with rows from a second table, with an expression specifying which rows
+    are to be paired.  For example, to return all the weather records together
+    with the location of the associated city, the database needs to compare
+    the <structfield>city</structfield>
+    column of each row of the <structname>weather</structname> table with the
+    <structfield>name</structfield> column of all rows in the <structname>cities</structname>
+    table, and select the pairs of rows where these values match.<footnote>
+     <para>
+      This  is only a conceptual model.  The join is usually performed
+      in a more efficient manner than actually comparing each possible
+      pair of rows, but this is invisible to the user.
+     </para>
+    </footnote>
+    This would be accomplished by the following query:
+
+<programlisting>
+SELECT * FROM weather JOIN cities ON city = name;
+</programlisting>
+
+<screen>
+     city      | temp_lo | temp_hi | prcp |    date    |     name      | location
+---------------+---------+---------+------+------------+---------------+-----------
+ San Francisco |      46 |      50 | 0.25 | 1994-11-27 | San Francisco | (-194,53)
+ San Francisco |      43 |      57 |    0 | 1994-11-29 | San Francisco | (-194,53)
+(2 rows)
+</screen>
+
+   </para>
+
+   <para>
+    Observe two things about the result set:
+    <itemizedlist>
+     <listitem>
+      <para>
+       There is no result row for the city of Hayward.  This is
+       because there is no matching entry in the
+       <structname>cities</structname> table for Hayward, so the join
+       ignores the unmatched rows in the <structname>weather</structname> table.  We will see
+       shortly how this can be fixed.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       There are two columns containing the city name.  This is
+       correct because the lists of columns from the
+       <structname>weather</structname> and
+       <structname>cities</structname> tables are concatenated.  In
+       practice this is undesirable, though, so you will probably want
+       to list the output columns explicitly rather than using
+       <literal>*</literal>:
+<programlisting>
+SELECT city, temp_lo, temp_hi, prcp, date, location
+    FROM weather JOIN cities ON city = name;
+</programlisting>
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    Since the columns all had different names, the parser
+    automatically found which table they belong to.  If there
+    were duplicate column names in the two tables you'd need to
+    <firstterm>qualify</firstterm> the column names to show which one you
+    meant, as in:
+
+<programlisting>
+SELECT weather.city, weather.temp_lo, weather.temp_hi,
+       weather.prcp, weather.date, cities.location
+    FROM weather JOIN cities ON weather.city = cities.name;
+</programlisting>
+
+    It is widely considered good style to qualify all column names
+    in a join query, so that the query won't fail if a duplicate
+    column name is later added to one of the tables.
+   </para>
+
+   <para>
+    Join queries of the kind seen thus far can also be written in this
+    form:
+
+<programlisting>
+SELECT *
+    FROM weather, cities
+    WHERE city = name;
+</programlisting>
+
+    This syntax pre-dates the <literal>JOIN</literal>/<literal>ON</literal>
+    syntax, which was introduced in SQL-92.  The tables are simply listed in
+    the <literal>FROM</literal> clause, and the comparison expression is added
+    to the <literal>WHERE</literal> clause.  The results from this older
+    implicit syntax and the newer explicit
+    <literal>JOIN</literal>/<literal>ON</literal> syntax are identical.  But
+    for a reader of the query, the explicit syntax makes its meaning easier to
+    understand: The join condition is introduced by its own key word whereas
+    previously the condition was mixed into the <literal>WHERE</literal>
+    clause together with other conditions.
+   </para>
+
+   <indexterm><primary>join</primary><secondary>outer</secondary></indexterm>
+
+   <para>
+    Now we will figure out how we can get the Hayward records back in.
+    What we want the query to do is to scan the
+    <structname>weather</structname> table and for each row to find the
+    matching <structname>cities</structname> row(s).  If no matching row is
+    found we want some <quote>empty values</quote> to be substituted
+    for the <structname>cities</structname> table's columns.  This kind
+    of query is called an <firstterm>outer join</firstterm>.  (The
+    joins we have seen so far are <firstterm>inner joins</firstterm>.)
+    The command looks like this:
+
+<programlisting>
+SELECT *
+    FROM weather LEFT OUTER JOIN cities ON weather.city = cities.name;
+</programlisting>
+
+<screen>
+     city      | temp_lo | temp_hi | prcp |    date    |     name      | location
+---------------+---------+---------+------+------------+---------------+-----------
+ Hayward       |      37 |      54 |      | 1994-11-29 |               |
+ San Francisco |      46 |      50 | 0.25 | 1994-11-27 | San Francisco | (-194,53)
+ San Francisco |      43 |      57 |    0 | 1994-11-29 | San Francisco | (-194,53)
+(3 rows)
+</screen>
+
+    This query is called a <firstterm>left outer
+    join</firstterm> because the table mentioned on the left of the
+    join operator will have each of its rows in the output at least
+    once, whereas the table on the right will only have those rows
+    output that match some row of the left table.  When outputting a
+    left-table row for which there is no right-table match, empty (null)
+    values are substituted for the right-table columns.
+   </para>
+
+   <formalpara>
+    <title>Exercise:</title>
+
+    <para>
+     There are also right outer joins and full outer joins.  Try to
+     find out what those do.
+    </para>
+   </formalpara>
+
+   <indexterm><primary>join</primary><secondary>self</secondary></indexterm>
+   <indexterm><primary>alias</primary><secondary>for table name in query</secondary></indexterm>
+   <para>
+    We can also join a table against itself.  This is called a
+    <firstterm>self join</firstterm>.  As an example, suppose we wish
+    to find all the weather records that are in the temperature range
+    of other weather records.  So we need to compare the
+    <structfield>temp_lo</structfield> and <structfield>temp_hi</structfield> columns of
+    each <structname>weather</structname> row to the
+    <structfield>temp_lo</structfield> and
+    <structfield>temp_hi</structfield> columns of all other
+    <structname>weather</structname> rows.  We can do this with the
+    following query:
+
+<programlisting>
+SELECT w1.city, w1.temp_lo AS low, w1.temp_hi AS high,
+       w2.city, w2.temp_lo AS low, w2.temp_hi AS high
+    FROM weather w1 JOIN weather w2
+        ON w1.temp_lo &lt; w2.temp_lo AND w1.temp_hi &gt; w2.temp_hi;
+</programlisting>
+
+<screen>
+     city      | low | high |     city      | low | high
+---------------+-----+------+---------------+-----+------
+ San Francisco |  43 |   57 | San Francisco |  46 |   50
+ Hayward       |  37 |   54 | San Francisco |  46 |   50
+(2 rows)
+</screen>
+
+    Here we have relabeled the weather table as <literal>w1</literal> and
+    <literal>w2</literal> to be able to distinguish the left and right side
+    of the join.  You can also use these kinds of aliases in other
+    queries to save some typing, e.g.:
+<programlisting>
+SELECT *
+    FROM weather w JOIN cities c ON w.city = c.name;
+</programlisting>
+    You will encounter this style of abbreviating quite frequently.
+   </para>
+  </sect1>
+
+
+  <sect1 id="tutorial-agg">
+   <title>Aggregate Functions</title>
+
+   <indexterm zone="tutorial-agg">
+    <primary>aggregate function</primary>
+   </indexterm>
+
+   <para>
+    Like  most  other relational database products,
+    <productname>PostgreSQL</productname> supports
+    <firstterm>aggregate functions</firstterm>.
+    An aggregate function computes a single result from multiple input rows.
+    For example, there are aggregates to compute the
+    <function>count</function>, <function>sum</function>,
+    <function>avg</function> (average), <function>max</function> (maximum) and
+    <function>min</function> (minimum) over a set of rows.
+   </para>
+
+   <para>
+    As an example, we can find the highest low-temperature reading anywhere
+    with:
+
+<programlisting>
+SELECT max(temp_lo) FROM weather;
+</programlisting>
+
+<screen>
+ max
+-----
+  46
+(1 row)
+</screen>
+   </para>
+
+   <para>
+    <indexterm><primary>subquery</primary></indexterm>
+
+    If we wanted to know what city (or cities) that reading occurred in,
+    we might try:
+
+<programlisting>
+SELECT city FROM weather WHERE temp_lo = max(temp_lo);     <lineannotation>WRONG</lineannotation>
+</programlisting>
+
+    but this will not work since the aggregate
+    <function>max</function> cannot be used in the
+    <literal>WHERE</literal> clause.  (This restriction exists because
+    the <literal>WHERE</literal> clause determines which rows will be
+    included in the aggregate calculation; so obviously it has to be evaluated
+    before aggregate functions are computed.)
+    However, as is often the case
+    the query can be restated to accomplish the desired result, here
+    by using a <firstterm>subquery</firstterm>:
+
+<programlisting>
+SELECT city FROM weather
+    WHERE temp_lo = (SELECT max(temp_lo) FROM weather);
+</programlisting>
+
+<screen>
+     city
+---------------
+ San Francisco
+(1 row)
+</screen>
+
+    This is OK because the subquery is an independent computation
+    that computes its own aggregate separately from what is happening
+    in the outer query.
+   </para>
+
+   <para>
+    <indexterm><primary>GROUP BY</primary></indexterm>
+    <indexterm><primary>HAVING</primary></indexterm>
+
+    Aggregates are also very useful in combination with <literal>GROUP
+    BY</literal> clauses.  For example, we can get the number of readings
+    and the maximum low temperature observed in each city with:
+
+<programlisting>
+SELECT city, count(*), max(temp_lo)
+    FROM weather
+    GROUP BY city;
+</programlisting>
+
+<screen>
+     city      | count | max
+---------------+-------+-----
+ Hayward       |     1 |  37
+ San Francisco |     2 |  46
+(2 rows)
+</screen>
+
+    which gives us one output row per city.  Each aggregate result is
+    computed over the table rows matching that city.
+    We can filter these grouped
+    rows using <literal>HAVING</literal>:
+
+<programlisting>
+SELECT city, count(*), max(temp_lo)
+    FROM weather
+    GROUP BY city
+    HAVING max(temp_lo) &lt; 40;
+</programlisting>
+
+<screen>
+  city   | count | max
+---------+-------+-----
+ Hayward |     1 |  37
+(1 row)
+</screen>
+
+    which gives us the same results for only the cities that have all
+    <structfield>temp_lo</structfield> values below 40.  Finally, if we only care about
+    cities whose
+    names begin with <quote><literal>S</literal></quote>, we might do:
+
+<programlisting>
+SELECT city, count(*), max(temp_lo)
+    FROM weather
+    WHERE city LIKE 'S%'            -- <co id="co.tutorial-agg-like"/>
+    GROUP BY city;
+</programlisting>
+
+<screen>
+     city      | count | max
+---------------+-------+-----
+ San Francisco |     2 |  46
+(1 row)
+</screen>
+   <calloutlist>
+    <callout arearefs="co.tutorial-agg-like">
+     <para>
+      The <literal>LIKE</literal> operator does pattern matching and
+      is explained in <xref linkend="functions-matching"/>.
+     </para>
+    </callout>
+   </calloutlist>
+   </para>
+
+   <para>
+    It is important to understand the interaction between aggregates and
+    <acronym>SQL</acronym>'s <literal>WHERE</literal> and <literal>HAVING</literal> clauses.
+    The fundamental difference between <literal>WHERE</literal> and
+    <literal>HAVING</literal> is this: <literal>WHERE</literal> selects
+    input rows before groups and aggregates are computed (thus, it controls
+    which rows go into the aggregate computation), whereas
+    <literal>HAVING</literal> selects group rows after groups and
+    aggregates are computed.  Thus, the
+    <literal>WHERE</literal> clause must not contain aggregate functions;
+    it makes no sense to try to use an aggregate to determine which rows
+    will be inputs to the aggregates.  On the other hand, the
+    <literal>HAVING</literal> clause always contains aggregate functions.
+    (Strictly speaking, you are allowed to write a <literal>HAVING</literal>
+    clause that doesn't use aggregates, but it's seldom useful. The same
+    condition could be used more efficiently at the <literal>WHERE</literal>
+    stage.)
+   </para>
+
+   <para>
+    In the previous example, we can apply the city name restriction in
+    <literal>WHERE</literal>, since it needs no aggregate.  This is
+    more efficient than adding the restriction to <literal>HAVING</literal>,
+    because we avoid doing the grouping and aggregate calculations
+    for all rows that fail the <literal>WHERE</literal> check.
+   </para>
+
+   <para>
+    Another way to select the rows that go into an aggregate
+    computation is to use <literal>FILTER</literal>, which is a
+    per-aggregate option:
+
+<programlisting>
+SELECT city, count(*) FILTER (WHERE temp_lo &lt; 45), max(temp_lo)
+    FROM weather
+    GROUP BY city;
+</programlisting>
+
+<screen>
+     city      | count | max
+---------------+-------+-----
+ Hayward       |     1 |  37
+ San Francisco |     1 |  46
+(2 rows)
+</screen>
+
+    <literal>FILTER</literal> is much like <literal>WHERE</literal>,
+    except that it removes rows only from the input of the particular
+    aggregate function that it is attached to.
+    Here, the <literal>count</literal> aggregate counts only
+    rows with <literal>temp_lo</literal> below 45; but the
+    <literal>max</literal> aggregate is still applied to all rows,
+    so it still finds the reading of 46.
+   </para>
+  </sect1>
+
+
+  <sect1 id="tutorial-update">
+   <title>Updates</title>
+
+   <indexterm zone="tutorial-update">
+    <primary>UPDATE</primary>
+   </indexterm>
+
+   <para>
+    You can update existing rows using the
+    <command>UPDATE</command> command.
+    Suppose you discover the temperature readings are
+    all off by 2 degrees after November 28.  You can correct the
+    data as follows:
+
+<programlisting>
+UPDATE weather
+    SET temp_hi = temp_hi - 2,  temp_lo = temp_lo - 2
+    WHERE date &gt; '1994-11-28';
+</programlisting>
+   </para>
+
+   <para>
+    Look at the new state of the data:
+<programlisting>
+SELECT * FROM weather;
+
+     city      | temp_lo | temp_hi | prcp |    date
+---------------+---------+---------+------+------------
+ San Francisco |      46 |      50 | 0.25 | 1994-11-27
+ San Francisco |      41 |      55 |    0 | 1994-11-29
+ Hayward       |      35 |      52 |      | 1994-11-29
+(3 rows)
+</programlisting>
+   </para>
+  </sect1>
+
+  <sect1 id="tutorial-delete">
+   <title>Deletions</title>
+
+   <indexterm zone="tutorial-delete">
+    <primary>DELETE</primary>
+   </indexterm>
+
+   <para>
+    Rows can be removed from a table using the <command>DELETE</command>
+    command.
+    Suppose you are no longer interested in the weather of Hayward.
+    Then you can do the following to delete those rows from the table:
+<programlisting>
+DELETE FROM weather WHERE city = 'Hayward';
+</programlisting>
+
+    All weather records belonging to Hayward are removed.
+
+<programlisting>
+SELECT * FROM weather;
+</programlisting>
+
+<screen>
+     city      | temp_lo | temp_hi | prcp |    date
+---------------+---------+---------+------+------------
+ San Francisco |      46 |      50 | 0.25 | 1994-11-27
+ San Francisco |      41 |      55 |    0 | 1994-11-29
+(2 rows)
+</screen>
+   </para>
+
+   <para>
+    One should be wary of statements of the form
+<synopsis>
+DELETE FROM <replaceable>tablename</replaceable>;
+</synopsis>
+
+    Without a qualification, <command>DELETE</command> will
+    remove  <emphasis>all</emphasis>  rows from the given table, leaving it
+    empty.  The system will not request confirmation before
+    doing this!
+   </para>
+  </sect1>
+
+ </chapter>

@@ -1,0 +1,121 @@
+-- Setup the table
+--
+set extra_float_digits=0;
+SELECT hll_set_output_version(1);
+ hll_set_output_version 
+------------------------
+                      1
+(1 row)
+
+DROP TABLE IF EXISTS test_mpuahgwy;
+NOTICE:  table "test_mpuahgwy" does not exist, skipping
+CREATE TABLE test_mpuahgwy (
+    recno                       SERIAL,
+    cardinality                 double precision,
+    compressed_multiset         hll,
+    union_cardinality           double precision,
+    union_compressed_multiset   hll
+);
+-- Copy the CSV data into the table
+--
+\copy test_mpuahgwy (cardinality,compressed_multiset,union_cardinality,union_compressed_multiset) from sql/data/cumulative_union_probabilistic_probabilistic.csv with csv header
+SELECT COUNT(*) FROM test_mpuahgwy;
+ count 
+-------
+  1001
+(1 row)
+
+-- Cardinality of incremental multisets
+--
+SELECT recno,
+       cardinality,
+       hll_cardinality(compressed_multiset)
+  FROM test_mpuahgwy
+ WHERE cardinality != hll_cardinality(compressed_multiset)
+ ORDER BY recno;
+ recno |   cardinality    | hll_cardinality  
+-------+------------------+------------------
+   303 | 4250.71186178904 | 4250.71186178904
+   352 | 4250.71186178904 | 4250.71186178904
+   945 | 4250.71186178904 | 4250.71186178904
+(3 rows)
+
+-- Cardinality of unioned multisets
+--
+SELECT recno,
+       union_cardinality,
+       hll_cardinality(union_compressed_multiset)
+  FROM test_mpuahgwy
+ WHERE union_cardinality != hll_cardinality(union_compressed_multiset)
+ ORDER BY recno;
+ recno | union_cardinality | hll_cardinality 
+-------+-------------------+-----------------
+(0 rows)
+
+-- Test union of incremental multiset.
+--
+SELECT curr.recno,
+       curr.union_compressed_multiset,
+       hll_union(curr.compressed_multiset, prev.union_compressed_multiset) 
+  FROM test_mpuahgwy prev, test_mpuahgwy curr
+ WHERE curr.recno > 1
+   AND curr.recno = prev.recno + 1
+   AND curr.union_compressed_multiset != 
+       hll_union(curr.compressed_multiset, prev.union_compressed_multiset)
+ ORDER BY curr.recno;
+ recno | union_compressed_multiset | hll_union 
+-------+---------------------------+-----------
+(0 rows)
+
+-- Test cardinality of union of incremental multiset.
+--
+SELECT curr.recno,
+       curr.union_cardinality,
+       hll_cardinality(hll_union(curr.compressed_multiset,
+                                 prev.union_compressed_multiset))
+  FROM test_mpuahgwy prev, test_mpuahgwy curr
+ WHERE curr.recno > 1
+   AND curr.recno = prev.recno + 1
+   AND curr.union_cardinality != 
+       hll_cardinality(hll_union(curr.compressed_multiset,
+                                 prev.union_compressed_multiset))
+ ORDER BY curr.recno;
+ recno | union_cardinality | hll_cardinality 
+-------+-------------------+-----------------
+(0 rows)
+
+-- Test aggregate accumulation
+--
+SELECT v1.recno,
+       v1.union_compressed_multiset,
+       (select hll_union_agg(compressed_multiset)
+          from test_mpuahgwy
+         where recno <= v1.recno) as hll_union_agg
+  FROM test_mpuahgwy v1
+ WHERE v1.union_compressed_multiset !=
+       (select hll_union_agg(compressed_multiset)
+          from test_mpuahgwy
+         where recno <= v1.recno)
+ ORDER BY v1.recno;
+ recno | union_compressed_multiset | hll_union_agg 
+-------+---------------------------+---------------
+(0 rows)
+
+-- Test aggregate accumulation with cardinality
+--
+SELECT v1.recno,
+       ceil(v1.union_cardinality),
+       (select ceiling(hll_cardinality(hll_union_agg(compressed_multiset)))
+          from test_mpuahgwy
+         where recno <= v1.recno) as ceiling
+  FROM test_mpuahgwy v1
+ WHERE ceil(v1.union_cardinality) !=
+       (select ceiling(hll_cardinality(hll_union_agg(compressed_multiset)))
+          from test_mpuahgwy
+         where recno <= v1.recno)
+ ORDER BY v1.recno;
+ recno | ceil | ceiling 
+-------+------+---------
+(0 rows)
+
+DROP TABLE test_mpuahgwy;

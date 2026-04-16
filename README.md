@@ -1,376 +1,146 @@
-<br>
+<img src="https://cloud.yugabyte.com/logo-big.png" align="center" alt="YugabyteDB" width="50%"/>
+<img referrerpolicy="no-referrer-when-downgrade" src="https://static.scarf.sh/a.png?x-pxid=0969fc8d-7684-4250-9cbd-4249c3ebb47b" />
 
-<p align="center">
-     <img src="https://age.apache.org/age-manual/master/_static/logo.png" width="30%" height="30%">
-</p>
-<br>
+---------------------------------------
 
-<h3 align="center">
-    <a href="https://age.apache.org/age-manual/master/_static/logo.png" target="_blank">
-        <img src="https://age.apache.org/age-manual/master/_static/logo.png" height="25" height="30% alt="Apache AGE style="margin: 0 0 -3px 0">
-    </a>
-    <a href="https://age.apache.org/age-manual/master/_static/logo.png" target="_blank">
-    </a>
-     is a leading multi-model graph database </h3>
-     
-</h3>
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Documentation Status](https://readthedocs.org/projects/ansicolortags/badge/?version=latest)](https://docs.yugabyte.com/)
+[![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
+[![Slack chat](https://img.shields.io/badge/Slack:-%23yugabyte_db-blueviolet.svg?logo=slack)](https://communityinviter.com/apps/yugabyte-db/register)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
 
-<h3 align="center">Graph Processing & Analytics for Relational Databases</h3>
+# What is YugabyteDB?
 
-<br>
+YugabyteDB is a PostgreSQL-compatible, [high-performance](https://docs.yugabyte.com/preview/benchmark/), cloud-native, [distributed SQL](https://www.yugabyte.com/tech/distributed-sql/) database. It combines the benefits of traditional relational databases with the scalability of NoSQL systems, making it suitable for applications that require both transactional consistency and the ability to handle large amounts of data. It is best suited for cloud-native OLTP (that is, real-time, business-critical) applications that need absolute data correctness and require at least one of the following: scalability, high tolerance to failures, or globally-distributed deployments.
 
+* [Core Features](#core-features)
+* [Get Started](#get-started)
+* [Build Apps](#build-apps)
+* [Current Roadmap](#current-roadmap)
+* [Recent features](#recently-released-features)
+* [Architecture](#architecture)
+* [Need Help?](#need-help)
+* [Contribute](#contribute)
+* [License](#license)
+* [Read More](#read-more)
 
-</br>
+# Core Features
 
+* **[Powerful RDBMS capabilities](https://docs.yugabyte.com/preview/explore/ysql-language-features/)** Yugabyte SQL (*YSQL* for short) reuses the PostgreSQL query layer (similar to Amazon Aurora PostgreSQL), thereby supporting most of its features (datatypes, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on).
 
+* **[Distributed transactions](https://docs.yugabyte.com/preview/architecture/transactions/)** The transaction design is based on the Google Spanner architecture. Strong consistency of writes is achieved by using Raft consensus for replication and cluster-wide distributed ACID transactions using *hybrid logical clocks*. *Snapshot*, *serializable* and *read committed* isolation levels are supported. Reads (queries) have strong consistency by default, but can be tuned dynamically to read from followers and read replicas.
 
-<p align="center">                                                                                                    
-  <a href="https://github.com/apache/age/blob/master/LICENSE">
-    <img src="https://img.shields.io/github/license/apache/age"/>
-  </a>
-  &nbsp;
-  <a href="https://github.com/apache/age/releases">
-    <img src="https://img.shields.io/badge/Release-v1.6.0-FFA500?labelColor=gray&style=flat&link=https://github.com/apache/age/releases"/>
-  </a>
-  &nbsp;
-  <a href="https://www.postgresql.org/docs/15/index.html">
-    <img src="https://img.shields.io/badge/Version-Postgresql 15-00008B?labelColor=gray&style=flat&link=https://www.postgresql.org/docs/15/index.html"/>
-  </a>
-  &nbsp;
-  <a href="https://github.com/apache/age/issues">
-    <img src="https://img.shields.io/github/issues/apache/age"/>
-  </a>
-  &nbsp;
-  <a href="https://github.com/apache/age/network/members">
-    <img src="https://img.shields.io/github/forks/apache/age"/>
-  </a>
-  &nbsp;
-  <a href="https://github.com/apache/age/stargazers">
-    <img src="https://img.shields.io/github/stars/apache/age"/>
-  </a>
-  &nbsp;
-  <a href="https://discord.gg/EuK6EEg3k7">
-    <img src="https://img.shields.io/discord/1022177873127280680.svg?label=discord&style=flat&color=5a66f6"></a>
-</p>
+* **[Continuous availability](https://docs.yugabyte.com/preview/explore/fault-tolerance/)** YugabyteDB is extremely resilient to common outages with native failover and repair. YugabyteDB can be configured to tolerate disk, rack, node, zone, region, and cloud failures automatically. For a typical deployment where a YugabyteDB cluster is deployed in one region across multiple zones on a public cloud, the RPO is 0 (meaning no data is lost on failure) and the RTO is 3 seconds (meaning the data being served by the failed node is available in 3 seconds).
 
-<br>
+* **[Horizontal scalability](https://docs.yugabyte.com/preview/explore/linear-scalability/)** Scaling a YugabyteDB cluster to achieve more IOPS or data storage is as simple as adding nodes to the cluster.
 
+* **[Geo-distributed, multi-cloud](https://docs.yugabyte.com/preview/develop/multi-cloud/)** YugabyteDB can be deployed in public clouds and natively inside Kubernetes. It supports deployments that span three or more fault domains, such as multi-zone, multi-rack, multi-region, and multi-cloud deployments. It also supports xCluster asynchronous replication with unidirectional master-slave and bidirectional multi-master configurations in two-region deployments. Read replicas are also a supported to serve (stale) data with low latencies.
 
-<h2><img height="30" src="/img/AGE.png">&nbsp;&nbsp;What is Apache AGE?</h2>
+* **[Multi API design](https://docs.yugabyte.com/preview/api)** The YugabyteDB query layer is built to be extensible. Currently, YugabyteDB supports two distributed SQL APIs: [Yugabyte SQL (YSQL)](https://docs.yugabyte.com/preview/api/ysql/), a fully relational API that re-uses the PostgreSQL query layer, and [Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/preview/api/ycql/), a semi-relational SQL-like API with documents/indexing support with Apache Cassandra QL roots.
 
-[Apache AGE](https://age.apache.org/#) is an extension for PostgreSQL that enables users to leverage a graph database on top of the existing relational databases. AGE is an acronym for A Graph Extension and is inspired by Bitnine's AgensGraph, a multi-model database fork of PostgreSQL. The basic principle of the project is to create a single storage that handles both the relational and graph data model so that the users can use the standard ANSI SQL along with openCypher, one of the most popular graph query languages today. 
-</br>
-</br>
-</br>
+* **[100% open source](https://github.com/yugabyte/yugabyte-db)** YugabyteDB is fully open-source under the [Apache 2.0 license](https://github.com/yugabyte/yugabyte-db/blob/master/LICENSE.md). The open-source version has powerful enterprise features such as distributed backups, encryption of data at rest, in-flight TLS encryption, change data capture, read replicas, and more.
 
-<p align="center">
-<img src="/img/age-01.png" width="80%" height="80%">
-</p>
+YugabyteDB was created with several key design goals in mind, aiming to address the challenges faced by modern, cloud-native applications while maintaining the familiarity and power of traditional relational databases. Read more about these in our [Design goals](https://docs.yugabyte.com/preview/architecture/design-goals/).
 
-</br>
+# Get Started
 
-Since AGE is based on the powerful PostgreSQL RDBMS, it is robust and fully featured. AGE is optimized for handling complex connected graph data. It provides plenty of robust database features essential to the database environment, including ACID transactions, multi-version concurrency control (MVCC), stored procedure, triggers, constraints, sophisticated monitoring, and a flexible data model (JSON). Users with a relational database background who require graph data analytics can use this extension with minimal effort because they can use existing data without going through migration. 
+* [Quick Start](https://docs.yugabyte.com/preview/quick-start/)
+* Try running a real-world demo application:
+  * [Microservices-oriented e-commerce app](https://github.com/yugabyte/yugastore-java)
+  * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/preview/develop/realworld-apps/iot-spark-kafka-ksql/)
 
-There is a strong need for cohesive, easy-to-implement multi-model databases. As an extension of PostgreSQL, AGE supports all the functionalities and features of PostgreSQL while also offering a graph model to boot.
+Can't find what you're looking for? Have a question? Post your questions or comments on our Community [Slack](https://communityinviter.com/apps/yugabyte-db/register) or [Forum](https://forum.yugabyte.com).
 
+# Build Applications
 
-<h2><img height="30" src="/img/tick.svg">&nbsp;&nbsp;Overview</h2>
+YugabyteDB supports many languages and client drivers, including Java, Go, NodeJS, Python, and more. For a complete list, including examples, see [Drivers and ORMs](https://docs.yugabyte.com/preview/drivers-orms/).
 
-Apache AGE is :
+# Current Roadmap
 
-- **Powerful**: adds graph database support to the already popular PostgreSQL database: PostgreSQL is used by organizations including Apple, Spotify, and NASA.
-- **Flexible**: allows you to perform openCypher queries, which makes complex queries much easier to write. It also enables querying multiple graphs at the same time.
-- **Intelligent**: allows you to perform graph queries that are the basis for many next-level web services such as fraud detection, master data management, product recommendations, identity and relationship management, experience personalization, knowledge management, and more.
+The following is a list of some of the key features being worked on for upcoming releases.
 
-<h2><img height="30" src="/img/features.svg">&nbsp;&nbsp;Features</h2>
-</br>
-</br>
+|                                                  Feature                                                   |                                                           Details                                                           |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [PostgreSQL 15 Compatibility](https://github.com/yugabyte/yugabyte-db/issues/9797)                         | For latest features, new PostgreSQL extensions, performance, and community fixes.                                            |
+| [PostgreSQL Publication/Replication slot API in CDC](https://github.com/yugabyte/yugabyte-db/issues/18724) | PostgreSQL has a huge community that needs a PG-compatible API to set up and consume database changes.                      |
+| [Bitmap scan](https://github.com/yugabyte/yugabyte-db/issues/22653)                                        | Bitmap Scan support for using Index Scans, remote filter and enhanced Cost Model.                                            |
+| [Cost based optimizer(CBO)](https://github.com/yugabyte/yugabyte-db/issues/10177)                          | Efficient query plans based on statistics (such as table size, number of rows) and data distribution.                       |
+| [Parallel query execution](https://github.com/yugabyte/yugabyte-db/issues/17984)                           | Higher query performance by splitting a single query for execution across different CPU cores.          |
+| [pgvector extension](https://github.com/yugabyte/yugabyte-db/issues/16166)                                 | Support for vector data types, enabling efficient storage and querying of high-dimensional vectors.                         |
+| [Connection Management](https://github.com/yugabyte/yugabyte-db/issues/17599)                              | Server side connection management enabling upto 30K connections per node                                                    |
 
-<p align="center">
-<img src="/img/age-03.png" width="80%" height="80%">
-</p>
-</br>
+Refer to [roadmap tracker](https://github.com/yugabyte/yugabyte-db/issues?q=is:issue+is:open+label:current-roadmap) for the list of all items in the current roadmap.
 
-- **Cypher Query**: supports graph query language
-- **Hybrid Querying**: enables SQL and/or Cypher
-- **Querying**: enables multiple graphs
-- **Hierarchical**: graph label organization
-- **Property Indexes**: on both vertices(nodes) and edges
-- **Full PostgreSQL**: supports PG features
+# Recently released features
 
+## v2.25 (Preview) - Jan, 2025
 
+**v2.25** is the current [Preview](https://docs.yugabyte.com/preview/releases/versioning/#preview-releases) release. This includes features under active development and is recommended for development and testing only. For the full list of features and improvements in this release, see [Release notes - v2.25](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.25/). Here are some of the prominent features.
 
-<h2><img height="30" src="/img/documentation.svg">&nbsp;&nbsp;Documentation</h2>
+### [PostgreSQL 15 Support](https://docs.yugabyte.com/preview/develop/pg15-features/)
 
-Refer to our latest [Apache AGE documentation](https://age.apache.org/age-manual/master/index.html) to learn about installation, features, built-in functions, and  Cypher queries.
+As part of this release, we have upgraded our PostgreSQL fork from version 11.2 to 15.0, enabling you to leverage the many key capabilities introduced in PostgreSQL between these two versions. This upgrade brings YSQL API support for numerous features, including stored generated columns, foreign keys on partitioned tables, and non-distinct NULLs in unique indexes. It also introduces query execution optimizations like incremental sort and memoization, along with various observability and security enhancements.
 
+### [Query Diagnostics](https://docs.yugabyte.com/preview/explore/query-1-performance/query-diagnostics/)
 
+This feature significantly simplifies tuning poorly performing SQL queries by allowing you to capture and export detailed diagnostic information, including bind variables and constants, pg_stat_statements statistics, schema details, active session history, and execution plans.
 
-<h2><img height="30" src="/img/installation.svg">&nbsp;&nbsp;Pre-Installation</h2>
+### [Active session history](https://docs.yugabyte.com/preview/explore/observability/active-session-history/)
 
-Install the following essential libraries according to each OS. Building AGE from the source depends on the following Linux libraries (Ubuntu package names shown below):
+In addition, the Active Session History, which provides real-time and historical views of system activity, is now enabled by default.
 
-- **CentOS**
-```bash
-yum install gcc glibc glib-common readline readline-devel zlib zlib-devel flex bison
-```
-- **Fedora**
-```bash
-dnf install gcc glibc bison flex readline readline-devel zlib zlib-devel
-```
-- **Ubuntu**
-```bash
-sudo apt-get install build-essential libreadline-dev zlib1g-dev flex bison
-```
+## v2024.2 (Stable) - Dec, 2024
 
-<h2><img height="30" src="/img/installation.svg">&nbsp;&nbsp;Installation</h2>
+**v2024.2** is the current [stable](https://docs.yugabyte.com/preview/releases/versioning/#stable-releases) release. Stable releases undergo rigorous testing for a longer period of time and are ready for production use. For the full list of features and improvements in this release, see [Release notes - v2024.2](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.2/). Here are some of the prominent features.
 
-Apache AGE is intended to be simple to install and run. It can be installed with Docker and other traditional ways. 
+#### [Yugabyte Kubernetes Operator](https://docs.yugabyte.com/preview/quick-start/kubernetes/#yugabytedb-kubernetes-operator)
 
-<h4><a><img width="20" src="/img/pg.svg"></a>
-&nbsp;Install PostgreSQL
-</h4>
+The [Yugabyte Kubernetes Operator](https://docs.yugabyte.com/preview/quick-start/kubernetes/#yugabytedb-kubernetes-operator) is a powerful tool designed to automate deploying, scaling, and managing YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators. For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.
 
-You will need to install an AGE compatible version of Postgres<a>, for now AGE supports Postgres 13, 14, 15, 16, & 17. Supporting the latest versions is on AGE roadmap.
+#### [Active session history](https://docs.yugabyte.com/stable/explore/observability/active-session-history/)
 
-<h4>
-&nbsp;Installation via Package Manager
-</h4>
+Get real-time and historical views of system activity by sampling session activity in the database. Use this feature to analyze and troubleshoot performance issues.
 
-You can use a <a href="https://www.postgresql.org/download/">package management </a> that your OS provides to download PostgreSQL.
+#### [pg_partman extension](https://docs.yugabyte.com/stable/explore/ysql-language-features/pg-extensions/extension-pgpartman/)
 
-<br>
+Use the [pg_partman extension](https://docs.yugabyte.com/stable/explore/ysql-language-features/pg-extensions/extension-pgpartman/) to create and manage both time- and serial-based (aka range-based) table partition sets. pg_partman is often used in combination with [pg_cron](https://docs.yugabyte.com/stable/explore/ysql-language-features/pg-extensions/extension-pgcron/) for data lifecycle management, and specifically for managing data aging, retention, and expiration.
 
-```bash
-sudo apt install postgresql
+#### [Colocated tables with tablespaces](https://docs.yugabyte.com/stable/explore/colocation/#colocated-tables-with-tablespaces)
 
-```
-<h4>
-&nbsp;Installation From Source Code
-</h4>
+Starting this release, you can create [colocated tables with tablespaces](https://docs.yugabyte.com/stable/explore/colocation/#colocated-tables-with-tablespaces). With this enhancement, you can now take advantage of colocated tables for geo-distributed use cases, eliminating the need for trade-offs between distributing data across specific regions.
 
-You can <a href="https://www.postgresql.org/ftp/source/"> download the Postgres </a> source code and install your own instance of Postgres. You can read instructions on how to install from source code for different versions on the <a href="https://www.postgresql.org/docs/15/installation.html">official Postgres Website.</a>
+# Architecture
 
+<img src="https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/architecture/images/yb-architecture.jpg" align="center" alt="YugabyteDB Architecture"/>
 
+Review detailed architecture in our [Docs](https://docs.yugabyte.com/preview/architecture/).
 
-<h4><img width="20" src="/img/tux.svg"><img width="20" src="/img/apple.svg"> &nbsp;Install AGE on Linux and MacOS
-</h4>
+# Need Help?
 
-Clone the <a href="https://github.com/apache/age">github repository</a> or download the <a href="https://github.com/apache/age/releases">download an official release.
-</a>
-Run the pg_config utility and check the version of PostgreSQL. Currently, only PostgreSQL versions 13, 14, 15, 16, & 17 are supported. If you have any other version of Postgres, you will need to install PostgreSQL version 13, 14, 15, 16, or 17.
-<br>
-    
-```bash
-pg_config
-```
-Run the following command in the source code directory of Apache AGE to build and install the extension.  
-     
-```bash
-make install
-```
-     
-If the path to your Postgres installation is not in the PATH variable, add the path in the arguments:
-```bash
-make PG_CONFIG=/path/to/postgres/bin/pg_config install
-```
+* You can ask questions, find answers, and help others on our Community [Slack](https://communityinviter.com/apps/yugabyte-db/register), [Forum](https://forum.yugabyte.com), [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db), as well as Twitter [@Yugabyte](https://twitter.com/yugabyte).
 
+* Use [GitHub issues](https://github.com/yugabyte/yugabyte-db/issues) to report issues or request new features.
 
-<h4></a><img width="30" src="/img/docker.svg"></a>
-&nbsp;Run using Docker
-</h4>
+* To troubleshoot YugabyteDB and cluster/node-level issues, refer to [Troubleshooting documentation](https://docs.yugabyte.com/preview/troubleshoot/).
 
-<h5> Get the docker image </h5>
+# Contribute
 
-```bash
-docker pull apache/age
+As an open-source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/preview/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of our [Forum](https://forum.yugabyte.com/c/design-discussions/7).
 
-```
-<h5> Create AGE docker container </h5>
+# License
 
-```bash
-docker run \
-    --name age  \
-    -p 5455:5432 \
-    -e POSTGRES_USER=postgresUser \
-    -e POSTGRES_PASSWORD=postgresPW \
-    -e POSTGRES_DB=postgresDB \
-    -d \
-    apache/age
-```
+Source code in this repository is variously licensed under the Apache License 2.0 and the Polyform Free Trial License 1.0.0. A copy of each license can be found in the [licenses](licenses) directory.
 
-<h5> Enter PostgreSQL's psql: </h5>
+The build produces two sets of binaries:
 
-```bash
-docker exec -it age psql -d postgresDB -U postgresUser
-```
+* The entire database with all its features (including the enterprise ones) is licensed under the Apache License 2.0
+* The binaries that contain `-managed` in the artifact and help run a managed service are licensed under the Polyform Free Trial License 1.0.0.
 
+> By default, the build options generate only the Apache License 2.0 binaries.
 
+# Read More
 
-<h2><img height="20" src="/img/contents.svg">&nbsp;&nbsp;Post Installation</h2>
-
-For every connection of AGE you start, you will need to load the AGE extension.
-
-```bash
-CREATE EXTENSION age;
-```
-```bash
-LOAD 'age';
-```
-```bash
-SET search_path = ag_catalog, "$user", public;
-```
-
-
-
-<h2><img height="20" src="/img/contents.svg">&nbsp;&nbsp;Quick Start</h2>
-
-To create a graph, use the create_graph function located in the ag_catalog namespace.
-
-```bash
-SELECT create_graph('graph_name');
-```
-
-To create a single vertex, use the CREATE clause. 
-
-```bash
-SELECT * 
-FROM cypher('graph_name', $$
-    CREATE (n)
-$$) as (v agtype);
-```
-
-
-To create a single vertex with the label, use the CREATE clause. 
-
-```bash
-SELECT * 
-FROM cypher('graph_name', $$
-    CREATE (:label)
-$$) as (v agtype);
-```
-
-To create a single vertex with label and properties, use the CREATE clause.
-
-```bash
-SELECT * 
-FROM cypher('graph_name', $$
-    CREATE (:label {property:value})
-$$) as (v agtype);
-```
-
-To query the graph, you can use the MATCH clause.  
-
-```bash
-SELECT * 
-FROM cypher('graph_name', $$
-    MATCH (v)
-    RETURN v
-$$) as (v agtype);
-```
-
-You can use the following to create an edge, for example, between two nodes. 
-
-```bash
-SELECT * 
-FROM cypher('graph_name', $$
-    MATCH (a:label), (b:label)
-    WHERE a.property = 'Node A' AND b.property = 'Node B'
-    CREATE (a)-[e:RELTYPE]->(b)
-    RETURN e
-$$) as (e agtype);
-```
-
-
-To create an edge and set properties.
-
-```bash
-SELECT * 
-FROM cypher('graph_name', $$
-    MATCH (a:label), (b:label)
-    WHERE a.property = 'Node A' AND b.property = 'Node B'
-    CREATE (a)-[e:RELTYPE {property:a.property + '<->' + b.property}]->(b)
-    RETURN e
-$$) as (e agtype);
-```
-
-Example 
-
-```bash
-SELECT * 
-FROM cypher('graph_name', $$
-    MATCH (a:Person), (b:Person)
-    WHERE a.name = 'Node A' AND b.name = 'Node B'
-    CREATE (a)-[e:RELTYPE {name:a.name + '<->' + b.name}]->(b)
-    RETURN e
-$$) as (e agtype);
-```
-
-
-
-<h2><img height="20" src="/img/gettingstarted.svg">&nbsp;&nbsp;Language Specific Drivers</h2>
-
-Starting with Apache AGE is very simple. You can easily select your platform and incorporate the relevant SDK into your code.
-</br>
-</br>
-
-<p align="center">
-<img src="/img/age-02.png" width="80%" height="80%">
-</p>
-
-
-<h4>Built-in</h4>
-
-- [Go driver](./drivers/golang)
-- [Java driver](./drivers/jdbc)
-- [NodeJs driver](./drivers/nodejs)
-- [Python driver](./drivers/python)
-
-<h4>Community-driven Driver</h4>
-
-- [Apache AGE Rust Driver](https://github.com/Dzordzu/rust-apache-age.git)
-- [Apache AGE .NET Driver](https://github.com/Allison-E/pg-age)
-
-<h2><img height="20" src="/img/contributing.svg">&nbsp;&nbsp;Community</h2>
-
-Join the AGE community for help, questions, discussions, and contributions. 
-
-- Check our [website](https://age.apache.org/)
-- Ask your AGE-related questions and answers on [Stack overflow](https://stackoverflow.com/questions/tagged/apache-age)
-- Discuss about AGE on [GitHub Discussions](https://github.com/apache/age/discussions)
-- Share your feedback on [GitHub Issues](https://github.com/apache/age/issues)
-- Follow us on [X](https://twitter.com/apache_age)
-- Subscribe to our developer mailing list by sending an email to dev-subscribe@age.apache.org
-- Subscribe to our user mailing list by sending an email to users-subscribe@age.apache.org
-- Subscribe to our committer mailing list (To become a committer) by sending an email to commits-subscribe@age.apache.org
-
-
-<h2><img height="20" src="/img/visualization.svg">&nbsp;&nbsp;Graph Visualization Tool for AGE</h2>
-
-
-Apache AGE Viewer is a user interface for Apache AGE that provides visualization and exploration of data.
-This web visualization tool allows users to enter complex graph queries and explore the results in graph and table forms.
-Apache AGE Viewer is enhanced to proceed with extensive graph data and discover insights through various graph algorithms.
-Apache AGE Viewer will become a graph data administration and development platform for Apache AGE to support multiple relational databases: <https://github.com/apache/age-viewer>.
-
-**This is a visualization tool.**
-After installing AGE Extension, you may use this tool to get access to the visualization features.
-
-
-![Viewer gdb, and graph](/img/agce.gif)
-
-
-<h2><img height="20" src="/img/videos.png">&nbsp;&nbsp;Video Links</h2>
-
-You can also get help from these videos. 
-
-- Install on [Windows](https://www.youtube.com/watch?v=ddk8VX8Hm-I&list=PLGp3huJbWNDjgwP7s99Q-9_w1vxpjNHXG)
-- Install on [MacOS](https://www.youtube.com/watch?v=0-qMwpDh0CA)
-
-
-
-<h2><img height="20" src="/img/community.svg">&nbsp;&nbsp;Contributing</h2>
-
-You can improve ongoing efforts or initiate new ones by sending pull requests to [this repository](https://github.com/apache/age).
-Also, you can learn from the code review process, how to merge pull requests, and from code style compliance to documentation by visiting the [Apache AGE official site - Developer Guidelines](https://age.apache.org/contribution/guide).
-Send all your comments and inquiries to the user mailing list, users@age.apache.org.
+* To see our updates, go to the [Distributed SQL Blog](https://blog.yugabyte.com/).
+* For in-depth design and architecture details, see our [design specs](https://github.com/yugabyte/yugabyte-db/tree/master/architecture/design).
+* [Tech Talks](https://www.yugabyte.com/yftt/) and [Videos](https://www.youtube.com/c/YugaByte).
+* See how YugabyteDB [compares with other databases](https://docs.yugabyte.com/preview/faq/comparisons/).

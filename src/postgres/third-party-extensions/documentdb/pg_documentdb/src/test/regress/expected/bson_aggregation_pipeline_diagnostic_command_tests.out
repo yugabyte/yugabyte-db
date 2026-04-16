@@ -1,0 +1,99 @@
+SET search_path TO documentdb_api,documentdb_core;
+SET documentdb.next_collection_id TO 6600;
+SET documentdb.next_collection_index_id TO 6600;
+SELECT COUNT(*) FROM (SELECT documentdb_api.insert_one('diagnostic_db', 'diag_coll1', FORMAT('{ "_id": %s, "a": %s }', i, i)::documentdb_core.bson) FROM generate_series(1, 1000) i) innerQuery;
+NOTICE:  creating collection
+ count 
+-------
+  1000
+(1 row)
+
+SELECT COUNT(*) FROM (SELECT documentdb_api.insert_one('diagnostic_db', 'diag_coll2', FORMAT('{ "_id": %s, "a": %s }', i, i)::documentdb_core.bson) FROM generate_series(1, 500) i) innerQuery;
+NOTICE:  creating collection
+ count 
+-------
+   500
+(1 row)
+
+SELECT COUNT(*) FROM (SELECT documentdb_api.insert_one('diagnostic_db', 'diag_coll3', FORMAT('{ "_id": %s, "a": %s }', i, i)::documentdb_core.bson) FROM generate_series(1, 100) i) innerQuery;
+NOTICE:  creating collection
+ count 
+-------
+   100
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('diagnostic_db', '{ "createIndexes": "diag_coll2", "indexes": [ { "key": { "a": 1 }, "name": "a_1" }]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- analyze for determinism
+ANALYZE documentdb_data.documents_6601;
+ANALYZE documentdb_data.documents_6602;
+ANALYZE documentdb_data.documents_6603;
+-- coll_stats should work
+SELECT documentdb_api.coll_stats('diagnostic_db', 'diag_coll1');
+                                                                                                                                                                                                                                        coll_stats                                                                                                                                                                                                                                         
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ns" : "diagnostic_db.diag_coll1", "size" : { "$numberInt" : "22000" }, "count" : { "$numberInt" : "1000" }, "avgObjSize" : { "$numberInt" : "22" }, "storageSize" : { "$numberInt" : "122880" }, "nindexes" : { "$numberInt" : "1" }, "indexBuilds" : [  ], "totalIndexSize" : { "$numberInt" : "57344" }, "totalSize" : { "$numberInt" : "180224" }, "indexSizes" : { "_id_" : { "$numberLong" : "57344" } }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.coll_stats('diagnostic_db', 'diag_coll2');
+                                                                                                                                                                                                                                                          coll_stats                                                                                                                                                                                                                                                          
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ns" : "diagnostic_db.diag_coll2", "size" : { "$numberInt" : "11000" }, "count" : { "$numberInt" : "500" }, "avgObjSize" : { "$numberInt" : "22" }, "storageSize" : { "$numberInt" : "81920" }, "nindexes" : { "$numberInt" : "2" }, "indexBuilds" : [  ], "totalIndexSize" : { "$numberInt" : "90112" }, "totalSize" : { "$numberInt" : "172032" }, "indexSizes" : { "_id_" : { "$numberLong" : "40960" }, "a_1" : { "$numberLong" : "49152" } }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.coll_stats('diagnostic_db', 'diag_coll3');
+                                                                                                                                                                                                                                      coll_stats                                                                                                                                                                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ns" : "diagnostic_db.diag_coll3", "size" : { "$numberInt" : "2200" }, "count" : { "$numberInt" : "100" }, "avgObjSize" : { "$numberInt" : "22" }, "storageSize" : { "$numberInt" : "49152" }, "nindexes" : { "$numberInt" : "1" }, "indexBuilds" : [  ], "totalIndexSize" : { "$numberInt" : "16384" }, "totalSize" : { "$numberInt" : "65536" }, "indexSizes" : { "_id_" : { "$numberLong" : "16384" } }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- db_stats should work
+SELECT documentdb_api.db_stats('diagnostic_db');
+                                                                                                                                                                                                                                                db_stats                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "db" : "diagnostic_db", "collections" : { "$numberLong" : "3" }, "views" : { "$numberLong" : "0" }, "objects" : { "$numberLong" : "1600" }, "avgObjSize" : { "$numberDouble" : "22.0" }, "dataSize" : { "$numberDouble" : "35200.0" }, "storageSize" : { "$numberDouble" : "253952.0" }, "indexes" : { "$numberLong" : "4" }, "indexSize" : { "$numberDouble" : "163840.0" }, "totalSize" : { "$numberDouble" : "417792.0" }, "scaleFactor" : { "$numberInt" : "1" }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- coll_stats via aggregation should work.
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('diagnostic_db', '{ "aggregate": "diag_coll1", "pipeline": [ { "$collStats": { "storageStats": {} }}]}');
+                                                                                                                                                                                                                                    document                                                                                                                                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ns" : "diagnostic_db.diag_coll1", "storageStats" : { "size" : { "$numberInt" : "22000" }, "count" : { "$numberInt" : "1000" }, "avgObjSize" : { "$numberInt" : "22" }, "storageSize" : { "$numberInt" : "122880" }, "nindexes" : { "$numberInt" : "1" }, "indexBuilds" : [  ], "totalIndexSize" : { "$numberInt" : "57344" }, "totalSize" : { "$numberInt" : "180224" }, "indexSizes" : { "_id_" : { "$numberLong" : "57344" } }, "scaleFactor" : { "$numberInt" : "0" } } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('diagnostic_db', '{ "aggregate": "diag_coll2", "pipeline": [ { "$collStats": { "storageStats": {} }}]}');
+                                                                                                                                                                                                                                                      document                                                                                                                                                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ns" : "diagnostic_db.diag_coll2", "storageStats" : { "size" : { "$numberInt" : "11000" }, "count" : { "$numberInt" : "500" }, "avgObjSize" : { "$numberInt" : "22" }, "storageSize" : { "$numberInt" : "81920" }, "nindexes" : { "$numberInt" : "2" }, "indexBuilds" : [  ], "totalIndexSize" : { "$numberInt" : "90112" }, "totalSize" : { "$numberInt" : "172032" }, "indexSizes" : { "_id_" : { "$numberLong" : "40960" }, "a_1" : { "$numberLong" : "49152" } }, "scaleFactor" : { "$numberInt" : "0" } } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('diagnostic_db', '{ "aggregate": "diag_coll3", "pipeline": [ { "$collStats": { "storageStats": {} }}]}');
+                                                                                                                                                                                                                                  document                                                                                                                                                                                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ns" : "diagnostic_db.diag_coll3", "storageStats" : { "size" : { "$numberInt" : "2200" }, "count" : { "$numberInt" : "100" }, "avgObjSize" : { "$numberInt" : "22" }, "storageSize" : { "$numberInt" : "49152" }, "nindexes" : { "$numberInt" : "1" }, "indexBuilds" : [  ], "totalIndexSize" : { "$numberInt" : "16384" }, "totalSize" : { "$numberInt" : "65536" }, "indexSizes" : { "_id_" : { "$numberLong" : "16384" } }, "scaleFactor" : { "$numberInt" : "0" } } }
+(1 row)
+
+-- index_stats should work
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('diagnostic_db', '{ "aggregate": "diag_coll1", "pipeline": [ { "$indexStats": { }}, { "$project": { "accesses.since": 0 }}]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('diagnostic_db', '{ "aggregate": "diag_coll2", "pipeline": [ { "$indexStats": { }}, { "$project": { "accesses.since": 0 }}]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+ { "name" : "a_1", "key" : { "a" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('diagnostic_db', '{ "aggregate": "diag_coll3", "pipeline": [ { "$indexStats": { }}, { "$project": { "accesses.since": 0 }}]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } }, "accesses" : { "ops" : { "$numberLong" : "0" } }, "spec" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }
+(1 row)
+

@@ -1,0 +1,374 @@
+\unset ECHO
+1..372
+ok 1 - table_privs_are(sch, tab, role, privs, desc) should pass
+ok 2 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 3 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 4 - table_privs_are(LOL, ATable, role, privs, desc) should pass
+ok 5 - table_privs_are(LOL, ATable, role, privs, desc) should have the proper description
+ok 6 - table_privs_are(LOL, ATable, role, privs, desc) should have the proper diagnostics
+ok 7 - table_privs_are(sch, tab, role, privs) should pass
+ok 8 - table_privs_are(sch, tab, role, privs) should have the proper description
+ok 9 - table_privs_are(sch, tab, role, privs) should have the proper diagnostics
+ok 10 - table_privs_are(LOL, ATable, role, privs) should pass
+ok 11 - table_privs_are(LOL, ATable, role, privs) should have the proper description
+ok 12 - table_privs_are(LOL, ATable, role, privs) should have the proper diagnostics
+ok 13 - table_privs_are(tab, role, privs, desc) should pass
+ok 14 - table_privs_are(tab, role, privs, desc) should have the proper description
+ok 15 - table_privs_are(tab, role, privs, desc) should have the proper diagnostics
+ok 16 - table_privs_are(ATable, role, privs, desc) should pass
+ok 17 - table_privs_are(ATable, role, privs, desc) should have the proper description
+ok 18 - table_privs_are(ATable, role, privs, desc) should have the proper diagnostics
+ok 19 - table_privs_are(tab, role, privs) should pass
+ok 20 - table_privs_are(tab, role, privs) should have the proper description
+ok 21 - table_privs_are(tab, role, privs) should have the proper diagnostics
+ok 22 - table_privs_are(ATable, role, privs) should pass
+ok 23 - table_privs_are(ATable, role, privs) should have the proper description
+ok 24 - table_privs_are(ATable, role, privs) should have the proper diagnostics
+ok 25 - table_privs_are(sch, tab, role, some privs, desc) should fail
+ok 26 - table_privs_are(sch, tab, role, some privs, desc) should have the proper description
+ok 27 - table_privs_are(sch, tab, role, some privs, desc) should have the proper diagnostics
+ok 28 - table_privs_are(tab, role, some privs, desc) should fail
+ok 29 - table_privs_are(tab, role, some privs, desc) should have the proper description
+ok 30 - table_privs_are(tab, role, some privs, desc) should have the proper diagnostics
+ok 31 - table_privs_are(sch, tab, other, privs, desc) should fail
+ok 32 - table_privs_are(sch, tab, other, privs, desc) should have the proper description
+ok 33 - table_privs_are(sch, tab, other, privs, desc) should have the proper diagnostics
+ok 34 - table_privs_are(sch, tab, other, privs, desc) should pass
+ok 35 - table_privs_are(sch, tab, other, privs, desc) should have the proper description
+ok 36 - table_privs_are(sch, tab, other, privs, desc) should have the proper diagnostics
+ok 37 - table_privs_are(sch, tab, role, privs, desc) should fail
+ok 38 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 39 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 40 - table_privs_are(sch, tab, role, privs, desc) should fail
+ok 41 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 42 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 43 - table_privs_are(sch, tab, role, no privs) should fail
+ok 44 - table_privs_are(sch, tab, role, no privs) should have the proper description
+ok 45 - table_privs_are(sch, tab, role, no privs) should have the proper diagnostics
+ok 46 - table_privs_are(tab, role, no privs) should fail
+ok 47 - table_privs_are(tab, role, no privs) should have the proper description
+ok 48 - table_privs_are(tab, role, no privs) should have the proper diagnostics
+ok 49 - database_privs_are(db, role, privs, desc) should pass
+ok 50 - database_privs_are(db, role, privs, desc) should have the proper description
+ok 51 - database_privs_are(db, role, privs, desc) should have the proper diagnostics
+ok 52 - database_privs_are(db, role, privs, desc) should pass
+ok 53 - database_privs_are(db, role, privs, desc) should have the proper description
+ok 54 - database_privs_are(db, role, privs, desc) should have the proper diagnostics
+ok 55 - database_privs_are(non-db, role, privs, desc) should fail
+ok 56 - database_privs_are(non-db, role, privs, desc) should have the proper description
+ok 57 - database_privs_are(non-db, role, privs, desc) should have the proper diagnostics
+ok 58 - database_privs_are(db, non-role, privs, desc) should fail
+ok 59 - database_privs_are(db, non-role, privs, desc) should have the proper description
+ok 60 - database_privs_are(db, non-role, privs, desc) should have the proper diagnostics
+ok 61 - database_privs_are(db, ungranted, privs, desc) should fail
+ok 62 - database_privs_are(db, ungranted, privs, desc) should have the proper description
+ok 63 - database_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
+ok 64 - database_privs_are(db, ungranted, privs, desc) should fail
+ok 65 - database_privs_are(db, ungranted, privs, desc) should have the proper description
+ok 66 - database_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
+ok 67 - database_privs_are(db, non-role, no privs) should fail
+ok 68 - database_privs_are(db, non-role, no privs) should have the proper description
+ok 69 - database_privs_are(db, non-role, no privs) should have the proper diagnostics
+ok 70 - function_privs_are(sch, func, args, role, privs, desc) should pass
+ok 71 - function_privs_are(sch, func, args, role, privs, desc) should have the proper description
+ok 72 - function_privs_are(sch, func, args, role, privs, desc) should have the proper diagnostics
+ok 73 - function_privs_are(LOL, DoIt, role, privs, desc) should pass
+ok 74 - function_privs_are(LOL, DoIt, role, privs, desc) should have the proper description
+ok 75 - function_privs_are(LOL, DoIt, role, privs, desc) should have the proper diagnostics
+ok 76 - function_privs_are(sch, func, args, role, privs) should pass
+ok 77 - function_privs_are(sch, func, args, role, privs) should have the proper description
+ok 78 - function_privs_are(LOL, DoIt, args, role, privs) should pass
+ok 79 - function_privs_are(LOL, DoIt, args, role, privs) should have the proper description
+ok 80 - function_privs_are(func, args, role, privs, desc) should pass
+ok 81 - function_privs_are(func, args, role, privs, desc) should have the proper description
+ok 82 - function_privs_are(func, args, role, privs, desc) should have the proper diagnostics
+ok 83 - function_privs_are(DoIt, args, role, privs, desc) should pass
+ok 84 - function_privs_are(DoIt, args, role, privs, desc) should have the proper description
+ok 85 - function_privs_are(DoIt, args, role, privs, desc) should have the proper diagnostics
+ok 86 - function_privs_are(func, args, role, privs) should pass
+ok 87 - function_privs_are(func, args, role, privs) should have the proper description
+ok 88 - function_privs_are(DoIt, args, role, privs) should pass
+ok 89 - function_privs_are(DoIt, args, role, privs) should have the proper description
+ok 90 - function_privs_are(sch, non-func, args, role, privs, desc) should fail
+ok 91 - function_privs_are(sch, non-func, args, role, privs, desc) should have the proper description
+ok 92 - function_privs_are(sch, non-func, args, role, privs, desc) should have the proper diagnostics
+ok 93 - function_privs_are(non-func, args, role, privs, desc) should fail
+ok 94 - function_privs_are(non-func, args, role, privs, desc) should have the proper description
+ok 95 - function_privs_are(non-func, args, role, privs, desc) should have the proper diagnostics
+ok 96 - function_privs_are(sch, func, args, noone, privs, desc) should fail
+ok 97 - function_privs_are(sch, func, args, noone, privs, desc) should have the proper description
+ok 98 - function_privs_are(sch, func, args, noone, privs, desc) should have the proper diagnostics
+ok 99 - function_privs_are(func, args, noone, privs, desc) should fail
+ok 100 - function_privs_are(func, args, noone, privs, desc) should have the proper description
+ok 101 - function_privs_are(func, args, noone, privs, desc) should have the proper diagnostics
+ok 102 - function_privs_are(sch, func, args, other, privs, desc) should pass
+ok 103 - function_privs_are(sch, func, args, other, privs, desc) should have the proper description
+ok 104 - function_privs_are(sch, func, args, other, privs, desc) should have the proper diagnostics
+ok 105 - function_privs_are(func, args, other, privs, desc) should pass
+ok 106 - function_privs_are(func, args, other, privs, desc) should have the proper description
+ok 107 - function_privs_are(func, args, other, privs, desc) should have the proper diagnostics
+ok 108 - function_privs_are(sch, func, args, unpriv, privs, desc) should fail
+ok 109 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper description
+ok 110 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper diagnostics
+ok 111 - function_privs_are(func, args, unpriv, privs, desc) should fail
+ok 112 - function_privs_are(func, args, unpriv, privs, desc) should have the proper description
+ok 113 - function_privs_are(func, args, unpriv, privs, desc) should have the proper diagnostics
+ok 114 - function_privs_are(sch, func, args, unpriv, empty, desc) should pass
+ok 115 - function_privs_are(sch, func, args, unpriv, empty, desc) should have the proper description
+ok 116 - function_privs_are(sch, func, args, unpriv, empty, desc) should have the proper diagnostics
+ok 117 - function_privs_are(sch, func, args, unpriv, empty) should pass
+ok 118 - function_privs_are(sch, func, args, unpriv, empty) should have the proper description
+ok 119 - function_privs_are(func, args, unpriv, empty) should pass
+ok 120 - function_privs_are(func, args, unpriv, empty) should have the proper description
+ok 121 - function_privs_are(sch, func, args, unpriv, privs, desc) should fail
+ok 122 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper description
+ok 123 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper diagnostics
+ok 124 - function_privs_are(func, args, unpriv, privs, desc) should fail
+ok 125 - function_privs_are(func, args, unpriv, privs, desc) should have the proper description
+ok 126 - function_privs_are(func, args, unpriv, privs, desc) should have the proper diagnostics
+ok 127 - long function signature should pass
+ok 128 - long function signature should have the proper description
+ok 129 - long function signature should have the proper diagnostics
+ok 130 - language_privs_are(lang, role, privs, desc) should pass
+ok 131 - language_privs_are(lang, role, privs, desc) should have the proper description
+ok 132 - language_privs_are(lang, role, privs, desc) should have the proper diagnostics
+ok 133 - language_privs_are(lang, role, privs, desc) should pass
+ok 134 - language_privs_are(lang, role, privs, desc) should have the proper description
+ok 135 - language_privs_are(lang, role, privs, desc) should have the proper diagnostics
+ok 136 - language_privs_are(non-lang, role, privs, desc) should fail
+ok 137 - language_privs_are(non-lang, role, privs, desc) should have the proper description
+ok 138 - language_privs_are(non-lang, role, privs, desc) should have the proper diagnostics
+ok 139 - language_privs_are(lang, non-role, privs, desc) should fail
+ok 140 - language_privs_are(lang, non-role, privs, desc) should have the proper description
+ok 141 - language_privs_are(lang, non-role, privs, desc) should have the proper diagnostics
+ok 142 - language_privs_are(lang, ungranted, privs, desc) should fail
+ok 143 - language_privs_are(lang, ungranted, privs, desc) should have the proper description
+ok 144 - language_privs_are(lang, ungranted, privs, desc) should have the proper diagnostics
+ok 145 - language_privs_are(lang, role, no privs) should pass
+ok 146 - language_privs_are(lang, role, no privs) should have the proper description
+ok 147 - language_privs_are(lang, role, no privs) should have the proper diagnostics
+ok 148 - schema_privs_are(schema, role, privs, desc) should pass
+ok 149 - schema_privs_are(schema, role, privs, desc) should have the proper description
+ok 150 - schema_privs_are(schema, role, privs, desc) should have the proper diagnostics
+ok 151 - schema_privs_are(LOL, role, privs, desc) should pass
+ok 152 - schema_privs_are(LOL, role, privs, desc) should have the proper description
+ok 153 - schema_privs_are(LOL, role, privs, desc) should have the proper diagnostics
+ok 154 - schema_privs_are(schema, role, privs, desc) should pass
+ok 155 - schema_privs_are(schema, role, privs, desc) should have the proper description
+ok 156 - schema_privs_are(schema, role, privs, desc) should have the proper diagnostics
+ok 157 - schema_privs_are(LOL, role, privs, desc) should pass
+ok 158 - schema_privs_are(LOL, role, privs, desc) should have the proper description
+ok 159 - schema_privs_are(LOL, role, privs, desc) should have the proper diagnostics
+ok 160 - schema_privs_are(non-schema, role, privs, desc) should fail
+ok 161 - schema_privs_are(non-schema, role, privs, desc) should have the proper description
+ok 162 - schema_privs_are(non-schema, role, privs, desc) should have the proper diagnostics
+ok 163 - schema_privs_are(schema, non-role, privs, desc) should fail
+ok 164 - schema_privs_are(schema, non-role, privs, desc) should have the proper description
+ok 165 - schema_privs_are(schema, non-role, privs, desc) should have the proper diagnostics
+ok 166 - schema_privs_are(schema, ungranted, privs, desc) should fail
+ok 167 - schema_privs_are(schema, ungranted, privs, desc) should have the proper description
+ok 168 - schema_privs_are(schema, ungranted, privs, desc) should have the proper diagnostics
+ok 169 - schema_privs_are(schema, ungranted, privs, desc) should fail
+ok 170 - schema_privs_are(schema, ungranted, privs, desc) should have the proper description
+ok 171 - schema_privs_are(schema, ungranted, privs, desc) should have the proper diagnostics
+ok 172 - schema_privs_are(schema, non-role, no privs) should fail
+ok 173 - schema_privs_are(schema, non-role, no privs) should have the proper description
+ok 174 - schema_privs_are(schema, non-role, no privs) should have the proper diagnostics
+ok 175 - tablespace_privs_are(tablespace, role, privs, desc) should pass
+ok 176 - tablespace_privs_are(tablespace, role, privs, desc) should have the proper description
+ok 177 - tablespace_privs_are(tablespace, role, privs, desc) should have the proper diagnostics
+ok 178 - tablespace_privs_are(tablespace, role, privs, desc) should pass
+ok 179 - tablespace_privs_are(tablespace, role, privs, desc) should have the proper description
+ok 180 - tablespace_privs_are(tablespace, role, privs, desc) should have the proper diagnostics
+ok 181 - tablespace_privs_are(non-tablespace, role, privs, desc) should fail
+ok 182 - tablespace_privs_are(non-tablespace, role, privs, desc) should have the proper description
+ok 183 - tablespace_privs_are(non-tablespace, role, privs, desc) should have the proper diagnostics
+ok 184 - tablespace_privs_are(tablespace, non-role, privs, desc) should fail
+ok 185 - tablespace_privs_are(tablespace, non-role, privs, desc) should have the proper description
+ok 186 - tablespace_privs_are(tablespace, non-role, privs, desc) should have the proper diagnostics
+ok 187 - tablespace_privs_are(tablespace, ungranted, privs, desc) should fail
+ok 188 - tablespace_privs_are(tablespace, ungranted, privs, desc) should have the proper description
+ok 189 - tablespace_privs_are(tablespace, ungranted, privs, desc) should have the proper diagnostics
+ok 190 - tablespace_privs_are(tablespace, role, no privs) should pass
+ok 191 - tablespace_privs_are(tablespace, role, no privs) should have the proper description
+ok 192 - tablespace_privs_are(tablespace, role, no privs) should have the proper diagnostics
+ok 193 - sequence_privs_are(sch, seq, role, privs, desc) should pass
+ok 194 - sequence_privs_are(sch, seq, role, privs, desc) should have the proper description
+ok 195 - sequence_privs_are(sch, seq, role, privs, desc) should have the proper diagnostics
+ok 196 - sequence_privs_are(LOL, ASeq, role, privs, desc) should pass
+ok 197 - sequence_privs_are(LOL, ASeq, role, privs, desc) should have the proper description
+ok 198 - sequence_privs_are(LOL, ASeq, role, privs, desc) should have the proper diagnostics
+ok 199 - sequence_privs_are(sch, seq, role, privs) should pass
+ok 200 - sequence_privs_are(sch, seq, role, privs) should have the proper description
+ok 201 - sequence_privs_are(sch, seq, role, privs) should have the proper diagnostics
+ok 202 - sequence_privs_are(sch, seq, role, privs) should pass
+ok 203 - sequence_privs_are(sch, seq, role, privs) should have the proper description
+ok 204 - sequence_privs_are(sch, seq, role, privs) should have the proper diagnostics
+ok 205 - sequence_privs_are(seq, role, privs, desc) should pass
+ok 206 - sequence_privs_are(seq, role, privs, desc) should have the proper description
+ok 207 - sequence_privs_are(seq, role, privs, desc) should have the proper diagnostics
+ok 208 - sequence_privs_are(ASeq, role, privs, desc) should pass
+ok 209 - sequence_privs_are(ASeq, role, privs, desc) should have the proper description
+ok 210 - sequence_privs_are(ASeq, role, privs, desc) should have the proper diagnostics
+ok 211 - sequence_privs_are(seq, role, privs) should pass
+ok 212 - sequence_privs_are(seq, role, privs) should have the proper description
+ok 213 - sequence_privs_are(seq, role, privs) should have the proper diagnostics
+ok 214 - sequence_privs_are(seq, role, privs) should pass
+ok 215 - sequence_privs_are(seq, role, privs) should have the proper description
+ok 216 - sequence_privs_are(seq, role, privs) should have the proper diagnostics
+ok 217 - sequence_privs_are(sch, seq, role, some privs, desc) should fail
+ok 218 - sequence_privs_are(sch, seq, role, some privs, desc) should have the proper description
+ok 219 - sequence_privs_are(sch, seq, role, some privs, desc) should have the proper diagnostics
+ok 220 - sequence_privs_are(seq, role, some privs, desc) should fail
+ok 221 - sequence_privs_are(seq, role, some privs, desc) should have the proper description
+ok 222 - sequence_privs_are(seq, role, some privs, desc) should have the proper diagnostics
+ok 223 - sequence_privs_are(sch, seq, other, privs, desc) should fail
+ok 224 - sequence_privs_are(sch, seq, other, privs, desc) should have the proper description
+ok 225 - sequence_privs_are(sch, seq, other, privs, desc) should have the proper diagnostics
+ok 226 - sequence_privs_are(sch, seq, other, privs, desc) should pass
+ok 227 - sequence_privs_are(sch, seq, other, privs, desc) should have the proper description
+ok 228 - sequence_privs_are(sch, seq, other, privs, desc) should have the proper diagnostics
+ok 229 - sequence_privs_are(sch, seq, role, privs, desc) should fail
+ok 230 - sequence_privs_are(sch, seq, role, privs, desc) should have the proper description
+ok 231 - sequence_privs_are(sch, seq, role, privs, desc) should have the proper diagnostics
+ok 232 - sequence_privs_are(sch, seq, role, privs, desc) should fail
+ok 233 - sequence_privs_are(sch, seq, role, privs, desc) should have the proper description
+ok 234 - sequence_privs_are(sch, seq, role, privs, desc) should have the proper diagnostics
+ok 235 - sequence_privs_are(sch, seq, role, no privs) should fail
+ok 236 - sequence_privs_are(sch, seq, role, no privs) should have the proper description
+ok 237 - sequence_privs_are(sch, seq, role, no privs) should have the proper diagnostics
+ok 238 - sequence_privs_are(seq, role, no privs) should fail
+ok 239 - sequence_privs_are(seq, role, no privs) should have the proper description
+ok 240 - sequence_privs_are(seq, role, no privs) should have the proper diagnostics
+ok 241 - any_column_privs_are(sch, tab, role, privs, desc) should pass
+ok 242 - any_column_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 243 - any_column_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 244 - any_column_privs_are(sch, tab, role, privs) should pass
+ok 245 - any_column_privs_are(sch, tab, role, privs) should have the proper description
+ok 246 - any_column_privs_are(sch, tab, role, privs) should have the proper diagnostics
+ok 247 - any_column_privs_are(tab, role, privs, desc) should pass
+ok 248 - any_column_privs_are(tab, role, privs, desc) should have the proper description
+ok 249 - any_column_privs_are(tab, role, privs, desc) should have the proper diagnostics
+ok 250 - any_column_privs_are(tab, role, privs) should pass
+ok 251 - any_column_privs_are(tab, role, privs) should have the proper description
+ok 252 - any_column_privs_are(tab, role, privs) should have the proper diagnostics
+ok 253 - any_column_privs_are(sch, tab, role, some privs, desc) should fail
+ok 254 - any_column_privs_are(sch, tab, role, some privs, desc) should have the proper description
+ok 255 - any_column_privs_are(sch, tab, role, some privs, desc) should have the proper diagnostics
+ok 256 - any_column_privs_are(tab, role, some privs, desc) should fail
+ok 257 - any_column_privs_are(tab, role, some privs, desc) should have the proper description
+ok 258 - any_column_privs_are(tab, role, some privs, desc) should have the proper diagnostics
+ok 259 - any_column_privs_are(sch, tab, other, privs, desc) should fail
+ok 260 - any_column_privs_are(sch, tab, other, privs, desc) should have the proper description
+ok 261 - any_column_privs_are(sch, tab, other, privs, desc) should have the proper diagnostics
+ok 262 - any_column_privs_are(sch, tab, other, privs, desc) should pass
+ok 263 - any_column_privs_are(sch, tab, other, privs, desc) should have the proper description
+ok 264 - any_column_privs_are(sch, tab, other, privs, desc) should have the proper diagnostics
+ok 265 - any_column_privs_are(sch, tab, role, privs, desc) should fail
+ok 266 - any_column_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 267 - any_column_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 268 - any_column_privs_are(sch, tab, role, privs, desc) should fail
+ok 269 - any_column_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 270 - any_column_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 271 - any_column_privs_are(sch, tab, role, no privs) should fail
+ok 272 - any_column_privs_are(sch, tab, role, no privs) should have the proper description
+ok 273 - any_column_privs_are(sch, tab, role, no privs) should have the proper diagnostics
+ok 274 - any_column_privs_are(tab, role, no privs) should fail
+ok 275 - any_column_privs_are(tab, role, no privs) should have the proper description
+ok 276 - any_column_privs_are(tab, role, no privs) should have the proper diagnostics
+ok 277 - column_privs_are(sch, tab, col, role, privs, desc) should pass
+ok 278 - column_privs_are(sch, tab, col, role, privs, desc) should have the proper description
+ok 279 - column_privs_are(sch, tab, col, role, privs, desc) should have the proper diagnostics
+ok 280 - column_privs_are(LOL, ATable, AColumn, role, privs, desc) should pass
+ok 281 - column_privs_are(LOL, ATable, AColumn, role, privs, desc) should have the proper description
+ok 282 - column_privs_are(LOL, ATable, AColumn, role, privs, desc) should have the proper diagnostics
+ok 283 - column_privs_are(sch, tab, col, role, privs) should pass
+ok 284 - column_privs_are(sch, tab, col, role, privs) should have the proper description
+ok 285 - column_privs_are(sch, tab, col, role, privs) should have the proper diagnostics
+ok 286 - column_privs_are(LOL, ATable, AColumn, role, privs) should pass
+ok 287 - column_privs_are(LOL, ATable, AColumn, role, privs) should have the proper description
+ok 288 - column_privs_are(LOL, ATable, AColumn, role, privs) should have the proper diagnostics
+ok 289 - column_privs_are(tab, col, role, privs, desc) should pass
+ok 290 - column_privs_are(tab, col, role, privs, desc) should have the proper description
+ok 291 - column_privs_are(tab, col, role, privs, desc) should have the proper diagnostics
+ok 292 - column_privs_are(tab, col, role, privs, desc) should pass
+ok 293 - column_privs_are(tab, col, role, privs, desc) should have the proper description
+ok 294 - column_privs_are(tab, col, role, privs, desc) should have the proper diagnostics
+ok 295 - column_privs_are(tab, col, role, privs) should pass
+ok 296 - column_privs_are(tab, col, role, privs) should have the proper description
+ok 297 - column_privs_are(tab, col, role, privs) should have the proper diagnostics
+ok 298 - column_privs_are(tab, col, role, privs) should pass
+ok 299 - column_privs_are(tab, col, role, privs) should have the proper description
+ok 300 - column_privs_are(tab, col, role, privs) should have the proper diagnostics
+ok 301 - column_privs_are(sch, tab, role, some privs, desc) should fail
+ok 302 - column_privs_are(sch, tab, role, some privs, desc) should have the proper description
+ok 303 - column_privs_are(sch, tab, role, some privs, desc) should have the proper diagnostics
+ok 304 - column_privs_are(tab, role, some privs, desc) should fail
+ok 305 - column_privs_are(tab, role, some privs, desc) should have the proper description
+ok 306 - column_privs_are(tab, role, some privs, desc) should have the proper diagnostics
+ok 307 - column_privs_are(sch, tab, other, privs, desc) should fail
+ok 308 - column_privs_are(sch, tab, other, privs, desc) should have the proper description
+ok 309 - column_privs_are(sch, tab, other, privs, desc) should have the proper diagnostics
+ok 310 - column_privs_are(sch, tab, other, privs, desc) should pass
+ok 311 - column_privs_are(sch, tab, other, privs, desc) should have the proper description
+ok 312 - column_privs_are(sch, tab, other, privs, desc) should have the proper diagnostics
+ok 313 - column_privs_are(sch, tab, role, privs, desc) should fail
+ok 314 - column_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 315 - column_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 316 - column_privs_are(sch, tab, role, privs, desc) should fail
+ok 317 - column_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 318 - column_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 319 - column_privs_are(sch, tab, role, no privs) should fail
+ok 320 - column_privs_are(sch, tab, role, no privs) should have the proper description
+ok 321 - column_privs_are(sch, tab, role, no privs) should have the proper diagnostics
+ok 322 - column_privs_are(tab, role, no privs) should fail
+ok 323 - column_privs_are(tab, role, no privs) should have the proper description
+ok 324 - column_privs_are(tab, role, no privs) should have the proper diagnostics
+ok 325 - fdw_privs_are(fdw, role, privs, desc) should pass
+ok 326 - fdw_privs_are(fdw, role, privs, desc) should have the proper description
+ok 327 - fdw_privs_are(fdw, role, privs, desc) should have the proper diagnostics
+ok 328 - fdw_privs_are(SomeFDW, role, privs, desc) should pass
+ok 329 - fdw_privs_are(SomeFDW, role, privs, desc) should have the proper description
+ok 330 - fdw_privs_are(SomeFDW, role, privs, desc) should have the proper diagnostics
+ok 331 - fdw_privs_are(fdw, role, privs, desc) should pass
+ok 332 - fdw_privs_are(fdw, role, privs, desc) should have the proper description
+ok 333 - fdw_privs_are(fdw, role, privs, desc) should have the proper diagnostics
+ok 334 - fdw_privs_are(SomeFDW, role, privs, desc) should pass
+ok 335 - fdw_privs_are(SomeFDW, role, privs, desc) should have the proper description
+ok 336 - fdw_privs_are(SomeFDW, role, privs, desc) should have the proper diagnostics
+ok 337 - fdw_privs_are(non-fdw, role, privs, desc) should fail
+ok 338 - fdw_privs_are(non-fdw, role, privs, desc) should have the proper description
+ok 339 - fdw_privs_are(non-fdw, role, privs, desc) should have the proper diagnostics
+ok 340 - fdw_privs_are(fdw, non-role, privs, desc) should fail
+ok 341 - fdw_privs_are(fdw, non-role, privs, desc) should have the proper description
+ok 342 - fdw_privs_are(fdw, non-role, privs, desc) should have the proper diagnostics
+ok 343 - fdw_privs_are(fdw, ungranted, privs, desc) should fail
+ok 344 - fdw_privs_are(fdw, ungranted, privs, desc) should have the proper description
+ok 345 - fdw_privs_are(fdw, ungranted, privs, desc) should have the proper diagnostics
+ok 346 - fdw_privs_are(fdw, role, no privs) should pass
+ok 347 - fdw_privs_are(fdw, role, no privs) should have the proper description
+ok 348 - fdw_privs_are(fdw, role, no privs) should have the proper diagnostics
+ok 349 - server_privs_are(server, role, privs, desc) should pass
+ok 350 - server_privs_are(server, role, privs, desc) should have the proper description
+ok 351 - server_privs_are(server, role, privs, desc) should have the proper diagnostics
+ok 352 - server_privs_are(SomeServer, role, privs, desc) should pass
+ok 353 - server_privs_are(SomeServer, role, privs, desc) should have the proper description
+ok 354 - server_privs_are(SomeServer, role, privs, desc) should have the proper diagnostics
+ok 355 - server_privs_are(server, role, privs, desc) should pass
+ok 356 - server_privs_are(server, role, privs, desc) should have the proper description
+ok 357 - server_privs_are(server, role, privs, desc) should have the proper diagnostics
+ok 358 - server_privs_are(SomeServer, role, privs, desc) should pass
+ok 359 - server_privs_are(SomeServer, role, privs, desc) should have the proper description
+ok 360 - server_privs_are(SomeServer, role, privs, desc) should have the proper diagnostics
+ok 361 - server_privs_are(non-server, role, privs, desc) should fail
+ok 362 - server_privs_are(non-server, role, privs, desc) should have the proper description
+ok 363 - server_privs_are(non-server, role, privs, desc) should have the proper diagnostics
+ok 364 - server_privs_are(server, non-role, privs, desc) should fail
+ok 365 - server_privs_are(server, non-role, privs, desc) should have the proper description
+ok 366 - server_privs_are(server, non-role, privs, desc) should have the proper diagnostics
+ok 367 - server_privs_are(server, ungranted, privs, desc) should fail
+ok 368 - server_privs_are(server, ungranted, privs, desc) should have the proper description
+ok 369 - server_privs_are(server, ungranted, privs, desc) should have the proper diagnostics
+ok 370 - server_privs_are(server, role, no privs) should pass
+ok 371 - server_privs_are(server, role, no privs) should have the proper description
+ok 372 - server_privs_are(server, role, no privs) should have the proper diagnostics

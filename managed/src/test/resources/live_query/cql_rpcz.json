@@ -1,0 +1,71 @@
+{
+  "inbound_connections": [
+    {
+      "remote_ip": "1.2.3.4:11432",
+      "state": "OPEN",
+      "processed_call_count": 21850
+    },
+    {
+      "remote_ip": "2.5.6.7:15398",
+      "state": "OPEN",
+      "processed_call_count": 16467,
+      "connection_details": {
+        "cql_connection_details": {
+          "keyspace": "test_keyspace"
+        }
+      }
+    },
+    {
+      "remote_ip": "9.10.11.12:44874",
+      "state": "OPEN",
+      "processed_call_count": 19,
+      "calls_in_flight": [
+        {
+          "elapsed_millis": 2181,
+          "cql_details": {
+            "type": "QUERY",
+            "call_details": [
+              {
+                "sql_string": "select count(*) from test.test1;"
+              }
+            ]
+          }
+        },
+        {
+          "elapsed_millis": 27702,
+          "cql_details": {
+            "type": "QUERY",
+            "call_details": [
+              {
+                "sql_string": "select count(*) from test.test2;"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "remote_ip": "[240b:c0e0:103:544d:b474:2:0:4180]:44874",
+      "state": "OPEN",
+      "processed_call_count": 19,
+      "connection_details": {
+        "cql_connection_details": {
+          "keyspace": "test_keyspace"
+        }
+      },
+      "calls_in_flight": [
+        {
+          "elapsed_millis": 2181,
+          "cql_details": {
+            "type": "QUERY",
+            "call_details": [
+              {
+                "sql_string": "select count(*) from test.test3;"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

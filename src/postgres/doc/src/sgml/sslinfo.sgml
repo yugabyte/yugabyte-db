@@ -1,0 +1,263 @@
+<!-- doc/src/sgml/sslinfo.sgml -->
+
+<sect1 id="sslinfo" xreflabel="sslinfo">
+ <title>sslinfo</title>
+
+ <indexterm zone="sslinfo">
+  <primary>sslinfo</primary>
+ </indexterm>
+
+ <para>
+  The <filename>sslinfo</filename> module provides information about the SSL
+  certificate that the current client provided when connecting to
+  <productname>PostgreSQL</productname>.  The module is useless (most functions
+  will return NULL) if the current connection does not use SSL.
+ </para>
+
+ <para>
+  Some of the information available through this module can also be obtained
+  using the built-in system view <link linkend="monitoring-pg-stat-ssl-view">
+  <structname>pg_stat_ssl</structname></link>.
+ </para>
+
+ <para>
+  This extension won't build at all unless the installation was
+  configured with <literal>--with-ssl=openssl</literal>.
+ </para>
+
+ <sect2>
+  <title>Functions Provided</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <function>ssl_is_used() returns boolean</function>
+     <indexterm>
+      <primary>ssl_is_used</primary>
+     </indexterm>
+    </term>
+    <listitem>
+    <para>
+     Returns true if current connection to server uses SSL, and false
+     otherwise.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>ssl_version() returns text</function>
+     <indexterm>
+      <primary>ssl_version</primary>
+     </indexterm>
+    </term>
+    <listitem>
+    <para>
+     Returns the name of the protocol used for the SSL connection (e.g., TLSv1.0,
+     TLSv1.1, TLSv1.2 or TLSv1.3).
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>ssl_cipher() returns text</function>
+     <indexterm>
+      <primary>ssl_cipher</primary>
+     </indexterm>
+    </term>
+    <listitem>
+    <para>
+     Returns the name of the cipher used for the SSL connection
+     (e.g., DHE-RSA-AES256-SHA).
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>ssl_client_cert_present() returns boolean</function>
+     <indexterm>
+      <primary>ssl_client_cert_present</primary>
+     </indexterm>
+    </term>
+    <listitem>
+    <para>
+     Returns true if current client has presented a valid SSL client
+     certificate to the server, and false otherwise.  (The server
+     might or might not be configured to require a client certificate.)
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>ssl_client_serial() returns numeric</function>
+     <indexterm>
+      <primary>ssl_client_serial</primary>
+     </indexterm>
+    </term>
+    <listitem>
+    <para>
+     Returns serial number of current client certificate.  The combination of
+     certificate serial number and certificate issuer is guaranteed to
+     uniquely identify a certificate (but not its owner &mdash; the owner
+     ought to regularly change their keys, and get new certificates from the
+     issuer).
+    </para>
+
+    <para>
+     So, if you run your own CA and allow only certificates from this CA to
+     be accepted by the server, the serial number is the most reliable (albeit
+     not very mnemonic) means to identify a user.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>ssl_client_dn() returns text</function>
+     <indexterm>
+      <primary>ssl_client_dn</primary>
+     </indexterm>
+    </term>
+    <listitem>
+    <para>
+     Returns the full subject of the current client certificate, converting
+     character data into the current database encoding.  It is assumed that
+     if you use non-ASCII characters in the certificate names, your
+     database is able to represent these characters, too.  If your database
+     uses the SQL_ASCII encoding, non-ASCII characters in the name will be
+     represented as UTF-8 sequences.
+    </para>
+
+    <para>
+     The result looks like <literal>/CN=Somebody /C=Some country/O=Some organization</literal>.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>ssl_issuer_dn() returns text</function>
+     <indexterm>
+      <primary>ssl_issuer_dn</primary>
+     </indexterm>
+    </term>
+    <listitem>
+    <para>
+     Returns the full issuer name of the current client certificate, converting
+     character data into the current database encoding.  Encoding conversions
+     are handled the same as for <function>ssl_client_dn</function>.
+    </para>
+    <para>
+     The combination of the return value of this function with the
+     certificate serial number uniquely identifies the certificate.
+    </para>
+    <para>
+     This function is really useful only if you have more than one trusted CA
+     certificate in your server's certificate authority file, or if this CA
+     has issued some intermediate certificate authority certificates.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>ssl_client_dn_field(fieldname text) returns text</function>
+     <indexterm>
+      <primary>ssl_client_dn_field</primary>
+     </indexterm>
+    </term>
+    <listitem>
+    <para>
+     This function returns the value of the specified field in the
+     certificate subject, or NULL if the field is not present.
+     Field names are string constants that are converted into ASN1 object
+     identifiers using the <productname>OpenSSL</productname> object
+     database.  The following values are acceptable:
+    </para>
+<literallayout class="monospaced">
+commonName (alias CN)
+surname (alias SN)
+name
+givenName (alias GN)
+countryName (alias C)
+localityName (alias L)
+stateOrProvinceName (alias ST)
+organizationName (alias O)
+organizationalUnitName (alias OU)
+title
+description
+initials
+postalCode
+streetAddress
+generationQualifier
+description
+dnQualifier
+x500UniqueIdentifier
+pseudonym
+role
+emailAddress
+</literallayout>
+    <para>
+     All of these fields are optional, except <structfield>commonName</structfield>.
+     It depends
+     entirely on your CA's policy which of them would be included and which
+     wouldn't.  The meaning of these fields, however, is strictly defined by
+     the X.500 and X.509 standards, so you cannot just assign arbitrary
+     meaning to them.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>ssl_issuer_field(fieldname text) returns text</function>
+     <indexterm>
+      <primary>ssl_issuer_field</primary>
+     </indexterm>
+    </term>
+    <listitem>
+    <para>
+     Same as <function>ssl_client_dn_field</function>, but for the certificate issuer
+     rather than the certificate subject.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <function>ssl_extension_info() returns setof record</function>
+     <indexterm>
+      <primary>ssl_extension_info</primary>
+     </indexterm>
+    </term>
+    <listitem>
+    <para>
+     Provide information about extensions of client certificate: extension name,
+     extension value, and if it is a critical extension.
+    </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </sect2>
+
+ <sect2>
+  <title>Author</title>
+
+  <para>
+   Victor Wagner <email>vitus@cryptocom.ru</email>, Cryptocom LTD
+  </para>
+
+  <para>
+   Dmitry Voronin <email>carriingfate92@yandex.ru</email>
+  </para>
+
+  <para>
+   E-Mail of Cryptocom OpenSSL development group:
+   <email>openssl@cryptocom.ru</email>
+  </para>
+ </sect2>
+
+</sect1>
