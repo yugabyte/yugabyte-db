@@ -1856,4 +1856,43 @@ TEST_F(MasterPathHandlersItest, TabletLimitsSkipBlacklistedTServers) {
       10s, "Reported tablet limit should decrease"));
 }
 
+TEST_F(MasterPathHandlersItest, TestTasksJsonEndpoint) {
+  // Create a table so that the cluster has some activity that may generate tasks.
+  auto table = CreateTestTable();
+
+  faststring result;
+  ASSERT_OK(GetUrl("/api/v1/tasks", &result));
+
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  EXPECT_TRUE(json_obj.IsObject());
+
+  // Verify the three expected top-level arrays exist.
+  auto active_tasks = ASSERT_RESULT(json_obj["active_tasks"].GetArray());
+  auto recent_jobs = ASSERT_RESULT(json_obj["recent_jobs"].GetArray());
+  auto recent_tasks = ASSERT_RESULT(json_obj["recent_tasks"].GetArray());
+
+  // Helper to verify that a task object contains all fields produced by JsonOutputTask.
+  auto verifyTaskFields = [](const JsonValue& task) {
+    EXPECT_TRUE(task["task_type"].IsValid());
+    EXPECT_TRUE(task["task_state"].IsValid());
+    EXPECT_TRUE(task["task_time_since_started"].IsValid());
+    EXPECT_TRUE(task["task_running_secs"].IsValid());
+    EXPECT_TRUE(task["task_description"].IsValid());
+  };
+
+  for (size_t i = 0; i < active_tasks.size(); ++i) {
+    SCOPED_TRACE(Format("active_tasks[$0]", i));
+    verifyTaskFields(active_tasks[i]);
+  }
+  for (size_t i = 0; i < recent_jobs.size(); ++i) {
+    SCOPED_TRACE(Format("recent_jobs[$0]", i));
+    verifyTaskFields(recent_jobs[i]);
+  }
+  for (size_t i = 0; i < recent_tasks.size(); ++i) {
+    SCOPED_TRACE(Format("recent_tasks[$0]", i));
+    verifyTaskFields(recent_tasks[i]);
+  }
+}
+
 } // namespace yb::integration_tests
