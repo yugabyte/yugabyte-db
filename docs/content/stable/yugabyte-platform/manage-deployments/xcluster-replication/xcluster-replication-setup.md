@@ -238,6 +238,8 @@ When replication is set up, YugabyteDB automatically creates the alert _XCluster
 - A table was added or dropped from either Source or Target, but have not been added or dropped from the other.
 - A table was removed from replication, but not dropped from the database in the Source and Target.
 
+[Table status](#tables) will be set to Extra Table On Source/Target. Either add the table to replication, or drop the table from the database. For YSQL, xCluster requires all tables in a database to be in replication, and you cannot selectively remove database tables from replication except to drop them.
+
 You can also set up an alert for [Replication lag](#metrics). Replication lag measures how far behind in time the target lags the source. In a failover scenario, the longer the lag, the more data is at risk of being lost.
 
 To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.

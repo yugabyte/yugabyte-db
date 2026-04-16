@@ -204,6 +204,8 @@ When DR is set up, YugabyteDB Anywhere automatically creates the alert _XCluster
 - A table was added or dropped from either DR primary or replica, but not added or dropped from the other.
 - A table was removed from replication, but not dropped from the database in the DR primary and replica.
 
+[Table status](#tables) will be set to Extra Table On Source/Target. Either add the table to replication, or drop the table from the database. DR requires all tables in a database to be in replication, and you cannot selectively remove database tables from replication except to drop them.  
+
 A [Consumer safe time lag](#metrics) alert with a threshold of 180 seconds is also set up for DR configurations. It triggers when the replica universe safe time lags behind the configured threshold from the physical time; that is, when the Consumer Safe Time Lag goes beyond the threshold. In this case, the read data on the replica universe can be stale even if the replication lag for other tables is not very high.
 
 To modify the alert, navigate to **Admin > Alert Configurations > Alert Policies**, find the alert, and click its **Actions > Edit Alert**.
