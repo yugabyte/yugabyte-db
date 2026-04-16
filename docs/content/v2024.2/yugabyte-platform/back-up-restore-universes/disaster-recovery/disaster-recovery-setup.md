@@ -10,6 +10,8 @@ menu:
     identifier: disaster-recovery-setup
     weight: 10
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 ## Prerequisites
@@ -42,7 +44,7 @@ Ensure the universes have the following characteristics:
 
     In addition, during an outage, you will need enough disk space to retain the WALs, so determine the data change rate for your workload, and size your disk accordingly.
 
-- [Set a replication lag alert](#set-up-replication-lag-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
+- [Set a replication lag alert](#set-up-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
 
 ## Set up disaster recovery
@@ -71,6 +73,8 @@ To set up disaster recovery for a universe, do the following:
 
     You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup. Refer to [xCluster and colocation](../../../../additional-features/colocation/#xcluster-and-colocation).
 
+    Note that all tables in the database are added to replication; you cannot select a subset of tables.
+
     YugabyteDB Anywhere checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
 
 1. If data needs to be copied, click **Next: Confirm Full Copy**, and select a storage configuration.
@@ -83,7 +87,7 @@ To set up disaster recovery for a universe, do the following:
 
 1. Click **Next: Confirm Alert Threshold**.
 
-    If you have [set an alert for replication lag](#set-up-replication-lag-alerts) on the universe, the threshold for alerting is displayed.
+    If you have [set an alert for replication lag](#set-up-alerts) on the universe, the threshold for alerting is displayed.
 
 1. Click **Confirm and Enable Disaster Recovery**.
 
@@ -103,7 +107,7 @@ In addition, you can monitor the following metrics on the **xCluster Disaster Re
 
     The network lag in microseconds between any two communicating nodes.
 
-    If you have [set an alert for replication lag](#set-up-replication-lag-alerts), you can also display the alert threshold.
+    If you have [set an alert for replication lag](#set-up-alerts), you can also display the alert threshold.
 
 - Consumer Safe Time Lag
 
@@ -149,7 +153,7 @@ To check if the replication has been properly configured for a table, check the 
 
 The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
 
-If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
+If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from DR primary to DR replica, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
 
 If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe), the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
 
@@ -162,30 +166,36 @@ The table statuses are described in the following table.
 | Validated | The table passes pre-checks and is eligible to be added to replication. |
 | Operational | The table is being replicated. |
 
-The following statuses [trigger an alert](#set-up-replication-lag-alerts).
+The following statuses [trigger an alert](#set-up-alerts).
 
 | Status | Description |
 | :--- | :--- |
 | Failed | The table failed to be added to replication. |
-| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
+| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-alerts), or the lag is not being reported. |
 | Dropped From Source | The table was in replication, but dropped from the DR primary without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
 | Dropped From Target | The table was in replication, but was dropped from the DR replica without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
 | Dropped From Database | The table was in replication, but doesn't exist on either the DR primary or DR replica. If you are using Manual mode, you need to remove it manually from the configuration. |
-| Extra Table On Source | The table is newly created on the DR primary but is not in replication yet. |
-| Extra Table On Target | The table is newly created on the DR replica but it is not in replication yet. |
+| Extra Table On Source | There is a table on the DR primary that is not in replication. Either the table is newly created, or it was removed from replication. You need to add the table to replication, or drop it from the database. |
+| Extra Table On Target | There is a table on the DR replica that is not in replication. Either the table is newly created, or it was removed from replication. You need to add the table to replication, or drop it from the database. |
 | Table Info Missing | The system is unable to fetch table info from either the DR primary or the DR replica. |
 | Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
 | Auto flag config mismatch | Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
 
-### Set up replication lag alerts
+### Set up alerts
 
-Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost.
+When DR is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
 
-To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.
+- There is a table schema mismatch between DR primary and replica.
+- A table was added to or dropped from either DR primary or replica, but not added to or dropped from the other.
+- A table was removed from replication, but not dropped from the database in the DR primary and replica.
 
-To create an alert:
+[Table status](#tables) will be set to Extra Table On Source/Target. Either add the table to replication, or drop the table from the database. DR requires all tables in a database to be in replication, and you cannot selectively remove database tables from replication except to drop them.
+
+You can also set up an alert for [Replication lag](#metrics). To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for [Replication lag](#metrics). Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.
+
+To create a replication lag alert:
 
 1. Navigate to **Admin > Alert Configurations > Alert Policies**.
 1. Click **Create Alert Policy** and choose **Universe Alert**.
@@ -200,11 +210,6 @@ To create an alert:
     - Set the threshold to an acceptable value for your deployment. The default threshold is 3 minutes (180000ms).
 
 1. Click **Save** when you are done.
-
-When DR is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
-
-- there is a table schema mismatch between DR primary and replica.
-- tables are added or dropped from either DR primary or replica, but have not been added or dropped from the other.
 
 When you receive an alert, navigate to the replication configuration [Tables tab](#tables) to see the table status.
 
