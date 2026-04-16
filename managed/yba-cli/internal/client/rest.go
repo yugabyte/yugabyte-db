@@ -46,7 +46,7 @@ func (a *AuthAPIClient) RestAPICall(
 	r, err := a.RestClient.Client.Do(req)
 	if err != nil {
 		return nil,
-			fmt.Errorf("Error occured during %s call for %s %s",
+			fmt.Errorf("Error occurred during %s call for %s %s",
 				params.method,
 				params.operationString,
 				err.Error())
@@ -88,7 +88,7 @@ func (a *AuthAPIClient) RestAPICallV1Path(
 
 	r, err := a.RestClient.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Error occured during %s call for %s %s",
+		return nil, fmt.Errorf("Error occurred during %s call for %s %s",
 			params.method, params.operationString, err.Error())
 	}
 
