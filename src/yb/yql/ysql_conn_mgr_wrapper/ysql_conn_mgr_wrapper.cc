@@ -16,6 +16,7 @@
 
 #include "yb/util/env_util.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/path_util.h"
@@ -81,7 +82,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
     "is reached, the connection is automatically closed, regardless of activity, ensuring that "
     "fresh backend connections are regularly maintained.");
 
-DEFINE_NON_RUNTIME_string(ysql_conn_mgr_log_settings, "",
+DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
     "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
     "log settings present in this string will be enabled. Omitted settings will remain disabled.");
@@ -315,12 +316,68 @@ Status YsqlConnMgrWrapper::Start() {
   return Status::OK();
 }
 
+Status YsqlConnMgrWrapper::ReloadConfig() {
+  if (!proc_) {
+    return STATUS(IllegalState, "Process has not been started");
+  }
+  return proc_->KillNoCheckIfRunning(SIGHUP);
+}
+
+Status YsqlConnMgrWrapper::UpdateAndReloadConfig() {
+  conf_.CreateYsqlConnMgrConfigAndGetPath();
+  return ReloadConfig();
+}
+
 YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key)
     : conf_(std::move(conf)), stat_shm_key_(std::move(stat_shm_key)) {}
 
 std::shared_ptr<ProcessWrapper> YsqlConnMgrSupervisor::CreateProcessWrapper() {
   return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_);
 }
+
+void YsqlConnMgrSupervisor::UpdateAndReloadConfig() {
+  std::lock_guard lock(mtx_);
+  if (process_wrapper_) {
+    const Status status = process_wrapper_->UpdateAndReloadConfig();
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to update and reload config: " << status;
+    }
+  }
+}
+
+Status YsqlConnMgrSupervisor::RegisterReloadConfigCallback(const void* flag_ptr) {
+  flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
+      flag_ptr, "ReloadConnMgrConfig",
+      std::bind(&YsqlConnMgrSupervisor::UpdateAndReloadConfig, this))));
+  return Status::OK();
+}
+
+Status YsqlConnMgrSupervisor::RegisterFlagChangeNotifications() {
+  DeregisterFlagChangeNotifications();
+
+  std::vector<google::CommandLineFlagInfo> flags;
+  google::GetAllFlags(&flags);
+  for (const auto& flag : flags) {
+    std::unordered_set<FlagTag> tags;
+    GetFlagTags(flag.name, &tags);
+    if (tags.contains(FlagTag::kConnMgr)) {
+      RETURN_NOT_OK(RegisterReloadConfigCallback(flag.flag_ptr));
+    }
+  }
+
+  return Status::OK();
+}
+
+void YsqlConnMgrSupervisor::DeregisterFlagChangeNotifications() {
+  for (auto& callback : flag_callbacks_) {
+    callback.Deregister();
+  }
+  flag_callbacks_.clear();
+}
+
+Status YsqlConnMgrSupervisor::PrepareForStart() { return RegisterFlagChangeNotifications(); }
+
+void YsqlConnMgrSupervisor::PrepareForStop() { DeregisterFlagChangeNotifications(); }
 
 }  // namespace ysql_conn_mgr_wrapper
 }  // namespace yb

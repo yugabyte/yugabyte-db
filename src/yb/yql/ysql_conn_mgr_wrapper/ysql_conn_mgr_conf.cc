@@ -160,12 +160,19 @@ void YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>* ysql_conn
   (*ysql_conn_mgr_configs)["{%tls_cert_file%}"] = tls_cert_file;
 }
 
-void YsqlConnMgrConf::UpdateLogSettings(std::string& log_settings_str) {
+void YsqlConnMgrConf::UpdateLogSettings(const std::string& log_settings_str) {
+  /* Set all to false initially to handle removal of flag at runtime */
+  log_debug_ = false;
+  log_config_ = false;
+  log_session_ = false;
+  log_query_ = false;
+  log_stats_ = false;
+
   std::stringstream ss(log_settings_str);
   std::string setting;
 
   while (std::getline(ss, setting, ',')) {
-    util::TrimStr(setting);
+    setting = util::TrimStr(setting);
     if (!setting.empty()) {
       if (setting == "log_debug") {
         log_debug_ = true;
@@ -183,7 +190,6 @@ void YsqlConnMgrConf::UpdateLogSettings(std::string& log_settings_str) {
 }
 
 std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
-  const auto conf_file_path = JoinPathSegments(data_dir_, conf_file_name_);
   UpdateLogSettings(FLAGS_ysql_conn_mgr_log_settings);
 
   // Config map
@@ -242,8 +248,17 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
 
   AddSslConfig(&ysql_conn_mgr_configs);
 
-  // Create a config file.
-  WriteConfig(conf_file_path, ysql_conn_mgr_configs);
+  // Create a config file. Since the config can be concurrently read by Odyssey (consider the case
+  // of it processing a SIGHUP while another config is being written), we want to ensure the config
+  // file is always valid. To do config updates monotonically, we first write to a temporary file
+  // path and then rename it.
+  const auto tmp_conf_file_path = JoinPathSegments(data_dir_, conf_file_name_ + ".tmp");
+  const auto conf_file_path = JoinPathSegments(data_dir_, conf_file_name_);
+  WriteConfig(tmp_conf_file_path, ysql_conn_mgr_configs);
+  auto status = Env::Default()->RenameFile(tmp_conf_file_path, conf_file_path);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to rename config file: " << status;
+  }
   return conf_file_path;
 }
 

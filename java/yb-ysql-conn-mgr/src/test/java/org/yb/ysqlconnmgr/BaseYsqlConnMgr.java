@@ -24,6 +24,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.io.IOException;
 import java.net.URL;
 import java.util.Collections;
@@ -40,12 +41,14 @@ import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
 import org.yb.pgsql.ConnectionBuilder;
+import org.yb.util.ProcessUtil;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import com.yugabyte.jdbc.PgArray;
 import com.yugabyte.util.PGobject;
+import com.google.common.net.HostAndPort;
 import com.google.gson.JsonArray;
 
 public class BaseYsqlConnMgr extends BaseMiniClusterTest {
@@ -659,5 +662,12 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
     createMiniCluster(additionalMasterFlags, additionalTserverFlags);
     waitForDatabaseToStart();
+  }
+
+  protected void setServerFlag(HostAndPort server, String flag, String value) throws Exception {
+    List<String> args = Arrays.asList(
+        TestUtils.findBinary("yb-ts-cli"), "--server_address", server.toString(),
+        "set_flag", flag, value);
+    ProcessUtil.runProcess(args, 60 /* timeoutSeconds */);
   }
 }
