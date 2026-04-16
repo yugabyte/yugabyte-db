@@ -207,4 +207,3 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | %TYPE syntax in Functions/Procedures/Triggers|{{<issue 23619>}}|
 | Storage parameters on indexes or constraints|{{<issue 23467>}}|
 | REFERENCING clause for triggers | {{<issue 1668>}}|
-| BEFORE ROW triggers on partitioned tables | {{<issue 24830>}}|
