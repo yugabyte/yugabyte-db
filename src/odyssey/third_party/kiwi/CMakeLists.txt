@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.5)
 
 project(kiwi C)
 
@@ -31,3 +31,4 @@ message(STATUS "CMAKE_BUILD_TYPE:         ${CMAKE_BUILD_TYPE}")
 message(STATUS "MACHINARIUM_INCLUDE_DIRS: ${MACHINARIUM_INCLUDE_DIRS}")
 message(STATUS "MACHINARIUM_LIBRARIES:    ${MACHINARIUM_LIBRARIES}")
 message(STATUS "")
+

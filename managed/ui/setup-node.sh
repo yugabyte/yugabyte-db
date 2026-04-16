@@ -143,9 +143,11 @@ download_nodejs() {
     node_arch="x64"
   elif [[ "${arch}" == "aarch64" ]] || [[ "${arch}" == "arm64" ]]; then
     node_arch="arm64"
+  elif [[ "${arch}" == "ppc64le" ]]; then
+    node_arch="ppc64le"
   else
     echo "[setup-node.sh] ERROR: Unsupported architecture: ${arch}" >&2
-    echo "[setup-node.sh]   Supported architectures: x86_64, aarch64, arm64" >&2
+    echo "[setup-node.sh]   Supported architectures: x86_64, aarch64, arm64, ppc64le" >&2
     exit 1
   fi
 

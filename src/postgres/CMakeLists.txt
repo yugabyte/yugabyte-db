@@ -86,6 +86,9 @@ endif()
 
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   add_pg_c_cxx_flags(-DUSE_SSE42_CRC32C=1)
+elseif("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "ppc64le" OR "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^ppc64")
+  # PowerPC uses software CRC32C implementation
+  # Hardware CRC32C support available via POWER8+ instructions but not using SSE42
 endif()
 
 if(NOT APPLE AND IS_ASAN AND IS_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
@@ -230,4 +233,5 @@ add_dependencies(postgres configure_postgres postgres_genbki)
 # ------------------------------------------------------------------------------------------------
 
 # Libraries that we link into the postgres binary.
-add_dependencies(postgres yb_pggate server_process yb_pggate_webserver ysql_bench_metrics_handler hdr_histogram yb_pgresult_util)
+add_dependencies(postgres yb_pggate server_process yb_pggate_webserver ysql_bench_metrics_handler hdr_histogram)
+

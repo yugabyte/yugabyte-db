@@ -45,19 +45,27 @@
 #pragma once
 
 typedef int32_t Atomic32;
+typedef int64_t Atomic64;
+
 #define BASE_HAS_ATOMIC64 1  // Use only in tests and base/atomic*
 
 
 #define ATOMICOPS_COMPILER_BARRIER() __asm__ __volatile__("" : : : "memory")
 
 // 32-bit PowerPC is not supported yet.
-#ifndef ARCH_POWERPC64
+#if !defined(ARCH_POWERPC64) && !defined(__powerpc64__) && !defined(_ARCH_PPC64)
 #error "Only PowerPC64 is supported"
+#endif
+
+// Define ARCH_POWERPC64 if not already defined but we're on a 64-bit PowerPC
+#if !defined(ARCH_POWERPC64) && (defined(__powerpc64__) || defined(_ARCH_PPC64))
+#define ARCH_POWERPC64 1
 #endif
 
 namespace base {
 namespace subtle {
 
+typedef int32_t Atomic32;
 typedef int64_t Atomic64;
 
 // sync vs. lwsync:
@@ -309,7 +317,18 @@ inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr,
   return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
 }
 
+// Pause instruction to prevent excess processor bus usage, only available on
+// Power ISA 2.06 and later. For older processors, this is a no-op.
+inline void PauseCPU() {
+#if defined(_ARCH_PWR8) || defined(__POWER8__) || defined(__POWER9__)
+  __asm__ __volatile__("or 27,27,27" : : : "memory");  // yield hint
+#else
+  __asm__ __volatile__("" : : : "memory");  // compiler barrier only
+#endif
+}
+
 }  // namespace subtle
 }  // namespace base
 
 #undef ATOMICOPS_COMPILER_BARRIER
+

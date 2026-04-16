@@ -379,7 +379,7 @@ Result<YBTransactionPtr> TransactionPool::TakeAndInit(
 
 Result<YBTransactionPtr> TransactionPool::TakeRestarted(
     const YBTransactionPtr& source, CoarseTimePoint deadline) {
-  const auto &metadata = source->GetMetadata(deadline).get();
+  auto metadata = source->GetMetadata(deadline).get();
   RETURN_NOT_OK(metadata);
   auto result = impl_->Take(metadata->locality, deadline);
   RETURN_NOT_OK(source->FillRestartedTransaction(result));
@@ -392,3 +392,4 @@ YBTransactionPtr TransactionPool::TEST_GetLastTransaction() {
 
 } // namespace client
 } // namespace yb
+

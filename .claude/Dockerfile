@@ -1,1 +1,1 @@
-../.devcontainer/Dockerfile
+FROM yugabyteci/yb_build_infra_almalinux9_x86_64:latest

@@ -18,6 +18,7 @@
 #include <atomic>
 #include <mutex>
 #include <string>
+#include <typeinfo>
 #include <unordered_map>
 
 namespace yb {
@@ -64,3 +65,4 @@ class AllocationTracker : public AllocationTrackerBase {
 };
 
 } // namespace yb
+

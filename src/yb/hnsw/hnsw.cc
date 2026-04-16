@@ -817,3 +817,4 @@ HnswDistanceType HnswlibMetric::Distance(
 }
 
 }  // namespace yb::hnsw
+

@@ -27,7 +27,8 @@ set(PGGATE_UTIL_SRCS
 
 set(PGGATE_UTIL_LIBS
     yb_util
-    yb_common)
+    yb_common
+    yb_ash)
 
 ADD_YB_LIBRARY(yb_pggate_util
                SRCS ${PGGATE_UTIL_SRCS}
@@ -35,11 +36,17 @@ ADD_YB_LIBRARY(yb_pggate_util
 
 add_dependencies(yb_pggate_util postgres_genbki)
 
+# NOTE: yb_pggate_util has undefined symbols from yb_dockv (PartitionSchema::Decode*)
+# Cannot add yb_dockv as dependency due to circular dependency (yb_dockv depends on yb_pggate_util)
+# These symbols will be resolved when executables link both libraries together
+# TODO: Refactor to break circular dependency between yb_dockv and yb_pggate_util
+
 ADD_YB_LIBRARY(yb_pgresult_util
   SRCS ybc_pgresult_util.cc
   DEPS yb_common_proto
-  NONLINK_DEPS postgres_genbki)
+  NONLINK_DEPS postgres_genbki pq)
 
 target_include_directories(yb_pgresult_util PRIVATE
   ${YB_BUILD_ROOT}/postgres_build/src/include
   ${YB_BUILD_ROOT}/postgres_build/src/interfaces/libpq)
+

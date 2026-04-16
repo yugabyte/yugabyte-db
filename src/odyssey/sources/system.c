@@ -499,7 +499,8 @@ static inline od_retcode_t od_system_server_start(od_system_t *system,
 					    "%s/.s.PGSQL.%d",
 					    instance->config.unix_socket_dir,
 					    config->port);
-		strncpy(saddr_un.sun_path, addr_name, addr_name_len);
+		strncpy(saddr_un.sun_path, addr_name, sizeof(saddr_un.sun_path) - 1);
+		saddr_un.sun_path[sizeof(saddr_un.sun_path) - 1] = '\0';
 	}
 
 	/* bind */
@@ -863,3 +864,4 @@ int od_system_start(od_system_t *system, od_global_t *global)
 	}
 	return 0;
 }
+

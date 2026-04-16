@@ -11,7 +11,7 @@ OBJS = \
 PGFILEDESC = "postgres_fdw - foreign data wrapper for PostgreSQL"
 
 PG_CPPFLAGS = -I$(libpq_srcdir)
-SHLIB_LINK_INTERNAL = $(libpq) -L$(YB_BUILD_ROOT)/lib -lyb_pggate -lyb_pggate_util -lyb_pgresult_util
+SHLIB_LINK_INTERNAL = $(libpq) -L$(YB_BUILD_ROOT)/lib -lyb_pggate -lyb_pggate_util
 
 EXTENSION = postgres_fdw
 DATA = postgres_fdw--1.0.sql postgres_fdw--1.0--1.1.sql
@@ -29,3 +29,4 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
+

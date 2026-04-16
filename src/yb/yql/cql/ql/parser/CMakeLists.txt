@@ -54,7 +54,7 @@ set(PARSER_CUSTOM_FLAGS "${PARSER_CUSTOM_FLAGS} -Wno-shorten-64-to-32")
 if(IS_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "14.0.0")
   set(PARSER_CUSTOM_FLAGS "${PARSER_CUSTOM_FLAGS} -Wno-unused-but-set-variable")
 endif()
-if(IS_GCC AND "${COMPILER_VERSION}" MATCHES "^13[.].*$")
+if(IS_GCC AND ("${COMPILER_VERSION}" MATCHES "^13[.].*$" OR "${COMPILER_VERSION}" MATCHES "^14[.].*$"))
   # To work around this issue:
   # https://gist.githubusercontent.com/mbautin/199bb4a5011148ae93afe38887bc120a/raw
   string(APPEND PARSER_CUSTOM_FLAGS " -Wno-nonnull-compare")
@@ -86,3 +86,4 @@ target_link_libraries(ql_parser
 add_dependencies(ql_parser ql_ptree)
 
 yb_use_pch(ql_parser ql)
+

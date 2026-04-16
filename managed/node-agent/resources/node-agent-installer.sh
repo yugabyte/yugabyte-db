@@ -189,6 +189,8 @@ download_package() {
       GO_ARCH_TYPE="amd64"
     elif [ "$GO_ARCH_TYPE" = "aarch64" ]; then
       GO_ARCH_TYPE="arm64"
+    elif [ "$GO_ARCH_TYPE" = "ppc64le" ]; then
+      GO_ARCH_TYPE="ppc64le"
     fi
     echo "* Getting $OS/$GO_ARCH_TYPE package"
     mkdir -p "$NODE_AGENT_RELEASE_PATH"

@@ -71,6 +71,9 @@ set(GUTIL_SRCS
 
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   list(APPEND GUTIL_SRCS atomicops-internals-x86.cc)
+elseif("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "ppc64le" OR "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^ppc64")
+  # PowerPC uses generic atomics implementation
+  # No architecture-specific atomics file needed - uses compiler intrinsics
 endif()
 
 set(GUTIL_LIBS

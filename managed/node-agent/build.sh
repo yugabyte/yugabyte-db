@@ -8,7 +8,7 @@ export GO111MODULE=on
 # https://protobuf.dev/support/version-support/
 readonly protoc_version=33.0
 readonly package_name='node-agent'
-readonly default_platforms=("linux/amd64" "linux/arm64")
+readonly default_platforms=("linux/amd64" "linux/arm64" "linux/ppc64le")
 readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target" \
                     "pywheels")
 

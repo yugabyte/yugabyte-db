@@ -193,6 +193,8 @@ if [[ "${NODE_SETUP_SUCCESS}" != "true" ]]; then
     NODE_ARCH="x64"
   elif [[ "${ARCH}" == "aarch64" ]] || [[ "${ARCH}" == "arm64" ]]; then
     NODE_ARCH="arm64"
+  elif [[ "${ARCH}" == "ppc64le" ]]; then
+    NODE_ARCH="ppc64le"
   else
     fatal "Unsupported architecture: ${ARCH}"
   fi

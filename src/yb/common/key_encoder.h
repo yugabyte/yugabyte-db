@@ -34,7 +34,7 @@
 
 #include <arpa/inet.h>
 
-#ifndef __aarch64__
+#if !defined(__aarch64__) && !defined(__powerpc64__)
 #include <nmmintrin.h>
 #endif
 
@@ -309,7 +309,7 @@ struct KeyEncoderTraits<DataType::BINARY, Buffer> {
   // REQUIRES: len == 16 or 8
   template<int LEN>
   static bool SSEEncodeChunk(const uint8_t** srcp, uint8_t** dstp) {
-#ifdef __aarch64__
+#if defined(__aarch64__) || defined(__powerpc64__)
     return false;
 #else
     COMPILE_ASSERT(LEN == 16 || LEN == 8, invalid_length);
@@ -457,3 +457,4 @@ extern const KeyEncoder<Buffer>& GetKeyEncoder(const TypeInfo* typeinfo);
 extern bool IsTypeAllowableInKey(const TypeInfo* typeinfo);
 
 } // namespace yb
+

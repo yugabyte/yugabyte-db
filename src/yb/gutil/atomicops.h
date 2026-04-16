@@ -94,7 +94,7 @@
 #include "yb/gutil/atomicops-internals-arm-generic.h"
 #elif defined(__GNUC__) && (defined(__i386) || defined(__x86_64__))
 #include "yb/gutil/atomicops-internals-x86.h"
-#elif defined(__GNUC__) && defined(ARCH_POWERPC64)
+#elif defined(__GNUC__) && (defined(ARCH_POWERPC64) || defined(__powerpc64__) || defined(_ARCH_PPC64))
 #include "yb/gutil/atomicops-internals-powerpc.h"
 #elif defined(OS_WINDOWS)
 #include "yb/gutil/atomicops-internals-windows.h"
@@ -387,3 +387,4 @@ inline base::subtle::Atomic64 Release_Load(
 }
 
 #endif  // YB_GUTIL_ATOMICOPS_H
+

@@ -17,7 +17,7 @@ from ybops.common.exceptions import YBOpsRuntimeError
 """
 
 # Supported platforms for node-agent.
-NODE_AGENT_PLATFORMS = set(["linux/amd64", "linux/arm64"])
+NODE_AGENT_PLATFORMS = set(["linux/amd64", "linux/arm64", "linux/ppc64le"])
 
 
 def filter_function(version, filename):
@@ -54,11 +54,17 @@ def is_arm64(filename):
     return "aarch64" in filename or "arm64" in filename
 
 
+def is_ppc64le(filename):
+    return "ppc64le" in filename or "ppc64" in filename
+
+
 def find_target_os(filename):
     if is_amd64(filename):
         return "amd64"
     if is_arm64(filename):
         return "arm64"
+    if is_ppc64le(filename):
+        return "ppc64le"
     # No specific target.
     return None
 

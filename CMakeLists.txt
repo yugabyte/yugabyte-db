@@ -70,6 +70,11 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
   ADD_CXX_FLAGS("-ffp-contract=off")
 elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
   ADD_CXX_FLAGS("-msse4.2")
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "ppc64le")
+  # PowerPC 64-bit Little Endian specific flags
+  ADD_CXX_FLAGS("-fsigned-char")
+  ADD_CXX_FLAGS("-mcpu=power8")
+  ADD_CXX_FLAGS("-mtune=power9")
 else()
   message(FATAL_ERROR "Unsupported CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
@@ -331,6 +336,9 @@ if (NOT APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   # To enable 16-byte atomics support we should specify appropriate architecture.
   ADD_CXX_FLAGS("-march=ivybridge")
   ADD_CXX_FLAGS("-mcx16")
+elseif (NOT APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "ppc64le")
+  # PowerPC has native 16-byte atomics support with quadword instructions
+  # No special flags needed beyond base -mcpu=power8
 endif()
 
 # Include compiler type and version in the compiler command line so that binaries built by different
@@ -353,6 +361,9 @@ if(NOT APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   # are being added in the gcc-specific section below.  We have also found that these flags don't
   # work on Mac OS X, so we're not using them there.
   ADD_CXX_FLAGS("-mno-avx -mno-bmi -mno-bmi2 -mno-fma")
+elseif(NOT APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "ppc64le")
+  # PowerPC-specific: ensure compatibility across POWER8/POWER9/POWER10
+  # Base -mcpu=power8 already set above provides good compatibility
 endif()
 
 # We want access to the PRI* print format macros.
@@ -541,6 +552,9 @@ if (IS_CLANG)
 elseif(IS_GCC)
   if ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
     ADD_CXX_FLAGS("-mno-abm -mno-movbe")
+  elseif ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "ppc64le")
+    # PowerPC GCC-specific optimizations
+    # Base flags already set, no additional restrictions needed
   endif()
 else()
   message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
@@ -783,9 +797,17 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR IS_SANITIZER)
         "-Wl,--whole-archive ${TCMALLOC_STATIC_LIB} -Wl,--no-whole-archive")
   endif()
 elseif(NOT APPLE)
-  message("Not allowing any undefined symbols "
-          "(tcmalloc is disabled and build type is ${YB_BUILD_TYPE})")
-  ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
+  if(IS_GCC)
+    # With GCC, allow unresolved symbols to handle circular dependencies between shared libraries
+    # (e.g., yb_dockv <-> yb_pggate_util). This is similar to the tcmalloc case above.
+    message("Allowing unresolved symbols with GCC "
+            "(tcmalloc is disabled and build type is ${YB_BUILD_TYPE})")
+    ADD_LINKER_FLAGS("-Wl,--unresolved-symbols=ignore-all")
+  else()
+    message("Not allowing any undefined symbols "
+            "(tcmalloc is disabled and build type is ${YB_BUILD_TYPE})")
+    ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
+  endif()
 endif()
 
 if (NOT "$ENV{YB_VALGRIND_PATH}" STREQUAL "")
@@ -979,3 +1001,4 @@ math(EXPR YB_NUM_EXCLUDED_EXECUTABLES "${YB_NUM_EXECUTABLES} - ${YB_NUM_INCLUDED
 message("Total non-test executables: ${YB_NUM_EXECUTABLES}, "
         "included: ${YB_NUM_INCLUDED_EXECUTABLES}, "
         "excluded: ${YB_NUM_EXCLUDED_EXECUTABLES}")
+

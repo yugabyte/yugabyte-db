@@ -38,6 +38,7 @@ set(DOCDB_SHARED_DEPS
         yb_util
         yb_common
         docdb_proto
+        yb_dockv
         )
 
 ADD_YB_LIBRARY(yb_docdb_shared
@@ -176,3 +177,4 @@ if(YB_BUILD_FUZZ_TARGETS)
   ADD_YB_FUZZ_TARGET(fuzz-targets/doc_key-fuzz_target)
   ADD_YB_FUZZ_TARGET(fuzz-targets/subdoc_key-fuzz_target)
 endif()
+

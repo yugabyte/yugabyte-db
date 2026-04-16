@@ -24,6 +24,7 @@ result_kvs=""
 ssh_port=""
 package_manager_cmd=""
 is_aarch64=false
+is_ppc64le=false
 is_debian=false
 is_sles=false
 master_http_port="7000"
@@ -240,6 +241,11 @@ check_packages_installed() {
     check_package_installed "libncurses6" # Required.
   elif [[ "$is_aarch64" == true ]]; then
     check_package_installed "libatomic" # Required.
+  elif [[ "$is_ppc64le" = true  && "$is_debian" = true ]]; then
+    check_package_installed "libatomic1" # Required.
+    check_package_installed "libncurses6" # Required.
+  elif [[ "$is_ppc64le" == true ]]; then
+    check_package_installed "libatomic" # Required.
   fi
 }
 
@@ -254,7 +260,7 @@ check_package_installed() {
 }
 
 check_binaries_installed() {
-  if [[ "$is_aarch64" = false ]]; then
+  if [[ "$is_aarch64" = false && "$is_ppc64le" = false ]]; then
     check_binary_installed "azcopy" # Optional.
   fi
 
@@ -459,10 +465,12 @@ setup() {
     exit 1
   fi
 
-  # Determine whether we are using ARM64 architecture.
+  # Determine whether we are using ARM64 or PPC64LE architecture.
   arch=$(uname -m)
   if [[ "$arch" == "aarch64" ]]; then
     is_aarch64=true
+  elif [[ "$arch" == "ppc64le" ]]; then
+    is_ppc64le=true
   fi
 
   os_id=$(grep '^ID=' /etc/os-release | cut -d= -f2 \

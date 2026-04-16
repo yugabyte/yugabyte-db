@@ -17,7 +17,8 @@ set(YSQL_CONN_MGR_WRAPPER_SRCS
 
 set(YSQL_CONN_MGR_WRAPPER_LIBS
     yb_util
-    yb_process_wrapper)
+    yb_process_wrapper
+    tserver)
 
 ADD_YB_LIBRARY(ysql_conn_mgr_wrapper
                SRCS ${YSQL_CONN_MGR_WRAPPER_SRCS}
@@ -31,3 +32,4 @@ add_custom_target(update_ysql_conn_mgr_template ALL
     COMMENT "Copying the template file for the Ysql Connection Manager config."
     COMMAND_ERROR_IS_FATAL  # Treat command errors as fatal
 )
+
