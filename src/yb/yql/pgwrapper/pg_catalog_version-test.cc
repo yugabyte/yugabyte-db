@@ -3585,17 +3585,16 @@ TEST_P(PgCatalogVersionConnManagerTest,
   pg_ts = cluster_->tablet_server(0);
   if (enable_ysql_conn_mgr) {
     setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
-    auto res = ConnectToDBAsUser("yugabyte", "test_user");
     if (IsObjectLockingEnabled()) {
       // With object locking enabled, the password authentication should fail as
       // the DDL commit codepath would force a catalog refresh on all tservers
       // despite TEST_tserver_disable_catalog_refresh_on_heartbeat being set.
-      ASSERT_NOK_STR_CONTAINS(res,
+      ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
           "password authentication failed for user \"test_user\"");
     } else {
       // Verify the old password still works because we have set the gflag
       // --TEST_tserver_disable_catalog_refresh_on_heartbeat=true.
-      ASSERT_TRUE(res.ok()) << "Unexpected error " << res.status().ToString();
+      ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
     }
 
     // Wait for the stale cache in tserver expires.
