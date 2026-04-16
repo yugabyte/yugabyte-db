@@ -311,6 +311,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               || !userIntent.useSystemd;
       // TODO This can be improved to skip already provisioned nodes as there are long running
       // subtasks.
+      createRemoveNodeAgentTasks(universe, nodeList, true /*forceRemove*/)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);
       if (userIntent.providerType != CloudType.local) {
         createSetupYNPTask(universe, nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);

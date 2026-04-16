@@ -574,7 +574,7 @@ public class TaskExecutor {
     if (previousTaskUUID != null
         && runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableTaskRuntimeInfoOnRetry)) {
       TaskInfo previousTaskInfo = TaskInfo.getOrBadRequest(previousTaskUUID);
-      if (taskVersion != previousTaskInfo.getTaskVersion()) {
+      if (taskVersion == previousTaskInfo.getTaskVersion()) {
         log.info("Inherting runtime task info from the previous task {}", previousTaskUUID);
         taskInfo.inherit(previousTaskInfo);
         if (log.isDebugEnabled() && taskInfo.getRuntimeInfo() != null) {
