@@ -648,6 +648,9 @@ getYsqlStatementStats(void *cb_arg)
 	pgssEntry  *entry;
 	YsqlStatementStat tmp;
 
+	/*
+	 * TODO(#31066): Add memory context cleanup to prevent memory leak.
+	 */
 	qbuffer = qtext_load_file(&qbuffer_size);
 	if (qbuffer == NULL)
 		return;
@@ -696,7 +699,7 @@ getYsqlStatementStats(void *cb_arg)
 
 	LWLockRelease(pgss->lock);
 
-	free(qbuffer);
+	pfree(qbuffer);
 }
 
 /*
@@ -1180,7 +1183,7 @@ pgss_shmem_shutdown(int code, Datum arg)
 		}
 	}
 
-	free(qbuffer);
+	pfree(qbuffer);
 	qbuffer = NULL;
 
 	if (FreeFile(file))
@@ -1205,7 +1208,7 @@ error:
 			 errmsg("could not write pg_stat_statement file \"%s\": %m",
 					PGSS_DUMP_FILE ".tmp")));
 	if (qbuffer)
-		free(qbuffer);
+		pfree(qbuffer);
 	if (file)
 		FreeFile(file);
 	unlink(PGSS_DUMP_FILE ".tmp");
@@ -1974,7 +1977,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			pgss->gc_count != gc_count)
 		{
 			if (qbuffer)
-				free(qbuffer);
+				pfree(qbuffer);
 			qbuffer = qtext_load_file(&qbuffer_size);
 		}
 	}
@@ -2119,7 +2122,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 	LWLockRelease(pgss->lock);
 
 	if (qbuffer)
-		free(qbuffer);
+		pfree(qbuffer);
 
 	tuplestore_donestoring(tupstore);
 }
@@ -2375,7 +2378,7 @@ error:
 }
 
 /*
- * Read the external query text file into a malloc'd buffer.
+ * Read the external query text file into a palloc'd buffer.
  *
  * Returns NULL (without throwing an error) if unable to read, eg
  * file not there or insufficient memory.
@@ -2419,7 +2422,7 @@ qtext_load_file(Size *buffer_size)
 	     !AllocHugeSizeIsValid(stat.st_size))
 		buf = NULL;
 	else
-		buf = (char *) malloc(stat.st_size);
+		buf = (char *) palloc_extended(stat.st_size, MCXT_ALLOC_HUGE | MCXT_ALLOC_NO_OOM);
 
 	if (buf == NULL)
 	{
@@ -2447,7 +2450,7 @@ qtext_load_file(Size *buffer_size)
 					(errcode_for_file_access(),
 					 errmsg("could not read pg_stat_statement file \"%s\": %m",
 							PGSS_TEXT_FILE)));
-		free(buf);
+		pfree(buf);
 		CloseTransientFile(fd);
 		return NULL;
 	}
@@ -2651,7 +2654,7 @@ gc_qtexts(void)
 	else
 		pgss->mean_query_len = ASSUMED_LENGTH_INIT;
 
-	free(qbuffer);
+	pfree(qbuffer);
 
 	/*
 	 * OK, count a garbage collection cycle.  (Note: even though we have
@@ -2669,7 +2672,7 @@ gc_fail:
 	if (qfile)
 		FreeFile(qfile);
 	if (qbuffer)
-		free(qbuffer);
+		pfree(qbuffer);
 
 	/*
 	 * Since the contents of the external file are now uncertain, mark all
@@ -3832,5 +3835,5 @@ YbGetPgssNormalizedQueryText(Size query_offset, int query_len, char *normalized_
 										 qbuffer, qbuffer_size), query_len);
 	normalized_query[query_len - 1] = '\0'; /* Ensure null-termination */
 
-	free(qbuffer);
+	pfree(qbuffer);
 }
