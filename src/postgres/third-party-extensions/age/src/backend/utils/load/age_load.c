@@ -18,6 +18,8 @@
  */
 
 #include "postgres.h"
+#include "catalog/indexing.h"
+#include "executor/executor.h"
 #include "utils/json.h"
 #include "utils/jsonfuncs.h"
 #include "common/jsonapi.h"
@@ -34,6 +36,7 @@
 #include "utils/load/ag_load_edges.h"
 #include "utils/load/ag_load_labels.h"
 #include "utils/load/age_load.h"
+#include "utils/rel.h"
 
 static agtype_value *csv_value_to_agtype_value(char *csv_val);
 static bool json_validate(text *json);
@@ -250,13 +253,15 @@ void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
                         errmsg("label %s already exists as vertex label", label_name)));
     }
 
+    /* Open the relation */
+    label_relation = table_open(get_label_relation(label_name, graph_oid),
+                                RowExclusiveLock);
+
+    /* Form the tuple */
     values[0] = GRAPHID_GET_DATUM(edge_id);
     values[1] = GRAPHID_GET_DATUM(start_id);
     values[2] = GRAPHID_GET_DATUM(end_id);
     values[3] = AGTYPE_P_GET_DATUM((edge_properties));
-
-    label_relation = table_open(get_label_relation(label_name, graph_oid),
-                                RowExclusiveLock);
 
     if (IsYBRelation(label_relation))
     {
@@ -269,8 +274,25 @@ void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
 
     tuple = heap_form_tuple(RelationGetDescr(label_relation),
                             values, nulls);
-    heap_insert(label_relation, tuple,
-                GetCurrentCommandId(true), 0, NULL);
+
+    if (RelationGetForm(label_relation)->relhasindex)
+    {
+        /*
+         * CatalogTupleInsertWithInfo() is originally for PostgreSQL's
+         * catalog. However, it is used here for convenience.
+         */
+        CatalogIndexState indstate = CatalogOpenIndexes(label_relation);
+        /* YB: Extra param for YB-specific CatalogTupleInsertWithInfo */
+        CatalogTupleInsertWithInfo(label_relation, tuple, indstate, false);
+        CatalogCloseIndexes(indstate);
+    }
+    else
+    {
+        heap_insert(label_relation, tuple, GetCurrentCommandId(true),
+                    0, NULL);
+    }
+
+    /* Close the relation */
     table_close(label_relation, RowExclusiveLock);
     CommandCounterIncrement();
 }
@@ -288,12 +310,11 @@ void insert_vertex_simple(Oid graph_oid, char *label_name, graphid vertex_id,
     if (get_label_kind(label_name, graph_oid) == LABEL_KIND_EDGE)
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("label %s already exists as edge label", label_name)));
+                        errmsg("label %s already exists as edge label",
+                                label_name)));
     }
 
-    values[0] = GRAPHID_GET_DATUM(vertex_id);
-    values[1] = AGTYPE_P_GET_DATUM((vertex_properties));
-
+    /* Open the relation */
     label_relation = table_open(get_label_relation(label_name, graph_oid),
                                 RowExclusiveLock);
 
@@ -306,40 +327,68 @@ void insert_vertex_simple(Oid graph_oid, char *label_name, graphid vertex_id,
         return;
     }
 
+    /* Form the tuple */
+    values[0] = GRAPHID_GET_DATUM(vertex_id);
+    values[1] = AGTYPE_P_GET_DATUM((vertex_properties));
     tuple = heap_form_tuple(RelationGetDescr(label_relation),
                             values, nulls);
-    heap_insert(label_relation, tuple,
-                GetCurrentCommandId(true), 0, NULL);
+
+    if (RelationGetForm(label_relation)->relhasindex)
+    {
+        /*
+         * CatalogTupleInsertWithInfo() is originally for PostgreSQL's
+         * catalog. However, it is used here for convenience.
+         */
+        CatalogIndexState indstate = CatalogOpenIndexes(label_relation);
+        /* YB: Extra param for YB-specific CatalogTupleInsertWithInfo */
+        CatalogTupleInsertWithInfo(label_relation, tuple, indstate, false);
+        CatalogCloseIndexes(indstate);
+    }
+    else
+    {
+        heap_insert(label_relation, tuple, GetCurrentCommandId(true),
+                    0, NULL);
+    }
+
+    /* Close the relation */
     table_close(label_relation, RowExclusiveLock);
     CommandCounterIncrement();
 }
 
-void insert_batch(batch_insert_state *batch_state, char *label_name,
-                  Oid graph_oid)
+void insert_batch(batch_insert_state *batch_state)
 {
-    Relation label_relation;
-    BulkInsertState bistate;
-    Oid relid;
+    List *result;
+    int i;
 
-    // Get the relation OID
-    relid = get_label_relation(label_name, graph_oid);
+    /* Insert the tuples */
+    heap_multi_insert(batch_state->resultRelInfo->ri_RelationDesc,
+                      batch_state->slots, batch_state->num_tuples,
+                      GetCurrentCommandId(true), 0, NULL);
+    
+    /* Insert index entries for the tuples */
+    if (batch_state->resultRelInfo->ri_NumIndices > 0)
+    {
+        for (i = 0; i < batch_state->num_tuples; i++)
+        {
+            result = ExecInsertIndexTuples(batch_state->resultRelInfo,
+                                           batch_state->slots[i],
+                                           batch_state->estate, false,
+                                           true, NULL, NIL); /* YB: omit extra param */
 
-    // Open the relation
-    label_relation = table_open(relid, RowExclusiveLock);
+            /* Check if the unique constraint is violated */
+            if (list_length(result) != 0)
+            {
+                Datum id;
+                bool isnull;
 
-    // Prepare the BulkInsertState
-    bistate = GetBulkInsertState();
-
-    // ToDo: Does not work with YugabyteDB
-    // Fix this later.
-    // Perform the bulk insert
-    heap_multi_insert(label_relation, batch_state->slots,
-                      batch_state->num_tuples, GetCurrentCommandId(true),
-                      0, bistate);
-
-    // Clean up
-    FreeBulkInsertState(bistate);
-    table_close(label_relation, RowExclusiveLock);
+                id = slot_getattr(batch_state->slots[i], 1, &isnull);
+                ereport(ERROR, (errmsg("Cannot insert duplicate vertex id: %ld",
+                                        DATUM_GET_GRAPHID(id)),
+                                errhint("Entry id %ld is already used",
+                                        get_graphid_entry_id(id))));
+            }
+        }
+    }
 
     CommandCounterIncrement();
 }
@@ -587,4 +636,80 @@ static int32 get_or_create_label(Oid graph_oid, char *graph_name,
     }
 
     return label_id;
+}
+
+/*
+ * Initialize the batch insert state.
+ */
+void init_batch_insert(batch_insert_state **batch_state,
+                              char *label_name, Oid graph_oid)
+{
+    Relation relation;
+    Oid relid;
+    EState *estate;
+    ResultRelInfo *resultRelInfo;
+    int i;
+
+    /* Open the relation */
+    relid = get_label_relation(label_name, graph_oid);
+    relation = table_open(relid, RowExclusiveLock);
+
+    /* Initialize executor state */
+    estate = CreateExecutorState();
+
+    /* Initialize resultRelInfo */
+    resultRelInfo = makeNode(ResultRelInfo);
+    InitResultRelInfo(resultRelInfo, relation, 1, NULL, estate->es_instrument);
+    estate->es_result_relations = &resultRelInfo;
+
+    /* Open the indices */
+    ExecOpenIndices(resultRelInfo, false);
+
+    /* Initialize the batch insert state */
+    *batch_state = (batch_insert_state *) palloc0(sizeof(batch_insert_state));
+    (*batch_state)->slots = palloc(sizeof(TupleTableSlot *) * BATCH_SIZE);
+    (*batch_state)->estate = estate;
+    (*batch_state)->resultRelInfo = resultRelInfo;
+    (*batch_state)->max_tuples = BATCH_SIZE;
+    (*batch_state)->num_tuples = 0;
+
+    /* Create slots */
+    for (i = 0; i < BATCH_SIZE; i++)
+    {
+        (*batch_state)->slots[i] = MakeSingleTupleTableSlot(
+                                            RelationGetDescr(relation),
+                                            &TTSOpsHeapTuple);
+    }
+}
+
+/*
+ * Finish the batch insert for vertices. Insert the
+ * tuples remaining in the batch state and clean up.
+ */
+void finish_batch_insert(batch_insert_state **batch_state)
+{
+    int i;
+
+    if ((*batch_state)->num_tuples > 0)
+    {
+        insert_batch(*batch_state);
+        (*batch_state)->num_tuples = 0;
+    }
+
+    /* Free slots */
+    for (i = 0; i < BATCH_SIZE; i++)
+    {
+        ExecDropSingleTupleTableSlot((*batch_state)->slots[i]);
+    }
+
+    /* Clean up, close the indices and relation */
+    ExecCloseIndices((*batch_state)->resultRelInfo);
+    table_close((*batch_state)->resultRelInfo->ri_RelationDesc,
+                RowExclusiveLock);
+
+    /* Clean up batch state */
+    FreeExecutorState((*batch_state)->estate);
+    pfree((*batch_state)->slots);
+    pfree(*batch_state);
+    *batch_state = NULL;
 }
