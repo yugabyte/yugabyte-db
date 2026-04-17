@@ -397,6 +397,13 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
         VERIFY_RESULT(GetPgsqlDatabaseOid(id)), Corruption,
         "Namespace entry in restoring and existing state are different");
   }
+  // Preserve clone_request_seq_no from the existing (pre-restore) state so that post-PITR clones
+  // get a seq_no that doesn't collide with clone state entries that survived the restore.
+  auto it = existing_objects_.namespaces.find(id);
+  if (it != existing_objects_.namespaces.end()) {
+    pb->set_clone_request_seq_no(std::max(
+        pb->clone_request_seq_no(), it->second.clone_request_seq_no()));
+  }
   return true;
 }
 

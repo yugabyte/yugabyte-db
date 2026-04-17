@@ -6183,4 +6183,62 @@ TEST_F(YbAdminSnapshotScheduleXClusterRestoreTest, Sequences) {
       Format("relation \"$0\" does not exist", kNonExistantSequence));
 }
 
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, PitrShouldPreserveCloneSeqNo,
+    YbAdminSnapshotScheduleTestWithYsql) {
+  // Test that clone -> PITR -> clone works, and that the PITR does not reset the
+  // clone_request_seq_no. Regression test for #30958.
+
+  const std::string kSourceDb = "source_database";
+  const std::string kClonedDb1 = "cloned_database_1";
+  const std::string kClonedDb2 = "cloned_database_2";
+
+  ASSERT_OK(PrepareCommon());
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
+  auto conn = ASSERT_RESULT(PgConnect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kSourceDb));
+  auto src_conn = ASSERT_RESULT(PgConnect(kSourceDb));
+  ASSERT_OK(src_conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+
+  auto schedule_id = ASSERT_RESULT(CreateSnapshotScheduleAndWaitSnapshot(
+      "ysql." + std::string(kSourceDb), kInterval, kRetention));
+
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(src_conn.ExecuteFormat("INSERT INTO test_table VALUES ($0, 'row_$0')", i));
+  }
+
+  // Need two timestamps so we can clone to t1 after PITR to t2 (t1 must be strictly before t2 to
+  // avoid the forward restore check).
+  Timestamp t1 = ASSERT_RESULT(GetCurrentTime());
+  SleepFor(MonoDelta::FromMicroseconds(1));
+  Timestamp t2 = ASSERT_RESULT(GetCurrentTime());
+
+  // Clone at t2. The current clone's seq_no is 0 (used for idempotency and deduplication of clone
+  // requests on a given source namespace).
+  ASSERT_OK(CloneAndWait(
+      "ysql." + kSourceDb, kClonedDb1, 2min /* timeout */, t2.ToFormattedString()));
+  auto clone1_conn = ASSERT_RESULT(PgConnect(kClonedDb1));
+  ASSERT_EQ(ASSERT_RESULT(clone1_conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM test_table")), 10);
+
+  // PITR should not reset the clone_request_seq_no, so the next clone should use the seq no 1.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, t2));
+
+  // Wait for PG to be ready after PITR (tserver PG processes restart during restore).
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return PgConnect(kSourceDb).ok();
+  }, 60s * kTimeMultiplier, "Wait for PG to be available after PITR"));
+
+  // Clone again after PITR. This should succeed because it uses the next seq_no (1).
+  // (If PITR had reset the clone_request_seq_no, this would fail because the clone_request_seq_no
+  // would be 0, and this clone would be detected as a duplicate.)
+  ASSERT_OK(CloneAndWait(
+      "ysql." + kSourceDb, kClonedDb2, 2min /* timeout */, t1.ToFormattedString()));
+  auto clone2_conn = ASSERT_RESULT(PgConnect(kClonedDb2));
+  ASSERT_EQ(ASSERT_RESULT(clone2_conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM test_table")), 10);
+  ASSERT_EQ(ASSERT_RESULT(clone2_conn.FetchRow<std::string>(
+      "SELECT value FROM test_table WHERE key = 1")), "row_1");
+}
+
 }  // namespace yb::tools
