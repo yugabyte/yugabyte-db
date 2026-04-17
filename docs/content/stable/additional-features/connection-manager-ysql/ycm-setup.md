@@ -11,6 +11,7 @@ menu:
     weight: 10
 type: docs
 rightNav:
+  hideH3: true
   hideH4: true
 ---
 
@@ -150,7 +151,7 @@ Client connection behavior and server-side policy are handled separately as foll
 
 ### Encryption in transit
 
-YSQL Connection Manager can be configured for universes with or without encryption in transit enabled. The mode is determined by the settings in the Connection Manager configuration file (the Odyssey configuration that the Connection Manager process reads at startup). You can review the default settings in the [template configuration file](https://github.com/yugabyte/yugabyte-db/blob/2025.2.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf).
+YSQL Connection Manager can be configured for universes with or without encryption in transit enabled. The mode is determined by the settings in the Connection Manager configuration file (which the Connection Manager process reads at startup). You can review the default settings in the [template configuration file](https://github.com/yugabyte/yugabyte-db/blob/2025.2.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf).
 
 To enable encrypted connections (TLS/SSL) between your client application and YugabyteDB via YSQL Connection Manager, enable client-to-server encryption in transit on your universe by configuring the following [yb-tserver](../../../reference/configuration/yb-tserver/) flags:
 
@@ -209,15 +210,7 @@ The following table describes how each client SSL mode behaves when connecting v
 | prefer (default in PostgreSQL) | Tries secure connection first, then unencrypted. | Yes. Encrypted connection is established. | Yes. First SSL attempt establishes connection with Connection Manager. |
 | require | Uses secure connection, fails if not available. | Yes. Encrypted connection is established. | Yes. An SSL attempt establishes connection with Connection Manager. |
 | verify-ca | Behaves like require. Additionally, verifies server cert against CA, or fails if no valid matching CA certificates are found. | Yes. Encrypted connection is established and client verifies the TLS certificate. | Yes. An SSL attempt establishes connection with Connection Manager. |
-| verify-full | Behaves like verify-ca. Additionally, verifies that the server cert matches the host. | Yes. Encrypted connection is established and client verifies the TLS certificate and hostname. | Yes. An SSL attempt establishes connection with Connection Manager. |
-
-### Certificate verification (verify-full)
-
-When using `sslmode=verify-full`, the security handshake happens at the client level as follows:
-
-- Client-side validation: The client checks if the server's certificate is signed by a trusted CA.
-- Identity match: The client ensures the certificate's hostname matches the actual server address.
-- Connection failure on mismatch: If either check fails, the connection is rejected (for example, JDBC and ysqlsh perform this verification).
+| verify-full | Behaves like verify-ca. Additionally, verifies that the server cert matches the host. | Yes. Encrypted connection is established and client verifies the TLS certificate and hostname. The handshake happens as follows:<ul><li>Client-side validation: The client checks if the server's certificate is signed by a trusted CA.<li>Identity match: The client ensures the certificate's hostname matches the actual server address.<li>Connection failure on mismatch: If either check fails, the connection is rejected (for example, JDBC and ysqlsh perform this verification).</ul> | Yes. An SSL attempt establishes connection with Connection Manager. |
 
 ## Sticky connections
 
