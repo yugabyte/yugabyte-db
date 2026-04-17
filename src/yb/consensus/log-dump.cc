@@ -82,11 +82,11 @@ DEFINE_NON_RUNTIME_bool(print_headers, true, "print the log segment headers/foot
 DEFINE_NON_RUNTIME_bool(filter_log_segment, false, "filter the input log segment");
 
 DEFINE_NON_RUNTIME_string(print_entries, "decoded",
-              "How to print entries: "
-              "false|0|no = don't print; "
-              "true|1|yes|decoded = print them decoded; "
-              "pb = print the raw protobuf; "
-              "id = print only their ids.");
+              "How to print entries:\n"
+              "  false|0|no = don't print\n"
+              "  true|1|yes|decoded = print them decoded\n"
+              "  pb = print the raw protobuf\n"
+              "  id = print only their ids");
 
 DEFINE_NON_RUNTIME_int32(truncate_data, 100,
              "Truncate the data fields to the given number of bytes "

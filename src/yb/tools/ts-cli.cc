@@ -136,7 +136,7 @@ DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 DEFINE_NON_RUNTIME_bool(force, false, "set_flag: If true, allows command to set a flag "
     "which is not explicitly marked as runtime-settable. Such flag changes may be "
-    "simply ignored on the server, or may cause the server to crash. "
+    "simply ignored on the server, or may cause the server to crash.\n"
     "delete_tablet: If true, command will delete the tablet and remove the tablet "
     "from the memory, otherwise tablet metadata will be kept in memory with state "
     "TOMBSTONED.");
