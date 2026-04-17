@@ -7874,7 +7874,7 @@ disable_statement_timeout(void)
 static YbTraceparentResult
 YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 {
-	const char		   *pos;
+	const char *pos;
 	const char		   *end;
 	const char		   *content;
 	const char		   *comment_end;
