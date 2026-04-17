@@ -70,8 +70,8 @@ void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_period_bytes) {
   InternalAllocArrayOfSize(old_rate * 14);
 }
 
-[[nodiscard]] std::unique_ptr<char[]> SamplingProfilerTest::TestAllocArrayOfSize(
-    int64_t alloc_size) {
+[[nodiscard]] ATTRIBUTE_NOINLINE std::unique_ptr<char[]>
+SamplingProfilerTest::TestAllocArrayOfSize(int64_t alloc_size) {
   std::unique_ptr<char[]> alloc(new char[alloc_size]);
   // Clang in release mode can optimize out the above allocation unless
   // we do something with the pointer... so we just log it.
@@ -82,8 +82,8 @@ void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_period_bytes) {
 // Duplicate of TestAllocArrayOfSize which will not be found by GetTestAllocs.
 // NB: We cannot just call this from TestAllocArrayOfSize since there does not seem to be a
 // cross-compiler way to reliably disable inlining (attribute noinline still results in inlining).
-[[nodiscard]] std::unique_ptr<char[]> SamplingProfilerTest::InternalAllocArrayOfSize(
-    int64_t alloc_size) {
+[[nodiscard]] ATTRIBUTE_NOINLINE std::unique_ptr<char[]>
+SamplingProfilerTest::InternalAllocArrayOfSize(int64_t alloc_size) {
   std::unique_ptr<char[]> alloc(new char[alloc_size]);
   VLOG(8) << static_cast<void*>(alloc.get());
   return alloc;
@@ -239,7 +239,7 @@ TEST_F(SamplingProfilerTest, EstimatedBytesAndCount) {
       GetAggregateAndSortHeapSnapshot(SampleOrder::kSampledCount, HeapSnapshotType::kCurrentHeap));
 
   // Allocations should get aggregated into one sample.
-  ASSERT_EQ(GetTestAllocs(samples).size(), 1);
+  ASSERT_EQ(GetTestAllocs(samples).size(), 1) << "Samples: " << AsString(samples);
 
   auto estimated_count = *samples[0].second.estimated_count;
   auto margin = kNumAllocations * 0.2;
