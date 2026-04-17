@@ -7899,8 +7899,9 @@ YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 
 	/* Check for a trailing block comment. */
 	end = query + strlen(query);
-	while (end > query && isspace((unsigned char) end[-1]))
+	while (end > query && (isspace((unsigned char) end[-1]) || end[-1] == ';'))
 		end--;
+
 	/*
 	 * Require at least 4 chars (the two-char open and two-char close delimiters)
 	 * and verify the query ends with the star-slash close delimiter.
