@@ -69,6 +69,8 @@ DECLARE_int32(o_direct_block_size_bytes);
 
 DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
 
+DECLARE_int64(TEST_simulate_free_space_bytes);
+
 namespace yb::log {
 
 using namespace std::literals;
@@ -1981,6 +1983,60 @@ TEST_F(LogTest, AsyncRolloverMarker) {
 
   AppendReplicateBatchToLog(kNumEntriesPerBatch, AppendSync::kTrue);
   ASSERT_EQ(log_->active_segment_sequence_number(), seq_no + 1);
+}
+
+// Verifies that when asynchronous WAL segment allocation fails (e.g., disk full), DoAppend
+// detects kAllocationFailed, returns the IO error to the caller, and resets allocation_state_
+// to kAllocationNotStarted. Then, after the fault condition clears (disk space restored), the
+// next append retriggers allocation and the WAL segment rolls over normally.
+TEST_F(LogTest, YB_RELEASE_ONLY_TEST(TestSegmentAllocationFailureAndRecovery)) {
+  const int kSmallSegmentSize = 500;
+  options_.segment_size_bytes = kSmallSegmentSize;
+  options_.async_preallocate_segments = true;
+
+  BuildLog();
+
+  ASSERT_EQ(log_->num_segments(), 1);
+  const auto initial_seq_no = log_->active_segment_sequence_number();
+
+  // Phase 1: Simulate disk full:  PreAllocate will fail with ENOSPC.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = 0;
+
+  const int kEntriesPerBatch = 20;
+  OpIdPB op_id = MakeOpId(1, 1);
+
+  // Appending entries will trigger segment allocation (due to overflow), which will fail with
+  // ENOSPC. When DoAppend detects kAllocationFailed, it returns the IO error and resets
+  // allocation_state_ to kAllocationNotStarted for retry.
+  auto s = AppendNoOps(&op_id, kEntriesPerBatch);
+  ASSERT_TRUE(s.IsIOError()) << "Expected IOError, got: " << s;
+
+  // Rollover never happened: still on the same segment.
+  ASSERT_EQ(log_->active_segment_sequence_number(), initial_seq_no);
+
+  // Verify that SegmentAllocationTask captured the IOError in allocation_status_.
+  auto alloc_status = log_->TEST_GetAllocationStatus();
+  ASSERT_TRUE(alloc_status.IsIOError()) << "Expected IOError, got: " << alloc_status;
+
+  // DoAppend's kAllocationFailed handler already reset the state to kAllocationNotStarted.
+  ASSERT_EQ(log_->allocation_state(), SegmentAllocationState::kAllocationNotStarted);
+
+  // Phase 2: Simulate disk space recovery and verify WAL rollover.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = -1;
+
+  // Write more data. The segment is already past the size limit, so the next append will
+  // trigger a new allocation attempt. With the fault cleared, it succeeds.
+  ASSERT_OK(AppendNoOps(&op_id, kEntriesPerBatch));
+
+  // The allocation should succeed and rollover should happen.
+  ASSERT_OK(WaitFor([&] {
+    return log_->active_segment_sequence_number() > initial_seq_no;
+  }, 10s, "segment rollover after recovery"));
+
+  ASSERT_GT(log_->active_segment_sequence_number(), initial_seq_no);
+  ASSERT_GT(log_->num_segments(), 1);
+
+  ASSERT_OK(log_->Close());
 }
 
 } // namespace yb::log

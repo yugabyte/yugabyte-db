@@ -371,6 +371,10 @@ class PosixWritableFile : public WritableFile {
       YB_LOG_FIRST_N(WARNING, 1) << "Simulating a filesystem without fallocate() support";
       return Status::OK();
     }
+    if (PREDICT_FALSE(FLAGS_TEST_simulate_free_space_bytes >= 0 &&
+                      implicit_cast<uint64_t>(FLAGS_TEST_simulate_free_space_bytes) < size)) {
+      return STATUS_IO_ERROR(filename_, ENOSPC);
+    }
     if (fallocate(fd_, 0, offset, size) < 0) {
       if (errno == EOPNOTSUPP) {
         YB_LOG_FIRST_N(WARNING, 1) << "The filesystem does not support fallocate().";
