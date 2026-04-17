@@ -1269,6 +1269,11 @@ Status TSTabletManager::ApplyTabletSplit(
 
     tcmeta.raft_group_metadata->set_tablet_data_state(TABLET_DATA_READY);
     RETURN_NOT_OK(tcmeta.raft_group_metadata->Flush());
+
+    // This can happen if e.g., enable_flush_retryable_requests is off, or the parent does not
+    // have a flushed bootstrap state.
+    WARN_NOT_OK(tablet_peer->CopyBootstrapStateForTabletSplit(dest_wal_dir),
+                "Failed to copy bootstrap state for tablet split");
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_source_tablet_mark_split_done)) {
@@ -2078,7 +2083,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .client_future = server_->client_future(),
         .clock = scoped_refptr<server::Clock>(server_->clock()),
         .parent_mem_tracker = mem_manager_->tablets_overhead_mem_tracker(),
-        .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
+        .parent_block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
+        .parent_block_based_table_builder_mem_tracker =
+            mem_manager_->block_based_table_builder_mem_tracker(),
         .read_wal_mem_tracker = mem_manager_->read_wal_mem_tracker(),
         .metric_registry = metric_registry_,
         .log_anchor_registry = tablet_peer->log_anchor_registry(),

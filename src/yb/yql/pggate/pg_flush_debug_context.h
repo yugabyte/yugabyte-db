@@ -56,8 +56,9 @@ class PgFlushDebugContext {
   [[nodiscard]] static PgFlushDebugContext EnterDdlTxnMode();
   [[nodiscard]] static PgFlushDebugContext ExitDdlTxnMode();
   [[nodiscard]] static PgFlushDebugContext ExecuteDdl();
-  [[nodiscard]] static PgFlushDebugContext AcquireLock(std::string_view lock_id);
-  [[nodiscard]] static PgFlushDebugContext ReleaseLock(std::string_view lock_id);
+  [[nodiscard]] static PgFlushDebugContext AcquireLock(const YbcAdvisoryLockId& lock_id);
+  [[nodiscard]] static PgFlushDebugContext AcquireLock(const YbcObjectLockId& lock_id);
+  [[nodiscard]] static PgFlushDebugContext ReleaseLock(const YbcObjectLockId& lock_id);
   [[nodiscard]] static PgFlushDebugContext ConflictingRead(
       PgOid table_oid, std::string_view table_name);
   [[nodiscard]] static PgFlushDebugContext ConflictingKeyWrite(
@@ -66,11 +67,8 @@ class PgFlushDebugContext {
   [[nodiscard]] const std::string& ToString() const { return value_; }
 
  private:
-  PgFlushDebugContext() {}
-  explicit PgFlushDebugContext(std::string&& value) : value_(std::move(value)) {}
-
-  template <class... Args>
-  [[nodiscard]] static PgFlushDebugContext DoMake(const char* format, const Args&... args);
+  template<class... Args>
+  PgFlushDebugContext(const char* format, const Args&...);
 
   std::string value_;
 

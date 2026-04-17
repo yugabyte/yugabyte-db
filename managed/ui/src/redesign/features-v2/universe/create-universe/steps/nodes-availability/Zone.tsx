@@ -1,7 +1,7 @@
-import { FC, useContext, useState } from 'react';
+import { FC, useContext, useMemo, useState } from 'react';
 import { values } from 'lodash';
 import { Trans, useTranslation } from 'react-i18next';
-import { Control, Controller, UseFormSetValue, useWatch } from 'react-hook-form';
+import { Control, Controller, UseFormSetValue, useFormContext, useWatch } from 'react-hook-form';
 import { YBInput, YBSelect, YBTooltip, mui } from '@yugabyte-ui-library/core';
 import { PreferredInfoModal } from './index';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
@@ -77,6 +77,9 @@ export const Zone: FC<ZoneProps> = ({
   setValue,
   showNodesCountError = false
 }) => {
+  const {
+    formState: { errors, isSubmitted }
+  } = useFormContext<NodeAvailabilityProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
   });
@@ -91,22 +94,30 @@ export const Zone: FC<ZoneProps> = ({
 
   const availabilityZones = useWatch({ name: 'availabilityZones', control });
   const selectedAzCountInRegion = availabilityZones?.[region.code]?.length ?? 0;
-  const selectedAzNames = new Set(
-    values(availabilityZones ?? {})
-      .flat()
-      .map((selectedZone) => selectedZone.name)
-      .filter(Boolean)
+  const selectedAzNames = useMemo(
+    () =>
+      new Set(
+        values(availabilityZones ?? {})
+          .flat()
+          .map((selectedZone) => selectedZone.name)
+          .filter(Boolean)
+      ),
+    [availabilityZones]
   );
 
-  const zonesCount = Object.keys(availabilityZones)?.reduce(
-    (a, b) => a + availabilityZones[b].length,
-    0
+  const zonesCount = useMemo(
+    () => Object.keys(availabilityZones ?? {}).reduce((a, b) => a + availabilityZones[b].length, 0),
+    [availabilityZones]
   );
 
-  const maxPrefferedRankSelected = values(availabilityZones)
-    .map((az) => az.map((zone) => zone.preffered))
-    .flat()
-    .reduce((a, b) => Math.max(a, b), -1);
+  const maxPrefferedRankSelected = useMemo(
+    () =>
+      values(availabilityZones ?? {})
+        .map((az) => az.map((zone) => zone.preffered))
+        .flat()
+        .reduce((a, b) => Math.max(a, b), -1),
+    [availabilityZones]
+  );
 
   const preferredMenuItems = isPrefferedAllowed
     ? Array.from({ length: zonesCount }, (_, i) => (
@@ -137,7 +148,12 @@ export const Zone: FC<ZoneProps> = ({
       });
     });
 
-    setValue('availabilityZones', updatedAz, { shouldValidate: true });
+    setValue('availabilityZones', updatedAz, {
+      // Avoid validating the entire placement graph on every keypress in guided mode.
+      // Post-submit revalidation is already handled by the step-level effect.
+      shouldValidate: false,
+      shouldDirty: true
+    });
   };
 
   const zone = useWatch({
@@ -145,10 +161,14 @@ export const Zone: FC<ZoneProps> = ({
     control
   });
   const isGuidedMode = resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED;
-  const isRegionLevelFt =
-    resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.REGION_LEVEL;
+
   const isNodeInputEditable =
-    !isRegionLevelFt && (!isGuidedMode || (regionIndex === 0 && index === 0));
+    !isGuidedMode ||
+    (regionIndex === 0 && index === 0);
+  const showAzSelectError =
+    isSubmitted &&
+    (errors as any)?.lesserNodes?.message === 'errMsg.expertAzBlank' &&
+    !zone?.name;
 
   return (
     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '0px 8px' }}>
@@ -162,7 +182,14 @@ export const Zone: FC<ZoneProps> = ({
           <YBSelect
             label="Availability Zone"
             sx={{ width: '300px' }}
-            value={zone.name}
+            error={showAzSelectError}
+            value={zone?.name ?? ''}
+            renderValue={(value) =>
+              !isGuidedMode && (value === '' || value === null || value === undefined)
+                ? 'Select'
+                : (value as string)
+            }
+            selectProps={!isGuidedMode ? ({ displayEmpty: true } as any) : undefined}
             onChange={(e) => {
               const selectedZone = region.zones.find((z) => z.name === e.target.value);
               if (selectedZone) {
@@ -214,13 +241,14 @@ export const Zone: FC<ZoneProps> = ({
                 error={showNodesCountError}
                 value={field.value}
                 onChange={(e) => {
+                  const nextValue = parseInt(e.target.value, 10);
                   if (parseInt(e.target.value) < 1) {
                     return;
                   }
                   if (resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED) {
-                    updateNodeCountAcrossRegions(parseInt(e.target.value));
+                    updateNodeCountAcrossRegions(nextValue);
                   } else {
-                    field.onChange(parseInt(e.target.value));
+                    field.onChange(nextValue);
                   }
                 }}
                 disabled={!isNodeInputEditable}

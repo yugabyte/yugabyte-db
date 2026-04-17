@@ -204,6 +204,9 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
   if (mem_tracker_->id() == kServerMemTrackerName) {
     common_mem_trackers = std::make_unique<CommonMemTrackers>();
 
+    common_mem_trackers->trackers.push_back(MemTracker::CreateTracker(
+        /* byte_limit = */ -1, kUntrackedTrackerName, std::bind(&MemTracker::GetUntrackedMemory)));
+
 #if YB_GOOGLE_TCMALLOC
     RegisterTCMallocTracker("Sum of CPU Cache Freelists", "tcmalloc.cpu_free");
     RegisterTCMallocTracker("Central Cache Freelist", "tcmalloc.central_cache_free");
@@ -672,6 +675,7 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // TLS.
   DisplayIconTile(output, "fa-lock", "TLS", "/tls");
   DisplayIconTile(output, "fa-times", "xCluster", "/xcluster");
+  DisplayIconTile(output, "fa-area-chart", "CPU Profile", "/perf");
 }
 
 void RpcAndWebServerBase::DisplayMemoryIcons(std::stringstream* output) {

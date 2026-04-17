@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <concepts>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,7 +48,6 @@
 #include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_fk_reference_cache.h"
 #include "yb/yql/pggate/pg_function.h"
@@ -67,6 +67,7 @@ namespace yb::pggate {
 class PgDmlRead;
 class PgFlushDebugContext;
 class PgGlobalViewRead;
+class ExplicitRowLockBuffer;
 
 struct PgMemctxComparator {
   using is_transparent = void;
@@ -134,19 +135,6 @@ class PgApiImpl {
   PgMemctx *CreateMemctx();
   Status DestroyMemctx(PgMemctx *memctx);
   Status ResetMemctx(PgMemctx *memctx);
-
-  // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
-  Status AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
-                              PgStatement **handle);
-
-  // Cache function calls in YB Memctx. When Memctx is destroyed, the function is destructed.
-  Status AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunction **handle);
-
-  // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
-  Status AddToCurrentPgMemctx(size_t table_desc_id,
-                              const PgTableDescPtr &table_desc);
-  // Read table descriptor that was cached in YB Memctx.
-  Status GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle);
 
   // Invalidate the sessions table cache.
   Status InvalidateCache(uint64_t min_ysql_catalog_version);
@@ -805,6 +793,7 @@ class PgApiImpl {
   void PauseSysTablePrefetching();
   void ResumeSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
+  bool IsParallelWorker() const;
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
       bool fetch_ybctid);
@@ -953,6 +942,20 @@ class PgApiImpl {
 
   SetupPerformOptionsAccessorTag ClearSessionState();
 
+  template <std::derived_from<PgMemctx::Registrable> R, std::derived_from<R> I>
+  Status AddToCurrentPgMemctx(std::unique_ptr<I> impl, R** handle);
+
+  // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
+  void AddToCurrentPgMemctx(size_t table_desc_id, const PgTableDescPtr& table_desc);
+
+  // Read table descriptor that was cached in YB Memctx.
+  PgTableDesc* GetTabledescFromCurrentPgMemctx(size_t table_desc_id);
+
+  PgMemctx& GetCurrentYbMemctx();
+
+  [[nodiscard]] ExplicitRowLockBuffer& explicit_row_lock_buffer();
+  Result<SetupPerformOptionsAccessorTag> FlushBufferedEntities(const PgFlushDebugContext& dbg_ctx);
+
   class Interrupter;
 
   class TupleIdBuilder {
@@ -996,6 +999,8 @@ class PgApiImpl {
 
   const WaitEventWatcher wait_event_watcher_;
 
+  bool is_parallel_worker_;
+
   PgSharedDataHolder pg_shared_data_;
 
   tserver::TServerSharedData& tserver_shared_object_;
@@ -1017,7 +1022,6 @@ class PgApiImpl {
   BufferingSettings buffering_settings_;
   PgSessionPtr pg_session_;
   PgFKReferenceCache fk_reference_cache_;
-  ExplicitRowLockBuffer explicit_row_lock_buffer_;
 
   ash::WaitStateInfoPtr wait_state_;
 

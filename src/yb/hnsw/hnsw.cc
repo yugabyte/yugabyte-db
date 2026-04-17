@@ -481,7 +481,7 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
   Header MakeHeader() override {
     Header result;
     result.max_block_size = FLAGS_yb_hnsw_max_block_size;
-    result.dimensions = *static_cast<size_t*>(index_.dist_func_param_);
+    result.dimensions = index_.data_size_ / sizeof(YbHnswBuilder::CoordinateType);
     result.vector_data_size = index_.data_size_ + sizeof(VectorData);
     InitVectorDataAmountPerBlock(result, index_.getCurrentElementCount());
     result.max_level = index_.getMaxLevel();
@@ -811,9 +811,5 @@ HnswDistanceType UsearchMetric::Distance(
   return impl_(pointer_cast<const byte_t*>(lhs), pointer_cast<const byte_t*>(rhs));
 }
 
-HnswDistanceType HnswlibMetric::Distance(
-    const std::byte* lhs, const std::byte* rhs) {
-  return func_(lhs, rhs, &dimensions_);
-}
 
 }  // namespace yb::hnsw

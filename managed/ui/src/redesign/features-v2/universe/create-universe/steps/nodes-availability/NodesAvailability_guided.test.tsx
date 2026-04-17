@@ -6,7 +6,7 @@
  *
  * Validation and error-clearing: Tests cover validation on Next and ValidationSchema
  * (AZ count, node count, preferred continuity). Error clearing when form becomes valid
- * is implemented in NodesAvailability.tsx (useEffect); valid-state tests cover "no error when valid".
+ * is implemented in useNodesAvailabilityStep.ts (useEffect); valid-state tests cover "no error when valid".
  */
 
 import { createRef } from 'react';
@@ -270,7 +270,7 @@ describe('NodesAvailabilitySchema', () => {
     ).toThrow();
   });
 
-  it('accepts NODE_LEVEL guided when multiple AZs are within RF-1 cap', () => {
+  it('rejects NODE_LEVEL guided when more than one availability zone is selected', () => {
     const schema = NodesAvailabilitySchema({
       ...minimalResilience,
       [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
@@ -287,10 +287,10 @@ describe('NodesAvailabilitySchema', () => {
 
         useDedicatedNodes: false
       } as any)
-    ).not.toThrow();
+    ).toThrow();
   });
 
-  it('rejects NODE_LEVEL guided when AZ count exceeds RF-1 cap', () => {
+  it('rejects NODE_LEVEL guided when AZ count is three (exactly one required)', () => {
     const schema = NodesAvailabilitySchema({
       ...minimalResilience,
       [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
@@ -490,6 +490,28 @@ describe('NodesAvailability', () => {
   });
 
   describe('Nodes (NODE_LEVEL)', () => {
+    it('does not show Add Availability Zone button for guided NODE_LEVEL', () => {
+      renderNodes(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.NODE_LEVEL,
+          resilienceFactor: 1,
+          regions: [makeRegion('r0', 3)]
+        })
+      );
+      expect(screen.queryByTestId('add-availability-zone-button')).not.toBeInTheDocument();
+    });
+
+    it('shows Add Availability Zone button for guided AZ_LEVEL', () => {
+      renderNodes(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.AZ_LEVEL,
+          resilienceFactor: 1,
+          regions: [makeRegion('r0', 3)]
+        })
+      );
+      expect(screen.getByTestId('add-availability-zone-button')).toBeInTheDocument();
+    });
+
     it('shows lessNodes error for NODE_LEVEL RF 1 when total node count is 2 (need 3)', async () => {
       renderNodesAndTriggerNext(
         getContextValue({
@@ -563,7 +585,7 @@ describe('NodesAvailability', () => {
       });
     });
 
-    it('shows no nodeLevel error for NODE_LEVEL with two AZs when under RF-1 cap', async () => {
+    it('shows nodeLevelGuidedExactlyOneAz when NODE_LEVEL has two availability zones', async () => {
       renderNodesAndTriggerNext(
         getContextValue({
           faultToleranceType: FaultToleranceType.NODE_LEVEL,
@@ -581,12 +603,12 @@ describe('NodesAvailability', () => {
         })
       );
       await waitFor(() => {
-        expect(screen.queryByText('errMsg.nodeLevelAzTooMany')).not.toBeInTheDocument();
+        expect(screen.getByText('errMsg.nodeLevelGuidedExactlyOneAz')).toBeInTheDocument();
         expect(screen.queryByText('errMsg.nodeLevelOneRegionOneAz')).not.toBeInTheDocument();
       });
     });
 
-    it('shows nodeLevelAzTooMany when NODE_LEVEL has more AZs than RF-1 allows', async () => {
+    it('shows nodeLevelGuidedExactlyOneAz when NODE_LEVEL has three availability zones', async () => {
       renderNodesAndTriggerNext(
         getContextValue({
           faultToleranceType: FaultToleranceType.NODE_LEVEL,
@@ -599,7 +621,7 @@ describe('NodesAvailability', () => {
         })
       );
       await waitFor(() => {
-        expect(screen.getByText('errMsg.nodeLevelAzTooMany')).toBeInTheDocument();
+        expect(screen.getByText('errMsg.nodeLevelGuidedExactlyOneAz')).toBeInTheDocument();
       });
     });
 
@@ -730,7 +752,7 @@ describe('NodesAvailability', () => {
       });
     });
 
-    it('keeps node-count inputs non-editable for REGION_LEVEL fault tolerance', async () => {
+    it('keeps node-count input editable for first region\'s first AZ in REGION_LEVEL fault tolerance', async () => {
       renderNodes(
         getContextValue({
           faultToleranceType: FaultToleranceType.REGION_LEVEL,
@@ -741,8 +763,32 @@ describe('NodesAvailability', () => {
 
       const nodeInputs = screen.getAllByTestId('availability-zone-node-count-input');
       expect(nodeInputs).toHaveLength(2);
-      expect(within(nodeInputs[0]).getByRole('spinbutton')).toBeDisabled();
+      expect(within(nodeInputs[0]).getByRole('spinbutton')).toBeEnabled();
       expect(within(nodeInputs[1]).getByRole('spinbutton')).toBeDisabled();
+    });
+  });
+
+  describe('Add Availability Zone visibility (guided mode)', () => {
+    it('does not show Add Availability Zone for REGION_LEVEL fault tolerance', () => {
+      renderNodes(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.REGION_LEVEL,
+          resilienceFactor: 1,
+          regions: [makeRegion('r0', 3), makeRegion('r1', 3)]
+        })
+      );
+      expect(screen.queryByTestId('add-availability-zone-button')).not.toBeInTheDocument();
+    });
+
+    it('does not show Add Availability Zone for NONE fault tolerance', () => {
+      renderNodes(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.NONE,
+          resilienceFactor: 1,
+          regions: [makeRegion('r0', 3)]
+        })
+      );
+      expect(screen.queryByTestId('add-availability-zone-button')).not.toBeInTheDocument();
     });
   });
 

@@ -49,7 +49,7 @@ class ExplicitRowLockBuffer {
     PgOid conflicting_table_id;
   };
 
-  explicit ExplicitRowLockBuffer(const PgSessionPtr& pg_session) : ybctid_reader_(pg_session) {}
+  explicit ExplicitRowLockBuffer(PgSession& session) : ybctid_reader_(session) {}
 
   Status Add(
       const Info& info, const LightweightTableYbctid& key,

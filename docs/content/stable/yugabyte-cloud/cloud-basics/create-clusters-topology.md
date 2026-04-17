@@ -94,7 +94,7 @@ As a mitigation, you can enable [follower reads](../../../explore/going-beyond-s
 **Tradeoffs**
 
 - Write latency can be high (depends on the distance/network packet transfer times)
-- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql) trade off consistency for latency
+- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) trade off consistency for latency
 
 **Fault tolerance**
 

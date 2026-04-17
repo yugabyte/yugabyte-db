@@ -46,6 +46,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_bool(enable_db_clone);
 DECLARE_bool(enable_pg_cron);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
@@ -4851,6 +4852,72 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
       "SELECT id FROM vector_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 1"));
   ASSERT_EQ(p_search, c_search)
       << "Producer and consumer vector search should match (commit_ht < index ht case).";
+}
+
+TEST_F(XClusterDDLReplicationTest, CloneSourceDatabaseIncludesDDLReplicationTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(EnablePITROnClusters());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t1(k int PRIMARY KEY, v int)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO t1 VALUES (1, 100)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto consumer_row =
+      ASSERT_RESULT((consumer_conn_->FetchRow<int32_t, int32_t>("SELECT k, v FROM t1")));
+  ASSERT_EQ(consumer_row, (std::make_tuple(1, 100)));
+
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t1 ADD COLUMN v2 text"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto consumer_col_count = ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 't1'"));
+  ASSERT_EQ(consumer_col_count, 3);
+
+  auto source_schema_count = ASSERT_RESULT(
+      producer_conn_->FetchRow<int64_t>("SELECT COUNT(*) FROM information_schema.schemata "
+                                        "WHERE schema_name = 'yb_xcluster_ddl_replication'"));
+  ASSERT_EQ(source_schema_count, 1);
+
+  const auto clone_db_name = namespace_name + "_clone";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", clone_db_name, namespace_name));
+
+  auto clone_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(clone_db_name));
+
+  auto clone_row = ASSERT_RESULT((clone_conn.FetchRow<int32_t, int32_t>("SELECT k, v FROM t1")));
+  ASSERT_EQ(clone_row, (std::make_tuple(1, 100)));
+
+  auto clone_col_count = ASSERT_RESULT(clone_conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 't1'"));
+  ASSERT_EQ(clone_col_count, 3);
+
+  auto clone_schema_count = ASSERT_RESULT(
+      clone_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM information_schema.schemata "
+                                   "WHERE schema_name = 'yb_xcluster_ddl_replication'"));
+  ASSERT_EQ(clone_schema_count, 1);
+
+  for (const auto& table_name : {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
+    auto result = GetYsqlTable(
+        &producer_cluster_, clone_db_name, xcluster::kDDLQueuePgSchemaName, table_name);
+    ASSERT_TRUE(result.ok()) << "Table " << table_name
+                             << " should exist in the clone: " << result.status();
+  }
+
+  // YBCGetXClusterRole returns NOT_AUTOMATIC_MODE for the cloned db since it is not part of any
+  // xCluster replication group, so the extension should not capture DDLs.
+  auto clone_role = ASSERT_RESULT(clone_conn.FetchRowAsString(
+      "SELECT yb_xcluster_ddl_replication.get_replication_role()"));
+  ASSERT_EQ(clone_role, "not_automatic_mode");
+
+  auto ddl_queue_count_before = ASSERT_RESULT(clone_conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue"));
+  ASSERT_OK(clone_conn.Execute("CREATE TABLE t2(k int PRIMARY KEY)"));
+  auto ddl_queue_count_after = ASSERT_RESULT(clone_conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue"));
+  ASSERT_EQ(ddl_queue_count_before, ddl_queue_count_after)
+      << "Extension should not capture new DDLs in cloned db";
 }
 
 }  // namespace yb

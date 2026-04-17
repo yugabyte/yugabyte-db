@@ -20,6 +20,8 @@ import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Singleton
@@ -102,5 +104,19 @@ public class RuntimeConfGetter {
   @SuppressWarnings("unchecked")
   public <T> ConfKeyInfo<T> getConfKeyInfo(String path, Class<T> type) {
     return (ConfKeyInfo<T>) keyMetaData.get(path);
+  }
+
+  public Map<String, Object> getGlobalConfValues(List<ConfKeyInfo<?>> keys) {
+    Config globalConf = getGlobalConf();
+    Map<String, Object> values = new LinkedHashMap<>();
+    for (ConfKeyInfo<?> keyInfo : keys) {
+      if (keyInfo.scope != ScopeType.GLOBAL) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Key " + keyInfo.getKey() + " isn't defined in Global scope");
+      }
+      values.put(
+          keyInfo.getKey(), keyInfo.getDataType().getGetter().apply(globalConf, keyInfo.key));
+    }
+    return values;
   }
 }

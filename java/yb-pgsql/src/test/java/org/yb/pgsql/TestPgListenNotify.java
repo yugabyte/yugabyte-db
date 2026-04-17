@@ -13,20 +13,15 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertNotNull;
-import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
-import com.yugabyte.PGConnection;
 import com.yugabyte.PGNotification;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -267,13 +262,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
       // Give the restarted poller time to re-stream. If LSN persistence is broken,
       // old notifications would be re-delivered during this window.
-      Thread.sleep(5000);
-
-      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
-      listenerStmt.execute("SELECT 1");
-      PGNotification[] spurious = pgConn.getNotifications();
-      assertTrue("Old notifications should not be re-delivered after poller restart",
-          spurious == null || spurious.length == 0);
+      waitAndAssertNoNotifications(listenerConn,
+          "Old notifications should not be re-delivered after poller restart");
 
       // Verify that the restarted poller delivers new notifications.
       try (Connection notifierConn = getConnectionBuilder().connect();
@@ -398,14 +388,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         stmt.execute("NOTIFY " + CHANNEL + ", 'subtxn_listen_abort'");
       }
 
-      Thread.sleep(5000);
-      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
-      try (Statement stmt = listenerConn.createStatement()) {
-        stmt.execute("SELECT 1");
-      }
-      PGNotification[] notifs = pgConn.getNotifications();
-      assertTrue("Should not receive notifications when LISTEN was in rolled-back subtransaction",
-          notifs == null || notifs.length == 0);
+      waitAndAssertNoNotifications(listenerConn,
+          "Should not receive notifications when LISTEN was in rolled-back subtransaction");
     }
   }
 
@@ -564,14 +548,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         stmt.execute("LISTEN " + CHANNEL);
       }
 
-      Thread.sleep(5000);
-      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
-      try (Statement pollStmt = listenerConn.createStatement()) {
-        pollStmt.execute("SELECT 1");
-      }
-      PGNotification[] stale = pgConn.getNotifications();
-      assertTrue("Expected no spurious notifications after restore",
-          stale == null || stale.length == 0);
+      waitAndAssertNoNotifications(listenerConn,
+          "Expected no spurious notifications after restore");
 
       // Send a new NOTIFY on the restored database and verify delivery.
       try (Connection notifierConn = getConnectionBuilder().withDatabase(restoredDb).connect();
@@ -787,40 +765,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * Polls the given connection for notifications by executing "SELECT 1",
-   * collecting all received notifications until one matching the expected
-   * channel and payload is found. Returns the complete list of notifications
-   * received (including the match).
-   */
-  private List<PGNotification> waitForNotification(Connection connection,
-      String expectedChannel, String expectedPayload) throws Exception {
-    List<PGNotification> allNotifications = new ArrayList<>();
-    PGConnection pgConn = connection.unwrap(PGConnection.class);
-    boolean found = false;
-    try (Statement stmt = connection.createStatement()) {
-      for (int attempt = 0; attempt < 75 && !found; attempt++) {
-        stmt.execute("SELECT 1");
-        PGNotification[] notifications = pgConn.getNotifications();
-        if (notifications != null) {
-          for (PGNotification n : notifications) {
-            allNotifications.add(n);
-            if (n.getName().equals(expectedChannel)
-                && n.getParameter().equals(expectedPayload)) {
-              found = true;
-            }
-          }
-        }
-        if (!found) {
-          Thread.sleep(200);
-        }
-      }
-    }
-    assertTrue("Expected to receive notification on channel '" + expectedChannel
-        + "' with payload '" + expectedPayload + "'", found);
-    return allNotifications;
-  }
-
-  /**
    * Verifies that LISTEN succeeds, and that a NOTIFY sent from another
    * connection is delivered to the listener.
    */
@@ -861,13 +805,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
           notifierStmt.execute("NOTIFY " + channel + ", 'slow'");
         }
 
-        Thread.sleep(15000);
-
-        listenerStmt.execute("SELECT 1");
-        PGConnection pgConn = listener.unwrap(PGConnection.class);
-        PGNotification[] notifs = pgConn.getNotifications();
-        assertFalse("Notification should not arrive within 15s with 30s poll interval",
-            notifs != null && notifs.length > 0);
+        waitAndAssertNoNotifications(listener,
+            "Notification should not arrive within 5s with 30s poll interval");
       }
 
       try (Connection listener = getConnectionBuilder().connect();
@@ -886,6 +825,55 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       }
     } finally {
       setNotificationsPollSleepDurationEmpty("100");
+    }
+  }
+
+  /**
+   * When the notifications poller crashes after writing notifications to the queue but before
+   * persisting the CDC ack, virtual WAL replays the same transaction when the poller process
+   * restarts. Test that duplicate queue entries do not produce duplicate NOTIFY deliveries
+   * (txn-begin markers suppress duplicates on read).
+   */
+  @Test
+  public void testListenNotifyNoDuplicateAfterPollerCrashBeforeAck() throws Exception {
+    final String channel = "chan";
+    final String payload = "payload";
+
+    try {
+      setFatalAfterNotifsQueueWriteFlag(true);
+      Thread.sleep(2000);
+
+      try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+           Connection notifierConn = getConnectionBuilder().withTServer(0).connect()) {
+
+        try (Statement listenerStmt = listenerConn.createStatement()) {
+          listenerStmt.execute("LISTEN " + channel);
+        }
+
+        try (Statement notifierStmt = notifierConn.createStatement()) {
+          notifierStmt.execute("NOTIFY " + channel + ", '" + payload + "'");
+        }
+
+        List<PGNotification> received = waitForNotification(listenerConn, channel, payload);
+        assertEquals(
+            "Expected exactly one NOTIFY for duplicate txn-begin replay suppression",
+            1,
+            received.size());
+
+        waitAndAssertNoNotifications(listenerConn,
+            "Old notifications should not be re-delivered after poller restart");
+      }
+    } finally {
+      setFatalAfterNotifsQueueWriteFlag(false);
+    }
+
+    verifyListenNotifyWorks();
+  }
+
+  private void setFatalAfterNotifsQueueWriteFlag(boolean value) throws Exception {
+    String v = value ? "true" : "false";
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "ysql_yb_test_fatal_after_notifs_queue_write", v);
     }
   }
 

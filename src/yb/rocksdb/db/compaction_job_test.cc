@@ -281,7 +281,8 @@ class CompactionJobTest : public RocksDBTest {
 
     auto compaction = Compaction::Create(
         cfd->current()->storage_info(), *cfd->GetLatestMutableCFOptions(), compaction_input_files,
-        1, 1024 * 1024, 10, 0, kNoCompression, {}, db_options_.info_log.get(), true);
+        1, 1024 * 1024, 10, 0, kNoCompression, {}, /* mem_tracker = */ nullptr,
+        db_options_.info_log.get(), /* manual_compaction = */ true);
     compaction->SetInputVersion(cfd->current());
 
     LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());

@@ -655,8 +655,8 @@ $$) AS (name agtype, bornIn agtype, city agtype);
        name        |    bornin    |                                          city                                           
 -------------------+--------------+-----------------------------------------------------------------------------------------
  "Rob Reiner"      | "New York"   | {"id": 1970324836974593, "label": "City", "properties": {"name": "New York"}}::vertex
- "Martin Sheen"    | "Ohio"       | {"id": 1970324836974595, "label": "City", "properties": {"name": "Ohio"}}::vertex
  "Michael Douglas" | "New Jersey" | {"id": 1970324836974594, "label": "City", "properties": {"name": "New Jersey"}}::vertex
+ "Martin Sheen"    | "Ohio"       | {"id": 1970324836974595, "label": "City", "properties": {"name": "Ohio"}}::vertex
 (3 rows)
 
 --validate

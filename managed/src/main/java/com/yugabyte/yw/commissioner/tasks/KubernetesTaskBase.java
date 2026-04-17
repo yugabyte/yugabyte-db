@@ -3261,6 +3261,38 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
+  protected void validateStorageClassesOnEdit() {
+    for (Cluster newCluster : taskParams().clusters) {
+      PlacementInfo newPI = newCluster.placementInfo;
+      boolean isReadOnlyCluster = newCluster.clusterType == ClusterType.ASYNC;
+      KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster);
+
+      for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
+        UUID azUUID = entry.getKey();
+        Map<String, String> azConfig = entry.getValue();
+
+        for (boolean isDedicatedMaster : new boolean[] {false, true}) {
+          DeviceInfo deviceInfo =
+              newCluster.userIntent.getDeviceInfoForAz(azUUID, isDedicatedMaster);
+          if (deviceInfo == null || StringUtils.isBlank(deviceInfo.storageClass)) {
+            continue;
+          }
+          String storageClassName = deviceInfo.storageClass;
+          try {
+            kubernetesManagerFactory.getManager().getStorageClass(azConfig, storageClassName);
+          } catch (RuntimeException e) {
+            String serverLabel = isDedicatedMaster ? "master" : "tserver";
+            throw new RuntimeException(
+                String.format(
+                    "Storage class '%s' for %s in AZ %s does not exist: %s",
+                    storageClassName, serverLabel, azUUID, e.getMessage()),
+                e);
+          }
+        }
+      }
+    }
+  }
+
   protected Map<UUID, Map<ServerType, String>> getPerAZGflagsChecksumMap(
       String universeName, Cluster cluster) {
     Map<UUID, Map<ServerType, String>> perAZServerTypeGflagsChecksumMap = new HashMap<>();

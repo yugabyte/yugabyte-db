@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/util/is_operation_done_result.h"
 
 namespace yb {
 
@@ -209,6 +210,12 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
+
+  Result<IsOperationDoneResult> IsXClusterFailoverDone(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
+  Status StartXClusterFailover(
+      const xcluster::ReplicationGroupId& replication_group_id);
 
   Status XClusterFailover(
       const xcluster::ReplicationGroupId& replication_group_id);

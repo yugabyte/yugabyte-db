@@ -39,9 +39,7 @@ export const TotalNodeCount = () => {
   const replicationFactor = watch(REPLICATION_FACTOR);
   const totalNodeCount = getNodeCount(az);
   const totalNodesLabel = useDedicatedNodes ? t('totalNodesTserver') : t('totalNodes');
-  if (resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.EXPERT_MODE) {
-    return null;
-  }
+
   return (
     <NodesCount>
       <span>{totalNodesLabel}</span>

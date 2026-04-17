@@ -1,14 +1,7 @@
-import { useContext } from 'react';
-import { isEmpty } from 'lodash';
+import { ReactNode } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { useFormContext } from 'react-hook-form';
 import { mui } from '@yugabyte-ui-library/core';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
-import { RegionCard } from './index';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { NodeAvailabilityProps } from './dtos';
-import { getFaultToleranceNeeded } from '../../CreateUniverseUtils';
-import { TotalNodeCount } from './TotalNodeCount';
 
 import ErrorCircle from '@app/redesign/assets/error-circle.svg?img';
 
@@ -34,31 +27,31 @@ const StyledError = styled(Box)(({ theme }) => ({
 
 interface AvailabilityZonesProps {
   showErrorsAfterSubmit?: boolean;
+  showAvailabilityZonesError: boolean;
+  azCount: number;
+  faultToleranceNeeded: number;
+  topContent?: ReactNode;
+  bottomContent?: ReactNode;
+  children?: ReactNode;
 }
 
-export const AvailabilityZones = ({ showErrorsAfterSubmit = true }: AvailabilityZonesProps) => {
+export const AvailabilityZones = ({
+  showErrorsAfterSubmit = true,
+  showAvailabilityZonesError,
+  azCount,
+  faultToleranceNeeded,
+  topContent,
+  bottomContent,
+  children
+}: AvailabilityZonesProps) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
   });
-  const [{ resilienceAndRegionsSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
-
-  const {
-    watch,
-    formState: { errors }
-  } = useFormContext<NodeAvailabilityProps>();
-
-  const az = watch('availabilityZones');
-  const azCount = Object.keys(az).reduce((acc, region) => acc + az[region].length, 0);
-  const faultToleranceNeeded = getFaultToleranceNeeded(
-    resilienceAndRegionsSettings?.resilienceFactor ?? 1
-  );
 
   return (
     <StyledPanel>
       <StyledHeader>{t('title')}</StyledHeader>
-      {showErrorsAfterSubmit && (errors as any)?.availabilityZones?.message && (
+      {showErrorsAfterSubmit && showAvailabilityZonesError && (
         <StyledError>
           <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
             <img src={ErrorCircle} alt="error" />
@@ -84,12 +77,9 @@ export const AvailabilityZones = ({ showErrorsAfterSubmit = true }: Availability
         </StyledError>
       )}
       <StyledContent sx={{ gap: '16px' }}>
-        {!isEmpty(az) &&
-          Object.keys(az).map((regionCode, index) => {
-            const region = resilienceAndRegionsSettings?.regions.find((r) => r.code === regionCode);
-            return region && <RegionCard key={region.uuid} region={region} index={index} showErrorsAfterSubmit={showErrorsAfterSubmit} />;
-          })}
-          <TotalNodeCount />
+        {topContent}
+        {children}
+        {bottomContent}
       </StyledContent>
     </StyledPanel>
   );

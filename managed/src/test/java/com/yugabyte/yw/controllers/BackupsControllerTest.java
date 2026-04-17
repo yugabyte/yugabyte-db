@@ -58,7 +58,6 @@ import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Restore;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
@@ -340,7 +339,7 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testPreflightApiOldRbac() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     Users user = ModelFactory.testUser(defaultCustomer, "test2@yugabyte.com");
     user.setRole(Users.Role.BackupAdmin);
     user.save();
@@ -362,7 +361,7 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testAdvancedPreflightApiOldRbac() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
     Users user = ModelFactory.testUser(defaultCustomer, "test2@yugabyte.com");
     user.setRole(Users.Role.BackupAdmin);
@@ -1332,7 +1331,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testStopBackupWithPermissions()
       throws IOException, InterruptedException, ExecutionException {
 
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
     RoleBinding.create(defaultUser, RoleBindingType.Custom, role, rG);
 

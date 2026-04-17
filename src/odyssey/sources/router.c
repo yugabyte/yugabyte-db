@@ -704,14 +704,18 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 		if (!is_auth_backend &&
 			(id.yb_db_oid == YB_CTRL_CONN_OID || id.yb_user_oid == YB_CTRL_CONN_OID)) {
 
-				// Set the user and database of control connection pool to "yugabyte"
-				// and "yugabyte" respectively for purpose of creating backends for
-				// auth pass through authentication in control connection pool.
-				strcpy(route->yb_database_name, YB_CTRL_CONN_DB_NAME);
-				route->yb_database_name_len = strlen(YB_CTRL_CONN_DB_NAME);
+			/*
+			 * YB: Set user and database of control connection to that of the
+			 * control conn route. These are populated from the env vars
+			 * `YB_YSQL_CONN_MGR_DB` and `YB_YSQL_CONN_MGR_USER`, which are
+			 * sourced from the gflags `ysql_conn_mgr_internal_conn_db` and
+			 * `ysql_conn_mgr_internal_conn_user` respectively.
+			 */
+			strcpy(route->yb_database_name, route->rule->storage_db);
+			route->yb_database_name_len = strlen(route->rule->storage_db);
 
-				strcpy(route->yb_user_name, YB_CTRL_CONN_USER_NAME);
-				route->yb_user_name_len = strlen(YB_CTRL_CONN_USER_NAME);
+			strcpy(route->yb_user_name, route->rule->storage_user);
+			route->yb_user_name_len = strlen(route->rule->storage_user);
 		}
 		else {
 			strcpy(route->yb_database_name, startup->database.value);

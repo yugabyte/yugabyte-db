@@ -160,7 +160,11 @@ CompressionType GetCompressionType(const ImmutableCFOptions& ioptions,
 
 CompactionPicker::CompactionPicker(const ImmutableCFOptions& ioptions,
                                    const InternalKeyComparator* icmp)
-    : ioptions_(ioptions), icmp_(icmp) {}
+    : ioptions_(ioptions), icmp_(icmp) {
+  if (ioptions.mem_tracker) {
+    mem_tracker_ = yb::MemTracker::FindOrCreateTracker("Compactions", ioptions.mem_tracker);
+  }
+}
 
 CompactionPicker::~CompactionPicker() {}
 
@@ -291,7 +295,7 @@ std::unique_ptr<Compaction> CompactionPicker::FormCompaction(
       vstorage, mutable_cf_options, input_files, output_level,
       compact_options.output_file_size_limit, max_grandparent_overlap_bytes, output_path_id,
       compact_options.compression,
-      /* grandparents = */ std::vector<FileMetaData*>(), ioptions_.info_log, true);
+      /* grandparents = */ std::vector<FileMetaData*>(), mem_tracker_, ioptions_.info_log, true);
 }
 
 Status CompactionPicker::GetCompactionInputsFromFileNumbers(
@@ -554,7 +558,7 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRangeLevel0WithSizeLimit(
       mutable_cf_options.MaxGrandParentOverlapBytes(inputs.level),
       compact_range_options.target_path_id,
       GetCompressionType(ioptions_, kOutputLevel, vstorage->base_level()), /* grandparents = */ {},
-      ioptions_.info_log, /* is manual compaction = */ true, /* score = */ -1,
+      mem_tracker_, ioptions_.info_log, /* is manual compaction = */ true, /* score = */ -1,
       /* deletion_compaction = */ false, compact_range_options.compaction_reason,
       compact_range_options.skip_corrupt_data_blocks_unsafe);
   if (!compaction) {
@@ -619,7 +623,7 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRangeAllLevels(
       mutable_cf_options.MaxFileSizeForLevel(output_level),
       /* max_grandparent_overlap_bytes = */ LLONG_MAX, compact_range_options.target_path_id,
       GetCompressionType(ioptions_, output_level, 1),
-      /* grandparents = */ std::vector<FileMetaData*>(), ioptions_.info_log,
+      /* grandparents = */ std::vector<FileMetaData*>(), mem_tracker_, ioptions_.info_log,
       /* is_manual = */ true, /* score = */ -1, /* deletion_compaction = */ false,
       compact_range_options.compaction_reason,
       compact_range_options.skip_corrupt_data_blocks_unsafe);
@@ -762,7 +766,7 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
       mutable_cf_options.MaxGrandParentOverlapBytes(input_level),
       compact_range_options.target_path_id,
       GetCompressionType(ioptions_, output_level, vstorage->base_level()), std::move(grandparents),
-      ioptions_.info_log, /* is manual compaction = */ true, /* score */ -1,
+      mem_tracker_, ioptions_.info_log, /* is manual compaction = */ true, /* score */ -1,
       /* deletion_compaction */ false, compact_range_options.compaction_reason,
       compact_range_options.skip_corrupt_data_blocks_unsafe);
   if (!compaction) {
@@ -1177,8 +1181,8 @@ std::unique_ptr<Compaction> LevelCompactionPicker::PickCompaction(
       mutable_cf_options.MaxGrandParentOverlapBytes(level),
       GetPathId(ioptions_, mutable_cf_options, output_level),
       GetCompressionType(ioptions_, output_level, vstorage->base_level()), std::move(grandparents),
-      ioptions_.info_log, is_manual, score,
-      /* deletion_compaction = */ false, compaction_reason);
+      mem_tracker_, ioptions_.info_log, is_manual, score, /* deletion_compaction = */ false,
+      compaction_reason);
   if (!c) {
     return nullptr;
   }
@@ -1915,9 +1919,8 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalRe
       vstorage, mutable_cf_options, std::move(inputs), output_level,
       mutable_cf_options.MaxFileSizeForLevel(output_level), LLONG_MAX, path_id,
       GetCompressionType(ioptions_, start_level, 1, enable_compression),
-      /* grandparents = */ std::vector<FileMetaData*>(), ioptions_.info_log,
-      /* is_manual = */ false, score,
-      /* deletion_compaction = */ false, compaction_reason);
+      /* grandparents = */ std::vector<FileMetaData*>(), mem_tracker_, ioptions_.info_log,
+      /* is_manual = */ false, score, /* deletion_compaction = */ false, compaction_reason);
 }
 
 // Look to see if all files within the run are marked for deletion.
@@ -1973,6 +1976,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalDe
       /* path_id = */ 0,
       GetCompressionType(ioptions_, 0, 1),
       /* grandparents = */ {},
+      mem_tracker_,
       ioptions_.info_log,
       /* is manual = */ false,
       score,
@@ -2101,8 +2105,9 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalSi
       mutable_cf_options.MaxFileSizeForLevel(vstorage->num_levels() - 1),
       /* max_grandparent_overlap_bytes */ LLONG_MAX, path_id,
       GetCompressionType(ioptions_, vstorage->num_levels() - 1, 1),
-      /* grandparents */ std::vector<FileMetaData*>(), ioptions_.info_log, /* is manual = */ false,
-      score, false /* deletion_compaction */, CompactionReason::kUniversalSizeAmplification);
+      /* grandparents */ std::vector<FileMetaData*>(), mem_tracker_, ioptions_.info_log,
+      /* is manual = */ false, score, false /* deletion_compaction */,
+      CompactionReason::kUniversalSizeAmplification);
 }
 
 bool FIFOCompactionPicker::NeedsCompaction(const VersionStorageInfo* vstorage)
@@ -2161,9 +2166,9 @@ std::unique_ptr<Compaction> FIFOCompactionPicker::PickCompaction(
   auto c = Compaction::Create(
       vstorage, mutable_cf_options, std::move(inputs), 0 /* output_level */,
       0 /* target_file_size */, 0 /* max_grandparent_overlap_bytes */, 0 /* output_path_id */,
-      kNoCompression, std::vector<FileMetaData*>(), ioptions_.info_log, /* is manual */ false,
-      vstorage->CompactionScore(0),
-      /* is deletion compaction */ true, CompactionReason::kFIFOMaxSize);
+      kNoCompression, std::vector<FileMetaData*>(), mem_tracker_, ioptions_.info_log,
+      /* is manual */ false, vstorage->CompactionScore(0), /* is deletion compaction */ true,
+      CompactionReason::kFIFOMaxSize);
   if (c) {
     level0_compactions_in_progress_.insert(c.get());
   }

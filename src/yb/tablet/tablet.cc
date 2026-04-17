@@ -701,7 +701,9 @@ Tablet::Tablet(const TabletInitData& data)
       mem_tracker_(MemTracker::FindOrCreateTracker(
           Format("tablet-$0", tablet_id()), /* metric_name */ "PerTablet", data.parent_mem_tracker,
               AddToParent::kTrue, CreateMetrics::kFalse)),
-      block_based_table_mem_tracker_(data.block_based_table_mem_tracker),
+      parent_block_based_table_mem_tracker_(data.parent_block_based_table_mem_tracker),
+      parent_block_based_table_builder_mem_tracker_(
+          data.parent_block_based_table_builder_mem_tracker),
       clock_(data.clock),
       mvcc_(
           MakeTabletLogPrefix(data.metadata->raft_group_id(), data.log_prefix_suffix), data.clock),
@@ -823,11 +825,17 @@ Tablet::~Tablet() {
       CompleteShutdown(DisableFlushOnShutdown::kTrue, AbortOps::kFalse);
     }
   }
-  if (regulardb_mem_tracker_) {
-    regulardb_mem_tracker_->UnregisterFromParent();
+  if (regulardb_block_based_table_mem_tracker_) {
+    regulardb_block_based_table_mem_tracker_->UnregisterFromParent();
   }
-  if (intentdb_mem_tracker_) {
-    intentdb_mem_tracker_->UnregisterFromParent();
+  if (regulardb_block_based_table_builder_mem_tracker_) {
+    regulardb_block_based_table_builder_mem_tracker_->UnregisterFromParent();
+  }
+  if (intentsdb_block_based_table_mem_tracker_) {
+    intentsdb_block_based_table_mem_tracker_->UnregisterFromParent();
+  }
+  if (intentsdb_block_based_table_builder_mem_tracker_) {
+    intentsdb_block_based_table_builder_mem_tracker_->UnregisterFromParent();
   }
   if (metric_mem_tracker_) {
     metric_mem_tracker_->UnregisterFromParent();
@@ -1205,14 +1213,25 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   regular_rocksdb_options.listeners.push_back(
       std::make_shared<RegularRocksDbListener>(*this, regular_rocksdb_options.log_prefix));
   regular_rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kRegularDB, mem_tracker_);
-  regulardb_mem_tracker_ = MemTracker::FindOrCreateTracker(
+  regulardb_block_based_table_mem_tracker_ = MemTracker::FindOrCreateTracker(
       Format("$0-$1", kRegularDB, tablet_id()), /* metric_name */ kRegularDB,
-          block_based_table_mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
-  regular_rocksdb_options.block_based_table_mem_tracker = regulardb_mem_tracker_;
+      parent_block_based_table_mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
+  regular_rocksdb_options.block_based_table_mem_tracker = regulardb_block_based_table_mem_tracker_;
+  if (parent_block_based_table_builder_mem_tracker_) {
+    regulardb_block_based_table_builder_mem_tracker_ = MemTracker::FindOrCreateTracker(
+        Format("$0-$1", kRegularDB, tablet_id()), /* metric_name */ kRegularDB,
+        parent_block_based_table_builder_mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
+    regular_rocksdb_options.block_based_table_builder_mem_tracker =
+        regulardb_block_based_table_builder_mem_tracker_;
+  }
 
   // We may not have a metrics_entity_ instantiated in tests.
   if (tablet_metrics_entity_) {
     regular_rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(tablet_metrics_entity_);
+    if (regular_rocksdb_options.block_based_table_builder_mem_tracker) {
+      regular_rocksdb_options.block_based_table_builder_mem_tracker->SetMetricEntity(
+          tablet_metrics_entity_);
+    }
   }
 
   const auto& db_dir = metadata()->rocksdb_dir();
@@ -1270,14 +1289,25 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
       std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this, &key_bounds_) : nullptr;
 
   intents_rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kIntentsDB, mem_tracker_);
-  intentdb_mem_tracker_ = MemTracker::FindOrCreateTracker(
+  intentsdb_block_based_table_mem_tracker_ = MemTracker::FindOrCreateTracker(
       Format("$0-$1", kIntentsDB, tablet_id()), /* metric_name */ kIntentsDB,
-          block_based_table_mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
-  intents_rocksdb_options.block_based_table_mem_tracker = intentdb_mem_tracker_;
+      parent_block_based_table_mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
+  intents_rocksdb_options.block_based_table_mem_tracker = intentsdb_block_based_table_mem_tracker_;
+  if (parent_block_based_table_builder_mem_tracker_) {
+    intentsdb_block_based_table_builder_mem_tracker_ = MemTracker::FindOrCreateTracker(
+        Format("$0-$1", kIntentsDB, tablet_id()), /* metric_name */ kIntentsDB,
+        parent_block_based_table_builder_mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
+    intents_rocksdb_options.block_based_table_builder_mem_tracker =
+        intentsdb_block_based_table_builder_mem_tracker_;
+  }
   // We may not have a metrics_entity_ instantiated in tests.
   if (tablet_metrics_entity_) {
     intents_rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(
         tablet_metrics_entity_);
+    if (intents_rocksdb_options.block_based_table_builder_mem_tracker) {
+      intents_rocksdb_options.block_based_table_builder_mem_tracker->SetMetricEntity(
+          tablet_metrics_entity_);
+    }
   }
 
   intents_rocksdb_options.listeners.push_back(

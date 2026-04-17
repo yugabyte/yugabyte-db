@@ -240,6 +240,20 @@ public class NodeManager extends DevopsBase {
   public UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
+      // Use the placementUuid from the task params if available to find the correct cluster.
+      // This is important for nodes not yet in the universe (e.g. ToBeAdded read replica nodes),
+      // where falling back to an arbitrary node could resolve to the wrong cluster's userIntent.
+      if (nodeTaskParam.placementUuid != null) {
+        Cluster cluster =
+            universe.getUniverseDetails().getClusterByUuid(nodeTaskParam.placementUuid);
+        if (cluster != null) {
+          log.info(
+              "Node {} not found, using placementUuid {} to resolve cluster.",
+              nodeTaskParam.nodeName,
+              nodeTaskParam.placementUuid);
+          return cluster.userIntent;
+        }
+      }
       Iterator<NodeDetails> nodeIter = universe.getUniverseDetails().nodeDetailsSet.iterator();
       if (!nodeIter.hasNext()) {
         throw new RuntimeException("No node is found in universe " + universe.getName());

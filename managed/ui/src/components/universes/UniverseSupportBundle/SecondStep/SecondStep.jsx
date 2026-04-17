@@ -1295,7 +1295,7 @@ export const SecondStep = ({
                               handleOptionsChange(changedOptions);
                             }}
                             checkState={prometheusMetricsParams.promDumpDownSample !== false}
-                          label="Downsample metrics (use step from runtime config)"
+                          label="Downsample metrics"
                           />
                         </Box>
                       </div>

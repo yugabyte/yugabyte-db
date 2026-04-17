@@ -1,11 +1,14 @@
 package com.yugabyte.yw.common.pa;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.metrics.MetricUrlProvider;
 import com.yugabyte.yw.models.Customer;
@@ -13,6 +16,7 @@ import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
@@ -36,6 +40,7 @@ public class EmbeddedCollectorInitializer {
   private final MetricUrlProvider metricUrlProvider;
   private final RoleBindingUtil roleBindingUtil;
   private final PlatformScheduler platformScheduler;
+  private final MetricService metricService;
 
   @Inject
   public EmbeddedCollectorInitializer(
@@ -43,12 +48,14 @@ public class EmbeddedCollectorInitializer {
       PerfAdvisorService perfAdvisorService,
       MetricUrlProvider metricUrlProvider,
       RoleBindingUtil roleBindingUtil,
-      PlatformScheduler platformScheduler) {
+      PlatformScheduler platformScheduler,
+      MetricService metricService) {
     this.configFactory = configFactory;
     this.perfAdvisorService = perfAdvisorService;
     this.metricUrlProvider = metricUrlProvider;
     this.roleBindingUtil = roleBindingUtil;
     this.platformScheduler = platformScheduler;
+    this.metricService = metricService;
   }
 
   public void start() {
@@ -60,6 +67,18 @@ public class EmbeddedCollectorInitializer {
   }
 
   private void initialize() {
+    try {
+      initializeInternal();
+      metricService.setOkStatusMetric(
+          buildMetricTemplate(PlatformMetrics.PA_EMBEDDED_COLLECTOR_INIT_STATUS));
+    } catch (Exception e) {
+      log.error("Failed to initialize embedded PA collector", e);
+      metricService.setFailureStatusMetric(
+          buildMetricTemplate(PlatformMetrics.PA_EMBEDDED_COLLECTOR_INIT_STATUS));
+    }
+  }
+
+  private void initializeInternal() {
     String embeddedPaUrl = configFactory.staticApplicationConf().getString("yb.pa.url");
     String embeddedPaToken = configFactory.staticApplicationConf().getString("yb.pa.api_token");
     String platformUrl = configFactory.staticApplicationConf().getString("yb.platform.url");

@@ -9,11 +9,13 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.ImmutableSet;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -164,7 +166,7 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     }
 
     if (canaryUpgradeConfig != null) {
-      validateCanaryUpgradeConfig(universe);
+      validateCanaryUpgradeConfig(universe, runtimeConfigFactory);
     }
   }
 
@@ -174,7 +176,22 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
    * and no AZ-level pause points (see CanaryUpgradeConfig API docs). Only non-null step lists are
    * validated for AZ membership.
    */
-  private void validateCanaryUpgradeConfig(Universe universe) {
+  private void validateCanaryUpgradeConfig(
+      Universe universe, RuntimeConfigFactory runtimeConfigFactory) {
+    Config universeConfig = runtimeConfigFactory.forUniverse(universe);
+    long masterStagePause =
+        universeConfig.getLong(UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey());
+    long tserverStagePause =
+        universeConfig.getLong(UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey());
+    if (masterStagePause != 0 || tserverStagePause != 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Canary upgrade cannot be used when per-AZ stage pause durations are non-zero."
+              + " Set yb.upgrade.upgrade_master_stage_pause_duration_ms and"
+              + " yb.upgrade.upgrade_tserver_stage_pause_duration_ms to 0 before using canary"
+              + " upgrade.");
+    }
+
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     UUID primaryClusterUuid = details.getPrimaryCluster().uuid;
 

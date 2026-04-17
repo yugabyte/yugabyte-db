@@ -161,9 +161,9 @@ libraryDependencies ++= Seq(
   guice,
   "org.postgresql" % "postgresql" % "42.5.6",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
-  "ch.qos.logback" % "logback-classic" % "1.4.14",
+  "ch.qos.logback" % "logback-classic" % "1.5.32",
   "org.codehaus.janino" % "janino" % "3.1.9",
-  "org.apache.commons" % "commons-lang3" % "3.17.0",
+  "org.apache.commons" % "commons-lang3" % "3.20.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
   "org.apache.commons" % "commons-compress" % "1.27.1",
   "org.apache.commons" % "commons-csv" % "1.13.0",
@@ -206,7 +206,7 @@ libraryDependencies ++= Seq(
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0",
   "com.github.seancfoley" % "ipaddress" % "2.0.1",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
-  "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
+  "org.eclipse.angus" % "jakarta.mail" % "2.0.5",
   "javax.validation" % "validation-api" % "2.0.1.Final",
   "io.prometheus" % "prometheus-metrics-core" % "1.4.3",
   "io.prometheus" % "prometheus-metrics-exporter-httpserver" % "1.4.3",
@@ -215,8 +215,8 @@ libraryDependencies ++= Seq(
   "org.pac4j" %% "play-pac4j" % "11.0.0-PLAY2.8",
   "org.pac4j" % "pac4j-oauth" % "5.7.7" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "5.7.7"  exclude("commons-io" , "commons-io"),
-  "com.nimbusds" % "nimbus-jose-jwt" % "9.37.2",
-  "com.nimbusds" % "oauth2-oidc-sdk" % "10.1",
+  "com.nimbusds" % "nimbus-jose-jwt" % "10.8",
+  "com.nimbusds" % "oauth2-oidc-sdk" % "11.34",
   "commons-validator" % "commons-validator" % "1.10.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
@@ -235,11 +235,11 @@ libraryDependencies ++= Seq(
   "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.57.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.57.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.57.2", 
+  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.57.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.57.2",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
-  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "3.1.0",
   // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/
   "com.google.protobuf" % "protobuf-java" % "4.33.0",
   "com.google.protobuf" % "protobuf-java-util" % "4.33.0",
@@ -249,11 +249,11 @@ libraryDependencies ++= Seq(
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.7",
-  "io.fabric8" % "crd-generator-apt" % "6.8.0",
-  "io.fabric8" % "kubernetes-client" % "6.8.0",
-  "io.fabric8" % "kubernetes-client-api" % "6.8.0",
-  "io.fabric8" % "kubernetes-model" % "6.8.0",
-  "io.fabric8" % "kubernetes-server-mock" % "6.8.0",
+  "io.fabric8" % "crd-generator-apt" % "6.14.0",
+  "io.fabric8" % "kubernetes-client" % "6.14.0",
+  "io.fabric8" % "kubernetes-client-api" % "6.14.0",
+  "io.fabric8" % "kubernetes-model-core" % "6.14.0",
+  "io.fabric8" % "kubernetes-server-mock" % "6.14.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -610,6 +610,13 @@ openApiFormat / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi" / ** / "[!_]*.yaml"
 openApiFormat := {
   import java.nio.file.Path
+  def installOpenapiFormat(): Unit = {
+    ybLog(s"Install openapi-format if required")
+    val rc = Process(s"./openapi_format_install.sh", baseDirectory.value / "scripts").!
+    if (rc != 0) {
+      throw new RuntimeException("openapi format installation failed!!!")
+    }
+  }
   def formatFile(file: Path): Unit = {
     ybLog(s"formatting api file $file")
     val rc = Process(s"./openapi_format.sh $file", baseDirectory.value / "scripts").!
@@ -619,6 +626,7 @@ openApiFormat := {
   }
   val changes = openApiFormat.inputFileChanges
   val changedFiles = (changes.created ++ changes.modified).toSet
+  installOpenapiFormat()
   changedFiles.par.foreach(formatFile)
 }
 
@@ -647,7 +655,7 @@ lazy val openApiProcessServer = taskKey[Seq[File]]("Process OpenApi files")
 Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi" / ** / "[!_]*.yaml"
 Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
-    "src/main/resources/openapi_templates" / ** / "*.mustache"
+    "src/main/resources/openapi_templates/server" / ** / "*.mustache"
 // Process and compile open api files
 Compile / openApiProcessServer := {
   if (openApiProcessServer.inputFileChanges.hasChanges ||
@@ -704,6 +712,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
+    openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
     version := "1.0.0",
     target := file("client/java/target/v2"),
   )
@@ -874,6 +883,8 @@ def cleanYbaCliPackage(goos: String, directory: java.io.File): Int = {
 
 lazy val openApiProcessClients = taskKey[Unit]("Generate and compile openapi clients")
 openApiProcessClients / fileInputs += baseDirectory.value.toGlob / "src/main/resources/openapi.yaml"
+openApiProcessClients / fileInputs += baseDirectory.value.toGlob /
+  "src/main/resources/openapi_templates/clients" / ** / "*.mustache"
 openApiProcessClients := {
   if (openApiProcessClients.inputFileChanges.hasChanges |
       !(baseDirectory.value / "client/java/v2/build.sbt").exists() ||
@@ -929,7 +940,7 @@ lazy val javaGenV2Server = project.in(file("target/openapi"))
     openApiInputSpec := (baseDirectory.value / resDir / "openapi.yaml").absolutePath,
     openApiOutputDir := (baseDirectory.value / "src/main/java/").absolutePath,
     openApiConfigFile := (baseDirectory.value / resDir / "openapi-java-server-config.json").absolutePath,
-    openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/").absolutePath,
+    openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/server/").absolutePath,
     openApiValidateSpec := SettingDisabled,
     openApiGenerate := (openApiGenerate dependsOn openApiCopyIgnoreFile).value,
     // style plugin configurations
@@ -1010,7 +1021,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.114-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b2"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b3"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
@@ -1022,7 +1033,9 @@ libraryDependencies ++= Seq(
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.128.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.132.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.132.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.132.Final"
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client. The
@@ -1064,7 +1077,7 @@ val pekkoOverrides = pekkoLibs.map(_ % pekkoVersion)
 
 dependencyOverrides ++= pekkoOverrides
 
-val jacksonVersion         = "2.17.1"
+val jacksonVersion         = "2.18.6"
 
 val jacksonLibs = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",

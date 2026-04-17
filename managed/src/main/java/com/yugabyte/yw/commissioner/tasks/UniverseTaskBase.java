@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.WRITE_READ_TABLE;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -368,6 +369,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private static final Set<TaskType> ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS =
       ImmutableSet.of(TaskType.SoftwareKubernetesUpgradeYB, TaskType.SoftwareUpgradeYB);
 
+  /** Tasks allowed while a canary software upgrade is paused at a checkpoint. */
+  private static final Set<TaskType> TASKS_ALLOWED_DURING_CANARY_PAUSE =
+      ImmutableSet.of(
+          TaskType.SoftwareUpgradeYB,
+          TaskType.SoftwareKubernetesUpgradeYB,
+          TaskType.RollbackUpgrade,
+          TaskType.RollbackKubernetesUpgrade,
+          TaskType.DestroyUniverse,
+          TaskType.DestroyKubernetesUniverse);
+
   protected Set<UUID> lockedXClusterUniversesUuidSet = null;
 
   protected static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
@@ -592,6 +603,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return the allowed tasks.
    */
   public static AllowedTasks getAllowedTasksOnFailure(TaskInfo placementModificationTaskInfo) {
+    // A paused task (e.g. canary software upgrade checkpoint) is not a failure.
+    // The paused state is handled separately by validateUniverseState.
+    if (placementModificationTaskInfo.getTaskState() == TaskInfo.State.Paused) {
+      return AllowedTasks.builder().build();
+    }
     TaskType lockedTaskType = placementModificationTaskInfo.getTaskType();
     AllowedTasks.AllowedTasksBuilder builder =
         AllowedTasks.builder().lockedTaskType(lockedTaskType);
@@ -751,6 +767,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       String msg = "Universe " + universe.getUniverseUUID() + " is currently paused";
       log.error(msg);
       throw new RuntimeException(msg);
+    }
+    if (universeDetails.softwareUpgradeState
+        == UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused) {
+      if (!TASKS_ALLOWED_DURING_CANARY_PAUSE.contains(taskType)) {
+        String msg =
+            "Universe "
+                + universe.getUniverseUUID()
+                + " has a paused canary software upgrade."
+                + " Only rollback or resume of the upgrade is allowed.";
+        log.error(msg);
+        throw new PlatformServiceException(BAD_REQUEST, msg);
+      }
     }
     // If this universe is already being edited, fail the request.
     if (universeDetails.updateInProgress) {

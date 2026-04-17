@@ -13,6 +13,7 @@ import (
 	"node-agent/ynp/module/provision/clockbound"
 	"node-agent/ynp/module/provision/configurecoredump"
 	"node-agent/ynp/module/provision/configureos"
+	"node-agent/ynp/module/provision/configureruntimecgroups"
 	"node-agent/ynp/module/provision/configuresudoers"
 	"node-agent/ynp/module/provision/configurethp"
 	"node-agent/ynp/module/provision/disablednfautomatic"
@@ -200,6 +201,7 @@ func (pc *ProvisionCommand) RegisterModules() error {
 	pc.registerModule(rebootnode.NewRebootNode(modulesPath))
 	pc.registerModule(sshd.NewConfigureSshD(modulesPath))
 	pc.registerModule(systemd.NewConfigureSystemd(modulesPath))
+	pc.registerModule(configureruntimecgroups.NewConfigureRuntimeCgroups(modulesPath))
 	pc.registerModule(updateos.NewUpdateOS(modulesPath))
 	pc.registerModule(ybmami.NewConfigureYBMAMI(modulesPath))
 	pc.registerModule(yugabyte.NewCreateYugabyteUser(modulesPath))

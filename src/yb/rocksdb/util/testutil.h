@@ -63,6 +63,8 @@ class RocksDBTest : public ::testing::Test {
   }
 };
 
+const yb::MemTrackerPtr& test_mem_tracker();
+
 namespace test {
 
 extern std::string RandomHumanReadableString(Random* rnd, int len);

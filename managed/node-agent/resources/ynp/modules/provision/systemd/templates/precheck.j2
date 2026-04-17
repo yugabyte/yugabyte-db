@@ -31,6 +31,53 @@ systemd_dir="/etc/systemd/system"
     fi
 {% endif %}
 
+{% if configure_cgroup == 'True' %}
+YB_HOME="{{ yb_home_dir }}"
+YB_USER="{{ yb_user }}"
+CGROUP_TYPE_FILE="${YB_HOME}/.yugabyte/cgroup_type"
+CGROUP_V1_CPU_FILE="${YB_HOME}/.yugabyte/cgroup_v1_cpu"
+{% raw %}
+if [ -f "$CGROUP_TYPE_FILE" ]; then
+    cg_type=$(tr -d '\r\n' < "$CGROUP_TYPE_FILE")
+    if [ "$cg_type" = "v1" ]; then
+        # Verify the boot oneshot unit is installed and enabled.
+        V1_BOOT_UNIT="yb-cgroup-v1-setup.service"
+        if ! systemctl is-enabled "$V1_BOOT_UNIT" >/dev/null 2>&1; then
+            add_result "Cgroup v1 boot oneshot" "FAIL" \
+                "$V1_BOOT_UNIT is not enabled"
+        else
+            add_result "Cgroup v1 boot oneshot" "PASS" \
+                "$V1_BOOT_UNIT is enabled"
+        fi
+
+        if [ -f "$CGROUP_V1_CPU_FILE" ]; then
+            v1_cpu=$(tr -d '\r\n' < "$CGROUP_V1_CPU_FILE")
+            if [ -n "$v1_cpu" ] && [ -d "$v1_cpu" ]; then
+                leaf="${v1_cpu}/yugabyte-db"
+                if [ ! -d "$leaf" ]; then
+                    add_result "Cgroup v1 leaf directory" "FAIL" \
+                        "$leaf does not exist; $V1_BOOT_UNIT may not have run"
+                else
+                    if [ "$(id -u)" -eq 0 ]; then
+                        writable=$(su -s /bin/sh "$YB_USER" -c "test -w '$leaf'" 2>/dev/null && echo yes || echo no)
+                    else
+                        writable=$(test -w "$leaf" && echo yes || echo no)
+                    fi
+                    if [ "$writable" = "yes" ]; then
+                        add_result "Cgroup v1 leaf directory" "PASS" \
+                            "$leaf exists and is writable by $YB_USER"
+                    else
+                        add_result "Cgroup v1 leaf directory" "FAIL" \
+                            "$leaf is not writable by $YB_USER"
+                    fi
+                fi
+            fi
+        fi
+    fi
+fi
+{% endraw %}
+{% endif %}
+
 {% for service_file in service_files | split_string %}
     if [ ! -f "$systemd_dir"/{{ service_file }} ]; then
         echo "Systemd unit {{ service_file }} is not configured."

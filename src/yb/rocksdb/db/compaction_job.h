@@ -152,6 +152,7 @@ class CompactionJob {
   // DBImpl state
   const std::string& dbname_;
   const DBOptions& db_options_;
+  std::unique_ptr<EnvOptions> TEST_env_options_override_;
   const EnvOptions& env_options_;
   Env* env_;
   VersionSet* versions_;

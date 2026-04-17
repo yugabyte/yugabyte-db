@@ -11,6 +11,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -36,13 +37,16 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -115,6 +119,12 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             mock(XClusterUniverseService.class),
             mock(TelemetryProviderService.class),
             mock(SoftwareUpgradeHelper.class));
+
+    lenient()
+        .when(
+            runtimeConfGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.enableCanaryUpgrade)))
+        .thenReturn(true);
   }
 
   private static Object[] tlsToggleCustomTypeNameParams() {
@@ -1306,6 +1316,87 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
       CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
       assertEquals(existingRootCA, capturedParams.getClientRootCA());
     }
+  }
+
+  @Test
+  public void testUpgradeDBVersionCanaryRejectedWhenFlagDisabled() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.ybSoftwareVersion = "2.21.0.0-b2";
+    params.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+
+    when(runtimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.enableCanaryUpgrade)))
+        .thenReturn(false);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.upgradeDBVersion(params, c, Universe.getOrBadRequest(u.getUniverseUUID())));
+    assertEquals(400, ex.getHttpStatus());
+    assertTrue(ex.getMessage().contains("Canary upgrade is disabled"));
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testUpgradeDBVersionCanarySucceedsWhenFlagEnabled() {
+    when(runtimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.enableYbcForUniverse)))
+        .thenReturn(false);
+    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcCompatibleDbVersion)))
+        .thenReturn("2.17.0.0-b1");
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                  "2.20.2.0-b1";
+            });
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    // Stable -> stable upgrade (avoids preview/stable check); both >= YBDB rollback threshold.
+    params.ybSoftwareVersion = "2.22.0.0-b1";
+    params.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+
+    UUID fakeTaskUuid = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgradeYB);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUuid);
+
+    UUID result =
+        handler.upgradeDBVersion(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    assertEquals(fakeTaskUuid, result);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.SoftwareUpgradeYB), any(SoftwareUpgradeParams.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsWhenFlagDisabled() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    when(runtimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.enableCanaryUpgrade)))
+        .thenReturn(false);
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.resumeCanarySoftwareUpgrade(c.getUuid(), u.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("Canary upgrade is disabled"));
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
   }
 
   @Test

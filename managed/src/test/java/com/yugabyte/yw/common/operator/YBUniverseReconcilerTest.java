@@ -823,10 +823,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     az2Volume.setNumVolumes(5L);
     perAZMap.put("az-2", az2Volume);
 
-    tserverVolume.setPerAZ(perAZMap);
+    // Create existing universe WITHOUT perAZ overrides first
     ybUniverse.getSpec().setTserverVolume(tserverVolume);
-
-    // Create existing universe
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
     Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
@@ -867,12 +865,16 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         });
     existingUniverse = Universe.getOrBadRequest(existingUniverse.getUniverseUUID());
 
+    // Now add perAZ overrides to the CR to trigger a device info change
+    tserverVolume.setPerAZ(perAZMap);
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+
     Mockito.when(
             confGetter.getConfForScope(
                 any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
         .thenReturn(10000);
 
-    // Call editUniverse
+    // Call editUniverse - should trigger deviceInfo change due to new perAZ overrides
     ybUniverseReconciler.editUniverse(defaultCustomer, existingUniverse, ybUniverse);
 
     // Verify that universeCRUDHandler.configure and update were called
@@ -924,14 +926,13 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     String universeName = "test-no-peraz-overrides";
     YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
 
-    // Remove old deviceInfo and set tserverVolume WITHOUT perAZ
+    // Remove old deviceInfo and set tserverVolume WITHOUT perAZ (initial smaller volume)
     ybUniverse.getSpec().setDeviceInfo(null);
     io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume =
         new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume();
-    tserverVolume.setVolumeSize(100L);
+    tserverVolume.setVolumeSize(50L);
     tserverVolume.setNumVolumes(3L);
     tserverVolume.setStorageClass("base-storage");
-    // perAZ is null - should not apply AZ overrides
     tserverVolume.setPerAZ(null);
     ybUniverse.getSpec().setTserverVolume(tserverVolume);
 
@@ -939,7 +940,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
     AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
 
-    // Create existing universe
+    // Create existing universe with the initial volume size
     UniverseDefinitionTaskParams taskParams =
         ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
     Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
@@ -974,12 +975,16 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         });
     existingUniverse = Universe.getOrBadRequest(existingUniverse.getUniverseUUID());
 
+    // Now update the CR to a larger volume size (still no perAZ) to trigger an edit
+    tserverVolume.setVolumeSize(100L);
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+
     Mockito.when(
             confGetter.getConfForScope(
                 any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
         .thenReturn(10000);
 
-    // Call editUniverse
+    // Call editUniverse - should detect volumeSize change
     ybUniverseReconciler.editUniverse(defaultCustomer, existingUniverse, ybUniverse);
 
     // Verify that universeCRUDHandler.configure and update were called

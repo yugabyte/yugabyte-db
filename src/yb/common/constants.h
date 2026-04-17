@@ -41,6 +41,7 @@ YB_DEFINE_ENUM(SortingType,
 static const char* const kObsoleteShortPrimaryTableId = "sys.catalog.uuid";
 
 constexpr auto kPitrFeatureName = "PITR";
+constexpr auto kXClusterFailoverFeatureName = "xCluster failover";
 
 constexpr auto kCDCSDKSlotEntryTabletId = "dummy_id_for_replication_slot";
 

@@ -85,7 +85,8 @@ struct TabletInitData {
   std::shared_future<client::YBClient*> client_future;
   scoped_refptr<server::Clock> clock;
   std::shared_ptr<MemTracker> parent_mem_tracker;
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker;
+  std::shared_ptr<MemTracker> parent_block_based_table_mem_tracker;
+  std::shared_ptr<MemTracker> parent_block_based_table_builder_mem_tracker;
   std::shared_ptr<MemTracker> read_wal_mem_tracker;
   MetricRegistry* metric_registry = nullptr;
   log::LogAnchorRegistryPtr log_anchor_registry;

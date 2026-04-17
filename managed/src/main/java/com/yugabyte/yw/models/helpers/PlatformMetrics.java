@@ -126,7 +126,11 @@ public enum PlatformMetrics {
   // XCluster
   XCLUSTER_METRIC_PROCESSOR_STATUS("xCluster metrics processor status", Unit.STATUS),
   XCLUSTER_TABLE_STATUS("XCluster table status", Unit.STATUS),
-  CAPACITY_RESERVATION_ENABLED_STATUS("Capacity reservation status", Unit.STATUS);
+  CAPACITY_RESERVATION_ENABLED_STATUS("Capacity reservation status", Unit.STATUS),
+  PA_COLLECTOR_EXPECTED_UP(
+      "PA collector expected to be running (1 if at least one universe is registered)",
+      Unit.STATUS),
+  PA_EMBEDDED_COLLECTOR_INIT_STATUS("Embedded PA collector initialization status", Unit.STATUS);
 
   private final String help;
   private final Unit unit;

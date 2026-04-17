@@ -189,7 +189,7 @@ If you are using YubabyteDB Voyager, use the [yb-voyage import schema](/stable/y
 
 ## Data migration
 
-The data from the source PostgreSQL database can be exported either using the [COPY command](../bulk-export-ysql) to copy data into CSV files, or exported to flat files using `ysql_dump` as follows:
+The data from the source PostgreSQL database can be exported either using the [COPY command](../bulk-export-ysql/) to copy data into CSV files, or exported to flat files using `ysql_dump` as follows:
 
 ```bash
 ysql_dump --data-only --disable-triggers -h source_host -U source_user source_db > data.sql

@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner.tasks.local;
 
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -229,9 +228,8 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
   public void createYcqlDatabase(Universe universe, Db db) {
     RunQueryFormData queryParams = new RunQueryFormData();
     queryParams.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
-    queryParams.setQuery("CREATE KEYSPACE " + db.name);
-    JsonNode response = ycqlQueryExecutor.executeQuery(universe, queryParams, false);
-    assertFalse(response.has("error"));
+    queryParams.setQuery("CREATE KEYSPACE IF NOT EXISTS " + db.name);
+    executeYcqlQueryWithRetry(universe, queryParams);
   }
 
   public void createTable(Universe universe, Table table) {
@@ -265,7 +263,7 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
     RunQueryFormData queryParams = new RunQueryFormData();
     queryParams.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
     queryParams.setQuery(
-        "CREATE TABLE "
+        "CREATE TABLE IF NOT EXISTS "
             + table.db.name
             + "."
             + table.name
@@ -280,8 +278,7 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
                 .collect(Collectors.joining(", "))
             + ")"
             + "WITH TRANSACTIONS = {'enabled':'true'}");
-    JsonNode response = ycqlQueryExecutor.executeQuery(universe, queryParams, false);
-    assertFalse(response.has("error"));
+    executeYcqlQueryWithRetry(universe, queryParams);
   }
 
   public void createIndexTable(Universe universe, IndexTable index) {
@@ -295,9 +292,8 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
   public void deleteYcqlIndexTable(Universe universe, IndexTable index) {
     RunQueryFormData queryParams = new RunQueryFormData();
     queryParams.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
-    queryParams.setQuery("DROP INDEX " + index.db.name + "." + index.name);
-    JsonNode response = ycqlQueryExecutor.executeQuery(universe, queryParams, false);
-    assertFalse(response.has("error"));
+    queryParams.setQuery("DROP INDEX IF EXISTS " + index.db.name + "." + index.name);
+    executeYcqlQueryWithRetry(universe, queryParams);
   }
 
   public void createYsqlIndexTable(Universe universe, IndexTable index) {
@@ -324,8 +320,19 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
             + " ("
             + index.columnName
             + ")");
-    JsonNode response = ycqlQueryExecutor.executeQuery(universe, queryParams, false);
-    assertFalse(response.has("error"));
+    executeYcqlQueryWithRetry(universe, queryParams);
+  }
+
+  private void executeYcqlQueryWithRetry(Universe universe, RunQueryFormData queryParams) {
+    doWithRetry(
+        Duration.ofSeconds(1),
+        Duration.ofMinutes(2),
+        () -> {
+          JsonNode response = ycqlQueryExecutor.executeQuery(universe, queryParams, false);
+          if (response.has("error")) {
+            throw new RuntimeException(response.get("error").asText());
+          }
+        });
   }
 
   public void dropDatabase(Universe universe, Db db) {

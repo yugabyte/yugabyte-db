@@ -314,33 +314,33 @@ public class ReleasesController extends AuthenticatedController {
         for (UpdateRelease.Artifact reqArtifact : reqRelease.artifacts) {
           boolean found = false;
           for (ReleaseArtifact artifact : release.getArtifacts()) {
-            if ((reqArtifact.package_file_id != null
-                    && reqArtifact.package_file_id.equals(artifact.getPackageFileID()))
-                || (reqArtifact.package_url != null
-                    && reqArtifact.package_url.equals(artifact.getPackageURL()))) {
+            if (reqArtifact.platform.equals(artifact.getPlatform())
+                && (reqArtifact.architecture == null && artifact.getArchitecture() == null
+                    || reqArtifact.architecture.equals(artifact.getArchitecture()))) {
               found = true;
               removeArtifacts.remove(artifact.getArtifactUUID());
-              if (reqArtifact.platform != null && reqArtifact.platform != artifact.getPlatform()) {
-                log.error(
-                    String.format(
-                        "cannot update artifact platform for %s", artifact.getArtifactUUID()));
-                throw new PlatformServiceException(
-                    BAD_REQUEST, "cannot update an artifacts platform");
-              }
-              if (reqArtifact.architecture != null
-                  && reqArtifact.architecture != artifact.getArchitecture()) {
-                log.error(
-                    String.format(
-                        "cannot update artifact architecture for %s", artifact.getArtifactUUID()));
-                throw new PlatformServiceException(
-                    BAD_REQUEST, "cannot update an artifacts architecture");
-              }
               if (reqArtifact.sha256 != null && !reqArtifact.sha256.equals(artifact.getSha256())) {
                 log.info(
                     "updating artifact {} sha to {}",
                     artifact.getArtifactUUID(),
                     reqArtifact.sha256);
                 artifact.saveSha256(reqArtifact.sha256);
+              }
+              if (reqArtifact.package_file_id != null
+                  && !reqArtifact.package_file_id.equals(artifact.getPackageFileID())) {
+                log.info(
+                    "updating artifact {} package file id to {}",
+                    artifact.getArtifactUUID(),
+                    reqArtifact.package_file_id);
+                artifact.savePackageFileID(reqArtifact.package_file_id);
+              }
+              if (reqArtifact.package_url != null
+                  && !reqArtifact.package_url.equals(artifact.getPackageURL())) {
+                log.info(
+                    "updating artifact {} package url to {}",
+                    artifact.getArtifactUUID(),
+                    reqArtifact.package_url);
+                artifact.savePackageURL(reqArtifact.package_url);
               }
               break;
             }

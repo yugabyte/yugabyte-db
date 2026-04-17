@@ -37,7 +37,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -166,8 +165,9 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
     setFollowerLagMock();
     setLeaderlessTabletsMock();
-    RuntimeConfigEntry.upsertGlobal(
-        GlobalConfKeys.tabletsMovementVerificationTimeoutSec.getKey(), "1");
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.tabletsMovementVerificationTimeoutSec.getKey(), "1");
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -594,7 +594,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testRemoveNodeRetries() {
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     setUp(true, 4, 3, false);
     String nodeToRemove = "host-n1";
     NodeDetails node = defaultUniverse.getNode(nodeToRemove);

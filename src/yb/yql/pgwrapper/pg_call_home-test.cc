@@ -10,8 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <set>
-
 #include <gtest/gtest.h>
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -19,10 +17,13 @@
 #include "yb/tserver/tserver_call_home.h"
 #include "yb/tserver/ysql_call_home_stats.h"
 
+#include "yb/util/format.h"
 #include "yb/util/json_document.h"
 #include "yb/util/test_macros.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+
+DECLARE_int32(callhome_ysql_interval_secs);
 
 namespace yb::pgwrapper {
 
@@ -39,6 +40,11 @@ class TestableTserverCallHome : public TserverCallHome {
 
 class PgCallHomeTest : public PgMiniTestBase {
  protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_ysql_interval_secs) = 0;
+    PgMiniTestBase::SetUp();
+  }
+
   size_t NumTabletServers() override { return 1; }
 
   tserver::TabletServer* tablet_server() {
@@ -83,13 +89,16 @@ TEST_F(PgCallHomeTest, EmptyCluster) {
   ASSERT_TRUE(cluster_root["aggregate"]["databases"].IsValid());
   auto cluster_dbs = ASSERT_RESULT(cluster_root["databases"].GetArray());
   ASSERT_GT(cluster_dbs.size(), 0);
+  int expected_index = 1;
   for (const auto& cluster_db : cluster_dbs) {
-    ASSERT_TRUE(cluster_db["name"].IsValid());
+    auto name = ASSERT_RESULT(cluster_db["name"].GetString());
+    ASSERT_EQ(name, Format("database_$0", expected_index));
     ASSERT_TRUE(cluster_db["stats"]["extensions"].IsValid());
+    ++expected_index;
   }
 }
 
-TEST_F(PgCallHomeTest, WeirdDbNames) {
+TEST_F(PgCallHomeTest, DbNamesAnonymized) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute(R"(CREATE DATABASE "db_with_""quotes""")"));
@@ -99,20 +108,19 @@ TEST_F(PgCallHomeTest, WeirdDbNames) {
   auto cluster_root = ASSERT_RESULT(CollectAndParseClusterStats());
   auto cluster_dbs = ASSERT_RESULT(cluster_root["databases"].GetArray());
 
-  std::set<std::string> found_names;
+  // 3 new databases + existing ones (yugabyte, postgres, system_platform).
+  // Only template0 and template1 are excluded by GetDbs().
+  ASSERT_GE(cluster_dbs.size(), 6);
+
+  int expected_index = 1;
   for (const auto& cluster_db : cluster_dbs) {
     auto name = ASSERT_RESULT(cluster_db["name"].GetString());
-    found_names.insert(name);
+    ASSERT_EQ(name, Format("database_$0", expected_index))
+        << "Database names should be anonymized";
     ASSERT_TRUE(cluster_db["stats"]["extensions"].IsValid())
-        << "Missing extensions for database: " << name;
+        << "Missing extensions for " << name;
+    ++expected_index;
   }
-
-  ASSERT_TRUE(found_names.count(R"(db_with_"quotes")"))
-      << "Database with quotes should be in the output";
-  ASSERT_TRUE(found_names.count(R"(db_with_back\slash)"))
-      << "Database with backslash should be in the output";
-  ASSERT_TRUE(found_names.count("db_with_\xc3\xa9mojis_and_\xc3\xb1"))
-      << "Database with unicode should be in the output";
 
   auto root = BuildAndParseJson();
   ASSERT_TRUE(root["ysql_node_stats"].IsValid());

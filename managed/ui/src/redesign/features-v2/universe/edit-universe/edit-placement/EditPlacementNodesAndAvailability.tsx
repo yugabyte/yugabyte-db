@@ -6,7 +6,7 @@ import { useGetEditPlacementContext } from './EditPlacementUtils';
 import { EditPlacementContextProps, EditPlacementSteps } from './EditPlacementContext';
 import GeoPartitionBreadCrumb from '../../geo-partition/add/GeoPartitionBreadCrumbs';
 import { NodesAvailability } from '../../create-universe/steps';
-import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
+import { getClusterByType } from '../EditUniverseUtils';
 import { UniverseActionButtons } from '../../create-universe/components/UniverseActionButtons';
 import { useTranslation } from 'react-i18next';
 import { EditPlacementConfirmModal } from './EditPlacementConfirmModal';
@@ -25,7 +25,6 @@ const { Box } = mui;
 export const EditPlacementNodesAndAvailability = () => {
   const nodesAndAvailabilityRef = useRef<StepsRef>(null);
   const [addEditPlacementData, addEditPlacementMethods] = useGetEditPlacementContext();
-  const { universeData } = useEditUniverseContext();
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
   const [showEditPlacementModal, setShowEditPlacementModal] = useToggle(false);
   const { setNodesAndAvailability } = addEditPlacementMethods;
@@ -62,11 +61,7 @@ export const EditPlacementNodesAndAvailability = () => {
           groupTitle={<>{t('placement')}</>}
           subTitle={<>{t('nodesAndAvailabilityZone')}</>}
         />
-        <NodesAvailability
-          isGeoPartition
-          ref={nodesAndAvailabilityRef}
-          universeData={universeData!}
-        />
+        <NodesAvailability ref={nodesAndAvailabilityRef} />
         <UniverseActionButtons
           prevButton={{
             text: t('back', { keyPrefix: 'common' }),

@@ -77,7 +77,10 @@ export function CreateUniverse() {
                 {t('title', { keyPrefix: 'createUniverseV2' })}
               </Typography>
             </Box>
-            <Close style={{ cursor: 'pointer' }} />
+            <Close style={{ cursor: 'pointer' }}
+              onClick={() => {
+                window.location.href = '/';
+              }} />
           </CreateHeader>
           {/* Body */}
           <Grid container spacing={{ xs: 3, md: 3, lg: 3, xl: 6 }} minHeight={'100%'}>
@@ -114,6 +117,9 @@ export function CreateUniverse() {
                       variant="secondary"
                       size="large"
                       dataTestId="create-universe-cancel-button"
+                      onClick={() => {
+                        window.location.href = '/';
+                      }}
                     >
                       {t('cancel', { keyPrefix: 'common' })}
                     </YBButton>

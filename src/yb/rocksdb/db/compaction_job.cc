@@ -42,6 +42,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/perf_level.h"
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/table.h"
 
@@ -76,6 +77,15 @@
 
 DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);
 DECLARE_uint64(rocksdb_max_sst_write_retries);
+
+DEFINE_test_flag(int64, rocksdb_compact_rate_limit_bytes_per_sec, 0,
+    "Use to control total write rate of compactions across tserver, has priority over "
+    "rocksdb_compact_flush_rate_limit_bytes_per_sec. Positive values have effect on new "
+    "compactions, 0 turns off compaction rate limiter while keeping old limit for existing "
+    "compactions. If negative flag value has been specified, rate limit for existing compactions "
+    "is set to absolute value of the flag. This might temporarily increase disk utilization until "
+    "those compactions are finished. New compactions will use default common compaction/flush rate "
+    "limiter.");
 
 namespace rocksdb {
 
@@ -227,6 +237,58 @@ void CompactionJob::AggregateStatistics() {
   }
 }
 
+namespace {
+
+std::unique_ptr<EnvOptions> MaybeOverrideEnvOptionsForTests(const EnvOptions& env_options) {
+  const auto compact_rate_limit_bytes_per_sec = FLAGS_TEST_rocksdb_compact_rate_limit_bytes_per_sec;
+  if (compact_rate_limit_bytes_per_sec <= 0) {
+    // If negative flag value has been specified, rate limit for already started compactions is
+    // still set in callback below to absolute value of the flag. This might temporarily increase
+    // disk utilization until those compactions are finished. New compactions will use default
+    // common compaction/flush rate limiter.
+    return nullptr;
+  }
+
+  static class TestCompactionRateLimiter {
+  public:
+    TestCompactionRateLimiter(int64_t bytes_per_second) {
+      rate_limiter_ = std::shared_ptr<RateLimiter>(
+          NewGenericRateLimiter(bytes_per_second));
+      flag_callback_ = [this] {
+        const auto rate_limit_bytes_per_sec =
+            abs(FLAGS_TEST_rocksdb_compact_rate_limit_bytes_per_sec);
+        if (rate_limit_bytes_per_sec > 0) {
+          LOG(INFO) << "Setting compaction rate limit to: " << rate_limit_bytes_per_sec;
+          YB_WARN_NOT_OK(
+              rate_limiter_->SetBytesPerSecond(rate_limit_bytes_per_sec),
+              "Error setting compaction rate limit:");
+        }
+      };
+      flag_callback_registration_ = CHECK_RESULT(
+        yb::RegisterFlagUpdateCallback(
+            &FLAGS_TEST_rocksdb_compact_rate_limit_bytes_per_sec,
+            "TEST_rocksdb_compact_rate_limit_bytes_per_sec", flag_callback_));
+    }
+
+    ~TestCompactionRateLimiter() {
+      flag_callback_registration_.Deregister();
+    }
+
+    RateLimiter* rate_limiter() const { return rate_limiter_.get(); }
+
+  private:
+    std::shared_ptr<RateLimiter> rate_limiter_;
+    yb::FlagCallback flag_callback_;
+    yb::FlagCallbackRegistration flag_callback_registration_;
+  } test_compaction_rate_limiter(compact_rate_limit_bytes_per_sec);
+
+  auto env_options_override = std::make_unique<EnvOptions>(env_options);
+  env_options_override->rate_limiter = test_compaction_rate_limiter.rate_limiter();
+  return env_options_override;
+}
+
+} // namespace
+
 CompactionJob::CompactionJob(
     int job_id, Compaction* compaction, const DBOptions& db_options,
     const EnvOptions& env_options, VersionSet* versions,
@@ -245,7 +307,9 @@ CompactionJob::CompactionJob(
       compaction_stats_(1),
       dbname_(dbname),
       db_options_(db_options),
-      env_options_(env_options),
+      TEST_env_options_override_(MaybeOverrideEnvOptionsForTests(env_options)),
+      env_options_(
+          TEST_env_options_override_ ? *TEST_env_options_override_ : env_options),
       env_(db_options.env),
       versions_(versions),
       shutting_down_(shutting_down),
@@ -1068,7 +1132,8 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
-    LOG_WITH_PREFIX_DETAIL << "Updating flushed frontier to " << largest_user_frontier_->ToString();
+    LOG_WITH_PREFIX(DETAIL) << "Updating flushed frontier to "
+                            << largest_user_frontier_->ToString();
     compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),

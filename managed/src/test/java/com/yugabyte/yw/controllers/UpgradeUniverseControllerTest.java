@@ -593,6 +593,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testResumeCanarySoftwareUpgradeSuccess() {
+    when(mockConfig.getBoolean("yb.upgrade.enable_canary_upgrade")).thenReturn(true);
     UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgradeYB);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
     taskInfo.setTaskState(TaskInfo.State.Paused);

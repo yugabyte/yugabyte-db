@@ -2914,6 +2914,18 @@ Status get_table_hash_action(
   return client->GetTableXorHash(table_id, read_ht);
 }
 
+const auto xcluster_failover_args = "<replication_group_id>";
+Status xcluster_failover_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK(client->XClusterFailover(args[0]));
+  std::cout << "xCluster failover completed successfully for replication group " << args[0]
+            << std::endl;
+  return Status::OK();
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -3046,6 +3058,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(repair_xcluster_outbound_replication_remove_table);
   REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
   REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
+  REGISTER_COMMAND(xcluster_failover);
 
   /* Upgrade related commands */
   // AutoFlags

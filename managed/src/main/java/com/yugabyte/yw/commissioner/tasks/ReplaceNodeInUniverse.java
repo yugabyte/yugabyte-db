@@ -62,7 +62,7 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
       // Add the new nodeDetails to the universe.
       taskParams().nodeDetailsSet.add(newNode);
 
-      configureTaskParams(universe);
+      configureTaskParams(universe, true /* moveMastersFirst */);
     }
     createComprehensivePrecheckTasks(universe);
   }
@@ -116,7 +116,8 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
           taskParamsCluster,
           getNodesInCluster(taskParamsCluster.uuid, addedMasters),
           getNodesInCluster(taskParamsCluster.uuid, removedMasters),
-          true /* force */);
+          true /* force */,
+          true /* moveMastersFirst */);
 
       createUpdateUniverseIntentTask(taskParamsCluster);
 

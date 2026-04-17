@@ -154,7 +154,7 @@ typedef enum {
 	OD_YB_YSQL_MAX_CONNECTIONS,
 	OD_YB_OPTIMIZED_SESSION_PARAMETERS,
 	OD_YB_MAX_POOLS,
-	OD_YB_DEALLOCATE_IF_INVALID_PREP_STMT,
+	OD_YB_ENABLE_PREP_STMT_CLOSE,
 	OD_YB_JITTER_TIME,
 	OD_TEST_YB_AUTH_DELAY_MS,
 	OD_YB_ALTER_GUC_ADOPTION_STRATEGY,
@@ -339,8 +339,8 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("yb_optimized_session_parameters",
 		   OD_YB_OPTIMIZED_SESSION_PARAMETERS),
 	od_keyword("yb_max_pools", OD_YB_MAX_POOLS),
-	od_keyword("yb_deallocate_if_invalid_prep_stmt",
-		   OD_YB_DEALLOCATE_IF_INVALID_PREP_STMT),
+	od_keyword("yb_enable_prep_stmt_close",
+		   OD_YB_ENABLE_PREP_STMT_CLOSE),
 	od_keyword("yb_jitter_time", OD_YB_JITTER_TIME),
 	od_keyword("TEST_yb_auth_delay_ms", OD_TEST_YB_AUTH_DELAY_MS),
 	od_keyword("yb_alter_guc_adoption_strategy",
@@ -2561,10 +2561,10 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				goto error;
 			}
 			continue;
-		/* yb_deallocate_if_invalid_prep_stmt */
-		case OD_YB_DEALLOCATE_IF_INVALID_PREP_STMT:
+		/* yb_enable_prep_stmt_close */
+		case OD_YB_ENABLE_PREP_STMT_CLOSE:
 			if (!od_config_reader_yes_no(reader,
-				    &config->yb_deallocate_if_invalid_prep_stmt)) {
+				    &config->yb_enable_prep_stmt_close)) {
 				goto error;
 			}
 			continue;
@@ -2646,10 +2646,23 @@ void yb_read_conf_from_env_var(od_rules_t *rules, od_config_t *config,
 	/* strlen returns 0 if the env var is not set. */
 	const int yb_password_len = strlen(yb_password);
 
+	const char *yb_ctrl_username = getenv("YB_YSQL_CONN_MGR_USER");
+	if (yb_ctrl_username == NULL) {
+		yb_ctrl_username = "yugabyte";
+	}
+
+	const char *yb_ctrl_dbname = getenv("YB_YSQL_CONN_MGR_DB");
+	if (yb_ctrl_dbname == NULL) {
+		yb_ctrl_dbname = "yugabyte";
+	}
+
 	/*
-	 * Connections from Ysql Connection Manager will be authenticated
-	 * via yb-tserver-key. Therefore, yb_password can't be null.
+	 * YB: Connections from Ysql Connection Manager will be authenticated
+	 * via yb-tserver-key. Control connections use yb_ctrl_username and
+	 * yb_ctrl_dbname. Therefore, all three must be non-null.
 	 */
+	assert(yb_ctrl_username != NULL);
+	assert(yb_ctrl_dbname != NULL);
 	assert(yb_password != NULL);
 
 	od_list_t *i;
@@ -2671,15 +2684,24 @@ void yb_read_conf_from_env_var(od_rules_t *rules, od_config_t *config,
 		}
 #endif
 
+		/* Set storage_user and storage_db for control connection pool */
+		if (rule->pool->routing == OD_RULE_POOL_INTERVAL) {
+			if (rule->storage_user)
+				free(rule->storage_user);
+			rule->storage_user = strndup(yb_ctrl_username, USER_NAME_MAX_LEN - 1);
+			rule->storage_user_len = strlen(rule->storage_user);
+
+			if (rule->storage_db)
+				free(rule->storage_db);
+			rule->storage_db = strndup(yb_ctrl_dbname, DB_NAME_MAX_LEN - 1);
+		}
+
 		/* Set storage_password */
 		if (yb_password != NULL) {
 			if (rule->storage_password)
 				free(rule->storage_password);
-			rule->storage_password = (char *)malloc(
-				sizeof(char) * (yb_password_len + 1));
-			strcpy(rule->storage_password, yb_password);
-			rule->storage_password_len =
-				strlen(rule->storage_password);
+			rule->storage_password = strdup(yb_password);
+			rule->storage_password_len = yb_password_len;
 		}
 	}
 }

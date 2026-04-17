@@ -21,6 +21,10 @@
 
 namespace yb {
 
+inline ScopedTrackedConsumption CreateScopedTrackedConsumption(const MemTrackerPtr& mem_tracker) {
+  return mem_tracker ? ScopedTrackedConsumption(mem_tracker, 0) : ScopedTrackedConsumption();
+}
+
 // Utility class to store arbitrary amount of byte with inplace buffer of specified size.
 template <size_t SmallLen, bool kTrackMemoryUsage>
 class ByteBufferBase {
@@ -30,14 +34,14 @@ class ByteBufferBase {
   ByteBufferBase() requires (kTrackMemoryUsage == false) : size_(0) {}
 
   explicit ByteBufferBase(const MemTrackerPtr& mem_tracker)
-      : size_(0), consumption_(mem_tracker, 0) {}
+      : size_(0), consumption_(CreateScopedTrackedConsumption(mem_tracker)) {}
 
   explicit ByteBufferBase(const std::string& str) requires (kTrackMemoryUsage == false) {
     Assign(str.c_str(), str.size());
   }
 
   ByteBufferBase(const MemTrackerPtr& mem_tracker, const std::string& str)
-      : consumption_(mem_tracker, 0) {
+      : consumption_(CreateScopedTrackedConsumption(mem_tracker)) {
     Assign(str.c_str(), str.size());
   }
 
@@ -50,7 +54,7 @@ class ByteBufferBase {
   }
 
   ByteBufferBase(const MemTrackerPtr& mem_tracker, Slice slice)
-      : consumption_(mem_tracker, 0) {
+      : consumption_(CreateScopedTrackedConsumption(mem_tracker)) {
     Assign(slice.cdata(), slice.cend());
   }
 
@@ -59,7 +63,7 @@ class ByteBufferBase {
   }
 
   ByteBufferBase(const MemTrackerPtr& mem_tracker, Slice slice1, Slice slice2)
-      : consumption_(mem_tracker, 0) {
+      : consumption_(CreateScopedTrackedConsumption(mem_tracker)) {
     Assign(slice1, slice2);
   }
 
@@ -68,7 +72,7 @@ class ByteBufferBase {
   }
 
   ByteBufferBase(const ByteBufferBase<SmallLen, true>& rhs)
-      : consumption_(rhs.consumption_.mem_tracker(), 0) {
+      : consumption_(CreateScopedTrackedConsumption(rhs.consumption_.mem_tracker())) {
     Assign(rhs.ptr(), rhs.size_);
   }
 
@@ -243,6 +247,10 @@ class ByteBufferBase {
     return pointer_cast<const uint8_t*>(ptr());
   }
 
+  const char* cdata() const {
+    return ptr();
+  }
+
   uint8_t* mutable_data() {
     return pointer_cast<uint8_t*>(ptr());
   }
@@ -289,7 +297,9 @@ class ByteBufferBase {
  private:
   void DoConsume(int64_t delta) {
     if constexpr (kTrackMemoryUsage) {
-      consumption_.Add(delta);
+      if (consumption_) {
+        consumption_.Add(delta);
+      }
     }
   }
 
