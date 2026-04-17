@@ -127,7 +127,7 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 
 ## Authentication methods
 
-The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with YSQL Connection Manager when a connection matches an HBA (Host-Based Authentication) record.
+The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with YSQL Connection Manager when a connection matches an HBA ([Host-Based Authentication](../../../secure/authentication/host-based-authentication/)) record.
 
 | | Auth Method | Description |
 |:--| :---------------------| :------------ | :---- |
@@ -136,18 +136,18 @@ The following table outlines the various authentication methods supported by Yug
 | {{<icon/yes>}} | Plain/Clear Text Password | Standard password-based authentication, though storing passwords in plain text is not recommended. |
 | {{<icon/yes>}} | JWT Authentication (OIDC) | Uses JSON Web Tokens (JWT) from an external Identity Provider (IDP) to securely transmit authentication and authorization information. |
 | {{<icon/yes>}} | LDAP Authentication | Verifies users against a centralized directory service using Lightweight Directory Access Protocol (LDAP). |
-| {{<icon/no>}} | GSS API or Kerberos| Enables Kerberos-based authentication through a standardized API, allowing secure, enterprise-grade Single Sign-On (SSO) logins without passwords. <br> **Note**: Testing of this feature with YugabyteDB is currently limited.|
+| {{<icon/no>}} | GSS API or Kerberos| Enables Kerberos-based authentication through a standardized API, allowing secure, enterprise-grade Single Sign-On (SSO) logins without passwords. <br> **Note**: Testing of this feature with YugabyteDB is currently limited. |
 | {{<icon/yes>}} | SCRAM-SHA-256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
 | {{<icon/no>}} | SCRAM-SHA-256-PLUS  | A variant of SCRAM-SHA-256 over TLS channels that performs TLS channel-binding as part of authentication. |
 | {{<icon/yes>}} | MD5 | Password-based authentication where the user's password is by default stored in MD5 encryption format in the database. |
-| {{<icon/partial>}} | Cert  | Currently, Connection Manager does not support the HBA auth-method `cert`, where the server authenticates users via the client certificate (for example, CN/DN mapping). Client-side `sslmode` (such as verify-ca, verify-full), where the client verifies the *server* certificate, is a different layer and is supported (see [SSL modes and encryption in transit](#ssl-modes-and-encryption-in-transit)). |
+| {{<icon/partial>}} | Cert  | Currently, Connection Manager does not support the HBA [auth-method](../../../secure/authentication/host-based-authentication/#auth-method) `cert`, where the server authenticates users via the client certificate (for example, CN/DN mapping). Client-side `sslmode` (such as verify-ca, verify-full), where the client verifies the *server* certificate, is a different layer and is supported (see [SSL modes and encryption in transit](#ssl-modes-and-encryption-in-transit)). |
 
 ## SSL modes and encryption in transit
 
 Client connection behavior and server-side policy are handled separately as follows:
 
 - **SSL mode** (client-side connection behavior): controls whether the client uses TLS and how it verifies the server (disable, allow, prefer, require, verify-ca, verify-full). Connection Manager supports all of these client SSL modes.
-- **ysql_hba.conf** (host-based authentication settings): controls whether the connection must be over TLS, if the client must present a certificate, and whether the server authenticates the client via that certificate. Currently, Connection Manager does not support HBA certificate authentication.
+- **ysql_hba.conf** ([host-based authentication](../../../secure/authentication/host-based-authentication/)): controls whether the connection must be over TLS, if the client must present a certificate, and whether the server authenticates the client via that certificate. Currently, Connection Manager does not support HBA certificate authentication.
 
 ### Encryption in transit
 
