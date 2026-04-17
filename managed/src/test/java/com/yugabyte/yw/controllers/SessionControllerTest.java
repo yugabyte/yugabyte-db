@@ -269,7 +269,7 @@ public class SessionControllerTest {
   public void testCustomRolesMapping() throws Exception {
     startApp(false);
     authorizeUserMockSetup(); // authorize "test@yugabyte.com"
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     R__Sync_System_Roles.syncSystemRoles();
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
     Users superAdmin = ModelFactory.testSuperAdminUserNewRbac(customer);

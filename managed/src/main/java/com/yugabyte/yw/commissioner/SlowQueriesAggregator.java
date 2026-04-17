@@ -49,6 +49,7 @@ public class SlowQueriesAggregator {
       "DELETE FROM %s WHERE timestamp < now() - interval '%d days';";
   private final String INSERT_DATA_QUERY =
       "INSERT INTO %s VALUES ('%s', %s, %s, %s, $$%s$$, '%s', %s, %s, %s, %s);";
+  private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
   @Inject
   SlowQueriesAggregator(
@@ -108,8 +109,7 @@ public class SlowQueriesAggregator {
         JsonNode newData = queryHelper.slowQueries(universe);
         if (newData.has("ysql") && newData.get("ysql").has("queries")) {
           var queriesData = newData.get("ysql").get("queries");
-          var insertQueries = new ArrayList<String>();
-          var formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+          var insertQueries = new ArrayList<String>(queriesData.size());
           var timestamp = LocalDateTime.now().format(formatter);
           for (var data : queriesData) {
             insertQueries.add(

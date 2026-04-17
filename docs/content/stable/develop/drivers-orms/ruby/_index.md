@@ -41,4 +41,4 @@ To develop Ruby applications for YugabyteDB, you need the following:
 
 ## Next step
 
-[Connect an app](yb-ruby-pg)
+[Connect an app](yb-ruby-pg/)

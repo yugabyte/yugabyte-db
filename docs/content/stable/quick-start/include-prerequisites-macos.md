@@ -17,7 +17,7 @@ Before installing YugabyteDB, ensure that you have the following available:
 
 - `wget` or `curl`.
 
-    Note that the following instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
+    Note that the following instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -LO`.
 
     To install `wget` on your Mac, you can run the following command if you use Homebrew:
 

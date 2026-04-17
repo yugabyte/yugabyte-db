@@ -364,6 +364,10 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
       CollectOpsErrors();
 
+  void HandleAsyncWriteResponse(
+      const OpIdPB& async_write_op_id, const RemoteTablet& tablet,
+      std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy);
+
   BatcherState state_ = BatcherState::kGatheringOps;
 
   YBClient* const client_;

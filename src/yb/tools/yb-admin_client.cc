@@ -4759,6 +4759,43 @@ Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime(bool include
   return document;
 }
 
+Status ClusterAdminClient::XClusterFailover(const std::string& replication_group_id) {
+  master::XClusterFailoverRequestPB req;
+  master::XClusterFailoverResponsePB resp;
+  req.set_replication_group_id(replication_group_id);
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->XClusterFailover(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return WaitForXClusterFailoverToFinish(replication_group_id);
+}
+
+Status ClusterAdminClient::WaitForXClusterFailoverToFinish(
+    const std::string& replication_group_id) {
+  master::IsXClusterFailoverDoneRequestPB req;
+  req.set_replication_group_id(replication_group_id);
+  for (;;) {
+    master::IsXClusterFailoverDoneResponsePB resp;
+    RpcController rpc;
+    rpc.set_timeout(timeout_);
+    Status s = master_replication_proxy_->IsXClusterFailoverDone(req, &resp, &rpc);
+
+    if (!s.ok() || resp.has_error()) {
+      LOG(WARNING) << "Encountered error while waiting for xcluster_failover to complete"
+                   << " : " << (!s.ok() ? s.ToString() : resp.error().status().message());
+    } else if (resp.has_done() && resp.done()) {
+      if (resp.has_failover_error()) {
+        return StatusFromPB(resp.failover_error());
+      }
+      return Status::OK();
+    }
+
+    std::this_thread::sleep_for(100ms);
+  }
+}
+
 Result<bool> ClusterAdminClient::IsXClusterBootstrapRequired(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId namespace_id) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");

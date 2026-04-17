@@ -494,6 +494,10 @@ class ClusterAdminClient {
 
   Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
 
+  Status XClusterFailover(const std::string& replication_group_id);
+
+  Status WaitForXClusterFailoverToFinish(const std::string& replication_group_id);
+
   Result<bool> IsXClusterBootstrapRequired(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId namespace_id);
 

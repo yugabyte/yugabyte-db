@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import io.ebean.Expr;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -1097,5 +1098,17 @@ public class CustomerTask extends Model {
       }
     }
     return true;
+  }
+
+  public static List<CustomerTask> findByTargetUUIDsAndTypesSince(
+      List<UUID> targetUUIDs, TargetType targetType, List<TaskType> taskTypes, Date since) {
+    return find.query()
+        .where()
+        .in("target_uuid", targetUUIDs)
+        .eq("target_type", targetType)
+        .in("type", taskTypes)
+        .or(Expr.ge("completion_time", since), Expr.ge("create_time", since))
+        .orderBy("completion_time desc")
+        .findList();
   }
 }

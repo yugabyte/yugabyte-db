@@ -1,5 +1,6 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <!-- Forked from https://github.com/OpenAPITools/openapi-generator/blob/v7.17.0/modules/openapi-generator/src/main/resources/Java/libraries/jersey2/pom.mustache -->
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.yugabyte</groupId>
     <artifactId>yba-client-v2</artifactId>
@@ -312,6 +313,7 @@
             <artifactId>jackson-datatype-jsr310</artifactId>
             <version>${jackson-version}</version>
         </dependency>
+        <!-- jakarta.annotation-api: transitive from jersey-common; included in shaded JAR -->
         <dependency>
             <groupId>jakarta.annotation</groupId>
             <artifactId>jakarta.annotation-api</artifactId>

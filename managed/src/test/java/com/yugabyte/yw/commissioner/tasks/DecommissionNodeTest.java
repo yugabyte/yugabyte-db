@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -29,9 +28,10 @@ public class DecommissionNodeTest extends UniverseModifyBaseTest {
 
   @Test
   public void testDecommissionNodeRetries() {
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
-    RuntimeConfigEntry.upsert(
-        testUniverse, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory
+        .forUniverse(testUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
             testUniverse.getUniverseDetails(), NodeTaskParams.class);

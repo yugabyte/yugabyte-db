@@ -39,6 +39,7 @@
 #include "yb/rocksdb/table/internal_iterator.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/malloc.h"
 
 namespace rocksdb {
 
@@ -66,7 +67,7 @@ class Block {
   size_t usable_size() const {
 #ifdef ROCKSDB_MALLOC_USABLE_SIZE
     if (contents_.allocation.get() != nullptr) {
-      return malloc_usable_size(contents_.allocation.get());
+      return yb::malloc_usable_size(contents_.allocation.get());
     }
 #endif  // ROCKSDB_MALLOC_USABLE_SIZE
     return size_;

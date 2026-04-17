@@ -40,7 +40,7 @@ export const initialAddGeoPartitionFormState: AddGeoPartitionContextProps = {
         regions: [],
         faultToleranceType: FaultToleranceType.NONE,
         nodeCount: 1,
-        replicationFactor: 3,
+        resilienceFactor: 1,
         resilienceFormMode: ResilienceFormMode.GUIDED,
         resilienceType: ResilienceType.REGULAR
       },

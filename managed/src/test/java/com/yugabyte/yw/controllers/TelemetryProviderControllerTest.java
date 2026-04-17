@@ -26,7 +26,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -55,10 +54,18 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.dbAuditLoggingEnabled.getKey(), "true");
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.telemetryAllowLoki.getKey(), "true");
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.telemetryAllowS3.getKey(), "true");
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.telemetryAllowOTLP.getKey(), "true");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.dbAuditLoggingEnabled.getKey(), "true");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.telemetryAllowLoki.getKey(), "true");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.telemetryAllowS3.getKey(), "true");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.telemetryAllowOTLP.getKey(), "true");
 
     doNothing().when(mockTelemetryProviderService).throwExceptionIfRuntimeFlagDisabled();
     doNothing().when(mockTelemetryProviderService).validateTelemetryProvider(any());

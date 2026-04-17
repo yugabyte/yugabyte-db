@@ -109,6 +109,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     addBasicPrecheckTasks();
     if (isFirstTry()) {
       createValidateDiskSizeOnEdit(universe);
+      validateStorageClassesOnEdit();
     }
     if (universe.getUniverseDetails().getPrimaryCluster().isGeoPartitioned()
         && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {

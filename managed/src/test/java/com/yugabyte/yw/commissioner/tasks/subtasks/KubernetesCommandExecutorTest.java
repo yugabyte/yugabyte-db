@@ -424,6 +424,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       storageOverrides.put("master", masterDiskSpecs);
     }
 
+    Map<String, Map<String, Integer>> stsIndex = new HashMap<>();
+    stsIndex.put("tserver", ImmutableMap.of("start", 0, "end", 0));
+    stsIndex.put("master", ImmutableMap.of("start", 0, "end", 0));
+    expectedOverrides.put("stsIndex", stsIndex);
+
     expectedOverrides.put("defaultServiceScope", "AZ");
     return expectedOverrides;
   }

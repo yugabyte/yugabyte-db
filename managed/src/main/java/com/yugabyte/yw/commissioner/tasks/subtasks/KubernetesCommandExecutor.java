@@ -1570,12 +1570,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     // TODO gflags which have precedence over helm overrides should be merged here.
 
+    // For single AZ azUUID may be null, use non-null values
+    UUID azUuid =
+        azUUID != null ? azUUID : AvailabilityZone.getByCode(provider, placementZone).getUuid();
     // Handle STS index overrides
-    handleStsIndexOverrides(overrides, pi, savedPi, azUUID);
+    handleStsIndexOverrides(overrides, pi, savedPi, azUuid);
     // Handle volume overrides
-    handleVolumeOverrides(overrides, userIntent, userIntentFromDB, azUUID);
+    handleVolumeOverrides(overrides, userIntent, userIntentFromDB, azUuid);
     // Handle full move overrides
-    handleFullMoveOverrides(overrides, userIntent, pi, azUUID);
+    handleFullMoveOverrides(overrides, userIntent, pi, azUuid);
 
     validateOverrides(overrides);
 

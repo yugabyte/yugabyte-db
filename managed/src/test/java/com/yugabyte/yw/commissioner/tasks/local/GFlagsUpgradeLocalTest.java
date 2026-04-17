@@ -34,7 +34,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -56,7 +55,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
   @Override
   protected Pair<Integer, Integer> getIpRange() {
-    return new Pair(30, 60);
+    return new Pair<>(30, 60);
   }
 
   @Test
@@ -299,9 +298,12 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
     verifyUniverseTaskSuccess(taskInfo);
 
-    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.upgradeBatchRollEnabled.getKey(), "true");
-    RuntimeConfigEntry.upsertGlobal(
-        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "30s");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.upgradeBatchRollEnabled.getKey(), "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "30s");
 
     SpecificGFlags specificGFlags =
         SpecificGFlags.construct(
@@ -340,8 +342,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
   @Test
   public void testRetryPartlyUpdated() throws InterruptedException {
-    RuntimeConfigEntry.upsertGlobal(
-        GlobalConfKeys.verifyGFlagsOnNodeDuringUpgrade.getKey(), "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.verifyGFlagsOnNodeDuringUpgrade.getKey(), "true");
     Universe universe = createUniverse(getDefaultUserIntent());
     initYSQL(universe);
     SpecificGFlags specificGFlags =
@@ -423,15 +426,20 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
     verifyUniverseTaskSuccess(taskInfo);
 
-    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.upgradeBatchRollEnabled.getKey(), "true");
-    RuntimeConfigEntry.upsertGlobal(
-        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "30s");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.upgradeBatchRollEnabled.getKey(), "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "30s");
 
     SpecificGFlags specificGFlags =
         SpecificGFlags.construct(
             Collections.singletonMap("max_log_size", "1805"),
             Collections.singletonMap("log_max_seconds_to_retain", "86333"));
-    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.upgradeBatchRollAutoNumber.getKey(), "2");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.upgradeBatchRollAutoNumber.getKey(), "2");
     taskInfo =
         doGflagsUpgrade(
             universe,
@@ -505,9 +513,12 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             userIntent.isYSQLAuthEnabled());
     assertTrue(response.isSuccess());
 
-    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.upgradeBatchRollEnabled.getKey(), "true");
-    RuntimeConfigEntry.upsertGlobal(
-        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "30s");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.upgradeBatchRollEnabled.getKey(), "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "30s");
 
     SpecificGFlags specificGFlags =
         SpecificGFlags.construct(
@@ -554,8 +565,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   @Test
   public void testNodesAreSafeToTakeDownFails() throws InterruptedException, IOException {
     // So that we will do only one check.
-    RuntimeConfigEntry.upsertGlobal(
-        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "65s");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "65s");
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = getGFlags("TEST_set_tablet_follower_lag_ms", "20000");
     Universe universe = createUniverse(userIntent);
@@ -601,7 +613,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     localNodeManager.startProcessForNode(userIntent, UniverseTaskBase.ServerType.TSERVER, nodeInfo);
 
     // Too small max follower lag - might fail
-    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.followerLagMaxThreshold.getKey(), "10s");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.followerLagMaxThreshold.getKey(), "10s");
     doGflagsUpgrade(
         universe,
         UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE,
@@ -617,7 +631,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
 
     // Revert setting
-    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.followerLagMaxThreshold.getKey(), "60s");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.followerLagMaxThreshold.getKey(), "60s");
 
     // Now it should be successful
     doGflagsUpgrade(
@@ -630,8 +646,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   @Test
   public void testUpgradeFailsDuringExecution() throws InterruptedException, IOException {
     // So that we will do only one check.
-    RuntimeConfigEntry.upsertGlobal(
-        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "65s");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "65s");
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(new HashMap<>(), new HashMap<>());
     Universe universe = createUniverse(userIntent);

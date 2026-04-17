@@ -851,6 +851,14 @@ message SysUniverseReplicationEntryPB {
   }
 
   optional DBScopeInfo db_scoped_info = 13;
+
+  // Set to true while a failover task is running. Cleared on completion or when a new master
+  // detects a stale in-progress failover from a previous leader.
+  optional bool failover_in_progress = 14;
+
+  // Error status of the last failed failover. This field is absent on a successful failover
+  // since the replication group is deleted.
+  optional AppStatusPB last_failover_completion_status = 15;
 }
 
 message XClusterSafeTimePB {

@@ -3512,7 +3512,7 @@ TEST_F(XClusterYsqlTest, ValidatePartitionType) {
 }
 
 TEST_F(XClusterYsqlTest, VectorIndex) {
-  FLAGS_TEST_usearch_exact = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
 
   SetupParams params{
     .extra_columns = "embedding vector(3)",

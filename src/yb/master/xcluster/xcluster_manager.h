@@ -117,6 +117,12 @@ class XClusterManager : public XClusterManagerIf,
       rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  Status IsXClusterFailoverDone(
+      const IsXClusterFailoverDoneRequestPB* req,
+      IsXClusterFailoverDoneResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) override;
 
   Status SetupUniverseReplication(

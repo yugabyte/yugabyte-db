@@ -115,12 +115,6 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     webProxyPort: undefined,
     byPassProxyList: false,
     byPassProxyListValues: []
-  },
-  generalSettings: {
-    cloud: CloudType.aws,
-    universeName: '',
-    providerConfiguration: undefined,
-    databaseVersion: ''
   }
 };
 
@@ -184,9 +178,9 @@ export type CreateUniverseContextMethods = [
   ReturnType<typeof createUniverseFormMethods>
 ];
 
-// Navigate between pages
+// Navigate between pages. Nodes step resolves `true` when validation passed and submit ran; `false` when invalid.
 export type StepsRef = {
-  onNext: () => Promise<void>;
+  onNext: () => void | Promise<boolean | void>;
   onPrev: () => void;
   setValue?: (name: string, value: unknown) => void;
 };

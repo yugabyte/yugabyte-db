@@ -14,7 +14,11 @@ User={{ user_name }}
 Group={{ user_name }}
 {% endif %}
 ExecStartPre={{yb_home_dir}}/bin/clock-sync.sh
+{% if configure_cgroup is true %}
+ExecStart={{yb_home_dir}}/bin/yb-tserver-cgroup-exec.sh {{yb_home_dir}}/tserver/bin/yb-tserver --flagfile {{yb_home_dir}}/tserver/conf/server.conf
+{% else %}
 ExecStart={{yb_home_dir}}/tserver/bin/yb-tserver --flagfile {{yb_home_dir}}/tserver/conf/server.conf
+{% endif %}
 Restart=always
 RestartSec=5
 # Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
@@ -31,7 +35,13 @@ LimitCORE=infinity
 LimitNOFILE=1048576
 LimitNPROC=12000
 # Allow tserver to move postgres into its own cgroup
-Delegate=true
+# Allow tserver to manage cpu cgroup
+Delegate=yes
+# Handle creating sub-cgroup and moving process inside it. This does not exist
+# for systemd version < 254 and is ignored
+{% if configure_cgroup is true %}
+DelegateSubgroup=yugabyte-db
+{% endif %}
 
 [Install]
 WantedBy=default.target

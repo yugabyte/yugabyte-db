@@ -280,16 +280,8 @@ export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStep
     if (isFormDisabled) return;
     setValue('upgradeMethod', method);
     if (method === UpgradeMethod.CANARY) {
+      // Only rolling upgrade is supported when upgradeMethod is CANARY.
       setValue('upgradePace', UpgradePace.ROLLING);
-    }
-  };
-
-  const handleMaxNodesPerBatchBlur = (event: FocusEvent<HTMLInputElement>) => {
-    const fieldValue = Number(event.target.value);
-    if (fieldValue > maxNodesPerBatchMaximum) {
-      setValue('maxNodesPerBatch', maxNodesPerBatchMaximum);
-    } else if (fieldValue < 1) {
-      setValue('maxNodesPerBatch', 1);
     }
   };
 
@@ -374,7 +366,7 @@ export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStep
                                   type="number"
                                   className={classes.numericInputField}
                                   disabled={isFormDisabled || maxNodesPerBatchMaximum <= 1}
-                                  onBlur={handleMaxNodesPerBatchBlur}
+                                  hideInlineError
                                   rules={{
                                     required: {
                                       value: true,
@@ -388,13 +380,10 @@ export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStep
                                     },
                                     max: {
                                       value: maxNodesPerBatchMaximum,
-                                      message: t(
-                                        'fields.validationError.maxNodesPerBatchMaximum',
-                                        {
-                                          keyPrefix: UPGRADE_MODAL_KEY_PREFIX,
-                                          max: maxNodesPerBatchMaximum
-                                        }
-                                      )
+                                      message: t('fields.validationError.maxNodesPerBatchMaximum', {
+                                        keyPrefix: UPGRADE_MODAL_KEY_PREFIX,
+                                        max: maxNodesPerBatchMaximum
+                                      })
                                     }
                                   }}
                                   inputProps={{

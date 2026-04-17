@@ -207,6 +207,7 @@ class CompactionPicker {
   std::set<Compaction*> level0_compactions_in_progress_;
 
   const InternalKeyComparator* const icmp_;
+  yb::MemTrackerPtr mem_tracker_;
 };
 
 class LevelCompactionPicker : public CompactionPicker {

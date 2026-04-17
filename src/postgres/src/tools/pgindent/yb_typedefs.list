@@ -116,6 +116,7 @@ YbIntCounters
 YbIssueDetectionCheck
 YbIssueDetectionPlan
 YbJumbleState
+YbListenerQueueScanCurrentXactState
 YbLocationLen
 YbLockMechanism
 YbLogicalClientVersionType
@@ -152,6 +153,7 @@ YbPgMemTracker
 YbPgRpcStats
 YbPgssCounters
 YbPgssFillInConstantLengths
+YbPgssQueryNeedingNormalization
 YbPlanInfo
 YbPlanStatePtr
 YbPrefetcherStarterFunctor
@@ -255,7 +257,6 @@ YbcMetricsInfo
 YbcObjectLockId
 YbcObjectLockMode
 YbcOrderingMode
-YbcOtelScope
 YbcOtelSpanContext
 YbcPallocFn
 YbcPgAshConfig

@@ -21,6 +21,7 @@
 #pragma once
 
 #include <list>
+#include <vector>
 
 #include "yb/util/jsonwriter.h"
 #include "yb/yql/cql/ql/statement.h"
@@ -42,14 +43,14 @@ using CQLStatementListPos = CQLStatementList::iterator;
 
 struct StmtCounters{
   explicit StmtCounters(
-      const std::string& text, const std::string& keyspace_)
-      : query(text), keyspace(keyspace_) {}
+      const std::string& text, const std::string& keyspace_, bool is_prepared_ = false)
+      : query(text), keyspace(keyspace_), is_prepared(is_prepared_) {}
 
   explicit StmtCounters(const std::shared_ptr<StmtCounters>& other) :
       num_calls(other->num_calls), total_time_in_msec(other->total_time_in_msec),
       min_time_in_msec(other->min_time_in_msec), max_time_in_msec(other->max_time_in_msec),
       sum_var_time_in_msec(other->sum_var_time_in_msec), query(other->query),
-      keyspace(other->keyspace) {}
+      keyspace(other->keyspace), is_prepared(other->is_prepared) {}
 
   void WriteAsJson(JsonWriter* jw, const ql::CQLMessage::QueryId& query_id) const;
 
@@ -64,6 +65,7 @@ struct StmtCounters{
   double sum_var_time_in_msec = 0.; // Sum of variances in execution time in msec.
   std::string query;                // Stores the query text.
   std::string keyspace;             // Stores the keyspace name.
+  bool is_prepared = false;         // If the stmt is prepared (batch: if all children prepared).
 };
 
 // A CQL statement that is prepared and cached.
@@ -92,6 +94,14 @@ class CQLStatement : public ql::Statement {
 
   // Return the query id of a statement.
   static ql::CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& query);
+
+  // Compute a batch-level query id from child query texts.
+  // Builds the canonical batch text "child_1;child_2;...;child_N" (semicolons as separators,
+  // not suffixes) and returns the query id (MD5 of keyspace + that text). For a single child,
+  // the canonical text equals the child text itself. Writes the canonical text to *batch_text_out.
+  static ql::CQLMessage::QueryId GetBatchQueryId(
+      const std::string& keyspace, const std::vector<std::string>& child_query_texts,
+      std::string* batch_text_out);
 
   std::shared_ptr<StmtCounters> GetWritableCounters() {
     return stmt_counters_;

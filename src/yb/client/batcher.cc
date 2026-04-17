@@ -701,6 +701,8 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
       return std::make_shared<WriteRpc>(data);
     }
     case OpGroup::kLeaderRead: {
+      data.use_async_write = UseAsyncWrites(
+          first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
       return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG);
     }
     case OpGroup::kConsistentPrefixRead:
@@ -778,6 +780,13 @@ void Batcher::ProcessRpcStatus(const AsyncRpc &rpc, const Status &s) {
 
 void Batcher::ProcessReadResponse(const ReadRpc &rpc, const Status &s) {
   ProcessRpcStatus(rpc, s);
+
+  if (s.ok()) {
+    const auto& resp = rpc.resp();
+    if (resp.has_async_write_op_id()) {
+      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.ts_proxy());
+    }
+  }
 }
 
 void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
@@ -786,21 +795,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
   if (s.ok()) {
     const auto& resp = rpc.resp();
     if (resp.has_async_write_op_id()) {
-      // We have a async write. Record the OpId, and send a async RPC to track its completion.
-      // At time of final commit, we will wait for all these async writes to complete.
-      auto transaction = this->transaction();
-      if (transaction) {
-        const auto op_id = OpId::FromPB(resp.async_write_op_id());
-        const auto& tablet = rpc.tablet();
-
-        if (transaction->RecordAsyncWrite(tablet.tablet_id(), op_id)) {
-          // Multiple write operations can get combined into the same async write RPC resulting in
-          // duplicate OpIds.
-          auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
-              shared_from_this(), tablet.tablet_id(), rpc.ts_proxy(), op_id);
-          wait_for_async_write_rpc->SendRpc();
-        }
-      }
+      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.ts_proxy());
     }
 
     if (resp.has_propagated_hybrid_time()) {
@@ -885,6 +880,27 @@ void Batcher::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& 
     return;
   }
   transaction->WaitForAsyncWrites(tablet_id, std::move(callback));
+}
+
+void Batcher::HandleAsyncWriteResponse(
+    const OpIdPB& async_write_op_id, const RemoteTablet& tablet,
+    std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy) {
+  // We have a async write. Record the OpId, and send a async RPC to track its completion.
+  // At time of final commit, we will wait for all these async writes to complete.
+  auto transaction = this->transaction();
+  if (!transaction) {
+    LOG_WITH_PREFIX(DFATAL) << "No transaction found for async write response";
+    return;
+  }
+
+  const auto op_id = OpId::FromPB(async_write_op_id);
+  if (transaction->RecordAsyncWrite(tablet.tablet_id(), op_id)) {
+    // Multiple write operations can get combined into the same async write RPC resulting in
+    // duplicate OpIds.
+    auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
+        shared_from_this(), tablet.tablet_id(), ts_proxy, op_id);
+    wait_for_async_write_rpc->SendRpc();
+  }
 }
 
 InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)

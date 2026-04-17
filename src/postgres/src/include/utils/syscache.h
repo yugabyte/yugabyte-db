@@ -192,6 +192,7 @@ typedef enum YbCatalogCacheTable
 
 extern long YbNumCatalogCacheMisses;
 extern long YbNumCatalogCacheTableMisses[];
+extern long YbNumCatalogCacheNegMisses[];
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);

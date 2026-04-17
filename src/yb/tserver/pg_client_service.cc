@@ -176,7 +176,9 @@ void Respond(const Status& status, Resp* resp, rpc::RpcContext* context) {
     if constexpr (HasMemberFunction_status<Resp>::value) {
       StatusToPB(status, resp->mutable_status());
     } else {
-      StatusToPB(status, resp->mutable_error()->mutable_status());
+      auto* error = resp->mutable_error();
+      StatusToPB(status, error->mutable_status());
+      error->set_code(error->code());
     }
   }
   context->RespondSuccess();

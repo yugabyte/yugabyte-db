@@ -14,10 +14,14 @@ import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.cdc.CdcStream;
+import com.yugabyte.yw.common.cdc.CdcStreamManager;
+import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
+import com.yugabyte.yw.forms.CDCReplicationSlotResponse;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -28,12 +32,15 @@ import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -41,6 +48,8 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.Date;
@@ -72,7 +81,7 @@ public class CallHomeManager {
   @Inject private XClusterUniverseService xClusterUniverseService;
   @Inject private MetricQueryHelper metricQueryHelper;
   @Inject private UniverseTableHandler universeTableHandler;
-
+  @Inject private CdcStreamManager cdcStreamManager;
   // include tasks from a day ago
   private static final Duration CALLHOME_TASK_PERIOD = Duration.ofDays(1);
 
@@ -81,6 +90,9 @@ public class CallHomeManager {
 
   // include metrics from a day ago
   private static final Duration CALLHOME_METRICS_RANGE = Duration.ofDays(1);
+
+  // include yba backup/restore history from a day ago
+  private static final Duration CALLHOME_YBA_BACKUP_RANGE = Duration.ofDays(1);
 
   // Get timestamp from clock to make testing easier
   Clock clock = Clock.systemUTC();
@@ -208,6 +220,31 @@ public class CallHomeManager {
               || (universeResp.drConfigUuidsAsTarget != null
                   && !universeResp.drConfigUuidsAsTarget.isEmpty()));
       enrichUniverseXCluster(sourceConfigUuids, targetConfigUuids, universeNode);
+      try {
+        Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
+        List<CdcStream> cdcStreams = cdcStreamManager.getAllCdcStreams(universe);
+        boolean isCdcConfigured = !cdcStreams.isEmpty();
+        universeNode.put("is_cdc_configured", isCdcConfigured);
+
+        if (isCdcConfigured) {
+          CDCReplicationSlotResponse slotResponse = cdcStreamManager.listReplicationSlot(universe);
+          List<String> slotNames =
+              slotResponse.replicationSlots.stream()
+                  .map(s -> s.slotName)
+                  .filter(name -> name != null && !name.isEmpty())
+                  .collect(Collectors.toList());
+          universeNode.put("cdc_replication_slots", String.join(",", slotNames));
+        } else {
+          universeNode.put("cdc_replication_slots", "");
+        }
+      } catch (Exception e) {
+        LOG.warn(
+            "Failed to fetch CDC info while building callhome payload for universe {}: {}",
+            universeResp.universeUUID,
+            e.getMessage());
+        universeNode.putNull("is_cdc_configured");
+        universeNode.putNull("cdc_replication_slots");
+      }
       universesPayload.add(universeNode);
     }
     payload.set("universes", universesPayload);
@@ -253,6 +290,7 @@ public class CallHomeManager {
       ctInfo.put("completion_time", Objects.toString(ct.getCompletionTime()));
       ctInfo.put("uuid", Objects.toString(ct.getTaskUUID()));
       ctInfo.put("task_state", Objects.toString(taskInfo.getTaskState()));
+      ctInfo.set("task_params", taskInfo.getRedactedParams());
       tasks.add(ctInfo);
     }
     payload.set("tasks", tasks);
@@ -597,5 +635,171 @@ public class CallHomeManager {
     } catch (Exception ex) {
     }
     return result;
+  }
+
+  public void sendPlatformDiagnostics() {
+    boolean anyEnabled =
+        Customer.getAll().stream()
+            .anyMatch(c -> !CustomerConfig.getOrCreateCallhomeLevel(c.getUuid()).isDisabled());
+    if (!anyEnabled) {
+      return;
+    }
+    JsonNode payload = collectPlatformDiagnostics();
+    if (LOG.isTraceEnabled()) {
+      LOG.trace(
+          "Sending platform diagnostics to {} with payload {}",
+          YB_CALLHOME_URL,
+          payload.toPrettyString());
+    }
+    JsonNode response = apiHelper.postRequest(YB_CALLHOME_URL, payload, null);
+    LOG.info("Platform callhome response: {}", response);
+  }
+
+  @VisibleForTesting
+  public JsonNode collectPlatformDiagnostics() {
+    ObjectNode payload = Json.newObject();
+    payload.put("payload_type", "platform");
+
+    Map<String, Object> ywMetadata =
+        configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata);
+    UUID yugawareUuid = null;
+    if (ywMetadata.get("yugaware_uuid") != null) {
+      String uuidStr = ywMetadata.get("yugaware_uuid").toString();
+      payload.put("yugaware_uuid", uuidStr);
+      yugawareUuid = UUID.fromString(uuidStr);
+    }
+    if (ywMetadata.get("version") != null) {
+      payload.put("yba_version", ywMetadata.get("version").toString());
+    }
+    Instant now = clock.instant();
+    payload.put("timestamp", now.getEpochSecond());
+
+    ArrayNode customerUuids = Json.newArray();
+    Customer.getAll().forEach(c -> customerUuids.add(c.getUuid().toString()));
+    payload.set("customer_uuids", customerUuids);
+
+    Optional<HighAvailabilityConfig> haConfigOpt = HighAvailabilityConfig.get();
+    payload.put("is_yba_ha_enabled", haConfigOpt.isPresent());
+    ArrayNode standbyHostnames = Json.newArray();
+    haConfigOpt.ifPresent(
+        ha -> ha.getRemoteInstances().forEach(i -> standbyHostnames.add(i.getAddress())));
+    payload.set("hostname_of_standby_yba_ha_instances", standbyHostnames);
+
+    ArrayNode backupHistory = Json.newArray();
+    ArrayNode restoreHistory = Json.newArray();
+    if (yugawareUuid != null) {
+      Date since = new Date(now.minus(CALLHOME_YBA_BACKUP_RANGE).toEpochMilli());
+      for (CustomerTask ct :
+          CustomerTask.findByTargetUUIDsAndTypesSince(
+              Arrays.asList(yugawareUuid, Util.NULL_UUID),
+              CustomerTask.TargetType.Yba,
+              Arrays.asList(CustomerTask.TaskType.CreateYbaBackup),
+              since)) {
+        ObjectNode entry = (ObjectNode) Json.toJson(ct);
+        if (ct.getTaskInfo() != null && ct.getTaskInfo().getTaskState() != null) {
+          entry.put("task_state", ct.getTaskInfo().getTaskState().toString());
+        }
+        ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(ct.getTaskUUID());
+        boolean isScheduled = scheduleTask != null;
+        entry.put("is_scheduled", isScheduled);
+        if (isScheduled && scheduleTask.getScheduleUUID() != null) {
+          entry.put("scheduled_backup_policy_uuid", scheduleTask.getScheduleUUID().toString());
+        } else {
+          entry.putNull("scheduled_backup_policy_uuid");
+        }
+        backupHistory.add(entry);
+      }
+
+      for (CustomerTask ct :
+          CustomerTask.findByTargetUUIDsAndTypesSince(
+              Arrays.asList(yugawareUuid),
+              CustomerTask.TargetType.Yba,
+              Arrays.asList(
+                  CustomerTask.TaskType.RestoreYbaBackup,
+                  CustomerTask.TaskType.RestoreContinuousBackup),
+              since)) {
+        ObjectNode entry = (ObjectNode) Json.toJson(ct);
+        if (ct.getTaskInfo() != null && ct.getTaskInfo().getTaskState() != null) {
+          entry.put("task_state", ct.getTaskInfo().getTaskState().toString());
+        }
+        restoreHistory.add(entry);
+      }
+    }
+    payload.set("yba_backup_history", backupHistory);
+    payload.set("yba_restore_history", restoreHistory);
+    List<ConfKeyInfo<?>> oidcKeys =
+        Arrays.asList(
+            GlobalConfKeys.useOauth,
+            GlobalConfKeys.ybSecurityType,
+            GlobalConfKeys.ybClientID,
+            GlobalConfKeys.discoveryURI,
+            GlobalConfKeys.oidcScope,
+            GlobalConfKeys.oidcEmailAttribute);
+
+    List<ConfKeyInfo<?>> ldapKeys =
+        Arrays.asList(
+            GlobalConfKeys.useLdap,
+            GlobalConfKeys.ldapUrl,
+            GlobalConfKeys.ldapPort,
+            GlobalConfKeys.ldapBaseDn,
+            GlobalConfKeys.ldapDnPrefix,
+            GlobalConfKeys.ldapServiceAccountDistinguishedName,
+            GlobalConfKeys.enableLdap,
+            GlobalConfKeys.enableLdapStartTls,
+            GlobalConfKeys.ldapUseSearchAndBind,
+            GlobalConfKeys.ldapSearchAttribute,
+            GlobalConfKeys.ldapGroupSearchFilter,
+            GlobalConfKeys.ldapGroupSearchScope,
+            GlobalConfKeys.ldapGroupSearchBaseDn,
+            GlobalConfKeys.ldapGroupMemberOfAttribute,
+            GlobalConfKeys.ldapGroupUseQuery,
+            GlobalConfKeys.ldapGroupUseRoleMapping,
+            GlobalConfKeys.ldapDefaultRole,
+            GlobalConfKeys.ldapTlsProtocol,
+            GlobalConfKeys.ldapsEnforceCertVerification,
+            GlobalConfKeys.ldapPageQuerySize);
+
+    List<ConfKeyInfo<?>> globalKeys = new ArrayList<>(oidcKeys);
+    globalKeys.addAll(ldapKeys);
+
+    Map<String, Object> globalValues = confGetter.getGlobalConfValues(globalKeys);
+
+    boolean useOauth = Boolean.TRUE.equals(globalValues.get(GlobalConfKeys.useOauth.getKey()));
+    String securityType =
+        Objects.toString(globalValues.get(GlobalConfKeys.ybSecurityType.getKey()), "");
+    boolean useLdap = Boolean.TRUE.equals(globalValues.get(GlobalConfKeys.useLdap.getKey()));
+    boolean isOidcEnabled = useOauth && "OIDC".equalsIgnoreCase(securityType);
+    payload.put("is_user_auth_via_oidc_configured", isOidcEnabled);
+    payload.put("is_user_auth_via_ldap", useLdap);
+
+    if (isOidcEnabled) {
+      ObjectNode oidcInfo = Json.newObject();
+      for (ConfKeyInfo<?> keyInfo : oidcKeys) {
+        String key = keyInfo.getKey();
+        if (key.equals(GlobalConfKeys.useOauth.getKey())
+            || key.equals(GlobalConfKeys.ybSecurityType.getKey())) {
+          continue;
+        }
+        oidcInfo.set(key, Json.toJson(globalValues.get(key)));
+      }
+      payload.set("oidc_config", oidcInfo);
+    } else {
+      payload.putNull("oidc_config");
+    }
+
+    if (useLdap) {
+      ObjectNode ldapConfig = Json.newObject();
+      for (ConfKeyInfo<?> keyInfo : ldapKeys) {
+        String key = keyInfo.getKey();
+        if (key.equals(GlobalConfKeys.useLdap.getKey())) {
+          continue;
+        }
+        ldapConfig.set(key, Json.toJson(globalValues.get(key)));
+      }
+      payload.set("ldap_config", ldapConfig);
+    } else {
+      payload.putNull("ldap_config");
+    }
+    return RedactingService.filterSecretFields(payload, RedactingService.RedactionTarget.LOGS);
   }
 }

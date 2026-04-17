@@ -1,8 +1,9 @@
-import { FC, useMemo, useState } from 'react';
+import { FC, useMemo, useRef, useState } from 'react';
+import { keyframes } from '@mui/material/styles';
 import { mui, YBTag } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
 import pluralize from 'pluralize';
-import { ResilienceAndRegionsProps } from './dtos';
+import { FaultToleranceType, ResilienceAndRegionsProps } from './dtos';
 import {
   getGuidedResilienceRequirementSummary,
   getNodesStepRequirementCardTitleSpec,
@@ -30,7 +31,40 @@ const Root = styled(Box, {
   gap: '16px'
 }));
 
-const tagSx = { color: '#735AF5', fontWeight: '500', lineHeight: '16px' };
+const tagHighlight = keyframes`
+  0% {
+    transform: scale(1);
+    background-color: #ffffff;
+  }
+  50% {
+    transform: scale(1.06);
+    background-color: #E8E9FE;
+  }
+  100% {
+    transform: scale(1);
+    background-color: #ffffff;
+  }
+`;
+
+const tagBaseSx = {
+  color: '#735AF5',
+  fontWeight: '500',
+  lineHeight: '16px',
+  transformOrigin: 'center center'
+};
+
+function serializeRequirementTag(tag: GuidedRequirementTag) {
+  return JSON.stringify(tag);
+}
+
+/** Slot identity: same tag payload can mean different requirements across FT modes (e.g. AZ×1 alone vs with nodes). */
+function requirementTagSlotSignature(
+  tag: GuidedRequirementTag,
+  faultToleranceType: FaultToleranceType,
+  tagListLength: number
+) {
+  return `${serializeRequirementTag(tag)}|${faultToleranceType}|${tagListLength}`;
+}
 
 function tagLabel(tag: GuidedRequirementTag, t: (k: string, o?: Record<string, unknown>) => string) {
   switch (tag.kind) {
@@ -52,11 +86,6 @@ function tagLabel(tag: GuidedRequirementTag, t: (k: string, o?: Record<string, u
       return t('requirementTagNodesMinimum', {
         count: tag.count,
         entity: pluralize(t('wordNode'), tag.count)
-      });
-    case 'az_range_node_level':
-      return t('requirementTagAzRangeNodeLevel', {
-        max: tag.maxAz,
-        entity: pluralize(t('wordAvailabilityZone'), tag.maxAz)
       });
     default:
       return '';
@@ -80,6 +109,8 @@ export const ResilienceRequirementCard: FC<ResilienceRequirementCardProps> = ({
     keyPrefix: 'createUniverseV2.resilienceAndRegions.guidedMode'
   });
   const [showReplicationFactorInfoModal, setShowReplicationFactorInfoModal] = useState(false);
+  const prevTagSignaturesRef = useRef<string[] | null>(null);
+  const tagPlayCountRef = useRef<number[]>([]);
 
   const summary = useMemo(
     () => getGuidedResilienceRequirementSummary(faultToleranceType, resilienceFactor),
@@ -100,6 +131,21 @@ export const ResilienceRequirementCard: FC<ResilienceRequirementCardProps> = ({
     });
   }, [placementStep, faultToleranceType, resilienceFactor, t]);
 
+  const tagSignatures = summary.tags.map((tag) =>
+    requirementTagSlotSignature(tag, faultToleranceType, summary.tags.length)
+  );
+  const prevSignatures = prevTagSignaturesRef.current;
+  if (prevSignatures) {
+    for (let i = 0; i < tagSignatures.length; i++) {
+      if (tagSignatures[i] !== prevSignatures[i]) {
+        const playCounts = tagPlayCountRef.current;
+        playCounts[i] = (playCounts[i] ?? 0) + 1;
+      }
+    }
+  }
+  tagPlayCountRef.current.length = tagSignatures.length;
+  prevTagSignaturesRef.current = tagSignatures;
+
   return (
     <Root noShadow={noShadow}>
       <Wrench />
@@ -116,11 +162,26 @@ export const ResilienceRequirementCard: FC<ResilienceRequirementCardProps> = ({
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: 'row', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           <Box sx={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {summary.tags.map((tag, i) => (
-              <YBTag key={`${tag.kind}-${i}`} size="medium" variant="light" customSx={tagSx}>
-                {tagLabel(tag, t)}
-              </YBTag>
-            ))}
+            {summary.tags.map((tag, i) => {
+              const playCount = tagPlayCountRef.current[i] ?? 0;
+              return (
+                <YBTag
+                  key={`${i}-${tagSignatures[i]}-${playCount}`}
+                  size="medium"
+                  variant="light"
+                  customSx={
+                    playCount > 0
+                      ? {
+                          ...tagBaseSx,
+                          animation: `${tagHighlight} 0.6s ease-out`
+                        }
+                      : tagBaseSx
+                  }
+                >
+                  {tagLabel(tag, t)}
+                </YBTag>
+              );
+            })}
           </Box>
           <Divider
             orientation="vertical"

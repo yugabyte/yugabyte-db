@@ -227,6 +227,10 @@ std::shared_ptr<MemTracker> TabletMemoryManager::block_based_table_mem_tracker()
   return block_based_table_mem_tracker_;
 }
 
+std::shared_ptr<MemTracker> TabletMemoryManager::block_based_table_builder_mem_tracker() {
+  return block_based_table_builder_mem_tracker_;
+}
+
 std::shared_ptr<MemTracker> TabletMemoryManager::read_wal_mem_tracker() {
   return read_wal_mem_tracker_;
 }
@@ -252,6 +256,11 @@ void TabletMemoryManager::InitBlockCache(
       block_cache_size_bytes,
       "BlockBasedTable",
       server_mem_tracker_);
+
+  // We can also set block_based_table_builder_mem_tracker_ explicitly to track
+  // BlockBasedTableBuilder memory usage separately under BlockBasedTableBuilder->server->root.
+  // Otherwise, it is tracked under
+  // BlockBasedTableBuilder->[Regular|Intents]DB->tablet-<tablet_id>->Tablets_overhead->server->root
 
   if (block_cache_size_bytes != DB_CACHE_SIZE_CACHE_DISABLED) {
     options->block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,

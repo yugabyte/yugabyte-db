@@ -97,6 +97,7 @@ inline void ValidateThreeSharedPartsSizes(
 // Takes the components sizes computed by ThreeSharedPartsEncoder::Calculate and encodes into
 // buffer.
 // Sizes encoding format is described inside the function body.
+template <size_t SmallLen, bool kTrackMemoryUsage>
 inline void EncodeThreeSharedPartsSizes(
     const size_t shared_prefix_size,
     const size_t last_internal_component_reuse_size,
@@ -105,7 +106,7 @@ inline void EncodeThreeSharedPartsSizes(
     const size_t prev_key_size,
     const size_t key_size,
     const size_t value_size,
-    std::string* buffer) {
+    yb::ByteBufferBase<SmallLen, kTrackMemoryUsage>* buffer) {
   ValidateThreeSharedPartsSizes(
       shared_prefix_size, last_internal_component_reuse_size, is_last_internal_component_inc,
       rest_sizes, prev_key_size, key_size);

@@ -269,6 +269,22 @@ shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
           create_metrics, metric_name);
 }
 
+std::shared_ptr<MemTracker> MemTracker::InsertChildUnlocked(
+  const std::string& id, std::shared_ptr<MemTracker> child) {
+  auto [iter, inserted] = child_trackers_.emplace(id, child);
+  if (inserted) {
+    return child;
+  }
+  auto& tracker_weak_ptr = iter->second;
+  auto existing = tracker_weak_ptr.lock();
+  if (existing) {
+    LOG(DFATAL) << Format("Duplicate memory tracker (id $0) on parent $1", id, ToString());
+    return existing;
+  }
+  tracker_weak_ptr = child;
+  return child;
+}
+
 shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
                                                const string& id,
                                                ConsumptionFunctor consumption_functor,
@@ -276,28 +292,27 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
                                                AddToParent add_to_parent,
                                                CreateMetrics create_metrics,
                                                const std::string& metric_name) {
+  auto create_mem_tracker = [&] {
+    return std::make_shared<MemTracker>(
+        byte_limit, id, std::move(consumption_functor), shared_from_this(),
+        add_to_parent, create_metrics, metric_name, IsRootTracker::kFalse);
+  };
+  if (!may_exist) {
+    // Create mem-tracker before locking to avoid recursive mutex acquisition through the following
+    // stack for untracked memory tracker creation:
+    // MemTracker::CreateTracker -> GetRootTracker()->CreateChild -> MemTracker::MemTracker() -> ...
+    // -> MemTracker::DoUpdateConsumption() -> MemTracker::GetUntrackedMemory() ->
+    // MemTracker::GetTrackedMemory() -> GetRootTracker()->ListChildren()
+    auto child = create_mem_tracker();
+    std::lock_guard lock(child_trackers_mutex_);
+    return InsertChildUnlocked(id, std::move(child));
+  }
   std::lock_guard lock(child_trackers_mutex_);
-  if (may_exist) {
-    auto result = FindChildUnlocked(id);
-    if (result) {
-      return result;
-    }
+  auto existing = FindChildUnlocked(id);
+  if (existing) {
+    return existing;
   }
-  auto result = std::make_shared<MemTracker>(
-      byte_limit, id, std::move(consumption_functor), shared_from_this(), add_to_parent,
-          create_metrics, metric_name, IsRootTracker::kFalse);
-  auto [iter, inserted] = child_trackers_.emplace(id, result);
-  if (!inserted) {
-    auto& tracker_weak_ptr = iter->second;
-    auto existing = tracker_weak_ptr.lock();
-    if (existing) {
-      LOG(DFATAL) << Format("Duplicate memory tracker (id $0) on parent $1", id, ToString());
-      return existing;
-    }
-    tracker_weak_ptr = result;
-  }
-
-  return result;
+  return InsertChildUnlocked(id, create_mem_tracker());
 }
 
 MemTracker::MemTracker(int64_t byte_limit, const string& id,
@@ -860,8 +875,9 @@ const shared_ptr<MemTracker>& MemTracker::GetRootTracker() {
 
 uint64_t MemTracker::GetTrackedMemory() {
   uint64_t tracked_memory = 0;
-  for (auto child_tracker : GetRootTracker()->ListChildren()) {
-    if (!child_tracker->id().starts_with(kTCMallocTrackerNamePrefix)) {
+  for (const auto& child_tracker : GetRootTracker()->ListChildren()) {
+    if (!child_tracker->id().starts_with(kTCMallocTrackerNamePrefix) &&
+        child_tracker->id() != kUntrackedTrackerName) {
       tracked_memory += child_tracker->consumption();
     }
   }

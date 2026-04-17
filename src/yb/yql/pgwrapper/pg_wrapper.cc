@@ -410,6 +410,10 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidate_table_cache_entry, true,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_test_reset_retry_counts, -1,
     "Restricts the number of retries for transaction conflicts. For testing purposes.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_test_fatal_after_notifs_queue_write, false,
+    "When true, the notifications poller exits with FATAL after writing NOTIFY entries to the "
+    "async queue but before persisting the CDC virtual-WAL ack. For testing purposes.");
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
@@ -845,7 +849,7 @@ PgWrapper::PgWrapper(PgProcessConf conf)
 }
 
 Status PgWrapper::PreflightCheck() {
-  RETURN_NOT_OK(CheckExecutableValid(GetPostgresExecutablePath()));
+  RETURN_NOT_OK(CheckExecutableValid(PgWrapper::GetPostgresExecutablePath()));
   RETURN_NOT_OK(CheckExecutableValid(GetInitDbExecutablePath()));
   return Status::OK();
 }
@@ -853,7 +857,7 @@ Status PgWrapper::PreflightCheck() {
 Status PgWrapper::Start() {
   RETURN_NOT_OK(CleanupPreviousPostgres());
 
-  auto postgres_executable = GetPostgresExecutablePath();
+  auto postgres_executable = PgWrapper::GetPostgresExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(postgres_executable));
 
   bool log_to_file = !FLAGS_logtostderr && !FLAGS_log_dir.empty() && !conf_.force_disable_log_file;

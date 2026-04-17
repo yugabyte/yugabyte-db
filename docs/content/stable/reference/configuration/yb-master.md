@@ -218,7 +218,7 @@ Default: `true`
 
 ##### --master_ysql_operation_lease_ttl_ms
 
-Default: `5 * 60 * 1000` (5 minutes)
+Default: `30 * 1000` (30 seconds)
 
 Specifies base YSQL lease Time-To-Live (TTL). The YB-Master leader uses this value to determine the validity of a YB-TServer's YSQL lease.
 
@@ -1064,7 +1064,7 @@ Default: `true`
 
 ## Auto Analyze service flags
 
-To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 Auto analyze is automatically enabled when the [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO) is enabled by setting the [yb_enable_cbo](../yb-tserver/#yb_enable_cbo) flag to `on`.
 

@@ -318,8 +318,10 @@ extern PGDLLIMPORT bool yb_enable_planner_trace;
 extern PGDLLIMPORT char *yb_hinted_uids;
 extern PGDLLIMPORT bool yb_enable_derived_equalities;
 extern PGDLLIMPORT bool yb_enable_listen_notify;
+extern PGDLLIMPORT bool yb_test_fatal_after_notifs_queue_write;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
+extern PGDLLIMPORT bool yb_skip_ensure_read_time_in_parallel_execution;
 
 /*
  * Functions exported by guc.c

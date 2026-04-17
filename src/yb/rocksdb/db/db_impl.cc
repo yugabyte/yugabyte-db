@@ -796,6 +796,11 @@ DBOptions SanitizeOptions(const std::string& dbname, const DBOptions& src) {
     result.new_table_reader_for_compaction_inputs = true;
   }
 
+  if (!result.block_based_table_builder_mem_tracker && result.mem_tracker) {
+    result.block_based_table_builder_mem_tracker =
+        yb::MemTracker::FindOrCreateTracker("BlockBasedTableBuilder", result.mem_tracker);
+  }
+
   return result;
 }
 
