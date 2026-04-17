@@ -7883,6 +7883,7 @@ YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 	pos = query;
 	while (isspace((unsigned char) *pos))
 		pos++;
+		
 	if (pos[0] == '/' && pos[1] == '*')
 	{
 		content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
