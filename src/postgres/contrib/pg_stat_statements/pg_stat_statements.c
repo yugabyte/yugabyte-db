@@ -4009,9 +4009,9 @@ YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *norm
 /*
  * YB: Generate a normalized query string for a BACKFILL command.
  *
- * Replaces varying parameters (bfinstr, read_time, partition key, row keys)
- * with $N parameter placeholders so that all BACKFILL calls for the same
- * index are represented by a single normalized query in pg_stat_statements.
+ * Replaces varying parameters (bfinstr, partition key, row keys) with $N
+ * parameter placeholders so that all BACKFILL calls for the same index are
+ * represented by a single normalized query in pg_stat_statements.
  *
  * Returns a palloc'd string.
  */
@@ -4041,7 +4041,9 @@ yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
 	if (stmt->bfinfo->bfinstr)
 		appendStringInfo(&buf, " WITH $%d", param_num++);
 
-	appendStringInfo(&buf, " READ TIME $%d", param_num++);
+	/* Read time is consistent for backfills of a given CREATE INDEX */
+	appendStringInfo(&buf, " READ TIME " UINT64_FORMAT,
+					(uint64) stmt->bfinfo->read_time);
 
 	if (stmt->bfinfo->row_bounds)
 	{
