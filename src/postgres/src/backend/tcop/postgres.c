@@ -7859,39 +7859,57 @@ disable_statement_timeout(void)
 }
 
 /*
- * Extract trace parent from a leading SQL comment in a query.
+ * Extract trace parent from any block comment in a query.
  *
  * traceparent_out must point to a buffer of at least
  * YB_TRACEPARENT_VALUE_LEN + 1 bytes.
  *
- * The traceparent must appear in a comment at the start of the query:
+ * The traceparent may appear in any block comment anywhere in the query:
+ * If multiple block comments contain a traceparent, the first one is returned.
+ *
  * "/\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ SELECT 1;"
+ * "SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/;"
+
  */
 static YbTraceparentResult
 YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 {
 	const char *pos = query;
-	const char *comment_end;
 
-	/* Skip leading whitespace. */
-	while (isspace((unsigned char) *pos))
-		pos++;
+	while (*pos != '\0')
+	{
+		const char *comment_start;
+		const char *content;
+		const char *comment_end;
+		YbTraceparentResult result;
 
-	if (pos[0] != '/' || pos[1] != '*')
-		return YB_TRACEPARENT_NO_COMMENT;
+		/* Find the next block comment start. */
+		comment_start = strstr(pos, "/*");
+		if (!comment_start)
+			break;
 
-	/* Skip the comment start delimiters "/ *". */
-	pos += YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+		content = comment_start + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
 
-	/*
-	 * Find the comment end delimiters "* /".
-	 * This is required as without this we can match a YB_TRACEPARENT_KEY_PREFIX
-	 * after the comment end delimiters.
-	 */
-	comment_end = strstr(pos, "*/");
-	Assert(comment_end);
+		/* Find the matching comment end. */
+		comment_end = strstr(content, "*/");
+		if (!comment_end)
+			break; /* Unterminated comment, let the main query parser to deal with it. */
 
-	return YbGetTraceparentFromTraceContext(pos, comment_end - pos, traceparent_out);
+		result = YbGetTraceparentFromTraceContext(content, comment_end - content,
+												  traceparent_out);
+
+		/*
+		 * this comment block contained no traceparent; 
+         * continue scanning remaining comments.
+		 */
+		if (result != YB_TRACEPARENT_NO_FIELD)
+			return result;
+
+		/* Advance past the closing "* /" of this comment. */
+		pos = comment_end + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+	}
+
+	return YB_TRACEPARENT_NO_COMMENT;
 }
 
 /*
