@@ -582,21 +582,4 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Enable capacity reservations for AWS for tasks that need new nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> enableCgroupConfiguration =
-      new ConfKeyInfo<>(
-          "yb.node_agent.enable_cgroup_configuration",
-          ScopeType.PROVIDER,
-          "Enable cgroup configuration",
-          "When true, TServer CPU cgroup isolation is configured during provisioning and"
-              + " configure-server. Only effective when user-level systemd is in use.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> useSystemLevelSystemd =
-      new ConfKeyInfo<>(
-          "yb.node_agent.use_system_level_systemd",
-          ScopeType.PROVIDER,
-          "Use System Level Systemd",
-          "Use system-level systemd instead of user-level systemd for service management",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

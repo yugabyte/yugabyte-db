@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
@@ -92,7 +93,7 @@ public class RBACControllerTest extends FakeDBApplication {
     mapper = new ObjectMapper();
 
     // Set the new RBAC runtime flag to true to allow controller method calls.
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
   }
 
   @After

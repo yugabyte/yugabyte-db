@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -56,7 +57,7 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     try {
       // TODO: set non-zero sleep time by mocking parent task.
-      factory.globalRuntimeConf().setValue("yb.upgrade.auto_flag_update_sleep_time_ms", "0");
+      RuntimeConfigEntry.upsertGlobal("yb.upgrade.auto_flag_update_sleep_time_ms", "0");
       lenient().when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
       lenient().when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     } catch (Exception ignored) {

@@ -39,11 +39,6 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams implements INod
 
   public boolean isTserver;
 
-  // Target user intent for a node.
-  // Since we are not writing new userIntent into the universe till the end of the edit task,
-  // Need to keep track of it here.
-  public UserIntent userIntent;
-
   @JsonIgnore private AvailabilityZone zone;
 
   @Override

@@ -291,28 +291,9 @@ public class UniverseCRUDHandler {
   }
 
   private static boolean isKubernetesVolumeUpdate(Cluster cluster, Cluster currentCluster) {
-    if (currentCluster.userIntent.providerType != Common.CloudType.kubernetes) {
-      return false;
-    }
-    Set<UUID> currentAZs = currentCluster.placementInfo.getAllAZUUIDs();
-    for (UUID azUUID : cluster.placementInfo.getAllAZUUIDs()) {
-      // Skip for new AZs being added
-      if (!currentAZs.contains(azUUID)) {
-        continue;
-      }
-      for (boolean isDedicatedMaster : new boolean[] {false, true}) {
-        DeviceInfo newDeviceInfo = cluster.userIntent.getDeviceInfoForAz(azUUID, isDedicatedMaster);
-        DeviceInfo currentDeviceInfo =
-            currentCluster.userIntent.getDeviceInfoForAz(azUUID, isDedicatedMaster);
-        if (currentDeviceInfo != null
-            && newDeviceInfo != null
-            && currentDeviceInfo.volumeSize < newDeviceInfo.volumeSize) {
-          LOG.info("Volume size changed for {}!", isDedicatedMaster ? "Master" : "Tserver");
-          return true;
-        }
-      }
-    }
-    return false;
+    return currentCluster.userIntent.providerType == Common.CloudType.kubernetes
+        && currentCluster.userIntent.deviceInfo.volumeSize
+            < cluster.userIntent.deviceInfo.volumeSize;
   }
 
   public static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
@@ -1824,15 +1805,6 @@ public class UniverseCRUDHandler {
 
   public UUID clusterDelete(
       Customer customer, Universe universe, UUID clusterUUID, Boolean isForceDelete) {
-    return clusterDelete(customer, universe, clusterUUID, isForceDelete, null);
-  }
-
-  public UUID clusterDelete(
-      Customer customer,
-      Universe universe,
-      UUID clusterUUID,
-      Boolean isForceDelete,
-      KubernetesResourceDetails resourceDetails) {
     List<Cluster> existingNonPrimaryClusters =
         universe.getUniverseDetails().getNonPrimaryClusters();
 
@@ -1856,9 +1828,6 @@ public class UniverseCRUDHandler {
       taskParams.clusterUUID = clusterUUID;
       taskParams.isForceDelete = isForceDelete;
       taskParams.expectedUniverseVersion = universe.getVersion();
-      if (resourceDetails != null) {
-        taskParams.setKubernetesResourceDetails(resourceDetails);
-      }
       taskUUID = commissioner.submit(TaskType.ReadOnlyKubernetesClusterDelete, taskParams);
     } else {
       switch (cluster.clusterType) {

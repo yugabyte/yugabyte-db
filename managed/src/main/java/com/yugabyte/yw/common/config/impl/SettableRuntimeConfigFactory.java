@@ -13,29 +13,18 @@ package com.yugabyte.yw.common.config.impl;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigParseOptions;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
-import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
-import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
-import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -49,10 +38,6 @@ import play.libs.Json;
 @Singleton
 public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   private static final Logger LOG = LoggerFactory.getLogger(SettableRuntimeConfigFactory.class);
-
-  private static final String CACHE_ENABLED_KEY = "runtime_config.cache_enabled";
-  private static final String CACHE_EXPIRY_DURATION_KEY = "runtime_config.cache_expiry_duration";
-  private static final String CACHE_CAPACITY_KEY = "runtime_config.cache_capacity";
 
   // For example, anything just email, or ending with .email, _email or -email matches.
   private static final Pattern SENSITIVE_CONFIG_NAME_PAT =
@@ -88,17 +73,10 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
               "  }",
               "}"));
 
-  // Track all the overridden scopes to facilitate cache invalidation on scope deletion.
-  private final Set<UUID> overriddenScopes;
-  // Cache the resolved configs for scopes.
-  private final Cache<UUID, Config> cachedConfigs;
-
   @Inject
   public SettableRuntimeConfigFactory(
       Config appConfig, EbeanDynamicEvolutions ebeanDynamicEvolutions, YBFlywayInit ybFlywayInit) {
     this.appConfig = appConfig;
-    this.overriddenScopes = ConcurrentHashMap.newKeySet();
-    this.cachedConfigs = createCache();
   }
 
   /**
@@ -106,15 +84,11 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
    */
   @Override
   public RuntimeConfig<Customer> forCustomer(Customer customer) {
-    Config scopeConfig =
-        getOrCacheConfigForScope(
-            customer.getUuid(),
-            () ->
-                getConfigForScope(customer.getUuid(), "Scoped Config (" + customer + ")")
-                    .withFallback(globalConfig())
-                    .resolve());
     RuntimeConfig<Customer> config =
-        new RuntimeConfig<Customer>(customer, scopeConfig, getChangeListener());
+        new RuntimeConfig<>(
+            customer,
+            getConfigForScope(customer.getUuid(), "Scoped Config (" + customer + ")")
+                .withFallback(globalConfig()));
     LOG.trace("forCustomer {}: {}", customer.getUuid(), config);
     return config;
   }
@@ -125,17 +99,13 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   @Override
   public RuntimeConfig<Universe> forUniverse(Universe universe) {
     Customer customer = Customer.get(universe.getCustomerId());
-    Config scopeConfig =
-        getOrCacheConfigForScope(
-            universe.getUniverseUUID(),
-            () ->
-                getConfigForScope(universe.getUniverseUUID(), "Scoped Config (" + universe + ")")
-                    .withFallback(
-                        getConfigForScope(customer.getUuid(), "Scoped Config (" + customer + ")"))
-                    .withFallback(globalConfig())
-                    .resolve());
     RuntimeConfig<Universe> config =
-        new RuntimeConfig<>(universe, scopeConfig, getChangeListener());
+        new RuntimeConfig<>(
+            universe,
+            getConfigForScope(universe.getUniverseUUID(), "Scoped Config (" + universe + ")")
+                .withFallback(
+                    getConfigForScope(customer.getUuid(), "Scoped Config (" + customer + ")"))
+                .withFallback(globalConfig()));
     LOG.trace("forUniverse {}: {}", universe.getUniverseUUID(), config);
     return config;
   }
@@ -146,17 +116,13 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   @Override
   public RuntimeConfig<Provider> forProvider(Provider provider) {
     Customer customer = Customer.get(provider.getCustomerUUID());
-    Config scopeConfig =
-        getOrCacheConfigForScope(
-            provider.getUuid(),
-            () ->
-                getConfigForScope(provider.getUuid(), "Scoped Config (" + provider + ")")
-                    .withFallback(
-                        getConfigForScope(customer.getUuid(), "Scoped Config (" + customer + ")"))
-                    .withFallback(globalConfig())
-                    .resolve());
     RuntimeConfig<Provider> config =
-        new RuntimeConfig<>(provider, scopeConfig, getChangeListener());
+        new RuntimeConfig<>(
+            provider,
+            getConfigForScope(provider.getUuid(), "Scoped Config (" + provider + ")")
+                .withFallback(
+                    getConfigForScope(customer.getUuid(), "Scoped Config (" + customer + ")"))
+                .withFallback(globalConfig()));
     LOG.trace("forProvider {}: {}", provider.getUuid(), config);
     return config;
   }
@@ -166,9 +132,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
    */
   @Override
   public RuntimeConfig<Model> globalRuntimeConf() {
-    Config globalConfig =
-        getOrCacheConfigForScope(GLOBAL_SCOPE_UUID, () -> globalConfig().resolve());
-    return new RuntimeConfig<>(globalConfig, getChangeListener());
+    return new RuntimeConfig<>(globalConfig());
   }
 
   @Override
@@ -232,102 +196,5 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
               return entry.getKey() + "=" + entry.getValue();
             })
         .collect(Collectors.joining(", "));
-  }
-
-  @VisibleForTesting
-  public Map<UUID, Config> getCachedConfigs() {
-    return cachedConfigs != null ? cachedConfigs.asMap() : Map.of();
-  }
-
-  @VisibleForTesting
-  public void clearCache() {
-    synchronized (overriddenScopes) {
-      if (cachedConfigs != null) {
-        cachedConfigs.invalidateAll();
-      }
-      overriddenScopes.clear();
-    }
-  }
-
-  void removeCache(UUID scope) {
-    if (cachedConfigs != null) {
-      cachedConfigs.invalidate(scope);
-    }
-  }
-
-  private Config getOrCacheConfigForScope(UUID scope, Supplier<Config> supplier) {
-    if (cachedConfigs == null) {
-      // Cache is disabled. Load directly from DB.
-      return supplier.get();
-    }
-    Set<UUID> snapshotScopes = new HashSet<>(overriddenScopes);
-    if (snapshotScopes.size() > 0 && !ScopedRuntimeConfig.containsAll(snapshotScopes)) {
-      synchronized (overriddenScopes) {
-        if (overriddenScopes.equals(snapshotScopes)) {
-          // Some overridden scopes are deleted. E.g universe or provider is deleted.
-          // OverridenScopes is stale too. Clear if it has not been cleared (compare and clear).
-          LOG.debug(
-              "Clearing entire runtime config cache as there are deleted scopes {}",
-              snapshotScopes);
-          clearCache();
-        }
-      }
-    }
-    try {
-      return cachedConfigs.get(
-          scope,
-          () -> {
-            Config config = supplier.get();
-            if (ScopedRuntimeConfig.isPresent(scope)) {
-              synchronized (overriddenScopes) {
-                // Override is present for this scope. Track it for invalidation on deletion.
-                // It is ok to add the scope for tracking after clearing the overriddenScopes.
-                // But, it is not ok to clear (tracking lost) after adding to overriddenScopes.
-                // Compare and clear is needed to avoid the latter case.
-                overriddenScopes.add(scope);
-              }
-            }
-            return config;
-          });
-    } catch (ExecutionException e) {
-      // Actual loading is in this thread.
-      throw new RuntimeException("Error loading config for scope " + scope, e);
-    }
-  }
-
-  private Cache<UUID, Config> createCache() {
-    if (appConfig.getBoolean(CACHE_ENABLED_KEY)) {
-      long expirySeconds = appConfig.getDuration(CACHE_EXPIRY_DURATION_KEY, TimeUnit.SECONDS);
-      int capacity = appConfig.getInt(CACHE_CAPACITY_KEY);
-      LOG.info(
-          "Runtime config cache is enabled with expiry {} secs and capacity {}",
-          expirySeconds,
-          capacity);
-      return CacheBuilder.newBuilder()
-          .expireAfterAccess(expirySeconds, TimeUnit.SECONDS)
-          .maximumSize(capacity)
-          .build();
-    } else {
-      LOG.info("Runtime config cache is disabled");
-    }
-    return null;
-  }
-
-  // Cache invalidator for changes triggered via APIs.
-  private BiConsumer<ScopeType, RuntimeConfigEntry> getChangeListener() {
-    return (type, entry) -> {
-      LOG.debug(
-          "Received notification for scope {}({}) with path {}",
-          entry.getScopeUUID(),
-          type,
-          entry.getPath());
-      if (type == ScopeType.GLOBAL || type == ScopeType.CUSTOMER) {
-        // Finer grained invalidation can be implemented here if needed. For now we just clear the
-        // cache to also remove the dependents due to fall-backs.
-        clearCache();
-      } else {
-        removeCache(entry.getScopeUUID());
-      }
-    };
   }
 }

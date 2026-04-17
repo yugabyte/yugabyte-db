@@ -225,14 +225,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         ImmutableList.of(TaskType.RestartDrConfig, TaskType.DeleteDrConfig, TaskType.EditDrConfig));
     DR_CONFIG_STATE_TO_ALLOWED_TASKS.put(
         State.Failed, ImmutableList.of(TaskType.RestartDrConfig, TaskType.DeleteDrConfig));
-    DR_CONFIG_STATE_TO_ALLOWED_TASKS.put(
-        State.Paused,
-        List.of(
-            TaskType.RestartDrConfig,
-            TaskType.DeleteDrConfig,
-            TaskType.EditDrConfig,
-            TaskType.FailoverDrConfig,
-            TaskType.EditXClusterConfig));
   }
 
   public enum XClusterUniverseAction {

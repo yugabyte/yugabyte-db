@@ -454,9 +454,6 @@ public class NodeAgentRpcPayload {
     Integer num_cores_to_keep =
         confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
     configureServerInputBuilder.setNumCoresToKeep(num_cores_to_keep);
-    boolean cgroupEnabled =
-        confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration);
-    configureServerInputBuilder.setConfigureCgroup(cgroupEnabled);
     return configureServerInputBuilder.build();
   }
 
@@ -642,10 +639,6 @@ public class NodeAgentRpcPayload {
     AnsibleClusterServerCtl.Params taskParams = null;
     if (nodeTaskParams instanceof AnsibleClusterServerCtl.Params) {
       taskParams = (AnsibleClusterServerCtl.Params) nodeTaskParams;
-    } else {
-      throw new RuntimeException(
-          "Expected AnsibleClusterServerCtl.Params for setupServerControlBits, but found "
-              + nodeTaskParams.getClass());
     }
     String serverName = "yb-" + taskParams.process;
     String serverHome =

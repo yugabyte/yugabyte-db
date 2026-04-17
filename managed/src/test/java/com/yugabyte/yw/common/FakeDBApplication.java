@@ -20,7 +20,6 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -109,7 +108,6 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public AlertService alertService;
   public AlertDefinitionService alertDefinitionService;
   public AlertConfigurationService alertConfigurationService;
-  public SettableRuntimeConfigFactory mutableConfigFactory;
 
   @Override
   protected Application provideApplication() {
@@ -204,7 +202,6 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
     alertService = app.injector().instanceOf(AlertService.class);
     alertDefinitionService = app.injector().instanceOf(AlertDefinitionService.class);
     alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
-    mutableConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
   }
 
   public static UUID buildTaskInfo(UUID parentUUID, TaskType taskType) {

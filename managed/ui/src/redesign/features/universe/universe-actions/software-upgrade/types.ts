@@ -15,7 +15,6 @@ export interface DBUpgradeFormFields {
 export interface AzUpgradeStep {
   azUuid: string;
   displayName: string;
-  displayNameWithoutRegion: string;
   pauseAfterTserverUpgrade: boolean;
 }
 

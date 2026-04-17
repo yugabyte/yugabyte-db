@@ -16,9 +16,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -38,6 +36,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -279,8 +278,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse.save();
     Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
     TestHelper.updateUniverseVersion(xClusterUniv, "2.17.0.0-b1");
-
-    factory.forUniverse(xClusterUniv).setValue("yb.upgrade.auto_flag_update_sleep_time_ms", "0ms");
+    RuntimeConfigEntry.upsert(xClusterUniv, "yb.upgrade.auto_flag_update_sleep_time_ms", "0ms");
     XClusterConfig xClusterConfig1 =
         XClusterConfig.create(
             "test-2", defaultUniverse.getUniverseUUID(), xClusterUniv.getUniverseUUID());
@@ -305,7 +303,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
     Universe xClusterUniv2 = ModelFactory.createUniverse("univ-3");
     TestHelper.updateUniverseVersion(xClusterUniv2, "2.17.0.0-b1");
-    factory.forUniverse(xClusterUniv2).setValue("yb.upgrade.auto_flag_update_sleep_time_ms", "0ms");
+    RuntimeConfigEntry.upsert(xClusterUniv2, "yb.upgrade.auto_flag_update_sleep_time_ms", "0ms");
     XClusterConfig.create(
         "test-3", xClusterUniv.getUniverseUUID(), xClusterUniv2.getUniverseUUID());
     DestroyKubernetesUniverse.Params taskParams = new DestroyKubernetesUniverse.Params();

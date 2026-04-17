@@ -256,7 +256,7 @@ export default (store) => {
       />
       <Route
         path="/universes/:uuid/add-geo-partition"
-        component={(props) => <AddGeoPartition {...props} />}
+        component={(props) => <AddGeoPartition isNewGeoPartition {...props} />}
         onEnter={authenticatedSession}
         onChange={checkIfAuthenticated}
       />

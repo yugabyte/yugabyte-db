@@ -43,6 +43,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -100,7 +101,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
-    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     resizeNode.setUserTaskUUID(UUID.randomUUID());
     defaultUniverse =
         Universe.saveDetails(
@@ -310,7 +311,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             targetIntent,
             defaultUniverse,
             mockBaseTaskDependencies.getConfGetter()));
-    factory.globalRuntimeConf().setValue(cooldownParam, "3");
+    RuntimeConfigEntry.upsertGlobal(cooldownParam, "3");
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
@@ -334,7 +335,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             defaultUniverse,
             mockBaseTaskDependencies.getConfGetter()));
     // Changing window size.
-    factory.globalRuntimeConf().setValue(cooldownParam, "1");
+    RuntimeConfigEntry.upsertGlobal(cooldownParam, "1");
     assertTrue(
         ResizeNodeParams.checkResizeIsPossible(
             primaryUUID,
@@ -1518,9 +1519,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   @Test
   public void testChangingInstanceRRWithCRAzu() {
-    factory
-        .globalRuntimeConf()
-        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     String defaultInstanceType = "Standard_EC2as_v5";
     String newInstanceType = "Standard_EC4as_v5";
     createInstanceType(azuProvider.getUuid(), defaultInstanceType);
@@ -1676,9 +1676,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   @Test
   public void testChangingInstanceRRWithCRAws() {
-    factory
-        .globalRuntimeConf()
-        .setValue(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     createInstanceType(defaultProvider.getUuid(), DEFAULT_INSTANCE_TYPE);
     createInstanceType(defaultProvider.getUuid(), NEW_INSTANCE_TYPE);
     Region region1 = Region.getByCode(defaultProvider, "region-1");
@@ -1943,20 +1941,20 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   private TaskInfo submitTask(ResizeNodeParams requestParams) {
-    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     return submitTask(requestParams, TaskType.ResizeNode, commissioner, -1);
   }
 
   private ResizeNodeParams createResizeParams() {
     ResizeNodeParams taskParams = new ResizeNodeParams();
-    factory.globalRuntimeConf().setValue("yb.internal.allow_unsupported_instances", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.internal.allow_unsupported_instances", "true");
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     return taskParams;
   }
 
   private ResizeNodeParams createResizeParamsForCloud() {
     ResizeNodeParams taskParams = new ResizeNodeParams();
-    factory.globalRuntimeConf().setValue("yb.cloud.enabled", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.cloud.enabled", "true");
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     return taskParams;
   }

@@ -33,6 +33,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -249,9 +250,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCRAzureSuccess() {
-    factory
-        .globalRuntimeConf()
-        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
@@ -326,9 +326,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCRAzureSameZoneN() {
-    factory
-        .globalRuntimeConf()
-        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
     Region region1 = Region.create(azuProvider, "us-west", "us-west", "yb-image");
     AvailabilityZone zone1 =
@@ -392,9 +391,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCRAzureFail() {
-    factory
-        .globalRuntimeConf()
-        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     failsOnCapacityReservation = 1;
 
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
@@ -404,9 +402,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    factory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.capacityReservationMaxRetries.getKey(), "2");
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.capacityReservationMaxRetries.getKey(), "2");
 
     taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
     taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
@@ -418,9 +414,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCRAzureUnsupportedTypeSuccess() {
-    factory
-        .globalRuntimeConf()
-        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
@@ -497,9 +492,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testCreateUniverseWithCapacityReservationAwsSuccess() {
 
-    factory
-        .globalRuntimeConf()
-        .setValue(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     Region region1 = Region.getByCode(defaultProvider, "region-1");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "az-1", "az 1", "subnet");
     Region region2 = Region.create(defaultProvider, "region-2", "region-2", "yb-image");
@@ -580,9 +573,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseRRWithCRAzureSuccess() {
-    factory
-        .globalRuntimeConf()
-        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
@@ -657,9 +649,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseRRWithCRAwsSuccess() {
-    factory
-        .globalRuntimeConf()
-        .setValue(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
 
     Region region1 = Region.getByCode(defaultProvider, "region-1");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "az-1", "az 1", "subnet");

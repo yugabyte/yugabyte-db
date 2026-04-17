@@ -8,7 +8,7 @@ export GO111MODULE=on
 # https://protobuf.dev/support/version-support/
 readonly protoc_version=33.0
 readonly package_name='node-agent'
-readonly default_platforms=("linux/amd64" "linux/arm64")
+readonly default_platforms=("linux/amd64" "linux/arm64" "linux/ppc64le")
 readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target" \
                     "pywheels")
 
@@ -324,7 +324,6 @@ package_for_platform() {
     cp -rf ../ynp_requirements.txt "${script_dir}"/ynp_requirements.txt
     cp -rf ../ynp_requirements_3.6.txt "${script_dir}"/ynp_requirements_3.6.txt
     cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/systemd/templates/
-    cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/rootsystemd/templates/
     chmod 755 "${script_dir}"/*.sh
     chmod 755 "${bin_dir}"/*.sh
     popd

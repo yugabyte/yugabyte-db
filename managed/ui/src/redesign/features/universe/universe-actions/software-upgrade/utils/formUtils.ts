@@ -7,34 +7,27 @@ import {
 import type { ClusterSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import type { UniverseSoftwareUpgradeReqBody } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
-import { DbUpgradeFormStep, UpgradePace } from '../constants';
+import { UpgradePace } from '../constants';
 import type { AzUpgradeStep, CanaryUpgradeConfig, DBUpgradeFormFields } from '../types';
 
-interface PlacementAzMetadata {
+export interface FormattedAzPlacement {
   azUuid: string;
   displayName: string;
-  displayNameWithoutRegion: string;
 }
 
 /**
- * Get placement AZ metadata list for a cluster.
+ * Format cluster placement AZs for use in the DB upgrade form.
  */
-export const getPlacementAzMetadataList = (cluster: ClusterSpec | null): PlacementAzMetadata[] => {
+const getFormattedClusterPlacementAzs = (cluster: ClusterSpec | null): FormattedAzPlacement[] => {
   if (!cluster) {
     return [];
   }
   const clusterPlacementRegions = getClusterPlacementRegions(cluster);
   return clusterPlacementRegions.flatMap((region) =>
-    region.az_list?.map((az) => {
-      const regionFlag = getFlagFromRegion(region.code);
-      const azNamePart = `${regionFlag} ${az.name}`;
-      const regionInParens = region.name ? ` (${region.name})` : '';
-      return {
-        azUuid: az.uuid ?? '',
-        displayName: `${azNamePart}${regionInParens}`,
-        displayNameWithoutRegion: azNamePart
-      };
-    })
+    region.az_list?.map((az) => ({
+      azUuid: az.uuid ?? '',
+      displayName: `${getFlagFromRegion(region.code)} ${az.name ?? ''} (${region.name ?? ''})`
+    }))
   );
 };
 
@@ -45,19 +38,18 @@ export const getDefaultCanaryUpgradeConfig = (clusters: ClusterSpec[]): CanaryUp
   const primaryCluster = getPrimaryCluster(clusters);
   const readReplicaCluster = getReadOnlyCluster(clusters);
 
-  const primaryClusterPlacementAzs = getPlacementAzMetadataList(primaryCluster);
+  const primaryClusterPlacementAzs = getFormattedClusterPlacementAzs(primaryCluster);
   const primaryClusterAzOrder = primaryClusterPlacementAzs.map((placementAz) => placementAz.azUuid);
   const primaryClusterAzSteps: Record<string, AzUpgradeStep> = {};
   primaryClusterPlacementAzs.forEach((placementAz, index) => {
     primaryClusterAzSteps[placementAz.azUuid] = {
       azUuid: placementAz.azUuid,
       displayName: placementAz.displayName,
-      displayNameWithoutRegion: placementAz.displayNameWithoutRegion,
       pauseAfterTserverUpgrade: index === 0
     };
   });
 
-  const readReplicaClusterPlacementAzs = getPlacementAzMetadataList(readReplicaCluster);
+  const readReplicaClusterPlacementAzs = getFormattedClusterPlacementAzs(readReplicaCluster);
   const readReplicaClusterAzOrder = readReplicaClusterPlacementAzs.map(
     (placementAz) => placementAz.azUuid
   );
@@ -66,7 +58,6 @@ export const getDefaultCanaryUpgradeConfig = (clusters: ClusterSpec[]): CanaryUp
     readReplicaClusterAzSteps[placementAz.azUuid] = {
       azUuid: placementAz.azUuid,
       displayName: placementAz.displayName,
-      displayNameWithoutRegion: placementAz.displayNameWithoutRegion,
       pauseAfterTserverUpgrade: false
     };
   });
@@ -127,17 +118,4 @@ export const buildCanaryUpgradeConfig = (values: DBUpgradeFormFields) => {
     primary_cluster_az_steps: primarySteps,
     read_replica_cluster_az_steps: readReplicaSteps
   };
-};
-
-/**
- * Returns true if the current form step has reached the target form step.
- */
-export const hasPassedOrReachedFormStep = (
-  formSteps: DbUpgradeFormStep[],
-  currentFormStep: DbUpgradeFormStep,
-  targetFormStep: DbUpgradeFormStep
-) => {
-  const currentFormStepIndex = formSteps.indexOf(currentFormStep);
-  const targetFormStepIndex = formSteps.indexOf(targetFormStep);
-  return targetFormStepIndex >= 0 && currentFormStepIndex >= targetFormStepIndex;
 };

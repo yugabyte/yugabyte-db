@@ -26,6 +26,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -122,9 +123,9 @@ public class UpdateOOMServiceTaskTest extends CommissionerBaseTest {
 
   @Test
   public void testTurnOnNoConfig() throws InterruptedException {
-    factory.globalRuntimeConf().setValue("yb.ui.feature_flags.enable_earlyoom", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.ui.feature_flags.enable_earlyoom", "true");
     String earlyoomArgs = "-M 1024 -m 50";
-    factory.globalRuntimeConf().setValue("yb.node_agent.earlyoom_default_args", earlyoomArgs);
+    RuntimeConfigEntry.upsertGlobal("yb.node_agent.earlyoom_default_args", earlyoomArgs);
     AdditionalServicesStateData data = new AdditionalServicesStateData();
     data.setEarlyoomEnabled(true);
     Result result = runOperationInUniverse(defaultUniverse.getUniverseUUID(), data);
@@ -153,7 +154,7 @@ public class UpdateOOMServiceTaskTest extends CommissionerBaseTest {
 
   @Test
   public void testTurnOnWithConfig() throws InterruptedException {
-    factory.globalRuntimeConf().setValue("yb.ui.feature_flags.enable_earlyoom", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.ui.feature_flags.enable_earlyoom", "true");
     AdditionalServicesStateData.EarlyoomConfig earlyoomConfig =
         new AdditionalServicesStateData.EarlyoomConfig();
     earlyoomConfig.setAvailMemoryTermKb(2024);
@@ -188,7 +189,7 @@ public class UpdateOOMServiceTaskTest extends CommissionerBaseTest {
 
   @Test
   public void testTurnOffNoConfig() throws InterruptedException {
-    factory.globalRuntimeConf().setValue("yb.ui.feature_flags.enable_earlyoom", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.ui.feature_flags.enable_earlyoom", "true");
     AdditionalServicesStateData.EarlyoomConfig earlyoomConfig =
         new AdditionalServicesStateData.EarlyoomConfig();
     earlyoomConfig.setAvailMemoryTermKb(8024);

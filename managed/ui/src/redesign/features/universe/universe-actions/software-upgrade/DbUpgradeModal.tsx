@@ -22,7 +22,7 @@ import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 import { ReleaseState, type YbdbRelease } from './dtos';
 import { buildVersionOptions } from './utils/versionUtils';
-import { DbUpgradeSummaryCard } from './upgrade-summary/DbUpgradeSummaryCard';
+import { DbUpgradeSummaryCard } from './DbUpgradeSummaryCard';
 import { CurrentDbUpgradeFormStep } from './CurrentDbUpgradeFormStep';
 import { YBStepper } from '@app/redesign/components/YBStepper/YBStepper';
 import {
@@ -64,8 +64,7 @@ const useStyles = makeStyles((theme) => ({
     height: '100%',
     padding: theme.spacing(2),
 
-    overflowY: 'auto',
-    backgroundColor: theme.palette.ybacolors.grey050,
+    backgroundColor: '#F7F9FB',
     borderLeft: `1px solid ${theme.palette.grey[200]}`
   },
   loadingContainer: {
@@ -238,15 +237,6 @@ export const DbUpgradeModal = ({
   };
 
   const upgradeMethod = formMethods.watch('upgradeMethod');
-  const formSteps =
-    upgradeMethod === UpgradeMethod.EXPRESS
-      ? [DbUpgradeFormStep.DB_VERSION, DbUpgradeFormStep.UPGRADE_METHOD]
-      : [
-          DbUpgradeFormStep.DB_VERSION,
-          DbUpgradeFormStep.UPGRADE_METHOD,
-          DbUpgradeFormStep.UPGRADE_PLAN,
-          DbUpgradeFormStep.UPGRADE_PACE
-        ];
   const formStepperLabels: Record<string, string> =
     upgradeMethod === UpgradeMethod.EXPRESS
       ? {
@@ -295,12 +285,12 @@ export const DbUpgradeModal = ({
       submitButtonTooltip={!hasRequiredUpgradePermission ? RBAC_ERR_MSG_NO_PERM : ''}
       {...modalProps}
     >
-      <FormProvider {...formMethods}>
-        <div className={classes.leftPanel}>
-          <div className={classes.stepperContainer}>
-            <YBStepper steps={formStepperLabels} currentStep={currentFormStep} />
-          </div>
-          <div className={classes.formScrollArea}>
+      <div className={classes.leftPanel}>
+        <div className={classes.stepperContainer}>
+          <YBStepper steps={formStepperLabels} currentStep={currentFormStep} />
+        </div>
+        <div className={classes.formScrollArea}>
+          <FormProvider {...formMethods}>
             {universeDetailsQuery.isLoading ||
             universeRuntimeConfigsQuery.isLoading ||
             dbReleasesQuery.isLoading ? (
@@ -317,12 +307,13 @@ export const DbUpgradeModal = ({
                 onPreCheckSuccess={modalProps.onClose}
               />
             )}
-          </div>
+          </FormProvider>
         </div>
-        <div className={classes.infoPanel}>
-          <DbUpgradeSummaryCard currentFormStep={currentFormStep} formSteps={formSteps} />
-        </div>
-      </FormProvider>
+      </div>
+
+      <div className={classes.infoPanel}>
+        <DbUpgradeSummaryCard />
+      </div>
     </YBModal>
   );
 };

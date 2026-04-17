@@ -52,7 +52,7 @@ public class HighAvailabilityConfigTest extends FakeDBApplication {
     when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
         .thenReturn(mockPlatformInstanceClient);
     when(mockPlatformInstanceClient.testConnection()).thenReturn(true);
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.ha.replication_frequency", "1 minute");
+    RuntimeConfigEntry.upsertGlobal("yb.ha.replication_frequency", "1 minute");
   }
 
   private String createClusterKey() {

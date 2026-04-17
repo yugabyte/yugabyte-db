@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
+import com.yugabyte.yw.common.XClusterCreatePrecheck;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -68,6 +69,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.*;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import play.libs.Json;
 import play.mvc.Http.Request;
@@ -89,6 +91,7 @@ public class DrConfigController extends AuthenticatedController {
   private final XClusterScheduler xClusterScheduler;
   private final UniverseTableHandler tableHandler;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final XClusterCreatePrecheck xClusterCreatePrecheck;
 
   @Inject
   public DrConfigController(
@@ -101,7 +104,8 @@ public class DrConfigController extends AuthenticatedController {
       AutoFlagUtil autoFlagUtil,
       XClusterScheduler xClusterScheduler,
       UniverseTableHandler tableHandler,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      XClusterCreatePrecheck xClusterCreatePrecheck) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.drConfigHelper = drConfigHelper;
@@ -112,6 +116,7 @@ public class DrConfigController extends AuthenticatedController {
     this.xClusterScheduler = xClusterScheduler;
     this.tableHandler = tableHandler;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
+    this.xClusterCreatePrecheck = xClusterCreatePrecheck;
   }
 
   /**
@@ -860,11 +865,6 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
-    if (drConfig.isHalted()) {
-      throw new PlatformServiceException(
-          FORBIDDEN, "Replication is currently halted and needs to be restarted first");
-    }
-
     pauseUniversesPrechecks(xClusterConfig, sourceUniverse, targetUniverse);
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
@@ -1236,7 +1236,7 @@ public class DrConfigController extends AuthenticatedController {
       estimatedDataLossMs =
           metricEntry.values.stream()
               .min(Comparator.comparing(ImmutablePair::getLeft))
-              .map(ImmutablePair::getRight)
+              .map(valueEntry -> valueEntry.getRight())
               .orElse(-1d);
       if (estimatedDataLossMs == -1) {
         log.error(
@@ -1248,6 +1248,16 @@ public class DrConfigController extends AuthenticatedController {
       log.error("Could not get the estimatedDataLoss: {}", e.getMessage());
     }
     return estimatedDataLossMs;
+  }
+
+  public static void verifyTaskAllowed(DrConfig drConfig, TaskType taskType) {
+    if (!XClusterConfigTaskBase.isTaskAllowed(drConfig, taskType)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s task is not allowed; with state `%s`, the allowed tasks are %s",
+              taskType, drConfig.getState(), XClusterConfigTaskBase.getAllowedTasks(drConfig)));
+    }
   }
 
   public void pauseUniversesPrechecks(

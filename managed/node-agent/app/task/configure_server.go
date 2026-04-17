@@ -37,14 +37,6 @@ var ScriptFilesToCopy = []struct {
 	{"collect_metrics_wrapper.sh.j2", "bin/collect_metrics_wrapper.sh"},
 }
 
-// CgroupScriptFilesToCopy lists additional scripts installed only when configure_cgroup is enabled.
-var CgroupScriptFilesToCopy = []struct {
-	Src  string
-	Dest string
-}{
-	{"yb-tserver-cgroup-exec.sh.j2", "bin/yb-tserver-cgroup-exec.sh"},
-}
-
 type ConfigureServerHandler struct {
 	shellTask *ShellTask
 	param     *pb.ConfigureServerInput
@@ -195,39 +187,33 @@ func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context) erro
 			}
 		}
 	}
-	enabled, err := module.IsUserSystemdEnabled(ctx, h.username, h.logOut)
+
+	info, err := helpers.GetOSInfo()
 	if err != nil {
-		util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Error retreiving OS information %s", err.Error())
 		return err
 	}
-	if enabled {
-		info, err := helpers.GetOSInfo()
-		if err != nil {
-			util.FileLogger().Errorf(ctx, "Error retreiving OS information %s", err.Error())
-			return err
-		}
-		unitDir := "/lib/systemd/system"
-		if strings.Contains(info.ID, "suse") || strings.Contains(info.Family, "suse") {
-			unitDir = "/usr/lib/systemd/system"
-		}
-		// Link network-online.target if required
-		linkCmd := fmt.Sprintf("systemctl --user link %s/network-online.target", unitDir)
-		h.logOut.WriteLine("Running configure server phase: %s", linkCmd)
-		_, err = module.RunShellCmdWithRetry(
-			ctx,
-			module.SystemdBackOff,
-			h.username,
-			"LinkNetworkOnlineTarget",
-			linkCmd,
-			h.logOut,
-		)
-		if err != nil {
-			util.FileLogger().
-				Errorf(ctx, "Configure server failed in %v - %s", linkCmd, err.Error())
-			return err
-		}
+
+	unitDir := "/lib/systemd/system"
+	if strings.Contains(info.ID, "suse") || strings.Contains(info.Family, "suse") {
+		unitDir = "/usr/lib/systemd/system"
 	}
 
+	// Link network-online.target if required
+	linkCmd := fmt.Sprintf("systemctl --user link %s/network-online.target", unitDir)
+	h.logOut.WriteLine("Running configure server phase: %s", linkCmd)
+	_, err = module.RunShellCmdWithRetry(
+		ctx,
+		module.SystemdBackOff,
+		h.username,
+		"LinkNetworkOnlineTarget",
+		linkCmd,
+		h.logOut,
+	)
+	if err != nil {
+		util.FileLogger().Errorf(ctx, "Configure server failed in %v - %s", linkCmd, err.Error())
+		return err
+	}
 	return nil
 }
 
@@ -243,10 +229,10 @@ func (h *ConfigureServerHandler) setupServerScript(
 		"yb_home_dir":       home,
 		"num_cores_to_keep": h.param.GetNumCoresToKeep(),
 		"yb_metrics_dir":    yb_metrics_dir,
-		"configure_cgroup":  h.param.GetConfigureCgroup(),
 	}
 
 	for _, fileInfo := range ScriptFilesToCopy {
+		// Copy the script.
 		_, err := module.CopyFile(
 			ctx,
 			serverScriptContext,
@@ -257,21 +243,6 @@ func (h *ConfigureServerHandler) setupServerScript(
 		)
 		if err != nil {
 			return err
-		}
-	}
-	if h.param.GetConfigureCgroup() {
-		for _, fileInfo := range CgroupScriptFilesToCopy {
-			_, err := module.CopyFile(
-				ctx,
-				serverScriptContext,
-				filepath.Join(module.ServerTemplateSubpath, fileInfo.Src),
-				filepath.Join(home, fileInfo.Dest),
-				fs.FileMode(0755),
-				h.username,
-			)
-			if err != nil {
-				return err
-			}
 		}
 	}
 	for _, process := range h.param.GetProcesses() {

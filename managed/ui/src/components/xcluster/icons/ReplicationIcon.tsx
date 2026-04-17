@@ -47,7 +47,6 @@ export const ReplicationIcon = ({ drConfig }: ReplicationIconProps) => {
     case DrConfigState.REPLICATING:
     case DrConfigState.FAILED:
       return <RightArrowWithBorder />;
-    case DrConfigState.PAUSED:
     case DrConfigState.HALTED:
       return (
         <div className={classes.iconBorder}>

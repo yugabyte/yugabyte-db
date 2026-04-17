@@ -1,9 +1,9 @@
-import { useContext, useMemo, useState } from 'react';
+import { useContext } from 'react';
+import { useToggle } from 'react-use';
 import { YBModal, YBTag } from '@yugabyte-ui-library/core';
 import { mui } from '@yugabyte-ui-library/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { AddGeoPartitionContext, AddGeoPartitionContextMethods } from './AddGeoPartitionContext';
-import { getExistingGeoPartitions } from './AddGeoPartitionUtils';
 
 import CloseIcon from '@app/redesign/assets/close rounded inverted.svg';
 import BookIcon from '@app/redesign/assets/book_open_blue.svg';
@@ -84,24 +84,17 @@ const RegionItem = styled('div')(() => ({
 export const GeoPartitionInfoModal = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.GeoPartitionInfoModal' });
 
-  const [addGeoPartitionContext] = (useContext(AddGeoPartitionContext) as unknown) as AddGeoPartitionContextMethods;
+  const [addGeoPartitionContext, addGeoPartitionMethods] = (useContext(
+    AddGeoPartitionContext
+  ) as unknown) as AddGeoPartitionContextMethods;
 
-  const { isNewGeoPartition, geoPartitions, universeData } = addGeoPartitionContext;
+  const { isNewGeoPartition, geoPartitions } = addGeoPartitionContext;
 
-  const shouldShowIntro = useMemo(() => {
-    const noPartitions =
-      universeData !== undefined &&
-      universeData !== null &&
-      getExistingGeoPartitions(universeData).length === 0;
-    const firstRowIsDefault = geoPartitions[0]?.name === 'default';
-    return noPartitions || isNewGeoPartition || firstRowIsDefault;
-  }, [universeData, isNewGeoPartition, geoPartitions]);
-
-  const [introDismissed, setIntroDismissed] = useState(false);
+  const [alreadyViewed, setAlreadyViewed] = useToggle(!isNewGeoPartition);
 
   const currentGeoPartition = geoPartitions[0];
 
-  if (!shouldShowIntro || introDismissed) return null;
+  if (alreadyViewed || !isNewGeoPartition) return null;
 
   return (
     <YBModal
@@ -113,12 +106,12 @@ export const GeoPartitionInfoModal = () => {
           </div>
           <CloseIcon
             onClick={() => {
-              setIntroDismissed(true);
+              setAlreadyViewed(true);
             }}
           />
         </ModalHeader>
       }
-      open={!introDismissed}
+      open={!alreadyViewed}
       dialogContentProps={{
         dividers: true,
         sx: {
@@ -129,7 +122,7 @@ export const GeoPartitionInfoModal = () => {
       overrideWidth={800}
       overrideHeight={600}
       submitLabel="Got It"
-      onSubmit={() => setIntroDismissed(true)}
+      onSubmit={() => setAlreadyViewed(true)}
       buttonProps={{
         primary: {
           variant: 'secondary',

@@ -1,7 +1,3 @@
-# Set default system level systemd
-systemd_dir="/etc/systemd/system"
-yb_user_sudoers_file="/etc/sudoers.d/yugabyte"
-
 # Uninstall root systemd services if needed.
 uninstall_root_systemd_services() {
     local unit_paths=()
@@ -44,20 +40,4 @@ uninstall_root_systemd_services() {
     done
 }
 
-{% if use_system_level_systemd == 'False' %}
 uninstall_root_systemd_services
-{% else %}
-# Configure the root systemd unit files.
-# This path is mostly for tests now.
-{% for service_file in service_files | split_string %}
-tmp_file=$(mktemp)
-echo '{% include service_file %}' > "$tmp_file"
-mv "$tmp_file" "${systemd_dir}/{{ service_file }}"
-chmod 644 "${systemd_dir}/{{ service_file }}"
-{% endfor %}
-echo '{% include "yb_user_sudoers.j2" %}' > "$yb_user_sudoers_file"
-if ! visudo -cf "$yb_user_sudoers_file"; then
-    echo "Failed to validate $yb_user_sudoers_file"
-    exit 1
-fi
-{% endif %}

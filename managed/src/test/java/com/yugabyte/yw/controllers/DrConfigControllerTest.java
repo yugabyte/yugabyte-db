@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.XClusterCreatePrecheck;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
@@ -223,7 +224,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             mockAutoFlagUtil,
             mockXClusterScheduler,
             null,
-            mockSoftwareUpgradeHelper);
+            mockSoftwareUpgradeHelper,
+            new XClusterCreatePrecheck(mockYBClientService, null, mockSoftwareUpgradeHelper));
   }
 
   @Test

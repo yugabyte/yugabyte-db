@@ -35,6 +35,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -437,7 +438,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testStartNodeInUniverseRetries() {
-    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     Universe universe = createUniverse("Demo");
     universe =
         Universe.saveDetails(

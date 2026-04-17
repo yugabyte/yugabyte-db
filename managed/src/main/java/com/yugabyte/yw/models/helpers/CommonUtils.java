@@ -97,9 +97,6 @@ public class CommonUtils {
           "SAS_TOKEN",
           "REFRESH_TOKEN",
           "PASSWORD");
-  // Sensitive field exact names (case-insensitive). Used when a substring match would be too broad.
-  // For example, "token" should be masked but "authTokenIssueDate" should not.
-  private static final List<String> sensitiveFieldExactNames = Arrays.asList("TOKEN");
   // Exclude following strings from being sensitive fields
   private static final List<String> excludedFieldNames =
       Arrays.asList(
@@ -205,12 +202,6 @@ public class CommonUtils {
     // Can add more exclusions if required
     if (excludedFieldNames.contains(ucFieldname)) {
       return false;
-    }
-
-    // Exact-name matches: used when a substring would be too broad.
-    // e.g. "token" must match but "authTokenIssueDate" must not.
-    if (sensitiveFieldExactNames.contains(ucFieldname)) {
-      return true;
     }
 
     // Check if any of sensitiveFieldSubstrings are substrings in ucFieldname and mark as sensitive

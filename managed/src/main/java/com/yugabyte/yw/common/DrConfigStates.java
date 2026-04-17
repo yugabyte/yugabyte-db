@@ -16,7 +16,6 @@ public class DrConfigStates {
     ReadyToReplicate("Ready to replicate"),
     WaitingForDr("Waiting for DR"),
     ReplicatingData("Replicating data"),
-    ReplicationPaused("Replication paused"),
     PreparingSwitchover("Preparing for switchover"),
     SwitchingToDrReplica("Switching to DR replica"),
     DrFailed("Universe marked as DR failed");
@@ -39,7 +38,6 @@ public class DrConfigStates {
     Unconfigured("Unconfigured for DR"),
     Bootstrapping("Bootstrapping"),
     ReceivingData("Receiving data, Ready for reads"),
-    ReplicationPaused("Replication paused"),
     SwitchingToDrPrimary("Switching to DR primary"),
     DrFailed("Universe marked as DR failed");
 
@@ -62,7 +60,6 @@ public class DrConfigStates {
     Replicating("Replicating"),
     SwitchoverInProgress("Switchover in Progress"),
     FailoverInProgress("Failover in Progress"),
-    Paused("Paused"),
     Halted("Halted"),
     Updating("Updating"),
     Failed("Failed");

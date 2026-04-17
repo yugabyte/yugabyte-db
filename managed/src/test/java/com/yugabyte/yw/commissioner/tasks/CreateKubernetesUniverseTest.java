@@ -40,6 +40,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -89,7 +90,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
-    factory.globalRuntimeConf().setValue("yb.kubernetes.operator.wait_for_gflag_sync_sec", "0");
+    RuntimeConfigEntry.upsertGlobal("yb.kubernetes.operator.wait_for_gflag_sync_sec", "0");
   }
 
   private void setupUniverseMultiAZ(

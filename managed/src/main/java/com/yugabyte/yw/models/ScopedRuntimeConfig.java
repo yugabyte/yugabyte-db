@@ -1,16 +1,10 @@
-// Copyright (c) YugabyteDB, Inc.
-
 package com.yugabyte.yw.models;
 
-import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
-
 import com.google.common.annotations.VisibleForTesting;
-import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
@@ -57,7 +51,7 @@ public class ScopedRuntimeConfig extends Model {
     customerUUID = null;
     universeUUID = null;
     providerUUID = null;
-    LOG.trace("Created Global ScopedRuntimeConfig");
+    LOG.info("Created Global ScopedRuntimeConfig");
   }
 
   private ScopedRuntimeConfig(Customer customer) {
@@ -65,7 +59,7 @@ public class ScopedRuntimeConfig extends Model {
     customerUUID = customer.getUuid();
     universeUUID = null;
     providerUUID = null;
-    LOG.trace("Created Customer({}) ScopedRuntimeConfig", getCustomerUUID());
+    LOG.info("Created Customer({}) ScopedRuntimeConfig", getCustomerUUID());
   }
 
   private ScopedRuntimeConfig(Universe universe) {
@@ -73,7 +67,7 @@ public class ScopedRuntimeConfig extends Model {
     providerUUID = null;
     customerUUID = null;
     universeUUID = universe.getUniverseUUID();
-    LOG.trace("Created Universe({}) ScopedRuntimeConfig", getUniverseUUID());
+    LOG.info("Created Universe({}) ScopedRuntimeConfig", getUniverseUUID());
   }
 
   private ScopedRuntimeConfig(Provider provider) {
@@ -81,33 +75,11 @@ public class ScopedRuntimeConfig extends Model {
     customerUUID = null;
     universeUUID = null;
     providerUUID = provider.getUuid();
-    LOG.trace("Created Provider({}) ScopedRuntimeConfig", getProviderUUID());
+    LOG.info("Created Provider({}) ScopedRuntimeConfig", getProviderUUID());
   }
 
   private static final Finder<UUID, ScopedRuntimeConfig> finder =
       new Finder<UUID, ScopedRuntimeConfig>(ScopedRuntimeConfig.class) {};
-
-  /**
-   * Checks if all the given scopeUuids are present in the database.
-   *
-   * @param scopeUuids the set of scopeUuids to check for presence in the database.
-   * @return true if all the given scopeUuids are present in the database, false otherwise.
-   */
-  public static boolean containsAll(Set<UUID> scopeUuids) {
-    ExpressionList<ScopedRuntimeConfig> query = finder.query().where();
-    appendInClause(query, "uuid", scopeUuids);
-    return query.findCount() == scopeUuids.size();
-  }
-
-  /**
-   * Checks if the given scopeUuid is present in the database.
-   *
-   * @param scopeUuid the scopeUuid to check for presence in the database.
-   * @return true if the given scopeUuid is present in the database, false otherwise.
-   */
-  public static boolean isPresent(UUID scopeUuid) {
-    return finder.query().where().idEq(scopeUuid).findCount() == 1;
-  }
 
   @VisibleForTesting
   static ScopedRuntimeConfig get(UUID uuid) {

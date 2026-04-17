@@ -1,6 +1,6 @@
 import { Trans } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
-import { AlertVariant, YBAlert } from '@yugabyte-ui-library/core';
+import { AlertVariant, mui, YBAlert } from '@yugabyte-ui-library/core';
 import { AvailabilityZones } from './AvailabilityZones';
 import { DedicatedNode } from './DedicatedNodes';
 import { TotalNodeCount } from './TotalNodeCount';
@@ -12,10 +12,8 @@ import { useAvailabilityZonesRegionCards } from './useAvailabilityZonesRegionCar
 import { ExpertNodesReplicationSection } from './ExpertNodesReplicationSection';
 import { InferredResilienceCard } from './InferredResilienceCard';
 import { NodeAvailabilityProps } from './dtos';
-import {
-  ExpertNodesAvailabilityDefaultLayout,
-  ExpertNodesAvailabilityGeoLayout
-} from './NodesAvailabilityExpertLayouts';
+
+const { Box } = mui;
 
 type Props = Pick<
   UseNodesAvailabilityStepResult,
@@ -28,9 +26,7 @@ type Props = Pick<
   | 'inferredResilience'
   | 'effectiveReplicationFactor'
   | 'resilienceAndRegionsSettings'
-> & {
-  isGeoPartition?: boolean;
-};
+>;
 
 export function NodesAvailabilityExpertBody({
   regions,
@@ -41,86 +37,64 @@ export function NodesAvailabilityExpertBody({
   t,
   inferredResilience,
   effectiveReplicationFactor,
-  resilienceAndRegionsSettings,
-  isGeoPartition = false
+  resilienceAndRegionsSettings
 }: Props) {
-  const { watch } = useFormContext<NodeAvailabilityProps>();
-  const availabilityZonesForm = watch('availabilityZones');
+  const {
+    watch,
+  } = useFormContext<NodeAvailabilityProps>();
+  const availabilityZones = watch('availabilityZones');
   const { azCount, faultToleranceNeeded, regionCards } = useAvailabilityZonesRegionCards({
     mode: ResilienceFormMode.EXPERT_MODE,
     showErrorsAfterSubmit,
     resilienceAndRegionsSettings
   });
   const hasLesserNodesError = showErrorsAfterSubmit && Boolean((errors as any)?.lesserNodes?.message);
-
-  const map = (
-    <NodesAvailabilityMapSection
-      regions={regions as Region[]}
-      icon={icon}
-      mapHeight={isGeoPartition ? 362 : undefined}
-    />
-  );
-
-  const availabilityZones = (
-    <AvailabilityZones
-      showErrorsAfterSubmit={showErrorsAfterSubmit}
-      showAvailabilityZonesError={false}
-      azCount={azCount}
-      faultToleranceNeeded={faultToleranceNeeded}
-      topContent={
-        <ExpertNodesReplicationSection
-          regionCount={resilienceAndRegionsSettings?.regions?.length ?? 0}
-          effectiveReplicationFactor={effectiveReplicationFactor}
-          showRequirementHintError={
-            hasLesserNodesError &&
-            (errors as any)?.lesserNodes?.message === 'errMsg.expertResilienceUninferable'
+  
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <NodesAvailabilityMapSection regions={regions as Region[]} icon={icon} />
+      <AvailabilityZones
+        showErrorsAfterSubmit={showErrorsAfterSubmit}
+        showAvailabilityZonesError={false}
+        azCount={azCount}
+        faultToleranceNeeded={faultToleranceNeeded}
+        topContent={
+          <ExpertNodesReplicationSection
+            regionCount={resilienceAndRegionsSettings?.regions?.length ?? 0}
+            effectiveReplicationFactor={effectiveReplicationFactor}
+            showRequirementHintError={hasLesserNodesError && (errors as any)?.lesserNodes?.message === 'errMsg.expertResilienceUninferable'}
+          />
+        }
+        bottomContent={
+          <>
+            <TotalNodeCount />
+            <InferredResilienceCard
+              inferredResilience={inferredResilience ?? null}
+              replicationFactor={effectiveReplicationFactor}
+              availabilityZones={availabilityZones ?? {}}
+            />
+          </>
+        }
+      >
+        {regionCards}
+      </AvailabilityZones>
+      {hasLesserNodesError && (
+        <YBAlert
+          open
+          variant={AlertVariant.Error}
+          text={
+            <Trans
+              t={t}
+              i18nKey={(errors as any)?.lesserNodes?.message}
+              components={{ b: <b /> }}
+              values={lesserNodesTransValues}
+            >
+              {(errors as any).lesserNodes.message}
+            </Trans>
           }
         />
-      }
-      bottomContent={
-        <>
-          <TotalNodeCount />
-          <InferredResilienceCard
-            inferredResilience={inferredResilience ?? null}
-            replicationFactor={effectiveReplicationFactor}
-            availabilityZones={availabilityZonesForm ?? {}}
-          />
-        </>
-      }
-    >
-      {regionCards}
-    </AvailabilityZones>
+      )}
+      <DedicatedNode />
+    </Box>
   );
-
-  const lesserNodesAlert = hasLesserNodesError ? (
-    <YBAlert
-      open
-      variant={AlertVariant.Error}
-      text={
-        <Trans
-          t={t}
-          i18nKey={(errors as any)?.lesserNodes?.message}
-          components={{ b: <b /> }}
-          values={lesserNodesTransValues}
-        >
-          {(errors as any).lesserNodes.message}
-        </Trans>
-      }
-    />
-  ) : null;
-
-  const dedicatedNode = <DedicatedNode />;
-
-  const slots = {
-    map,
-    availabilityZones,
-    lesserNodesAlert,
-    dedicatedNode
-  };
-
-  const Layout = isGeoPartition
-    ? ExpertNodesAvailabilityGeoLayout
-    : ExpertNodesAvailabilityDefaultLayout;
-
-  return <Layout {...slots} />;
 }

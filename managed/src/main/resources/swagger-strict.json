@@ -7715,7 +7715,6 @@
             "Unconfigured for DR",
             "Bootstrapping",
             "Receiving data, Ready for reads",
-            "Replication paused",
             "Switching to DR primary",
             "Universe marked as DR failed"
           ],
@@ -7772,7 +7771,6 @@
             "Ready to replicate",
             "Waiting for DR",
             "Replicating data",
-            "Replication paused",
             "Preparing for switchover",
             "Switching to DR replica",
             "Universe marked as DR failed"
@@ -7795,7 +7793,6 @@
             "Replicating",
             "Switchover in Progress",
             "Failover in Progress",
-            "Paused",
             "Halted",
             "Updating",
             "Failed"
@@ -30787,7 +30784,6 @@
             "Ready to replicate",
             "Waiting for DR",
             "Replicating data",
-            "Replication paused",
             "Preparing for switchover",
             "Switching to DR replica",
             "Universe marked as DR failed"
@@ -30846,7 +30842,6 @@
             "Unconfigured for DR",
             "Bootstrapping",
             "Receiving data, Ready for reads",
-            "Replication paused",
             "Switching to DR primary",
             "Universe marked as DR failed"
           ],
@@ -31087,7 +31082,6 @@
             "Ready to replicate",
             "Waiting for DR",
             "Replicating data",
-            "Replication paused",
             "Preparing for switchover",
             "Switching to DR replica",
             "Universe marked as DR failed"
@@ -31146,7 +31140,6 @@
             "Unconfigured for DR",
             "Bootstrapping",
             "Receiving data, Ready for reads",
-            "Replication paused",
             "Switching to DR primary",
             "Universe marked as DR failed"
           ],

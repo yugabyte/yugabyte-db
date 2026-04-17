@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useQueryClient } from 'react-query';
 import { mui, YBButton } from '@yugabyte-ui-library/core';
 import {
   StyledContent,
@@ -9,8 +8,6 @@ import {
   StyledPanel
 } from '../../create-universe/components/DefaultComponents';
 import { EncryptionInTransit } from '@app/redesign/features/universe/universe-actions/encryption-in-transit/EncryptionInTransit';
-import { EncryptionAtRest } from '@app/redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
-import { api, QUERY_KEY } from '@app/redesign/utils/api';
 import { FormProvider, useForm } from 'react-hook-form';
 import { SecuritySettingsProps } from '../../create-universe/steps/security-settings/dtos';
 import { AssignPublicIPField } from '../../create-universe/fields';
@@ -22,7 +19,7 @@ import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import Disabled from '@app/redesign/assets/revoke.svg';
 
-const { styled, Box, CircularProgress } = mui;
+const { styled, Box } = mui;
 
 const ContentArea = styled(StyledContent)({
   '& .yb-MuiFormControlLabel-label': {
@@ -44,31 +41,19 @@ const DisabledIcon = styled(Disabled)({
 
 export const SecurityTab = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.security' });
-  const queryClient = useQueryClient();
   const methods = useForm<SecuritySettingsProps>();
   const { universeData } = useEditUniverseContext();
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
 
   const [eitModalOpen, setEitModalOpen] = useState(false);
-  const [earModalOpen, setEarModalOpen] = useState(false);
   const universeUUID = universeData?.info?.universe_uuid;
-
-  const { data: legacyUniverse, isLoading: isLegacyUniverseLoading } = useQuery(
-    [QUERY_KEY.fetchUniverse, universeUUID],
-    () => api.fetchUniverse(universeUUID!),
-    { enabled: !!universeUUID }
-  );
-
-  const earConfig = legacyUniverse?.universeDetails?.encryptionAtRestConfig;
-  const encryptionAtRestEnabled = !!(
-    earConfig?.encryptionAtRestEnabled ?? earConfig?.kmsConfigUUID
-  );
 
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const nodeToNodeEnabled =
     !!universeData?.spec?.encryption_in_transit_spec?.enable_node_to_node_encrypt;
   const clientToNodeEnabled =
     !!universeData?.spec?.encryption_in_transit_spec?.enable_client_to_node_encrypt;
+  const encryptionAtRestEnabled = !!universeData?.spec?.encryption_at_rest_spec?.kms_config_uuid;
 
   const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
 
@@ -124,8 +109,7 @@ export const SecurityTab = () => {
               dataTestId="edit-security-at-rest-button"
               variant="ghost"
               startIcon={<EditIcon />}
-              onClick={() => setEarModalOpen(true)}
-              disabled={earModalOpen || isLegacyUniverseLoading || !universeUUID}
+              onClick={() => {}}
             >
               {t('edit', { keyPrefix: 'common' })}
             </YBButton>
@@ -135,14 +119,8 @@ export const SecurityTab = () => {
               <div>
                 <span className="header">{t('encryption')}</span>
                 <span className="value sameline nogap">
-                  {isLegacyUniverseLoading ? (
-                    <CircularProgress size={18} />
-                  ) : (
-                    <>
-                      {t(encryptionAtRestEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
-                      {encryptionAtRestEnabled ? <CheckedIcon /> : <DisabledIcon />}
-                    </>
-                  )}
+                  {t(encryptionAtRestEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
+                  {encryptionAtRestEnabled ? <CheckedIcon /> : <DisabledIcon />}
                 </span>
               </div>
             </StyledInfoRow>
@@ -160,16 +138,6 @@ export const SecurityTab = () => {
             universeUUID: universeUUID || '',
             eitSpec: universeData?.spec?.encryption_in_transit_spec
           }}
-        />
-      )}
-      {legacyUniverse && universeUUID && (
-        <EncryptionAtRest
-          open={earModalOpen}
-          onClose={() => {
-            setEarModalOpen(false);
-            void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeUUID]);
-          }}
-          universeDetails={legacyUniverse}
         />
       )}
     </FormProvider>

@@ -6,13 +6,11 @@ import { NodesAvailabilityGuidedBody } from './NodesAvailabilityGuidedBody';
 import { NodesAvailabilityExpertBody } from './NodesAvailabilityExpertBody';
 import { useNodesAvailabilityStep } from './useNodesAvailabilityStep';
 
-export type NodesAvailabilityProps = {
-  isGeoPartition?: boolean;
-};
+export type NodesAvailabilityProps = object;
 
 export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
-  function NodesAvailability({ isGeoPartition = false }, ref) {
-  const step = useNodesAvailabilityStep(ref, { isGeoPartition });
+  function NodesAvailability(_props, ref) {
+  const step = useNodesAvailabilityStep(ref);
   const mode = step.resilienceAndRegionsSettings?.resilienceFormMode ?? ResilienceFormMode.GUIDED;
 
   return (
@@ -28,7 +26,6 @@ export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
           inferredResilience={step.inferredResilience}
           effectiveReplicationFactor={step.effectiveReplicationFactor}
           resilienceAndRegionsSettings={step.resilienceAndRegionsSettings}
-          isGeoPartition={isGeoPartition}
         />
       ) : (
         <NodesAvailabilityGuidedBody
@@ -39,7 +36,6 @@ export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
           errors={step.errors}
           t={step.t}
           resilienceAndRegionsSettings={step.resilienceAndRegionsSettings}
-          isGeoPartition={isGeoPartition}
         />
       )}
     </FormProvider>

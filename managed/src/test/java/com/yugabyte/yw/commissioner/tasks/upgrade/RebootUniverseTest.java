@@ -18,6 +18,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -126,7 +127,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
 
   @Test
   public void testRollingRebootRetries() {
-    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
     UpgradeTaskParams taskParams = new UpgradeTaskParams();
     taskParams.expectedUniverseVersion = -1;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());

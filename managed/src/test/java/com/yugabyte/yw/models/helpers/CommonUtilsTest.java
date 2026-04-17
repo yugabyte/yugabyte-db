@@ -74,41 +74,6 @@ public class CommonUtilsTest {
   }
 
   @Test
-  public void testMaskBearerTokenNestedObject() {
-    // The inner `token` string (exact field name) must be masked.
-    // The `bearerToken` container object must remain an object - not collapsed to "********".
-    // `authTokenIssueDate` must NOT be masked (contains "token" but is a date, not a secret).
-    ObjectNode bearerTokenNode = Json.newObject();
-    bearerTokenNode.put("token", "6203effbbc01ebef9ec79f3e75de5a2bFFFFNRAL");
-    ObjectNode config = Json.newObject();
-    config.set("bearerToken", bearerTokenNode);
-    config.put("authType", "BearerToken");
-    config.put("authTokenIssueDate", "2024-01-01T00:00:00Z");
-
-    JsonNode maskedData = CommonUtils.maskConfig(config);
-
-    assertThat(maskedData.get("bearerToken").isObject(), is(true));
-    assertThat(
-        maskedData.get("bearerToken").get("token").asText(),
-        not("6203effbbc01ebef9ec79f3e75de5a2bFFFFNRAL"));
-    assertValue(maskedData, "authType", "BearerToken");
-    assertValue(maskedData, "authTokenIssueDate", "2024-01-01T00:00:00Z");
-  }
-
-  @Test
-  public void testMaskSplunkToken() {
-    // A top-level field named exactly `token` must be masked (exact-name match).
-    ObjectNode config = Json.newObject();
-    config.put("token", "splunk-secret-token-value");
-    config.put("endpoint", "https://splunk.example.com");
-
-    JsonNode maskedData = CommonUtils.maskConfig(config);
-
-    assertThat(maskedData.get("token").asText(), not("splunk-secret-token-value"));
-    assertValue(maskedData, "endpoint", "https://splunk.example.com");
-  }
-
-  @Test
   public void testMaskConfigWithNullData() {
     JsonNode maskedData = CommonUtils.maskConfig(null);
     assertThat(maskedData.size(), is(0));

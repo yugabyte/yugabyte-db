@@ -68,6 +68,8 @@ EOF
   ARTIFACT="earlyoom-linux-amd64.tar.gz"
   if [ "$build_arch" = "aarch64" ]; then
       ARTIFACT="earlyoom-linux-arm64.tar.gz"
+  elif [ "$build_arch" = "ppc64le" ]; then
+      ARTIFACT="earlyoom-linux-ppc64le.tar.gz"
   fi
   mkdir -p "${TMP_DIR}/earlyoom"
 

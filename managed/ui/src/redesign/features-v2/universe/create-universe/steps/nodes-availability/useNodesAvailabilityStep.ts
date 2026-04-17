@@ -34,18 +34,6 @@ import { Region } from '../../../../../helpers/dtos';
 import { ResilienceFormMode, type ResilienceAndRegionsProps } from '../resilence-regions/dtos';
 import { REPLICATION_FACTOR, RESILIENCE_FACTOR } from '../../fields/FieldNames';
 
-/** Fields that drive guided-mode AZ/node layout from the Regions step. */
-function getGuidedPlacementSyncSignature(r: ResilienceAndRegionsProps): string {
-  return JSON.stringify({
-    rf: r.resilienceFactor,
-    ft: r.faultToleranceType,
-    rt: r.resilienceType,
-    nc: r.nodeCount,
-    saz: r.singleAvailabilityZone,
-    reg: (r.regions ?? []).map((x) => x.uuid).sort()
-  });
-}
-
 function regionCodesMatchAvailabilityZones(
   regions: Region[],
   availabilityZones: NodeAvailabilityProps['availabilityZones'] | undefined
@@ -161,16 +149,9 @@ export type UseNodesAvailabilityStepResult = {
   effectiveReplicationFactor: number;
 };
 
-export type UseNodesAvailabilityStepOptions = {
-  /** Add-geo-partition wizard: re-sync AZ layout when Regions step resilience changes (context keeps stale nodes). */
-  isGeoPartition?: boolean;
-};
-
 export function useNodesAvailabilityStep(
-  forwardedRef: ForwardedRef<StepsRef>,
-  options?: UseNodesAvailabilityStepOptions
+  forwardedRef: ForwardedRef<StepsRef>
 ): UseNodesAvailabilityStepResult {
-  const isGeoPartition = options?.isGeoPartition ?? false;
   const [
     { resilienceAndRegionsSettings, nodesAvailabilitySettings },
     {
@@ -385,44 +366,6 @@ export function useNodesAvailabilityStep(
     );
   });
 
-  const guidedPlacementSyncSignature = useMemo(() => {
-    if (!isGeoPartition) {
-      return null;
-    }
-    const r = resilienceAndRegionsSettings;
-    if (!r || r.resilienceFormMode !== ResilienceFormMode.GUIDED) {
-      return null;
-    }
-    return getGuidedPlacementSyncSignature(r);
-  }, [isGeoPartition, resilienceAndRegionsSettings]);
-
-  const lastGuidedPlacementSignatureRef = useRef<string | null>(null);
-
-  // Geo-partition wizard only: Regions step drives layout. Stale nodesAndAvailability from context
-  // (or prior visit) left availabilityZones non-empty, so applyNodesStepPlacementFromResilience
-  // skipped updating. Do not run for create-universe tests that seed custom availabilityZones.
-  useEffect(() => {
-    if (guidedPlacementSyncSignature === null) {
-      lastGuidedPlacementSignatureRef.current = null;
-      return;
-    }
-    if (lastGuidedPlacementSignatureRef.current === guidedPlacementSyncSignature) {
-      return;
-    }
-    lastGuidedPlacementSignatureRef.current = guidedPlacementSyncSignature;
-    methods.setValue('availabilityZones', {});
-    applyNodesStepPlacementFromResilience(
-      methods,
-      resilienceAndRegionsSettings!,
-      saveResilienceAndRegionsSettings
-    );
-  }, [
-    guidedPlacementSyncSignature,
-    methods,
-    resilienceAndRegionsSettings,
-    saveResilienceAndRegionsSettings
-  ]);
-
   // Re-sync when resilience/region context changes — not on every availabilityZones edit (that
   // caused setValue ↔ watch feedback loops in expert mode).
   useEffect(() => {
@@ -447,20 +390,12 @@ export function useNodesAvailabilityStep(
   useImperativeHandle(
     forwardedRef,
     () => ({
-      onNext: (): Promise<boolean> => {
+      onNext: () => {
         setShowErrorsAfterSubmit(true);
-        return new Promise<boolean>((resolve) => {
-          void methods
-            .handleSubmit(
-              (data) => {
-                saveNodesAvailabilitySettings(data);
-                moveToNextPage();
-                resolve(true);
-              },
-              () => resolve(false)
-            )()
-            .catch(() => resolve(false));
-        });
+        return methods.handleSubmit((data) => {
+          saveNodesAvailabilitySettings(data);
+          moveToNextPage();
+        })();
       },
       onPrev: () => {
         moveToPreviousPage();

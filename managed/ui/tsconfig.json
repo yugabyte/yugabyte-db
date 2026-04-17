@@ -25,7 +25,7 @@
     "sourceMap": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", ".storybook/**/*.ts", ".storybook/**/*.tsx", ".storybook/**/*.d.ts"],
+  "include": ["src"],
   "exclude": ["node_modules"],
   "extends": "./tsconfig.paths.json"
 }

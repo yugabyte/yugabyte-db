@@ -307,12 +307,10 @@ spec:
                 properties:
                   volumeSize:
                     type: integer
-                    description: Volume size in GiB( defaults to 100 )
-                    default: 100
+                    description: Volume size in GiB
                   numVolumes:
                     type: integer
-                    description: Number of volumes per tserver( defaults to 2 )
-                    default: 2
+                    description: Number of volumes per tserver
                   storageClass:
                     type: string
                     description: >
@@ -348,12 +346,10 @@ spec:
                 properties:
                   volumeSize:
                     type: integer
-                    description: Volume size in GiB( defaults to 50 )
-                    default: 50
+                    description: Volume size in GiB
                   numVolumes:
                     type: integer
-                    description: Number of volumes per master( defaults to 1 )
-                    default: 1
+                    description: Number of volumes per master
                   storageClass:
                     type: string
                     description: >

@@ -12,10 +12,7 @@ import {
 } from '../../../create-universe/CreateUniverseContext';
 import { ResilienceAndRegions } from '../../../create-universe/steps';
 import { UniverseActionButtons } from '../../../create-universe/components/UniverseActionButtons';
-import {
-  navigateToUniverseSettingsFromWizard,
-  useGeoPartitionNavigation
-} from '../AddGeoPartitionUtils';
+import { useGeoPartitionNavigation } from '../AddGeoPartitionUtils';
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
 import { mui } from '@yugabyte-ui-library/core';
 import { NodeAvailabilityProps } from '../../../create-universe/steps/nodes-availability/dtos';
@@ -27,11 +24,14 @@ export const GeoPartitionResilience = () => {
     AddGeoPartitionContext
   ) as unknown) as AddGeoPartitionContextMethods;
   const resilienceRef = useRef<StepsRef>(null);
-  const { moveToNextPage: goToNextGeoPartitionStep, moveToPreviousPage } =
-    useGeoPartitionNavigation();
-  const resilienceContextAfterSaveRef = useRef<AddGeoPartitionContextProps | null>(null);
-  const { geoPartitions, activeGeoPartitionIndex, universeData } = addGeoPartitionContext;
-  const { updateGeoPartition } = addGeoPartitionMethods;
+  const { moveToNextPage, moveToPreviousPage } = useGeoPartitionNavigation();
+  const {
+    activeStep,
+    geoPartitions,
+    activeGeoPartitionIndex,
+    universeData
+  } = addGeoPartitionContext;
+  const { updateGeoPartition, setActiveStep } = addGeoPartitionMethods;
   return (
     <CreateUniverseContext.Provider
       value={
@@ -55,9 +55,10 @@ export const GeoPartitionResilience = () => {
                 },
                 activeGeoPartitionIndex: activeGeoPartitionIndex
               });
-              // Snapshot for goToNextGeoPartitionStep after a deliberate Next; avoid navigating when
-              // ResilienceAndRegions saves from effects (e.g. guided → expert mode).
-              resilienceContextAfterSaveRef.current = {
+              // we need to pass the updated context to next page.
+              // using just context will have stale data and leads to race condition
+              // as updateGeoPartition is async
+              const updatedContext: AddGeoPartitionContextProps = {
                 ...addGeoPartitionContext,
                 geoPartitions: geoPartitions.map((gp, idx) =>
                   idx === activeGeoPartitionIndex
@@ -68,6 +69,7 @@ export const GeoPartitionResilience = () => {
                     : gp
                 )
               };
+              moveToNextPage(updatedContext);
             },
             saveNodesAvailabilitySettings: (data: NodeAvailabilityProps) => {
               updateGeoPartition({
@@ -78,12 +80,7 @@ export const GeoPartitionResilience = () => {
                 activeGeoPartitionIndex: activeGeoPartitionIndex
               });
             },
-            moveToNextPage: () => {
-              const ctx = resilienceContextAfterSaveRef.current;
-              if (ctx) {
-                goToNextGeoPartitionStep(ctx);
-              }
-            },
+            moveToNextPage: () => {},
             moveToPreviousPage: () => moveToPreviousPage()
           }
         ] as unknown) as createUniverseFormProps
@@ -92,14 +89,16 @@ export const GeoPartitionResilience = () => {
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <GeoPartitionBreadCrumb
           groupTitle={<>{geoPartitions[activeGeoPartitionIndex].name}</>}
-          subTitle={<>Regions</>}
+          subTitle={<>Resilience And Regions</>}
         />
 
         <ResilienceAndRegions isGeoPartition hideHelpText ref={resilienceRef} />
         <UniverseActionButtons
           cancelButton={{
             text: 'Cancel',
-            onClick: () => navigateToUniverseSettingsFromWizard(universeData)
+            onClick: () => {
+              setActiveStep(activeStep - 1);
+            }
           }}
           nextButton={{
             text: 'Next',

@@ -636,7 +636,6 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             name="config.apiToken"
             fullWidth
             disabled={isViewMode}
-            hidePasswordButton={isViewMode}
             inputProps={{
               'data-testid': 'DynatraceForm-AccessToken'
             }}
@@ -723,7 +722,6 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
                   name="config.basicAuth.password"
                   fullWidth
                   disabled={isViewMode}
-                  hidePasswordButton={isViewMode}
                   rules={{ required: t('otlp.validationFieldRequired') }}
                 />
               </Box>
@@ -737,7 +735,6 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
                 name="config.bearerToken.token"
                 fullWidth
                 disabled={isViewMode}
-                hidePasswordButton={isViewMode}
                 rules={{ required: t('otlp.validationFieldRequired') }}
               />
             </Box>

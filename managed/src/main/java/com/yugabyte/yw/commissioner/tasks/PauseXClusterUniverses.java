@@ -2,7 +2,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.DrConfigStates;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -42,15 +41,6 @@ public class PauseXClusterUniverses extends XClusterConfigTaskBase {
         createUpdateWalRetentionTasks(sourceUniverse, XClusterUniverseAction.PAUSE);
 
         createSetReplicationPausedTask(xClusterConfig, true /* pause */);
-
-        if (xClusterConfig.isUsedForDr()) {
-          createSetDrStatesTask(
-              xClusterConfig,
-              DrConfigStates.State.Paused,
-              DrConfigStates.SourceUniverseState.ReplicationPaused,
-              DrConfigStates.TargetUniverseState.ReplicationPaused,
-              null /* keyspacePending */);
-        }
 
         createPauseUniverseTasks(
             sourceUniverse, Customer.get(sourceUniverse.getCustomerId()).getUuid());

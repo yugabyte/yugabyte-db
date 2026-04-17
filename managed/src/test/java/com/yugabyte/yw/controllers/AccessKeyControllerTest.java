@@ -29,7 +29,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.test.Helpers.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -50,6 +50,7 @@ import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
@@ -317,7 +318,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetAccessKeyWithValidKeyCodeUsingNewRbacAuthzWithNoPermissions() {
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     AccessKey accessKey =
         AccessKey.create(defaultProvider.getUuid(), "foo", new AccessKey.KeyInfo());
     Result result =
@@ -331,7 +332,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetAccessKeyWithValidKeyCodeUsingNewRbacAuthzWithPermissions() {
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
     RoleBinding.create(defaultUser, RoleBindingType.Custom, role, rG);
     AccessKey accessKey =
@@ -347,7 +348,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetAccessKeyWithValidKeyCodeUsingNewRbacAuthzWithIncorrectPermissions() {
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     Role role1 =
         Role.create(
             defaultCustomer.getUuid(),

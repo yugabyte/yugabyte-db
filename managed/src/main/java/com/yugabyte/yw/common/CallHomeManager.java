@@ -14,14 +14,11 @@ import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.cdc.CdcStream;
-import com.yugabyte.yw.common.cdc.CdcStreamManager;
 import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
-import com.yugabyte.yw.forms.CDCReplicationSlotResponse;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -40,7 +37,6 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -81,7 +77,7 @@ public class CallHomeManager {
   @Inject private XClusterUniverseService xClusterUniverseService;
   @Inject private MetricQueryHelper metricQueryHelper;
   @Inject private UniverseTableHandler universeTableHandler;
-  @Inject private CdcStreamManager cdcStreamManager;
+
   // include tasks from a day ago
   private static final Duration CALLHOME_TASK_PERIOD = Duration.ofDays(1);
 
@@ -220,31 +216,6 @@ public class CallHomeManager {
               || (universeResp.drConfigUuidsAsTarget != null
                   && !universeResp.drConfigUuidsAsTarget.isEmpty()));
       enrichUniverseXCluster(sourceConfigUuids, targetConfigUuids, universeNode);
-      try {
-        Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
-        List<CdcStream> cdcStreams = cdcStreamManager.getAllCdcStreams(universe);
-        boolean isCdcConfigured = !cdcStreams.isEmpty();
-        universeNode.put("is_cdc_configured", isCdcConfigured);
-
-        if (isCdcConfigured) {
-          CDCReplicationSlotResponse slotResponse = cdcStreamManager.listReplicationSlot(universe);
-          List<String> slotNames =
-              slotResponse.replicationSlots.stream()
-                  .map(s -> s.slotName)
-                  .filter(name -> name != null && !name.isEmpty())
-                  .collect(Collectors.toList());
-          universeNode.put("cdc_replication_slots", String.join(",", slotNames));
-        } else {
-          universeNode.put("cdc_replication_slots", "");
-        }
-      } catch (Exception e) {
-        LOG.warn(
-            "Failed to fetch CDC info while building callhome payload for universe {}: {}",
-            universeResp.universeUUID,
-            e.getMessage());
-        universeNode.putNull("is_cdc_configured");
-        universeNode.putNull("cdc_replication_slots");
-      }
       universesPayload.add(universeNode);
     }
     payload.set("universes", universesPayload);
@@ -290,7 +261,6 @@ public class CallHomeManager {
       ctInfo.put("completion_time", Objects.toString(ct.getCompletionTime()));
       ctInfo.put("uuid", Objects.toString(ct.getTaskUUID()));
       ctInfo.put("task_state", Objects.toString(taskInfo.getTaskState()));
-      ctInfo.set("task_params", taskInfo.getRedactedParams());
       tasks.add(ctInfo);
     }
     payload.set("tasks", tasks);

@@ -46,7 +46,6 @@ export const colors = {
     900: '#590000'
   } as PaletteColor,
   warning: {
-    50: '#FFF6E3',
     100: '#FFEEC8',
     300: '#FFD383',
     500: '#FFA400',
@@ -167,8 +166,7 @@ export const colors = {
     ybGray: '#DEDEE0',
     ybOrangeFocus: '#EF582480',
     ybPurple: '#5D5FEF',
-    grey005: '#FBFCFD',
-    grey050: '#F7F9FB'
+    grey005: '#FBFCFD'
   },
   ybaShadows: {
     inputBoxShadow: 'inset 0 1px 1px rgb(0 0 0 / 8%), 0 0 8px rgb(239 88 36 / 20%)'

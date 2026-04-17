@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.GroupMappingInfo;
 import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
 import com.yugabyte.yw.models.OidcGroupToYbaRoles;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
@@ -75,7 +76,7 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
 
   @Test
   public void testListMappingRbacOff() throws Exception {
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     GroupMappingInfo info0 = GroupMappingInfo.create(cUUID, "test-group-1", GroupType.OIDC);
     GroupMappingInfo info1 = GroupMappingInfo.create(cUUID, "test-group-2", GroupType.LDAP);
     info1.setRoleUUID(Role.get(cUUID, "Admin").getRoleUUID());
@@ -110,7 +111,7 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
 
   @Test
   public void testCRUDMappingsRbacOn() throws Exception {
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     AuthenticationApi api = new AuthenticationApi();
     // create custom role
     Role customRole =
@@ -201,7 +202,7 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
 
   @Test
   public void testBadInput() throws Exception {
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     AuthenticationApi api = new AuthenticationApi();
     List<AuthGroupToRolesMapping> mappingSpecList = new ArrayList<>();
     AuthGroupToRolesMapping ldapSpec = new AuthGroupToRolesMapping();
@@ -228,7 +229,7 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
   public void testV1toV2migrationRbacOn() throws Exception {
     // Create v1 entries for LDAP and OIDC group mappings.
     // Run the migration and assert that role bindings are added for existing group mappings.
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     LdapDnToYbaRole lm1 = LdapDnToYbaRole.create(cUUID, "dn1", Users.Role.Admin);
     LdapDnToYbaRole lm2 = LdapDnToYbaRole.create(cUUID, "dn2", Users.Role.BackupAdmin);
     LdapDnToYbaRole lm3 = LdapDnToYbaRole.create(cUUID, "dn3", Users.Role.ReadOnly);

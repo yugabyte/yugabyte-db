@@ -48,7 +48,6 @@ import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeNotifier;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -453,11 +452,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     RuntimeConfigFactory runtimeConfigFactory =
         app.injector().instanceOf(RuntimeConfigFactory.class);
     assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
-    SettableRuntimeConfigFactory settableFactory =
-        (SettableRuntimeConfigFactory) runtimeConfigFactory;
-    assertFalse(settableFactory.getCachedConfigs().isEmpty());
     setCloudEnabled();
-    assertTrue(settableFactory.getCachedConfigs().isEmpty());
     assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
   }
 

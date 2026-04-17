@@ -38,6 +38,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -141,7 +142,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
-    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams requestParams) {
@@ -223,7 +224,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   public void testSoftwareUpgradeBatches() {
     updateDefaultUniverse(true, OLD_VERSION, 4, 4, 4);
 
-    factory.globalRuntimeConf().setValue("yb.task.upgrade.batch_roll_enabled", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.task.upgrade.batch_roll_enabled", "true");
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());

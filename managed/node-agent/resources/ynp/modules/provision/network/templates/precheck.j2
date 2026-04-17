@@ -74,7 +74,7 @@ check_port_available() {
 }
 
 # Check for internet access.
-if [[ "{{ is_airgap }}" == "False" && "$cloud_type" == "onprem" ]]; then
+if [[ "{{ is_airgap }}" == 'False' ]]; then
     # Attempt to run "/dev/tcp" 3 times with a 3 second timeout and return success if any succeed.
     # --preserve-status flag will maintain the exit code of the "/dev/tcp" command.
     HOST="yugabyte.com"

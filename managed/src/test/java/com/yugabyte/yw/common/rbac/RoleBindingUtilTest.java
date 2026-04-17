@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
@@ -436,7 +437,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
   @Test
   public void testGetResourceUuids() {
     user = ModelFactory.testUser(customer, "test2@yugabyte.com", Users.Role.ConnectOnly);
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     // Create custom test role.
     Role role1 =
         Role.create(
@@ -477,7 +478,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
     assertTrue(resourceUUIDs.contains(universe1.getUniverseUUID()));
     assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
     assertTrue(resourceUUIDs.contains(universe3.getUniverseUUID()));
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     resourceUUIDs =
         roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
     assertEquals(1, resourceUUIDs.size());
@@ -495,14 +496,14 @@ public class RoleBindingUtilTest extends FakeDBApplication {
     resourceGroup12.setResourceDefinitionSet(new HashSet<>(Arrays.asList(resourceDefinition12)));
     roleResourceDefinition12.setResourceGroup(resourceGroup12);
     RoleBinding rB2 = RoleBinding.create(user, RoleBindingType.Custom, role2, resourceGroup12);
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     resourceUUIDs =
         roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
     assertEquals(3, resourceUUIDs.size());
     assertTrue(resourceUUIDs.contains(universe1.getUniverseUUID()));
     assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
     assertTrue(resourceUUIDs.contains(universe3.getUniverseUUID()));
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     resourceUUIDs =
         roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
     assertEquals(1, resourceUUIDs.size());
@@ -511,7 +512,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
 
     rB1 = RoleBinding.create(user, RoleBindingType.Custom, role1, resourceGroup11);
     rB2 = RoleBinding.create(user, RoleBindingType.Custom, role2, resourceGroup12);
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     resourceUUIDs =
         roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
     assertEquals(2, resourceUUIDs.size());
@@ -527,14 +528,14 @@ public class RoleBindingUtilTest extends FakeDBApplication {
     rB1 = RoleBinding.create(user, RoleBindingType.Custom, role1, resourceGroup11);
     rB2 = RoleBinding.create(user, RoleBindingType.Custom, role2, resourceGroup12);
     RoleBinding rB3 = RoleBinding.create(user, RoleBindingType.Custom, role, resourceGroup13);
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     resourceUUIDs =
         roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
     assertEquals(3, resourceUUIDs.size());
     assertTrue(resourceUUIDs.contains(universe1.getUniverseUUID()));
     assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
     assertTrue(resourceUUIDs.contains(universe3.getUniverseUUID()));
-    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     resourceUUIDs =
         roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
     assertEquals(3, resourceUUIDs.size());

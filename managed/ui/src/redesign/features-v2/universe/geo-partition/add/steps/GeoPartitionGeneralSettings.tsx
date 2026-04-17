@@ -12,12 +12,7 @@ import {
   GeoPartition,
   initialAddGeoPartitionFormState
 } from '../AddGeoPartitionContext';
-import {
-  getExistingGeoPartitions,
-  getNextGeoPartitionDisplayNumber,
-  navigateToUniverseSettingsFromWizard,
-  useGeoPartitionNavigation
-} from '../AddGeoPartitionUtils';
+import { getExistingGeoPartitions, useGeoPartitionNavigation } from '../AddGeoPartitionUtils';
 import {
   StyledContent,
   StyledHeader,
@@ -101,15 +96,10 @@ export const GeoPartitionGeneralSettings = () => {
   ).length;
 
   const addNewGeoPartition = () => {
-    const nextNum = getNextGeoPartitionDisplayNumber(
-      isNewGeoPartition,
-      alreadyExistingGeoParitionsCount,
-      geoPartitions.length
-    );
     addGeoPartition({
       ...initialAddGeoPartitionFormState.geoPartitions[0],
-      name: `Geo Partition ${nextNum}`,
-      tablespaceName: `Tablespace_${nextNum}`
+      name: `Geo Partition ${alreadyExistingGeoParitionsCount + geoPartitions.length + 1}`,
+      tablespaceName: 'Tablespace 1'
     });
   };
 
@@ -208,16 +198,16 @@ export const GeoPartitionGeneralSettings = () => {
           }}
           cancelButton={{
             text: t('cancel', { keyPrefix: 'common' }),
-            onClick: () => navigateToUniverseSettingsFromWizard(addGeoPartitionContext.universeData)
+            onClick: () => {}
           }}
           nextButton={{
             text:
-              activeGeoPartitionIndex === 0 && isNewGeoPartition && geoPartitions.length <= 1
+              activeGeoPartitionIndex === 0 && isNewGeoPartition
                 ? t('addNewGeoPartition')
                 : t('next', { keyPrefix: 'common' }),
             onClick: () => {
               handleSubmit(() => {
-                if (activeGeoPartitionIndex === 0 && isNewGeoPartition && geoPartitions.length <= 1) {
+                if (activeGeoPartitionIndex === 0 && isNewGeoPartition) {
                   addNewGeoPartition();
                 } else {
                   moveToNextPage(addGeoPartitionContext);

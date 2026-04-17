@@ -328,8 +328,5 @@ func (gen *YNPConfigGenerator) registerResolvers() error {
 	gen.resolvers["yba_provider_region_longitude"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
 		return 360, nil
 	}
-	gen.resolvers["ynp_configure_cgroup"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
-		return true, nil
-	}
 	return nil
 }

@@ -15,12 +15,7 @@ import {
 } from '../AddGeoPartitionContext';
 import { YBButton, mui } from '@yugabyte-ui-library/core';
 import { AddCircleOutline } from '@material-ui/icons';
-import {
-  getExistingGeoPartitions,
-  getNextGeoPartitionDisplayNumber,
-  navigateToUniverseSettingsFromWizard,
-  useGeoPartitionNavigation
-} from '../AddGeoPartitionUtils';
+import { getExistingGeoPartitions, useGeoPartitionNavigation } from '../AddGeoPartitionUtils';
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
 
 const { Box } = mui;
@@ -29,8 +24,8 @@ export const GeoPartitionNodesAndAvailability = () => {
   const [addGeoPartitionContext, addGeoPartitionMethods] = (useContext(
     AddGeoPartitionContext
   ) as unknown) as AddGeoPartitionContextMethods;
-  const { geoPartitions, activeGeoPartitionIndex, isNewGeoPartition } = addGeoPartitionContext;
-  const { addGeoPartition, updateGeoPartition } = addGeoPartitionMethods;
+  const { activeStep, geoPartitions, activeGeoPartitionIndex } = addGeoPartitionContext;
+  const { setActiveStep, addGeoPartition, updateGeoPartition } = addGeoPartitionMethods;
   const nodesAndAvailabilityRef = useRef<StepsRef>(null);
   const { moveToNextPage, moveToPreviousPage } = useGeoPartitionNavigation();
 
@@ -69,15 +64,6 @@ export const GeoPartitionNodesAndAvailability = () => {
               };
               moveToNextPage(updatedContext);
             },
-            saveResilienceAndRegionsSettings: (data: GeoPartition['resilience']) => {
-              updateGeoPartition({
-                geoPartition: {
-                  ...geoPartitions[activeGeoPartitionIndex],
-                  resilience: data
-                },
-                activeGeoPartitionIndex: activeGeoPartitionIndex
-              });
-            },
             moveToNextPage: () => {}
           }
         ] as unknown) as createUniverseFormProps
@@ -86,18 +72,19 @@ export const GeoPartitionNodesAndAvailability = () => {
       <Box sx={{ display: 'flex', gap: '24px', flexDirection: 'column' }}>
         <GeoPartitionBreadCrumb
           groupTitle={<>{geoPartitions[activeGeoPartitionIndex].name}</>}
-          subTitle={<>Availability Zones and Nodes</>}
+          subTitle={<>Nodes and Availability</>}
         />
-        <NodesAvailability ref={nodesAndAvailabilityRef} isGeoPartition />
+        <NodesAvailability ref={nodesAndAvailabilityRef} />
         <UniverseActionButtons
           prevButton={{
-            text: 'Back',
+            text: 'Prev',
             onClick: moveToPreviousPage
           }}
           cancelButton={{
             text: 'Cancel',
-            onClick: () =>
-              navigateToUniverseSettingsFromWizard(addGeoPartitionContext.universeData)
+            onClick: () => {
+              setActiveStep(activeStep - 1);
+            }
           }}
           nextButton={{
             text: 'Next',
@@ -110,19 +97,16 @@ export const GeoPartitionNodesAndAvailability = () => {
               <YBButton
                 variant="secondary"
                 onClick={() => {
-                  void Promise.resolve(nodesAndAvailabilityRef.current?.onNext()).then((res) => {
-                    if (res) {
-                      const nextNum = getNextGeoPartitionDisplayNumber(
-                        isNewGeoPartition,
-                        alreadyExistingGeoParitionsCount,
-                        geoPartitions.length
-                      );
-                      addGeoPartition({
-                        ...initialAddGeoPartitionFormState.geoPartitions[0],
-                        name: `Geo Partition ${nextNum}`,
-                        tablespaceName: `Tablespace_${nextNum}`
-                      });
-                    }
+                  nodesAndAvailabilityRef.current?.onNext().then(() => {
+                    addGeoPartition({
+                      ...initialAddGeoPartitionFormState.geoPartitions[0],
+                      name: `Geo Partition ${
+                        alreadyExistingGeoParitionsCount + geoPartitions.length + 1
+                      }`,
+                      tablespaceName: `Tablespace ${
+                        alreadyExistingGeoParitionsCount + geoPartitions.length + 1
+                      }`
+                    });
                   });
                 }}
                 dataTestId="add-new-geo-partition-button"

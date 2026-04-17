@@ -17,18 +17,16 @@ export interface TaskDetails {
 
 // CustomerTaskFormData.java
 
-export const TaskState = {
-  CREATED: 'Created',
-  INITIALIZING: 'Initializing',
-  RUNNING: 'Running',
-  UNKNOWN: 'Unknown',
-  SUCCESS: 'Success',
-  FAILURE: 'Failure',
-  ABORTED: 'Aborted',
-  ABORT: 'Abort',
-  PAUSED: 'Paused'
-} as const;
-export type TaskState = (typeof TaskState)[keyof typeof TaskState];
+export enum TaskState {
+  CREATED = 'Created',
+  INITIALIZING = 'Initializing',
+  RUNNING = 'Running',
+  UNKNOWN = 'Unknown',
+  SUCCESS = 'Success',
+  FAILURE = 'Failure',
+  ABORTED = 'Aborted',
+  ABORT = 'Abort'
+}
 
 export const TaskType = {
   GFlags_UPGRADE: 'GFlagsUpgrade',
@@ -42,43 +40,6 @@ export const TargetType = {
   BACKUP: 'Backup',
   GFlags: 'GFlags'
 };
-
-export const ServerType = {
-  MASTER: 'MASTER',
-  TSERVER: 'TSERVER'
-} as const;
-export type ServerType = (typeof ServerType)[keyof typeof ServerType];
-
-export const AZUpgradeStatus = {
-  NOT_STARTED: 'NOT_STARTED',
-  IN_PROGRESS: 'IN_PROGRESS',
-  COMPLETED: 'COMPLETED',
-  FAILED: 'FAILED'
-} as const;
-export type AZUpgradeStatus = (typeof AZUpgradeStatus)[keyof typeof AZUpgradeStatus];
-
-export const CanaryPauseState = {
-  NOT_PAUSED: 'NOT_PAUSED',
-  PAUSED_AFTER_MASTERS: 'PAUSED_AFTER_MASTERS',
-  PAUSED_AFTER_TSERVERS_AZ: 'PAUSED_AFTER_TSERVERS_AZ'
-} as const;
-export type CanaryPauseState = (typeof CanaryPauseState)[keyof typeof CanaryPauseState];
-
-export interface AZUpgradeState {
-  azUUID: string;
-  azName: string;
-  serverType: ServerType;
-  clusterUUID: string;
-  status: AZUpgradeStatus;
-}
-
-export interface CanaryUpgradeProgress {
-  enabled: boolean;
-  pauseState: CanaryPauseState | null;
-  masterAZUpgradeStatesList: AZUpgradeState[];
-  tserverAZUpgradeStatesList: AZUpgradeState[];
-}
-
 export interface Task {
   id: string;
   title: string;
@@ -108,8 +69,6 @@ export interface Task {
       previousTaskUUID?: string;
     };
   };
-
-  canaryUpgradeProgress?: CanaryUpgradeProgress | null;
 }
 
 export interface FailedTask {

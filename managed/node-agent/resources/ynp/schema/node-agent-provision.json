@@ -63,10 +63,6 @@
         "is_ybcontroller_disabled": {
           "type": "boolean",
           "description": "YB Controller backup agent is disabled."
-        },
-        "configure_cgroup": {
-          "type": "boolean",
-          "description": "When true, cpu cgroup is setup for Tserver."
         }
       }
     },

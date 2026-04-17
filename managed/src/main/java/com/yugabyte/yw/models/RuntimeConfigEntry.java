@@ -1,5 +1,3 @@
-// Copyright (c) YugabyteDB, Inc.
-
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;

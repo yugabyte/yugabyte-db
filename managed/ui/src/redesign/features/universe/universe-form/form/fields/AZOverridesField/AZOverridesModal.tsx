@@ -33,20 +33,16 @@ export interface AZOverridesFormValue {
 
 function rowToAZOverrideEntry(row: AZOverrideRowFormValue): AZOverridePerAZ {
   const tserverDeviceInfo: { volumeSize?: number; numVolumes?: number; storageClass?: string } = {};
-  if (row.tserver.volumeSize !== undefined && row.tserver.volumeSize !== null)
-    tserverDeviceInfo.volumeSize = row.tserver.volumeSize;
-  if (row.tserver.numVolumes !== undefined && row.tserver.numVolumes !== null)
-    tserverDeviceInfo.numVolumes = row.tserver.numVolumes;
-  const tserverSc = row.tserver.storageClass?.trim();
-  if (tserverSc) tserverDeviceInfo.storageClass = tserverSc;
+  if (row.tserver.volumeSize !== null) tserverDeviceInfo.volumeSize = row.tserver.volumeSize;
+  if (row.tserver.numVolumes !== null) tserverDeviceInfo.numVolumes = row.tserver.numVolumes;
+  if (row.tserver.storageClass !== null && row.tserver.storageClass !== '')
+    tserverDeviceInfo.storageClass = row.tserver.storageClass;
 
   const masterDeviceInfo: { volumeSize?: number; numVolumes?: number; storageClass?: string } = {};
-  if (row.master.volumeSize !== undefined && row.master.volumeSize !== null)
-    masterDeviceInfo.volumeSize = row.master.volumeSize;
-  if (row.master.numVolumes !== undefined && row.master.numVolumes !== null)
-    masterDeviceInfo.numVolumes = row.master.numVolumes;
-  const masterSc = row.master.storageClass?.trim();
-  if (masterSc) masterDeviceInfo.storageClass = masterSc;
+  if (row.master.volumeSize !== null) masterDeviceInfo.volumeSize = row.master.volumeSize;
+  if (row.master.numVolumes !== null) masterDeviceInfo.numVolumes = row.master.numVolumes;
+  if (row.master.storageClass !== null && row.master.storageClass !== '')
+    masterDeviceInfo.storageClass = row.master.storageClass;
 
   const perProcess: AZOverridePerAZ['perProcess'] = {};
   if (Object.keys(tserverDeviceInfo).length > 0) perProcess.TSERVER = { deviceInfo: tserverDeviceInfo };

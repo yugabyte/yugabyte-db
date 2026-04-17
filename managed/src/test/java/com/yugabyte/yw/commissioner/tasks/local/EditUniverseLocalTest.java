@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -168,9 +169,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             universe.getNodes().iterator().next(), universe, UniverseTaskBase.ServerType.TSERVER);
     assertEquals("", varz.get(POSTMASTER_CGROUP));
     initYSQL(universe);
-    settableRuntimeConfigFactory
-        .forUniverse(universe)
-        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
     cluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
@@ -217,9 +216,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyUniverseState(universe);
 
     initYSQL(universe);
-    settableRuntimeConfigFactory
-        .forUniverse(universe)
-        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
     moveAZ(cluster.placementInfo, az1.getUuid(), az4.getUuid());
@@ -264,9 +261,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
               removingAz.set(az.uuid);
               az.uuid = az4.getUuid();
             });
-    settableRuntimeConfigFactory
-        .forUniverse(universe)
-        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
@@ -387,9 +382,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     rrIntent.numNodes = 3;
     doAddReadReplica(universe, rrIntent);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
-    settableRuntimeConfigFactory
-        .forUniverse(universe)
-        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     verifyYSQL(universe, true);
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getReadOnlyClusters().get(0);
@@ -464,9 +457,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
     initAndStartPayload(universe);
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.enableRFChange.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableRFChange.getKey(), "true");
     Thread.sleep(500);
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
@@ -598,9 +589,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     // Secondary partition:
     // az21 -> 2
     // az22 -> 2
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.automaticTablespaceUpdate.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.automaticTablespaceUpdate.getKey(), "true");
     Universe universe =
         createGeopartitionedUniverse(
             p ->
@@ -681,9 +670,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     // Secondary partition:
     // az21 -> 2
     // az22 -> 1
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.automaticTablespaceUpdate.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.automaticTablespaceUpdate.getKey(), "true");
     Universe universe = createGeopartitionedUniverse(null);
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
@@ -738,9 +725,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     // az21 -> 2
     // az22 -> 1
 
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.automaticTablespaceUpdate.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.automaticTablespaceUpdate.getKey(), "true");
     Universe universe = createGeopartitionedUniverse(null);
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
@@ -1000,9 +985,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
 
   //  @Test
   public void testLeaderlessTabletsBeforeEditFAIL() throws Exception {
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.checks.leaderless_tablets.timeout", "10s");
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.timeout", "10s");
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
@@ -1059,9 +1042,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
   @Test
   public void testTimeoutingChangeMasterConfigFAIL() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
-    settableRuntimeConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.checks.change_master_config.timeout", "30s");
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.timeout", "30s");
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);

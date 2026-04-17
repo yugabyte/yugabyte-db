@@ -96,7 +96,6 @@ declare module '@material-ui/core/styles/createPalette' {
 
   // extend standard palette with color tones
   interface PaletteColor {
-    50: string;
     100: string;
     200: string;
     300: string;

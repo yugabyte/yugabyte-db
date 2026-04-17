@@ -169,7 +169,6 @@ public class SwamperHelper {
     NODE_ADDRESS,
     NODE_IDENTIFIER,
     NODE_REGION,
-    NODE_AZ,
     NODE_CLUSTER_TYPE,
     UNIVERSE_UUID
   }
@@ -214,9 +213,6 @@ public class SwamperHelper {
       }
       if (nodeDetails.cloudInfo.region != null) {
         labels.put(LabelType.NODE_REGION.toString().toLowerCase(), nodeDetails.cloudInfo.region);
-      }
-      if (nodeDetails.cloudInfo.az != null) {
-        labels.put(LabelType.NODE_AZ.toString().toLowerCase(), nodeDetails.cloudInfo.az);
       }
       if (CloudType.onprem.name().equals(nodeDetails.cloudInfo.cloud)) {
         NodeInstance.maybeGet(nodeDetails.nodeUuid)

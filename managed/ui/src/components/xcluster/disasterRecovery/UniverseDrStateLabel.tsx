@@ -52,8 +52,6 @@ export const UniverseDrStateLabel = ({
   switch (universeDrState) {
     case SourceUniverseDrState.UNCONFIGURED:
     case TargetUniverseDrState.UNCONFIGURED:
-    case SourceUniverseDrState.REPLICATION_PAUSED:
-    case TargetUniverseDrState.REPLICATION_PAUSED:
       return (
         <Typography
           variant={variant}

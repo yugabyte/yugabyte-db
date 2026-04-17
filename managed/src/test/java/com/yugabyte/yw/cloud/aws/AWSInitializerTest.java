@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.Arrays;
 import lombok.extern.slf4j.Slf4j;
@@ -58,9 +59,8 @@ public class AWSInitializerTest extends FakeDBApplication {
         UniverseDefinitionTaskParams.hasEphemeralStorage(CloudType.aws, "x2gd.12xlarge", null));
     assertTrue(
         UniverseDefinitionTaskParams.hasEphemeralStorage(CloudType.aws, "i3en.2xlarge", null));
-    mutableConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.internal.allow_unsupported_instances", "true");
+
+    RuntimeConfigEntry.upsertGlobal("yb.internal.allow_unsupported_instances", "true");
     awsInitializer = app.injector().instanceOf(AWSInitializer.class);
     awsInitializer.initialize(customer.getUuid(), defaultProvider.getUuid());
 
@@ -87,9 +87,7 @@ public class AWSInitializerTest extends FakeDBApplication {
 
   @Test
   public void testAWSInitializerAllowedInstanceTypes() {
-    mutableConfigFactory
-        .globalRuntimeConf()
-        .setValue("yb.internal.allow_unsupported_instances", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.internal.allow_unsupported_instances", "false");
     awsInitializer = app.injector().instanceOf(AWSInitializer.class);
     awsInitializer.initialize(customer.getUuid(), defaultProvider.getUuid());
 

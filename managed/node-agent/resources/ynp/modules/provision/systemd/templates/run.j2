@@ -36,6 +36,8 @@ check_root_systemd_services() {
     else
         mkdir -p "${systemd_dir}"
     fi
+{% endif %}
+
 # Configure the systemd unit files
 {% for service_file in service_files | split_string %}
     tmp_file=$(mktemp)
@@ -49,58 +51,3 @@ check_root_systemd_services() {
         chmod 644 "${systemd_dir}/{{ service_file }}"
     fi
 {% endfor %}
-{% endif %}
-
-{% if configure_cgroup == 'True' %}
-# Root-only: v1 boot oneshot (yb-cgroup-v1-setup.service) or v2 user@ template drop-in (Delegate=pids memory cpu).
-YB_HOME="{{ yb_home_dir }}"
-YB_USER="{{ yb_user }}"
-USE_SYS="{{ use_system_level_systemd }}"
-CGROUP_TYPE=unknown
-[ -f "$YB_HOME/.yugabyte/cgroup_type" ] && CGROUP_TYPE=$(tr -d '\r\n' < "$YB_HOME/.yugabyte/cgroup_type")
-YB_UID=$(id -u "$YB_USER" 2>/dev/null || echo "")
-V1_BOOT_UNIT=/etc/systemd/system/yb-cgroup-v1-setup.service
-USER_AT_DROPIN_DIR=/etc/systemd/system/user@.service.d
-USER_AT_DROPIN=$USER_AT_DROPIN_DIR/override.conf
-
-if [ "$SUDO_ACCESS" = "true" ]; then
-  if [ "$CGROUP_TYPE" = "v1" ]; then
-    install -d "$(dirname "$V1_BOOT_UNIT")"
-    cat >"$V1_BOOT_UNIT" <<'UNIT'
-{% include 'yb-cgroup-v1-setup.service' %}
-UNIT
-    chmod 0644 "$V1_BOOT_UNIT"
-    systemctl enable yb-cgroup-v1-setup.service 2>/dev/null || true
-    systemctl start yb-cgroup-v1-setup.service 2>/dev/null || true
-  else
-    systemctl stop yb-cgroup-v1-setup.service 2>/dev/null || true
-    systemctl disable yb-cgroup-v1-setup.service 2>/dev/null || true
-    rm -f "$V1_BOOT_UNIT"
-  fi
-
-  if [ "$CGROUP_TYPE" = "v2" ] && [ "$USE_SYS" != "True" ]; then
-    install -d -m 0755 "$USER_AT_DROPIN_DIR"
-    printf '%s\n' '[Service]' 'Delegate=pids memory cpu' >"$USER_AT_DROPIN"
-    chmod 0644 "$USER_AT_DROPIN"
-  else
-    rm -f "$USER_AT_DROPIN"
-    rmdir "$USER_AT_DROPIN_DIR" 2>/dev/null || true
-  fi
-  systemctl daemon-reload || true
-  if [ "$CGROUP_TYPE" = "v2" ] && [ "$USE_SYS" != "True" ] && [ -n "$YB_UID" ]; then
-    systemctl stop "user@${YB_UID}.service" 2>/dev/null || true
-    systemctl reset-failed "user@${YB_UID}.service" 2>/dev/null || true
-    systemctl start "user@${YB_UID}.service" 2>/dev/null || true
-  fi
-elif [ "$CGROUP_TYPE" = "v2" ] && [ "$USE_SYS" != "True" ]; then
-  echo "WARN: need root to install $USER_AT_DROPIN (cgroup v2, user systemd)"
-fi
-
-if [ "$USE_SYS" != "True" ] && [ -n "$YB_UID" ]; then
-  if [ "$SUDO_ACCESS" = "true" ]; then
-    su - "$YB_USER" -c "XDG_RUNTIME_DIR=/run/user/${YB_UID} systemctl --user daemon-reload" || true
-  else
-    XDG_RUNTIME_DIR="/run/user/${YB_UID}" systemctl --user daemon-reload || true
-  fi
-fi
-{% endif %}

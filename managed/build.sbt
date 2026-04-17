@@ -626,7 +626,6 @@ openApiFormat := {
   }
   val changes = openApiFormat.inputFileChanges
   val changedFiles = (changes.created ++ changes.modified).toSet
-  installOpenapiFormat()
   changedFiles.par.foreach(formatFile)
 }
 
@@ -655,7 +654,7 @@ lazy val openApiProcessServer = taskKey[Seq[File]]("Process OpenApi files")
 Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi" / ** / "[!_]*.yaml"
 Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
-    "src/main/resources/openapi_templates/server" / ** / "*.mustache"
+    "src/main/resources/openapi_templates" / ** / "*.mustache"
 // Process and compile open api files
 Compile / openApiProcessServer := {
   if (openApiProcessServer.inputFileChanges.hasChanges ||
@@ -712,7 +711,6 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
-    openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
     version := "1.0.0",
     target := file("client/java/target/v2"),
   )
@@ -883,8 +881,6 @@ def cleanYbaCliPackage(goos: String, directory: java.io.File): Int = {
 
 lazy val openApiProcessClients = taskKey[Unit]("Generate and compile openapi clients")
 openApiProcessClients / fileInputs += baseDirectory.value.toGlob / "src/main/resources/openapi.yaml"
-openApiProcessClients / fileInputs += baseDirectory.value.toGlob /
-  "src/main/resources/openapi_templates/clients" / ** / "*.mustache"
 openApiProcessClients := {
   if (openApiProcessClients.inputFileChanges.hasChanges |
       !(baseDirectory.value / "client/java/v2/build.sbt").exists() ||
@@ -940,7 +936,7 @@ lazy val javaGenV2Server = project.in(file("target/openapi"))
     openApiInputSpec := (baseDirectory.value / resDir / "openapi.yaml").absolutePath,
     openApiOutputDir := (baseDirectory.value / "src/main/java/").absolutePath,
     openApiConfigFile := (baseDirectory.value / resDir / "openapi-java-server-config.json").absolutePath,
-    openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/server/").absolutePath,
+    openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/").absolutePath,
     openApiValidateSpec := SettingDisabled,
     openApiGenerate := (openApiGenerate dependsOn openApiCopyIgnoreFile).value,
     // style plugin configurations

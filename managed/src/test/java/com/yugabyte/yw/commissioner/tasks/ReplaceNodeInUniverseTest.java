@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import org.junit.Before;
@@ -67,10 +68,9 @@ public class ReplaceNodeInUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testReplaceNodeInUniverseRetries() {
-    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
-    factory
-        .forUniverse(defaultUniverse)
-        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    RuntimeConfigEntry.upsert(
+        defaultUniverse, "yb.checks.node_disk_size.target_usage_percentage", "0");
 
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(

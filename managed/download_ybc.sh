@@ -64,6 +64,7 @@ ybc_version=$(
 s3_url="https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/ybc"
 x86_file="ybc-${ybc_version}-linux-x86_64.tar.gz"
 aarch_file="ybc-${ybc_version}-el8-aarch64.tar.gz"
+ppc64le_file="ybc-${ybc_version}-el8-ppc64le.tar.gz"
 
 mkdir -p "$dest_dir"
 

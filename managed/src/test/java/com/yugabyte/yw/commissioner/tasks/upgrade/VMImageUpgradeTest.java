@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -113,7 +114,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     super.setUp();
     setCheckNodesAreSafeToTakeDown(mockClient);
     vmImageUpgrade.setUserTaskUUID(UUID.randomUUID());
-    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
     mockLocaleCheckResponse(mockNodeUniverseManager);
   }
 

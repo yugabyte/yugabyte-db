@@ -189,6 +189,8 @@ download_package() {
       GO_ARCH_TYPE="amd64"
     elif [ "$GO_ARCH_TYPE" = "aarch64" ]; then
       GO_ARCH_TYPE="arm64"
+    elif [ "$GO_ARCH_TYPE" = "ppc64le" ]; then
+      GO_ARCH_TYPE="ppc64le"
     fi
     echo "* Getting $OS/$GO_ARCH_TYPE package"
     mkdir -p "$NODE_AGENT_RELEASE_PATH"
@@ -297,11 +299,11 @@ modify_selinux() {
 
 set_systemd_user_id() {
   set +e
-  local UNIT_EXISTS=$(systemctl --user list-units | grep -F $SERVICE_NAME)
+  local UNIT_EXISTS=$(systemctl --user list-units | grep -F yb-node-agent.service)
   if [ -n "$UNIT_EXISTS" ]; then
     EXISTING_SYSTEMD_USER_ID=$CURRENT_USER_ID
   else
-    UNIT_EXISTS=$(systemctl list-units | grep -F $SERVICE_NAME)
+    UNIT_EXISTS=$(systemctl list-units | grep -F yb-node-agent.service)
     if [ -n "$UNIT_EXISTS" ]; then
       EXISTING_SYSTEMD_USER_ID=0
     fi
@@ -430,7 +432,6 @@ write_systemd_service_file() {
 EOF
   else
     SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
-    mkdir -p "${SYSTEMD_PATH}"
     SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
     tee "$SERVICE_FILE_PATH" <<-EOF
   [Unit]

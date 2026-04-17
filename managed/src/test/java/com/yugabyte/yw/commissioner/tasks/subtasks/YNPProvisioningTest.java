@@ -27,9 +27,7 @@ import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -114,36 +112,9 @@ public class YNPProvisioningTest extends FakeDBApplication {
   protected Application provideApplication() {
     // Set up mocks before building the application (provideApplication is called before @Before)
     // Use lenient() to avoid strict stubbing issues during application initialization
-    // Mock getConfForScope calls - typed per key since getConfForScope is generic and a blanket
-    // any() stub would return the wrong type for Boolean/Integer-typed keys.
-    lenient()
-        .when(
-            confGetter.getConfForScope(
-                any(Provider.class), eq(ProviderConfKeys.enableCgroupConfiguration)))
-        .thenReturn(false);
-    lenient()
-        .when(
-            confGetter.getConfForScope(
-                any(Provider.class), eq(ProviderConfKeys.remoteTmpDirectory)))
-        .thenReturn("/tmp");
-    lenient()
-        .when(
-            confGetter.getConfForScope(any(Provider.class), eq(ProviderConfKeys.minHomeDirSpaceGb)))
-        .thenReturn(5);
-    lenient()
-        .when(
-            confGetter.getConfForScope(
-                any(Provider.class), eq(ProviderConfKeys.minMountPointDirSpaceGb)))
-        .thenReturn(5);
-    lenient()
-        .when(
-            confGetter.getConfForScope(any(Provider.class), eq(ProviderConfKeys.minTempDirSpaceGb)))
-        .thenReturn(5);
-    lenient()
-        .when(
-            confGetter.getConfForScope(
-                any(Customer.class), eq(CustomerConfKeys.enableEarlyoomFeature)))
-        .thenReturn(false);
+    // Mock getConfForScope calls
+    lenient().when(confGetter.getConfForScope(any(Provider.class), any())).thenReturn("/tmp");
+    lenient().when(confGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
 
     // Mock getGlobalConf calls needed by NodeAgentClient and other classes
     lenient()
@@ -294,7 +265,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
     when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
     // Call the method
-    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome, null);
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome);
 
     // Verify the JSON file was created and contains expected data
     assertTrue(Files.exists(tempFile));
@@ -313,71 +284,6 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertNotNull(extraNode);
     assertEquals("aws", extraNode.get("cloud_type").asText());
     assertEquals("/tmp/node-agent/thirdparty", extraNode.get("package_path").asText());
-
-    // Clean up
-    Files.deleteIfExists(tempFile);
-  }
-
-  @Test
-  public void testGetProvisionArgumentsUpdatedUserIntent() throws Exception {
-    // Create universe with primary cluster
-    Universe universe = ModelFactory.createUniverse("test-universe", customer.getId());
-    Universe.saveDetails(
-        universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", CloudType.aws));
-
-    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-
-    // Get a node from primary cluster
-    NodeDetails primaryNode = universe.getNodes().iterator().next();
-    UUID primaryClusterUuid = universeDetails.getPrimaryCluster().uuid;
-    assertEquals(primaryClusterUuid, primaryNode.placementUuid);
-
-    // Set up task params
-    YNPProvisioning.Params params = new YNPProvisioning.Params();
-    params.setUniverseUUID(universe.getUniverseUUID());
-    params.nodeName = primaryNode.nodeName;
-    params.isYbPrebuiltImage = false;
-    params.deviceInfo = new DeviceInfo();
-    params.deviceInfo.numVolumes = 1;
-    setTaskParams(params);
-
-    // Set up node with cloud info
-    primaryNode.cloudInfo = new CloudSpecificInfo();
-    primaryNode.cloudInfo.cloud = "aws";
-    primaryNode.cloudInfo.private_ip = "10.0.0.1";
-    primaryNode.cloudInfo.region = "us-west-2";
-    primaryNode.cloudInfo.instance_type = "m5.large";
-
-    // Set primary cluster user intent with clockbound
-    UserIntent updatedUserIntent = universeDetails.getPrimaryCluster().userIntent.clone();
-    updatedUserIntent.setUseClockbound(true);
-    updatedUserIntent.providerType = CloudType.aws;
-    updatedUserIntent.provider = provider.getUuid().toString();
-    // Set device info on user intent (required for getDeviceInfoForNode)
-    updatedUserIntent.deviceInfo = new DeviceInfo();
-    updatedUserIntent.deviceInfo.numVolumes = 2; // This differs from the intent in task params;
-
-    // Create temp file for output
-    Path tempFile = Files.createTempFile("ynp-test-primary-", ".json");
-    Path nodeAgentHome = Paths.get("/tmp/node-agent");
-    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
-    // Call the method
-    ynpProvisioning.generateProvisionConfig(
-        universe, primaryNode, provider, nodeAgentHome, updatedUserIntent);
-
-    // Verify the JSON file was created and contains expected data
-    assertTrue(Files.exists(tempFile));
-    JsonNode rootNode = objectMapper.readTree(Files.readAllBytes(tempFile));
-
-    // Verify ynp node
-    JsonNode ynpNode = rootNode.get("ynp");
-    assertNotNull(ynpNode);
-    assertEquals("10.0.0.1", ynpNode.get("node_ip").asText());
-    assertEquals(false, ynpNode.get("is_install_node_agent").asBoolean());
-    assertEquals(true, ynpNode.get("is_configure_clockbound").asBoolean());
-    assertEquals(false, ynpNode.get("is_yb_prebuilt_image").asBoolean());
-    assertEquals("/mnt/d0 /mnt/d1", rootNode.get("extra").get("mount_paths").asText());
 
     // Clean up
     Files.deleteIfExists(tempFile);
@@ -474,7 +380,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
     when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
     // Call the method
-    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, nodeAgentHome, null);
+    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, nodeAgentHome);
 
     // Verify the JSON file was created and contains expected data
     assertTrue(Files.exists(tempFile));
@@ -596,7 +502,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     when(mockFileHelperService.createTempFile(anyString(), anyString()))
         .thenReturn(tempFilePrimary);
 
-    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome, null);
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome);
 
     JsonNode primaryRoot = objectMapper.readTree(Files.readAllBytes(tempFilePrimary));
     assertEquals("10.0.0.10", primaryRoot.get("ynp").get("node_ip").asText());
@@ -625,7 +531,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Path tempFileRR = Files.createTempFile("ynp-test-rr-", ".json");
     when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFileRR);
 
-    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, nodeAgentHome, null);
+    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, nodeAgentHome);
 
     JsonNode rrRoot = objectMapper.readTree(Files.readAllBytes(tempFileRR));
     assertEquals("10.0.0.20", rrRoot.get("ynp").get("node_ip").asText());
