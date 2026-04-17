@@ -915,7 +915,7 @@ Specifies a comma-separated list of directories, where yb-tserver will store wri
 
 ### Write ahead log (WAL) flags
 
-In a typical deployment, the values used for write ahead log (WAL) flags in `yb-tserver` configurations should align with those in [`yb-master`](../yb-master/#raft-flags) configurations.
+In a typical deployment, the values used for write ahead log (WAL) flags in `yb-tserver` configurations should align with those in [`yb-master`](../yb-master/#write-ahead-log-wal-flags) configurations.
 
 Ensure that values used for the write ahead log (WAL) in yb-tserver configurations match the values for yb-master configurations.
 
@@ -987,12 +987,11 @@ The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reach
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-Default: `524288` (0.5 MB)
+Default: `9223372036854775807`
 {{% /tags/wrap %}}
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
-Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 
 ### Sharding flags
 
@@ -1243,8 +1242,7 @@ How often to read the `cdc_state` table to get the minimum applied index for eac
 ##### --cdc_checkpoint_opid_interval_ms
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `60000`
 {{% /tags/wrap %}}
 
@@ -1257,8 +1255,7 @@ If you are using multiple streams, it is advised that you set this flag to `1800
 ##### --log_max_seconds_to_retain
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `86400`
 {{% /tags/wrap %}}
 
@@ -1267,8 +1264,7 @@ Number of seconds to retain log files. Log files older than this value will be d
 ##### --log_stop_retaining_min_disk_mb
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `102400`
 {{% /tags/wrap %}}
 
@@ -1516,8 +1512,7 @@ Whether packed row is enabled for colocated tables in YSQL. The colocated table 
 ##### --ysql_packed_row_size_limit
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -1537,8 +1532,7 @@ Whether packed row is enabled for YCQL.
 ##### --ycql_packed_row_size_limit
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -1551,8 +1545,7 @@ For information on setting these flags, see [Customize preloading of YSQL catalo
 ##### --ysql_catalog_preload_additional_table_list
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `""`
 {{% /tags/wrap %}}
 
@@ -1563,8 +1556,7 @@ If [ysql_catalog_preload_additional_tables](#ysql-catalog-preload-additional-tab
 ##### --ysql_catalog_preload_additional_tables
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -1575,8 +1567,7 @@ If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional
 ##### --ysql_enable_read_request_caching
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `true`
 {{% /tags/wrap %}}
 
@@ -1585,8 +1576,7 @@ Enables the YB-TServer catalog cache, which reduces YB-Master overhead for start
 ##### --ysql_minimal_catalog_caches_preload
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -1595,8 +1585,7 @@ Defines what part of the catalog gets cached and preloaded by default. As a rule
 ##### --ysql_use_relcache_file
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `true`
 {{% /tags/wrap %}}
 
@@ -1607,7 +1596,7 @@ Controls whether to use the PostgreSQL relcache init file, which caches critical
 {{% tags/wrap %}}
 
 
-Default: `-1` (disabled). Minimum: 128 bytes.
+Default: `2048`
 {{% /tags/wrap %}}
 
 Specifies the threshold (in bytes) beyond which catalog tuples will get compressed when they are stored in the PostgreSQL catalog cache. Setting this flag reduces memory usage for certain large objects, including functions and views, in exchange for slower catalog refreshes.
@@ -1725,7 +1714,7 @@ Each tablet replica generally requires 700 MiB of this memory.
 
 ### Raft and consistency/timing flags
 
-With the exception of flags that have different defaults between `yb-master` and `yb-tserver` (for example, `--evict_failed_followers`), the values used for Raft-related flags in `yb-tserver` configurations should match those in [`yb-master`](../yb-master/#raft-flags) configurations in a typical deployment.
+With the exception of flags that have different defaults between `yb-master` and `yb-tserver` (for example, `--evict_failed_followers`), the values used for Raft-related flags in `yb-tserver` configurations should match those in [`yb-master`](../yb-master/#raft-and-consistency-timing-flags) configurations in a typical deployment.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -1824,8 +1813,7 @@ Changing this flag on an existing database is supported; a tablet can validly ha
 ##### --regular_tablets_data_block_key_value_encoding
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `shared_prefix`
 {{% /tags/wrap %}}
 
@@ -1838,7 +1826,7 @@ Only change this flag to `three_shared_parts` after you migrate the whole cluste
 {{% tags/wrap %}}
 
 
-Default: `1GB` (1 GB/second)
+Default: `1073741824`
 {{% /tags/wrap %}}
 
 Used to control rate of memstore flush and SSTable file compaction.
@@ -1846,8 +1834,7 @@ Used to control rate of memstore flush and SSTable file compaction.
 ##### --rocksdb_universal_compaction_min_merge_width
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `4`
 {{% /tags/wrap %}}
 
@@ -1856,8 +1843,7 @@ Compactions run only if there are at least `rocksdb_universal_compaction_min_mer
 ##### --rocksdb_max_background_compactions
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `-1`
 {{% /tags/wrap %}}
 
@@ -1873,9 +1859,8 @@ The default of `-1` means that the value is calculated at runtime as follows:
 ##### --rocksdb_compaction_size_threshold_bytes
 
 {{% tags/wrap %}}
-
-
-Default: `2GB`
+{{<tags/feature/restart-needed>}}
+Default: `2147483648`
 {{% /tags/wrap %}}
 
 Threshold beyond which a compaction is considered large.
@@ -1883,8 +1868,7 @@ Threshold beyond which a compaction is considered large.
 ##### --rocksdb_level0_file_num_compaction_trigger
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `5`.
 {{% /tags/wrap %}}
 
@@ -1893,8 +1877,7 @@ Number of files to trigger level-0 compaction. Set to `-1` if compaction should 
 ##### --rocksdb_universal_compaction_size_ratio
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `20`
 {{% /tags/wrap %}}
 
@@ -1915,7 +1898,7 @@ The time interval, in seconds, to retain history/older versions of data. Point-i
 {{% tags/wrap %}}
 
 
-Default: `256MB` (256 MB/second)
+Default: `268435456`
 {{% /tags/wrap %}}
 
 Rate control across all tablets being remote bootstrapped from or to this process.
@@ -1965,8 +1948,7 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 ##### --full_compaction_pool_max_threads
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `1`
 {{% /tags/wrap %}}
 
@@ -1975,8 +1957,7 @@ The maximum number of threads allowed for non-admin full compactions. This inclu
 ##### --full_compaction_pool_max_queue_size
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `500`
 {{% /tags/wrap %}}
 
@@ -1985,8 +1966,7 @@ The maximum number of full compaction tasks that can be queued simultaneously. T
 ##### --auto_compact_check_interval_sec
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `60`
 {{% /tags/wrap %}}
 
@@ -2099,8 +2079,7 @@ Use of this flag can potentially result in deadlocks that can't be resolved by Y
 ##### --wait_queue_poll_interval_ms
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `100`
 {{% /tags/wrap %}}
 
@@ -2161,8 +2140,7 @@ To re-enable the per database catalog version mode using the following steps:
 ##### --enable_heartbeat_pg_catalog_versions_cache
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -2547,7 +2525,7 @@ This flag requires a restart or rolling restart.
 
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
-##### --ciphersuite
+##### --ciphersuites
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
@@ -2903,7 +2881,7 @@ To change the database after the extension is created, you must first drop the e
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `262144` (256kB, type: int32)
+Default: `1048576`
 {{% /tags/wrap %}}
 
 Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
