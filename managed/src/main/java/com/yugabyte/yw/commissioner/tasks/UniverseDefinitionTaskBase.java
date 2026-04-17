@@ -4001,7 +4001,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               params.force = true;
               Map<String, String> gflags = new HashMap<>();
               gflags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
-              Cluster cluster = Universe.getCluster(universe, node.nodeName);
+              Cluster cluster = universe.getCluster(node.placementUuid);
               Map<String, String> nodeGFlags =
                   GFlagsUtil.getGFlagsForNode(
                       node, serverType, cluster, universe.getUniverseDetails().clusters);
