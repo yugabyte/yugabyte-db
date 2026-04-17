@@ -2704,7 +2704,8 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 	 * that SPI_execute_snapshot will register the snapshots, so we don't need
 	 * to bother here.
 	 */
-	if (IsolationUsesXactSnapshot() && detectNewRows)
+	if (IsolationUsesXactSnapshot() && detectNewRows &&
+			(!yb_disable_pg_snapshot_mgmt_in_repeatable_read || !IsYBRelation(pk_rel)))
 	{
 		CommandCounterIncrement();	/* be sure all my own work is visible */
 		test_snapshot = GetLatestSnapshot();
