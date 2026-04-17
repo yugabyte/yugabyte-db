@@ -3088,12 +3088,9 @@ TEST_F_EX(XClusterTest, TestPrematureLogGC, XClusterTestNoParam) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_stop_retaining_min_disk_mb) =
       std::numeric_limits<int64_t>::max();
 
-  // Write two batches of records. The first batch will be GCed,
-  // the second batch will not be GCed due to it will be in the last segment.
+  // Write another batch of records.
   ASSERT_OK(InsertRowsInProducer(kNumWriteRecords, 2 * kNumWriteRecords));
   ASSERT_OK(VerifyNumRecordsOnProducer(2 * kNumWriteRecords));
-  ASSERT_OK(InsertRowsInProducer(2 *kNumWriteRecords, 3 * kNumWriteRecords));
-  ASSERT_OK(VerifyNumRecordsOnProducer(3 * kNumWriteRecords));
 
   // Unflushed WAL segments can not be garbage collected. Flush all tablets WALs now.
   ASSERT_OK(
@@ -3325,7 +3322,6 @@ TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
   auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
 
-  ASSERT_OK(insert_rows_and_verify());
   ASSERT_OK(insert_rows_and_verify());
 
   // GC log on producer.

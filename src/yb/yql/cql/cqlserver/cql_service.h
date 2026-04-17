@@ -53,9 +53,8 @@ class CQLMetrics;
 class CQLProcessor;
 class CQLServer;
 
+using ql::audit::IsPrepare;
 using StmtCountersMap = std::unordered_map<ql::CQLMessage::QueryId, StmtCounters>;
-
-YB_DEFINE_ENUM(StmtType, (kPrepared)(kUnprepared)(kBatch));
 
 class CQLServiceImpl : public CQLServerServiceIf,
                        public GarbageCollector,
@@ -80,11 +79,11 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Return CQL processor at pos as available.
   void ReturnProcessor(const CQLProcessorListPos& pos);
 
-  // Allocate a statement in the specified cache. If the statement already exists, return it
-  // instead. For batch statements, is_prepared indicates whether all children were prepared.
+  // Allocate a (prepared or unprepared) statement. If the statement already exists, return
+  // it instead. "is_prepare" is true for a prepared statement, false for unprepared statement.
   std::shared_ptr<CQLStatement> AllocateStatement(
       const ql::CQLMessage::QueryId& id, const std::string& query, ql::QLEnv* ql_env,
-      StmtType stmt_type, std::optional<bool> is_prepared = std::nullopt);
+      IsPrepare is_prepare);
 
   // Look up a prepared statement by its id. Nullptr will be returned if the statement is not found.
   Result<std::shared_ptr<const CQLStatement>> GetPreparedStatement(
@@ -93,7 +92,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   std::shared_ptr<ql::Statement> GetAuthPreparedStatement() const { return auth_prepared_stmt_; }
 
   // Delete the statement from the cache.
-  void DeleteStatement(const std::shared_ptr<const CQLStatement>& stmt, StmtType stmt_type);
+  void DeleteStatement(const std::shared_ptr<const CQLStatement>& stmt, const IsPrepare is_prepare);
 
   // Check that the password and hash match.  Leverages shared LRU cache.
   bool CheckPassword(const std::string plain, const std::string expected_bcrypt_hash);
@@ -134,11 +133,12 @@ class CQLServiceImpl : public CQLServerServiceIf,
   void DumpStatementMetricsAsJson(JsonWriter* jw);
 
   // Get the list of statement metrics in an inmemory vector.
-  StmtCountersMap GetStatementCountersForMetrics(StmtType stmt_type);
+  StmtCountersMap GetStatementCountersForMetrics(const IsPrepare& is_prepare);
 
-  // Update the counters for statements in the specified cache. Acquires the corresponding mutex.
+  // Update the counters for statements. "is_prepare" determines if the statements are
+  // prepared or unprepared statements. Acquires the corresponding mutex.
   void UpdateStmtCounters(
-      const ql::CQLMessage::QueryId& query_id, double execute_time_in_msec, StmtType stmt_type);
+      const ql::CQLMessage::QueryId& query_id, double execute_time_in_msec, IsPrepare is_prepare);
 
   // Returns the counters corresponding to the query with the given query id.
   // Returns nullptr if query doesn't exist in the prepared_stmt_map_.
@@ -174,31 +174,26 @@ class CQLServiceImpl : public CQLServerServiceIf,
  private:
   constexpr static int kRpcTimeoutSec = 5;
 
-  struct StatementCacheRefs {
-    CQLStatementMap& map;
-    CQLStatementList& list;
-    std::mutex& mutex;
-  };
-
-  StatementCacheRefs GetStatementCacheRefs(StmtType stmt_type);
-
-  // Insert a statement at the front of the LRU list.
-  // The corresponding mutex needs to be locked before this call.
+  // Insert a (prepared or unprepared) statement at the front of the LRU list.
+  // For prepared statements "prepared_stmts_mutex_" needs to be locked before
+  // this call. Otherwise, "unprepared_stmts_mutex_" needs to be locked before this call.
+  // "is_prepare" determines whether a prepared or an unprepared statement is to be inserted.
   void InsertLruStatementUnlocked(
       const std::shared_ptr<CQLStatement>& stmt, CQLStatementList* stmts_list);
 
-  // Move a statement to the front of the LRU list.
+  // Move a (prepared or unprepared) statement to the front of the LRU list.
   // The corresponding mutex needs to be locked before this call.
   void MoveLruStatementUnlocked(
       const std::shared_ptr<CQLStatement>& stmt, CQLStatementList* stmts_list);
 
-  // Delete a statement from the cache and the LRU list.
+  // Delete a (prepared or unprepared) statement from the cache and the LRU list.
   // The corresponding mutex needs to be locked before this call.
   void DeleteLruStatementUnlocked(
       const std::shared_ptr<const CQLStatement> stmt, CQLStatementList* stmts_list,
       CQLStatementMap* stmts_map);
 
-  // Delete the least recently used statement from the largest cache to free up memory.
+  // Delete the least recently used (prepared or unprepared) statement from the cache to
+  // free up memory. A single element is deleted from the larger of the two lists.
   void CollectGarbage(size_t required) override;
 
   // Executes the update counters for both prepared and unprepared statements.
@@ -241,17 +236,11 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Cache for unprepared statements counters.
   CQLStatementMap unprepared_stmts_map_;
 
-  // Cache for batch statements counters.
-  CQLStatementMap batch_stmts_map_;
-
   // Prepared statements LRU list (least recently used one at the end).
   CQLStatementList prepared_stmts_list_;
 
   // Unprepared statements LRU list.
   CQLStatementList unprepared_stmts_list_;
-
-  // Batch statements LRU list.
-  CQLStatementList batch_stmts_list_;
 
   // Mutex that protects the prepared statements and the LRU list.
   std::mutex prepared_stmts_mutex_;
@@ -259,12 +248,9 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Mutex that protects query statements cache.
   std::mutex unprepared_stmts_mutex_;
 
-  // Mutex that protects batch statements cache.
-  std::mutex batch_stmts_mutex_;
-
   std::shared_ptr<ql::Statement> auth_prepared_stmt_;
 
-  // Tracker to measure and limit memory usage of statements (prepared, unprepared, and batch).
+  // Tracker to measure and limit memory usage of statements (both prepared and unprepared).
   MemTrackerPtr stmts_mem_tracker_;
 
   MemTrackerPtr processors_mem_tracker_;

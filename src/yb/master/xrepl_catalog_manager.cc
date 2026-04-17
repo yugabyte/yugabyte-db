@@ -406,24 +406,6 @@ Status CatalogManager::LoadXReplStream() {
     RecordCDCSDKHiddenTablets({tablet}, delete_retainer);
   }
 
-  for (const auto& table : tables_->GetAllTables()) {
-    if (!table->colocated()) {
-      continue;
-    }
-
-    if (FLAGS_enable_table_rewrite_for_cdcsdk_table &&
-        IsTablePartOfCDCSDK(table->id(), true /* require_replication_slot */) &&
-        table->IsHiddenButNotDeleting()) {
-      auto tablets = VERIFY_RESULT(table->GetTablets());
-      RSTATUS_DCHECK(tablets.size() == 1, IllegalState, "Expected 1 tablet for colocated table");
-      HybridTime hide_time;
-      {
-        hide_time = table->LockForRead()->hide_hybrid_time();
-      }
-      colocated_tables_retained_by_cdcsdk_.insert({table->id(), {tablets[0]->id(), hide_time}});
-    }
-  }
-
   return Status::OK();
 }
 
@@ -5472,22 +5454,22 @@ void CatalogManager::ScheduleXReplParentTabletDeletionTask() {
   xrepl_parent_tablet_deletion_task_->Schedule(
       [this](const Status& status) {
         Status s = background_tasks_thread_pool_->SubmitFunc(
-            [this] { ProcessXReplHiddenObjectDeletionPeriodically(); });
+            [this] { ProcessXReplParentTabletDeletionPeriodically(); });
         if (!s.IsOk()) {
           // Failed to submit task to the thread pool. Mark that the task is now no longer running.
-          LOG(WARNING) << "Failed to schedule: ProcessXReplHiddenObjectDeletionPeriodically";
+          LOG(WARNING) << "Failed to schedule: ProcessXReplParentTabletDeletionPeriodically";
           xrepl_parent_tablet_deletion_task_running_ = false;
         }
       },
       wait_time * 1s);
 }
 
-void CatalogManager::ProcessXReplHiddenObjectDeletionPeriodically() {
+void CatalogManager::ProcessXReplParentTabletDeletionPeriodically() {
   if (!CheckIsLeaderAndReady().IsOk()) {
     xrepl_parent_tablet_deletion_task_running_ = false;
     return;
   }
-  DoProcessCDCSDKHiddenObjectDeletion();
+  WARN_NOT_OK(DoProcessCDCSDKTabletDeletion(), "Failed to run DoProcessCDCSdkTabletDeletion.");
   WARN_NOT_OK(
       xcluster_manager_->DoProcessHiddenTablets(),
       "Failed to run xCluster DoProcessHiddenTablets.");
@@ -5496,30 +5478,16 @@ void CatalogManager::ProcessXReplHiddenObjectDeletionPeriodically() {
   ScheduleXReplParentTabletDeletionTask();
 }
 
-void CatalogManager::DoProcessCDCSDKHiddenObjectDeletion() {
+Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
   std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets;
-  std::unordered_map<TableId, std::pair<TabletId, HybridTime>> hidden_colocated_tables;
   {
     SharedLock lock(mutex_);
+    if (retained_by_cdcsdk_.empty()) {
+      return Status::OK();
+    }
     hidden_tablets = retained_by_cdcsdk_;
-    hidden_colocated_tables = colocated_tables_retained_by_cdcsdk_;
   }
 
-  if (!hidden_colocated_tables.empty()) {
-    WARN_NOT_OK(
-        DoProcessCDCSDKColocatedTableDeletion(hidden_colocated_tables),
-        "Failed to run DoProcessCDCSDKColocatedTableDeletion.");
-  }
-
-  if (!hidden_tablets.empty()) {
-    WARN_NOT_OK(
-        DoProcessCDCSDKTabletDeletion(hidden_tablets),
-        "Failed to run DoProcessCDCSDKTabletDeletion.");
-  }
-}
-
-Status CatalogManager::DoProcessCDCSDKTabletDeletion(
-    std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets) {
   std::unordered_set<TabletId> tablets_to_delete;
   std::vector<cdc::CDCStateTableKey> entries_to_delete;
 
@@ -5663,68 +5631,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
   return Status::OK();
 }
 
-Status CatalogManager::DoProcessCDCSDKColocatedTableDeletion(
-    const std::unordered_map<TableId, std::pair<TabletId, HybridTime>>& hidden_colocated_tables) {
-  std::unordered_set<TableId> colocated_tables_free_for_deletion;
-  for (const auto& [table_id, tablet_hide_pair] : hidden_colocated_tables) {
-    const auto& [tablet_id, hide_time] = tablet_hide_pair;
-    std::unordered_set<xrepl::StreamId> stream_ids;
-    HybridTime min_restart_time_across_slots;
-    std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
-    {
-      SharedLock lock(mutex_);
-      stream_ids = GetCDCSDKStreamsForTable(table_id);
-      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
-      if (min_restart_time_across_slots.is_valid()) {
-        stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
-      }
-    }
-
-    if (min_restart_time_across_slots.is_valid() && (hide_time < min_restart_time_across_slots)) {
-      colocated_tables_free_for_deletion.insert(table_id);
-      continue;
-    }
-
-    // Allow colocated table's deletion if all the streams have expired / become not of interest for
-    // this colocated tablet. However, unlike non-colocated tablets, we do not remove the colocated
-    // tablet's entry from state table at this point since the user can stream a dynamic
-    // table residing on the colocated tablet later on.
-    bool all_streams_expired = true;
-    for (const auto& stream_id : stream_ids) {
-      const auto& entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-          {tablet_id, stream_id}, cdc::CDCStateTableEntrySelector().IncludeActiveTime()));
-      if (!entry_opt) {
-        continue;
-      }
-
-      RSTATUS_DCHECK(
-          entry_opt->active_time.has_value(), NotFound,
-          "Active time not found for for colocated tablet: {}, stream_id : {}", tablet_id,
-          stream_id);
-      const auto& last_active_time = HybridTime::FromMicros(*entry_opt->active_time);
-      if (min_restart_time_across_slots.is_valid() &&
-          !IsCDCSDKTabletExpiredOrNotOfInterest(
-              last_active_time, stream_creation_time_map.at(stream_id))) {
-        all_streams_expired = false;
-        break;
-      }
-    }
-
-    if (all_streams_expired) {
-      colocated_tables_free_for_deletion.insert(table_id);
-    }
-  }
-
-  {
-    LockGuard lock(mutex_);
-    for (const auto& table_id : colocated_tables_free_for_deletion) {
-      colocated_tables_retained_by_cdcsdk_.erase(table_id);
-    }
-  }
-
-  return Status::OK();
-}
-
 std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteTabletServer* ts) {
   auto ybclient = master_->cdc_state_client_future().get();
   auto hostport = HostPortFromPB(ts->DesiredHostPort(ybclient->cloud_info()));
@@ -5768,21 +5674,6 @@ Status CatalogManager::FillHeartbeatResponseCDC(
 bool CatalogManager::CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) {
   SharedLock read_lock(mutex_);
   return retained_by_cdcsdk_.contains(tablet_id);
-}
-
-bool CatalogManager::CDCSDKShouldRetainHiddenColocatedTable(const TableId& table_id) {
-  SharedLock read_lock(mutex_);
-  return colocated_tables_retained_by_cdcsdk_.contains(table_id);
-}
-
-void CatalogManager::UpdateHideTimeInHiddenColocatedTableToCDCSDKMap(const TableInfo& table) {
-  if (!FLAGS_enable_table_rewrite_for_cdcsdk_table || !table.colocated() ||
-      !IsTablePartOfCDCSDK(table.id(), true /* require_replication_slot */)) {
-    return;
-  }
-
-  DCHECK(colocated_tables_retained_by_cdcsdk_.contains(table.id()));
-  colocated_tables_retained_by_cdcsdk_[table.id()].second = table.hide_hybrid_time();;
 }
 
 Result<HybridTime> CatalogManager::GetTabletHideTime(const TabletId& tablet_id) const {
@@ -5874,7 +5765,7 @@ void CatalogManager::ReleaseAbandonedXReplStream(const xrepl::StreamId& stream_i
 
 void CatalogManager::CDCSDKPopulateDeleteRetainerInfoForTableDrop(
     const TableInfo& table_info, TabletDeleteRetainerInfo& delete_retainer) const {
-  if (IsTablePartOfCDCSDK(table_info.id(), true /* require_replication_slot */)) {
+  if (IsTablePartOfCDCSDK(table_info.id(), /*require_replication_slot=*/true)) {
     LOG(INFO) << "Retaining dropped table " << table_info.id()
               << " since it has active CDCSDK logical replication streams";
     delete_retainer.active_cdcsdk = true;

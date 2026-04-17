@@ -387,7 +387,9 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       }
     }
 
-    tablet_id_to_table_id_map_[tablet_id].insert(table_id);
+    if (!tablet_id_to_table_id_map_.contains(tablet_id)) {
+      tablet_id_to_table_id_map_[tablet_id].insert(table_id);
+    }
     auto checkpoint = tablet_checkpoint_pair.cdc_sdk_checkpoint();
     if (!tablet_next_req_map_.contains(tablet_id)) {
       GetChangesRequestInfo info;
@@ -928,9 +930,6 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
           // It is safe to get the table_id at the begin position since there will be only one
           // single entry in the set unless it's a colocated table case, in which case, the tablet
           // is not expected to split.
-          RSTATUS_DCHECK(
-              tablet_id_to_table_id_map_[tablet_id].size() == 1, InternalError,
-              "More than one table found to be residing on a split tablet");
           s = GetTabletListAndCheckpoint(
               *tablet_id_to_table_id_map_[tablet_id].begin(), hostport, deadline, tablet_id);
           if (!s.ok()) {
@@ -1639,19 +1638,10 @@ Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
       publication_table_list_.erase(table_id);
       auto tablet_list = GetTabletsForTable(table_id);
       for (auto tablet : tablet_list) {
-        bool all_tables_deleted_for_tablet = false;
         if (tablet_id_to_table_id_map_.contains(tablet)) {
-          tablet_id_to_table_id_map_[tablet].erase(table_id);
-          if (tablet_id_to_table_id_map_[tablet].empty()) {
-            all_tables_deleted_for_tablet = true;
-          }
+          tablet_id_to_table_id_map_.erase(tablet);
         }
 
-        if (!all_tables_deleted_for_tablet) {
-          break;
-        }
-
-        tablet_id_to_table_id_map_.erase(tablet);
         if (tablet_next_req_map_.contains(tablet)) {
           tablet_next_req_map_.erase(tablet);
         }

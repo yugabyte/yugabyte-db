@@ -150,7 +150,7 @@ Status TabletBootstrapStateFlusher::SubmitFlushBootstrapStateTask() {
     // If there's no ongoing flush but there's read event, wait until it's done and retry.
     WaitForFlushIdleOrShutdown();
   }
-  LOG(DETAIL) << "Tablet " << tablet_id_ << " is submitting flush bootstrap state task...";
+  LOG_DETAIL << "Tablet " << tablet_id_ << " is submitting flush bootstrap state task...";
   TEST_PAUSE_IF_FLAG(TEST_pause_before_submitting_flush_bootstrap_state);
   Status s = flush_bootstrap_state_pool_token_->SubmitFunc(
       std::bind(&TabletBootstrapStateFlusher::FlushBootstrapState,

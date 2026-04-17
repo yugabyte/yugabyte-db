@@ -182,9 +182,10 @@ Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
 template <class Vector, class DistanceResult>
 Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
     const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path,
-    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
+    const hnsw::BlockCachePtr& block_cache) {
   auto result = std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
-      std::make_unique<hnsw::UsearchMetric>(options.CreateMetric<Vector>()), block_cache);
+      std::make_unique<hnsw::HnswlibMetric>(index.fstdistfunc_, index.dist_func_param_),
+      block_cache);
   RETURN_NOT_OK(result->Import(index, path));
   return result;
 }
@@ -197,7 +198,7 @@ Result<vector_index::VectorIndexIfPtr<FloatVector, float>> ImportYbHnsw<FloatVec
 template
 Result<vector_index::VectorIndexIfPtr<FloatVector, float>> ImportYbHnsw<FloatVector, float>(
     const hnsw::HnswlibIndex<float>& index, const std::string& path,
-    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options);
+    const hnsw::BlockCachePtr& block_cache);
 
 template <class Vector, class DistanceResult>
 vector_index::VectorIndexIfPtr<Vector, DistanceResult> CreateYbHnsw(

@@ -134,7 +134,7 @@ Result<std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>>> CreateSpace(
 namespace {
 
 void LogDistFunction(hnswlib::DISTFUNC<int> ptr) {
-  LOG(INFO) << "Unknown hnswlib distance function: " << reinterpret_cast<void*>(ptr);
+  LOG(INFO) << "Unknown hnswlib distance function: " << ptr;
 }
 
 void LogDistFunction(hnswlib::DISTFUNC<float> ptr) {
@@ -157,7 +157,7 @@ void LogDistFunction(hnswlib::DISTFUNC<float> ptr) {
   CHECK_LOG_AND_RETURN(InnerProductDistanceSIMD16ExtResiduals);
   CHECK_LOG_AND_RETURN(InnerProductDistanceSIMD4ExtResiduals);
   #endif
-  LOG(INFO) << "Unknown hnswlib distance function: " << reinterpret_cast<void*>(ptr);
+  LOG(INFO) << "Unknown hnswlib distance function: " << ptr;
 }
 
 } // namespace
@@ -231,7 +231,7 @@ class HnswlibIndex :
 
   Result<VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(const std::string& path) {
     if (std::is_same_v<DistanceResult, float> && backend_ == HnswBackend::YB_HNSW_HNSWLIB) {
-      return ImportYbHnsw<Vector, DistanceResult>(*hnsw_, path, block_cache_, options_);
+      return ImportYbHnsw<Vector, DistanceResult>(*hnsw_, path, block_cache_);
     }
     try {
       hnsw_->saveIndex(path);

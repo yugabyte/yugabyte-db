@@ -134,6 +134,9 @@ ADD_YB_LIBRARY(consensus SRCS ${CONSENSUS_SRCS})
 
 add_dependencies(consensus gen_src_yb_rpc_any_proto)
 add_dependencies(consensus cdc_service_proto)
+
+# Link cdc_service_proto to resolve CDC symbols
+target_link_libraries(consensus cdc_service_proto)
 add_dependencies(consensus gen_src_yb_master_master_client_proto)
 add_dependencies(consensus gen_src_yb_master_master_types_proto)
 add_dependencies(consensus gen_src_yb_tserver_pg_client_proto)
@@ -184,3 +187,4 @@ target_link_libraries(log-dump
   tablet_metadata
   ${YB_BASE_LIBS})
 add_dependencies(log-dump gen_src_yb_rpc_any_proto)
+

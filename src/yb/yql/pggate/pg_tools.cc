@@ -35,20 +35,6 @@ DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);
 
-std::ostream& operator<<(std::ostream& str, const YbcObjectLockId& lock_id) {
-  return str << "object { db_oid: " << lock_id.db_oid
-             << ", table_oid: " << lock_id.relation_oid
-             << ", object_id: " << lock_id.object_oid
-             << ", object_sub_oid: " << lock_id.object_sub_oid << "}";
-}
-
-std::ostream& operator<<(std::ostream& str, const YbcAdvisoryLockId& lock_id) {
-  return str << "advisory lock { db_oid: " << lock_id.database_id
-             << ", classid: " << lock_id.classid
-             << ", object_oid: " << lock_id.objid
-             << ", object_sub_oid: " << lock_id.objsubid << "}";
-}
-
 namespace yb::pggate {
 namespace {
 
@@ -142,6 +128,18 @@ Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid) {
   int64_t bytes = 0;
   pg_types.GetYbctid().datum_to_yb(ybctid, &value, &bytes);
   return Slice(value, bytes);
+}
+
+std::string ToString(const YbcObjectLockId& lock_id) {
+  return Format(
+      "object { db_oid: $0, table_oid: $1, object_id: $2, object_sub_oid: $3 }",
+      lock_id.db_oid, lock_id.relation_oid, lock_id.object_oid, lock_id.object_sub_oid);
+}
+
+std::string ToString(const YbcAdvisoryLockId& lock_id) {
+  return Format(
+      "advisory lock { db_oid: $0, classid: $1, object_oid: $2, object_sub_oid: $3 } ",
+      lock_id.database_id, lock_id.classid, lock_id.objid, lock_id.objsubid);
 }
 
 TablespaceCache::TablespaceCache(size_t capacity) : impl_(capacity) {}

@@ -13,15 +13,17 @@
 
 #pragma once
 
-#include <memory>
 #include <optional>
 #include <span>
 #include <utility>
+
+#include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/macros.h"
 
 #include "yb/yql/pggate/pg_session_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
+#include "yb/yql/pggate/pg_doc_op.h"
 
 #include "yb/util/result.h"
 
@@ -38,36 +40,81 @@ class YbctidReader {
  public:
   using ReadResult = Result<std::span<LightweightTableYbctid>>;
   using Options = YbctidReaderOptions;
-  class Impl;
 
   class BatchAccessor {
    public:
-    ~BatchAccessor();
+    ~BatchAccessor() {
+      if (PREDICT_TRUE(IsActive())) {
+        reader_.Clear();
+      }
+    }
 
-    void Add(const LightweightTableYbctid& ybctid);
+    void Add(const LightweightTableYbctid& ybctid) {
+      if (PREDICT_TRUE(IsActive())) {
+        reader_.Add(ybctid);
+      } else {
+        DCHECK(false) << "The batch is inactive";
+      }
+    }
 
     ReadResult Read(
-        PgOid database_id, const TableLocalityMap& tables_locality, const Options& options = {});
+        PgOid database_id, const TableLocalityMap& tables_locality, const Options& options = {}) {
+      RSTATUS_DCHECK(IsActive(), IllegalState, "Read from inactive batch is not allowed");
+      return reader_.Read(database_id, tables_locality, options);
+    }
 
    private:
     friend class YbctidReader;
 
-    BatchAccessor(Impl& impl, size_t signature) : impl_{impl}, signature_{signature} {}
+    BatchAccessor(YbctidReader& reader, size_t signature)
+        : reader_(reader), signature_(signature) {}
 
-    [[nodiscard]] bool IsActive() const;
+    [[nodiscard]] bool IsActive() const {
+      return reader_.active_batch_accessor_signature_ == signature_;
+    }
 
-    Impl& impl_;
+    YbctidReader& reader_;
     const size_t signature_;
 
     DISALLOW_COPY_AND_ASSIGN(BatchAccessor);
   };
 
-  explicit YbctidReader(PgSession& session);
+  explicit YbctidReader(const PgSessionPtr& session);
   ~YbctidReader();
-  [[nodiscard]] BatchAccessor StartNewBatch(size_t capacity = 0);
+  [[nodiscard]] BatchAccessor StartNewBatch(std::optional<size_t> capacity = {}) {
+    const auto signature = ++active_batch_accessor_signature_;
+    Clear();
+    if (capacity) {
+      ybctids_.values.reserve(*capacity);
+    }
+    return BatchAccessor(*this, signature);
+  }
 
  private:
-  std::unique_ptr<Impl> impl_;
+  void Add(const LightweightTableYbctid& ybctid) { ybctids_.values.push_back(ybctid); }
+
+  void Clear() {
+    doc_ops_.clear();
+    ybctids_.Clear();
+  }
+
+  ReadResult Read(
+      PgOid database_id, const TableLocalityMap& tables_locality, const Options& options);
+
+  struct Ybctids {
+    boost::container::small_vector<LightweightTableYbctid, 8> values;
+    DocResultYbctidRetention retention;
+
+    void Clear() {
+      values.clear();
+      retention.Clear();
+    }
+  };
+
+  const PgSessionPtr& session_;
+  boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 8> doc_ops_;
+  Ybctids ybctids_;
+  size_t active_batch_accessor_signature_{0};
 };
 
 } // namespace yb::pggate

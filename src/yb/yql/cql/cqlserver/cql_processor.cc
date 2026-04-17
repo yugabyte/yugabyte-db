@@ -288,7 +288,6 @@ void CQLProcessor::Release() {
   request_ = nullptr;
   stmts_.clear();
   parse_trees_.clear();
-  batch_query_id_.clear();
   SetCurrentSession(nullptr);
   is_rescheduled_.store(IsRescheduled::kFalse, std::memory_order_release);
   audit_logger_.SetConnection(nullptr);
@@ -318,32 +317,20 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   MonoTime response_done = MonoTime::Now();
   cql_metrics_->time_to_process_request_->Increment(
       response_done.GetDeltaSince(parse_begin_).ToMicroseconds());
+  if (request_ != nullptr) {
+    cql_metrics_->time_to_execute_cql_request_->Increment(
+        response_begin.GetDeltaSince(execute_begin_).ToMicroseconds());
+  }
   cql_metrics_->time_to_queue_cql_response_->Increment(
       response_done.GetDeltaSince(response_begin).ToMicroseconds());
 
-  if (request_) {
-    cql_metrics_->time_to_execute_cql_request_->Increment(
-        response_begin.GetDeltaSince(execute_begin_).ToMicroseconds());
-    if (FLAGS_ycql_enable_stat_statements) {
-      StmtType stmt_type = StmtType::kUnprepared;
-      string query_id;
-      switch (request_->opcode()) {
-        case ql::CQLMessage::Opcode::EXECUTE:
-          stmt_type = StmtType::kPrepared;
-          query_id = GetPrepQueryId();
-          break;
-        case ql::CQLMessage::Opcode::BATCH:
-          stmt_type = StmtType::kBatch;
-          query_id = GetBatchQueryId();
-          break;
-        default:
-          query_id = GetUnprepQueryId();
-          break;
-      }
-      if (!query_id.empty()) {
-        service_impl_->UpdateStmtCounters(
-            query_id, response_done.GetDeltaSince(execute_begin_).ToSeconds() * 1000., stmt_type);
-      }
+  if (FLAGS_ycql_enable_stat_statements) {
+    const IsPrepare is_prepare(request_ && request_->opcode() == ql::CQLMessage::Opcode::EXECUTE);
+    const string query_id = (is_prepare ? GetPrepQueryId() : GetUnprepQueryId());
+    if (!query_id.empty()) {
+      service_impl_->UpdateStmtCounters(
+          query_id, response_done.GetDeltaSince(execute_begin_).ToSeconds()*1000.,
+          is_prepare);
     }
   }
 
@@ -452,7 +439,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   // the actual prepare while the rest wait. As the rest do the prepare afterwards, the statement
   // is already prepared so it will be an no-op (see Statement::Prepare).
   shared_ptr<CQLStatement> stmt = service_impl_->AllocateStatement(
-      query_id, req.query(), &ql_env_, StmtType::kPrepared);
+      query_id, req.query(), &ql_env_, IsPrepare::kTrue);
   PreparedResult::UniPtr result;
   Status s = stmt->Prepare(this, service_impl_->stmts_mem_tracker(),
                            /*internal=*/false, &result);
@@ -472,7 +459,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   }
 
   if (!s.ok()) {
-    service_impl_->DeleteStatement(stmt, StmtType::kPrepared);
+    service_impl_->DeleteStatement(stmt, IsPrepare::kTrue);
     return ProcessError(s, stmt->query_id());
   }
 
@@ -510,7 +497,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
   UpdateAshQueryId(query_id);
   // Allocates space to unprepared statements in the cache.
   const shared_ptr<CQLStatement> stmt = service_impl_->AllocateStatement(
-      query_id, req.query(), &ql_env_, StmtType::kUnprepared);
+      query_id, req.query(), &ql_env_, IsPrepare::kFalse);
 
   const auto op_code = RunAsync(req.query(), req.params(), statement_executed_cb_);
 
@@ -519,7 +506,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
   // after the execution the keyspace changes, consequently the query id changes. So its entry in
   // the unprepared_stmts_map_ becomes stale. So, the corresponding entry is deleted from the cache.
   if(stmt && op_code == TreeNodeOpcode::kPTUseKeyspace) {
-    service_impl_->DeleteStatement(stmt, StmtType::kUnprepared);
+    service_impl_->DeleteStatement(stmt, IsPrepare::kFalse);
   }
   return nullptr;
 }
@@ -538,13 +525,11 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
   }
 
   unique_ptr<CQLResponse> result;
-  std::vector<string> child_query_texts;
-  child_query_texts.reserve(req.queries().size());
-  bool batch_all_prepared = true;
   // For each query in the batch, look up the query id if it is a prepared statement, or prepare the
   // query if it is not prepared. Then execute the parse trees with the parameters.
   for (const BatchRequest::Query& query : req.queries()) {
     if (query.is_prepared) {
+      UpdateAshQueryId(b2a_hex(query.query_id));
       VLOG(1) << "BATCH EXECUTE " << b2a_hex(query.query_id);
       auto stmt_res = GetPreparedStatement(query.query_id, query.params.schema_version());
       if (!stmt_res.ok()) {
@@ -558,10 +543,10 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
         result = ProcessError(parse_tree.status(), query.query_id);
         break;
       }
-      child_query_texts.push_back((*stmt_res)->text());
       batch.emplace_back(*parse_tree, query.params);
     } else {
-      batch_all_prepared = false;
+      UpdateAshQueryId(ToString(std::to_underlying(
+          ash::FixedQueryId::kQueryIdForUncomputedQueryId)));
       VLOG(1) << "BATCH QUERY " << query.query;
       ParseTree::UniPtr parse_tree;
       s = Prepare(query.query, &parse_tree);
@@ -569,7 +554,6 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
         result = ProcessError(s);
         break;
       }
-      child_query_texts.push_back(query.query);
       batch.emplace_back(*parse_tree, query.params);
       parse_trees_.insert(std::move(parse_tree));
     }
@@ -583,17 +567,6 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
     }
     return result;
   }
-
-  string batch_text;
-  batch_query_id_ = CQLStatement::GetBatchQueryId(
-      ql_env_.CurrentKeyspace(), child_query_texts, &batch_text);
-  // ASH query id is only set on the successful path; failed batches return above
-  // without an ASH id, matching the pre-existing behavior for failed requests.
-  UpdateAshQueryId(batch_query_id_);
-  // Batch LRU entry for UpdateStmtCounters; queryid/text exist only after the child loop.
-  // (void): we only need the cache insert; execution uses `batch` below, not this returned handle.
-  (void)service_impl_->AllocateStatement(
-      batch_query_id_, batch_text, &ql_env_, StmtType::kBatch, batch_all_prepared);
 
   ExecuteAsync(batch, statement_executed_cb_);
 
@@ -621,7 +594,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const AuthResponseRequest& 
                 << salted_hash_result;
     }
   }
-  UpdateAshQueryId(yb::ToString(std::to_underlying(
+  UpdateAshQueryId(ToString(std::to_underlying(
       ash::FixedQueryId::kQueryIdForYcqlAuthResponseRequest)));
   shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
   if (!stmt->Prepare(this, nullptr /* memtracker */, /*internal=*/true).ok()) {
@@ -679,7 +652,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessError(
       // we found.
       for (auto stmt : stmts_) {
         if (stmt->stale()) {
-          service_impl_->DeleteStatement(stmt, StmtType::kPrepared);
+          service_impl_->DeleteStatement(stmt, IsPrepare::kTrue);
         }
         if (stmt->unprepared() || stmt->stale()) {
           query_id = stmt->query_id();

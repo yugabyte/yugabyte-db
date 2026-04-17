@@ -766,7 +766,7 @@ class AtomicGauge : public Gauge {
   }
 
   T value() const {
-    return static_cast<T>(value_.Load(kMemOrderNoBarrier));
+    return static_cast<T>(value_.Load(kMemOrderRelease));
   }
   virtual void set_value(const T& value) {
     int64_t new_value = static_cast<int64_t>(value);

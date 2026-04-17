@@ -130,18 +130,13 @@ class LogCache {
   // least one op exists in the log.
   //
   // If 'to_op_index' is 0, then all operations after 'after_op_index' will be included.
-  //
-  // If caller already knows the op at after_op_index, pass it in and we can skip LookupOpId.
-  // We still do LookupOpId when that op is not known or doesn't match, e.g first xCluster/CDC
-  // read where checkpoint index 0 gets remapped to the earliest retained log index.
   Result<ReadOpsResult> ReadOps(
       int64_t after_op_index,
       int64_t to_op_index,
       size_t max_size_bytes,
       log::ObeyMemoryLimit obey_memory_limit,
       CoarseTimePoint deadline = CoarseTimePoint::max(),
-      bool fetch_single_entry = false,
-      const OpId* known_preceding_op = nullptr);
+      bool fetch_single_entry = false);
 
   // Append the operations into the log and the cache.  When the messages have completed writing
   // into the on-disk log, fires 'callback'.

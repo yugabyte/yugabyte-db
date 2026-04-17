@@ -22,18 +22,22 @@ set(NHSW_LIBS
   vector_index
   yb_common
   yb_util
+  rocksdb
   )
 
 ADD_YB_LIBRARY(hnsw
     SRCS ${NHSW_SRCS}
     DEPS ${NHSW_LIBS})
+add_dependencies(hnsw rocksdb)
 
 ADD_YB_TEST_LIBRARY(
     hnsw_test_util
     SRCS vector_index_test_base.cc
-    DEPS vector_index yb_common yb_util)
+    DEPS hnsw vector_index yb_common yb_util rocksdb yb_test_util)
+add_dependencies(hnsw_test_util rocksdb hnsw)
 
 set(YB_TEST_LINK_LIBS
     hnsw yb_common_test_util hnsw_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(hnsw-test)
+

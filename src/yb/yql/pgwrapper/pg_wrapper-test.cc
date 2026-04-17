@@ -98,15 +98,6 @@ TEST(FormatPgGFlagValueTest, QuotingBehavior) {
   ASSERT_EQ(FormatPgGFlagValue("true", "bool"), "true");
 }
 
-TEST(PgWrapperPathTest, PostgresExecutablePath) {
-  const auto install_root = GetPostgresInstallRoot();
-  const auto executable_path = PgWrapper::GetPostgresExecutablePath();
-
-  ASSERT_EQ(executable_path, JoinPathSegments(install_root, "bin", "postgres"));
-  ASSERT_EQ(DirName(executable_path), JoinPathSegments(install_root, "bin"));
-  ASSERT_EQ(BaseName(executable_path), "postgres");
-}
-
 YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kFlushRegularOnly)(kCompaction));
 
 auto GetFlushCompactFlags(FlushOrCompaction flush_or_compaction) {

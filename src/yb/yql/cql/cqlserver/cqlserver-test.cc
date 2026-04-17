@@ -598,10 +598,10 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
                cql_service->clock(),
                std::bind(&CQLServiceImpl::TransactionPool, cql_service));
 
-  cql_service->AllocateStatement("dummyqueryid", "dummyquery", &ql_env, StmtType::kPrepared);
-  cql_service->UpdateStmtCounters("dummyqueryid", 1, StmtType::kPrepared);
+  cql_service->AllocateStatement("dummyqueryid", "dummyquery", &ql_env, IsPrepare::kTrue);
+  cql_service->UpdateStmtCounters("dummyqueryid", 1, IsPrepare::kTrue);
 
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", yb::ToString(addr)), &buf));
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addr)), &buf));
   string result = buf.ToString();
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
@@ -609,9 +609,9 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
 
   // reset the counters and verify
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
-                                              yb::ToString(addr)), &buf));
+                                              ToString(addr)), &buf));
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
-                                              yb::ToString(addr)), &buf));
+                                              ToString(addr)), &buf));
 
   JsonDocument doc;
   auto json_post_reset = ASSERT_RESULT(doc.Parse(buf.ToString()));
@@ -629,13 +629,13 @@ TEST_F(TestCQLService, TestCQLDumpStatementLimit) {
   // Create two prepared statements.
   const string dummyqueryid1 = CQLStatement::GetQueryId(ql_env.CurrentKeyspace(), "dummyquery1");
   const string dummyqueryid2 = CQLStatement::GetQueryId(ql_env.CurrentKeyspace(), "dummyquery2");
-  cql_service->AllocateStatement(dummyqueryid1, "dummyquery1", &ql_env, StmtType::kPrepared);
-  cql_service->UpdateStmtCounters(dummyqueryid1, 1, StmtType::kPrepared);
-  cql_service->AllocateStatement(dummyqueryid2, "dummyquery2", &ql_env, StmtType::kPrepared);
-  cql_service->UpdateStmtCounters(dummyqueryid2, 1, StmtType::kPrepared);
+  cql_service->AllocateStatement(dummyqueryid1, "dummyquery1", &ql_env, IsPrepare::kTrue);
+  cql_service->UpdateStmtCounters(dummyqueryid1, 1, IsPrepare::kTrue);
+  cql_service->AllocateStatement(dummyqueryid2, "dummyquery2", &ql_env, IsPrepare::kTrue);
+  cql_service->UpdateStmtCounters(dummyqueryid2, 1, IsPrepare::kTrue);
 
   // Dump should only return one prepared statement.
-  StmtCountersMap counters = cql_service->GetStatementCountersForMetrics(StmtType::kPrepared);
+  StmtCountersMap counters = cql_service->GetStatementCountersForMetrics(IsPrepare::kTrue);
   ASSERT_EQ(1, counters.size());
   const CQLMessage::QueryId query_id = counters.begin()->first;
   ASSERT_TRUE(query_id == dummyqueryid1 || query_id == dummyqueryid2);
@@ -683,9 +683,9 @@ TEST_F(TestCQLService, TestCQLUpdateStmtCounters) {
       calls = counters->num_calls;
       total_time = counters->total_time_in_msec;
     } else {
-      cql_service->AllocateStatement(query_id, query_text, &ql_env, StmtType::kPrepared);
+      cql_service->AllocateStatement(query_id, query_text, &ql_env, IsPrepare::kTrue);
     }
-    cql_service->UpdateStmtCounters(query_id, execute_time_in_msec, StmtType::kPrepared);
+    cql_service->UpdateStmtCounters(query_id, execute_time_in_msec, IsPrepare::kTrue);
     counters = cql_service->GetWritablePrepStmtCounters(query_id); // Store the updated counters.
     ASSERT_ONLY_NOTNULL(counters.get());
     ASSERT_EQ(calls + 1, counters->num_calls);

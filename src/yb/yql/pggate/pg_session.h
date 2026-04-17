@@ -35,7 +35,6 @@
 #include "yb/yql/pggate/insert_on_conflict_buffer.h"
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
-#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_flush_future.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
@@ -67,6 +66,8 @@ struct PgSessionRunOptions {
 class PgSession final : public std::enable_shared_from_this<PgSession> {
   class PrivateTag {};
  public:
+  using RunRWOperationsHook = std::function<Status(std::optional<PgSessionRunOperationMarker>)>;
+
   PgSession(
       PrivateTag,
       PgClient& pg_client,
@@ -75,7 +76,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
       YbcPgExecStatsState& stats_state,
       bool is_pg_binary_upgrade,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      BufferingSettings& buffering_settings);
+      BufferingSettings& buffering_settings,
+      RunRWOperationsHook&& hook);
   ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -119,8 +121,11 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   // Adjust buffer batch size.
   Status AdjustOperationsBuffering(int multiple = 1);
 
-  Result<SetupPerformOptionsAccessorTag> FlushBufferedEntities(const PgFlushDebugContext& dbg_ctx);
-  SetupPerformOptionsAccessorTag ClearState();
+  // Flush all pending buffered operations. Buffering mode remain unchanged.
+  Result<SetupPerformOptionsAccessorTag> FlushBufferedOperations(
+      const PgFlushDebugContext& dbg_ctx);
+  // Drop all pending buffered operations. Buffering mode remain unchanged.
+  SetupPerformOptionsAccessorTag DropBufferedOperations();
 
   PgIsolationLevel GetIsolationLevel();
 
@@ -211,10 +216,6 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
     return std::make_shared<PgSession>(PrivateTag{}, std::forward<Args>(args)...);
   }
 
-  [[nodiscard]] ExplicitRowLockBuffer& explicit_row_lock_buffer() {
-    return explicit_row_lock_buffer_;
-  }
-
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
@@ -298,7 +299,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   const WaitEventWatcher& wait_event_watcher_;
   TablespaceCache tablespace_cache_;
-  ExplicitRowLockBuffer explicit_row_lock_buffer_;
+  RunRWOperationsHook rw_operations_hook_;
 };
 
 template<class PB>

@@ -2426,10 +2426,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // retained_by_cdcsdk_ is a subset of hidden_tablets_.
   std::unordered_map<TabletId, HiddenReplicationTabletInfo> retained_by_cdcsdk_ GUARDED_BY(mutex_);
 
-  // Stores the mapping between dropped / re-written colocated tables -> tablet id and hide time.
-  std::unordered_map<TableId, std::pair<TabletId, HybridTime>> colocated_tables_retained_by_cdcsdk_
-      GUARDED_BY(mutex_);
-
   // TODO(jhe) Cleanup how we use ScheduledTaskTracker, move is_running and util functions to class.
   // Background task for deleting parent split tablets retained by xCluster streams.
   std::atomic<bool> xrepl_parent_tablet_deletion_task_running_{false};
@@ -2925,10 +2921,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
 
-  bool SkipRemovalOfHiddenColocatedTableFromTablet(
-      const TableInfoPtr& table, const TabletInfo& tablet_info,
-      const ScheduleMinRestoreTime& schedule_min_restore_time);
-
   // Checks the colocated table is hidden and is not within the retention of any snapshot schedule
   // or covered by any live snapshot. If the checks pass sends a request to the relevant tserver
   // to remove this table from its metadata for the parent tablet.
@@ -3074,7 +3066,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
 
-  void ProcessXReplHiddenObjectDeletionPeriodically();
+  void ProcessXReplParentTabletDeletionPeriodically();
 
   // Currently, there are 2 cases where a tablet is retained by CDCSDK:
   //   1. The table of such tablet was dropped, however, there was atleast one active stream on
@@ -3083,14 +3075,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   //   2. Such tablet was split and is intended to kept hidden till the time all streams complete
   //   their streaming from this tablet (aka start streaming from its children tablets).
   // This method processes all such tablets and deletes the ones which are eligible for deletion.
-  Status DoProcessCDCSDKTabletDeletion(
-      std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets);
-
-  Status DoProcessCDCSDKColocatedTableDeletion(
-      const std::unordered_map<TableId, std::pair<TabletId, HybridTime>>& hidden_colocated_tables)
-      EXCLUDES(mutex_);
-
-  void DoProcessCDCSDKHiddenObjectDeletion() EXCLUDES(mutex_);
+  Status DoProcessCDCSDKTabletDeletion();
 
   void RecordCDCSDKHiddenTablets(
       const std::vector<TabletInfoPtr>& tablets, const TabletDeleteRetainerInfo& delete_retainer)
@@ -3113,10 +3098,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status LoadUniverseReplicationBootstrap() REQUIRES(mutex_);
 
   bool CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) EXCLUDES(mutex_);
-
-  bool CDCSDKShouldRetainHiddenColocatedTable(const TableId& table_id) EXCLUDES(mutex_);
-
-  void UpdateHideTimeInHiddenColocatedTableToCDCSDKMap(const TableInfo& table) REQUIRES(mutex_);
 
   void CDCSDKPopulateDeleteRetainerInfoForTabletDrop(
       const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const

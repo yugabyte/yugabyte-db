@@ -78,3 +78,4 @@ ADD_YB_TEST(partition-test)
 ADD_YB_TEST(pg_row-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(subdocument-test)
+

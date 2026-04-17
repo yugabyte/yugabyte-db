@@ -838,7 +838,7 @@ Status Log::RollOver() {
 
     DCHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationFinished);
 
-    LOG_WITH_PREFIX(DETAIL) << Format(
+    LOG_WITH_PREFIX_DETAIL << Format(
         "Last appended OpId in segment $0: $1", active_segment_->path(),
         last_appended_entry_op_id_.ToString());
 
@@ -847,7 +847,7 @@ Status Log::RollOver() {
 
     RETURN_NOT_OK(SwitchToAllocatedSegment());
 
-    LOG_WITH_PREFIX(DETAIL) << "Rolled over to a new segment: " << active_segment_->path();
+    LOG_WITH_PREFIX_DETAIL << "Rolled over to a new segment: " << active_segment_->path();
   }
   return Status::OK();
 }
@@ -1599,8 +1599,8 @@ OpId Log::WaitForSafeOpIdToApply(const OpId& min_allowed, MonoDelta duration) {
 Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
   CHECK_GE(min_op_idx, 0);
 
-  LOG_WITH_PREFIX(DETAIL) << "Running Log GC on " << wal_dir_ << ": retaining ops >= " << min_op_idx
-                          << ", log segment size = " << options_.segment_size_bytes;
+  LOG_WITH_PREFIX_DETAIL << "Running Log GC on " << wal_dir_ << ": retaining ops >= " << min_op_idx
+                        << ", log segment size = " << options_.segment_size_bytes;
   VLOG_TIMING(1, "Log GC") {
     SegmentSequence segments_to_delete;
 
@@ -1625,7 +1625,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
     // Now that they are no longer referenced by the Log, delete the files.
     *num_gced = 0;
     for (const scoped_refptr<ReadableLogSegment>& segment : segments_to_delete) {
-      LOG_WITH_PREFIX(DETAIL)
+      LOG_WITH_PREFIX_DETAIL
           << "Deleting log segment in path: " << segment->path()
           << " (GCed ops < " << segment->footer().max_replicate_index() + 1
           << ")";

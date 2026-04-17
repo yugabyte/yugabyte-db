@@ -89,13 +89,7 @@ class RWOperationCounter {
   // Return pending operations counter value only.
   uint64_t GetOpCounter() const;
 
-  enum class IncrementResult {
-    kSuccess,
-    kFailed,
-    kStopped,
-  };
-
-  IncrementResult WaitMutexAndIncrement(CoarseTimePoint deadline);
+  bool WaitMutexAndIncrement(CoarseTimePoint deadline);
 
   std::string resource_name() const {
     return resource_name_;
@@ -174,8 +168,6 @@ class ScopedRWOperation {
 
   std::string resource_name() const;
 
-  bool stopped() const { return data_.stopped_; }
-
   static ScopedRWOperation TEST_Create() { return ScopedRWOperation(); }
 
  private:
@@ -190,7 +182,6 @@ class ScopedRWOperation {
 #ifndef NDEBUG
     LongOperationTracker long_operation_tracker_;
 #endif
-    bool stopped_ = false;
   };
 
   Data data_;

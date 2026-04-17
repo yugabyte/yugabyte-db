@@ -73,8 +73,8 @@ using pggate::PgValueToDatum;
     range_elmalign = range_elemalign; \
   } while (0);
 
-Status DocPgInit(const std::string& postgres_executable_path) {
-  PG_RETURN_NOT_OK(YbgInit(postgres_executable_path.c_str()));
+Status DocPgInit() {
+  PG_RETURN_NOT_OK(YbgInit());
   return Status::OK();
 }
 

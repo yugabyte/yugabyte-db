@@ -1156,6 +1156,7 @@ fi
 run_tests_remotely
 
 if [[ ${ran_tests_remotely} != "true" ]]; then
+  ensure_test_tmp_dir_is_set
   if [[ -n $cxx_test_name ]]; then
     capture_sec_timestamp cxx_test_start
     run_cxx_test

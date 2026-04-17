@@ -52,11 +52,11 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_conns_per_db, 0,
     "Maximum number of concurrent database connections Ysql Connection Manager can create per "
     "pool.");
 
-DEFINE_NON_RUNTIME_string(ysql_conn_mgr_internal_conn_user, "yugabyte",
+DEFINE_NON_RUNTIME_string(ysql_conn_mgr_username, "yugabyte",
     "Username to be used by Ysql Connection Manager while creating database connections.");
 
-DEPRECATE_FLAG(string, ysql_conn_mgr_username, "04_2026");
-DEPRECATE_FLAG(string, ysql_conn_mgr_password, "04_2026");
+DEFINE_NON_RUNTIME_string(ysql_conn_mgr_password, "yugabyte",
+    "Password to be used by Ysql Connection Manager while creating database connections.");
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_internal_conn_db, "yugabyte",
     "Database to which Ysql Connection Manager will make connections to "
@@ -255,11 +255,7 @@ Status YsqlConnMgrWrapper::Start() {
   proc_->SetEnv("YB_YSQLCONNMGR_PDEATHSIG", Format("$0", SIGINT));
 
   if (getenv("YB_YSQL_CONN_MGR_USER") == NULL) {
-    proc_->SetEnv("YB_YSQL_CONN_MGR_USER", FLAGS_ysql_conn_mgr_internal_conn_user);
-  }
-
-  if (getenv("YB_YSQL_CONN_MGR_DB") == NULL) {
-    proc_->SetEnv("YB_YSQL_CONN_MGR_DB", FLAGS_ysql_conn_mgr_internal_conn_db);
+    proc_->SetEnv("YB_YSQL_CONN_MGR_USER", FLAGS_ysql_conn_mgr_username);
   }
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", UInt64ToString(conf_.yb_tserver_key()));

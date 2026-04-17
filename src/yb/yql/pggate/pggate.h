@@ -48,6 +48,7 @@
 #include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_fk_reference_cache.h"
 #include "yb/yql/pggate/pg_function.h"
@@ -67,7 +68,6 @@ namespace yb::pggate {
 class PgDmlRead;
 class PgFlushDebugContext;
 class PgGlobalViewRead;
-class ExplicitRowLockBuffer;
 
 struct PgMemctxComparator {
   using is_transparent = void;
@@ -793,7 +793,6 @@ class PgApiImpl {
   void PauseSysTablePrefetching();
   void ResumeSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
-  bool IsParallelWorker() const;
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
       bool fetch_ybctid);
@@ -953,9 +952,6 @@ class PgApiImpl {
 
   PgMemctx& GetCurrentYbMemctx();
 
-  [[nodiscard]] ExplicitRowLockBuffer& explicit_row_lock_buffer();
-  Result<SetupPerformOptionsAccessorTag> FlushBufferedEntities(const PgFlushDebugContext& dbg_ctx);
-
   class Interrupter;
 
   class TupleIdBuilder {
@@ -999,8 +995,6 @@ class PgApiImpl {
 
   const WaitEventWatcher wait_event_watcher_;
 
-  bool is_parallel_worker_;
-
   PgSharedDataHolder pg_shared_data_;
 
   tserver::TServerSharedData& tserver_shared_object_;
@@ -1022,6 +1016,7 @@ class PgApiImpl {
   BufferingSettings buffering_settings_;
   PgSessionPtr pg_session_;
   PgFKReferenceCache fk_reference_cache_;
+  ExplicitRowLockBuffer explicit_row_lock_buffer_;
 
   ash::WaitStateInfoPtr wait_state_;
 

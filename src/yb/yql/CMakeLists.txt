@@ -35,3 +35,4 @@ add_subdirectory(ysql_conn_mgr_wrapper)
 
 # Support for running a Distributed RAG service as a subprocess of the tserver process.
 add_subdirectory(dist_rag_wrapper)
+

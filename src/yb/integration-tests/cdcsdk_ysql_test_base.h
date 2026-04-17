@@ -155,7 +155,6 @@ DECLARE_uint64(TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
 DECLARE_uint32(cdcsdk_vwal_tablets_to_poll_batch_size);
 DECLARE_uint32(TEST_cdcsdk_vwal_getchanges_rpc_delay_ms);
 DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
-DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 
 namespace yb {
 
@@ -709,9 +708,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::string& context_msg);
 
   void CheckTabletsInCDCStateTable(
-      const std::unordered_set<TabletId>& expected_tablet_ids, client::YBClient* client,
+      const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
       const xrepl::StreamId& stream_id = xrepl::StreamId::Nil(),
-      const std::unordered_set<TabletId>& expected_colocated_table_ids = {},
       const std::string timeout_msg =
           "Tablets in cdc_state for the stream doesnt match the expected set",
       bool include_catalog_tables = false);

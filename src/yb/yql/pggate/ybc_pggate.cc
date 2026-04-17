@@ -130,8 +130,8 @@ class ThreadIdChecker {
 };
 
 // Using a raw pointer here to fully control object initialization and destruction.
-pggate::PgApiImpl* pgapi;
-std::atomic<bool> pgapi_shutdown_done;
+pggate::PgApiImpl* pgapi = nullptr;
+std::atomic<bool> pgapi_shutdown_done{false};
 const ThreadIdChecker is_main_thread;
 
 template<class T, class Functor>
@@ -186,6 +186,7 @@ Status InitPgGateImpl(
 
   InitThreading();
 
+  LOG(INFO) << "InitPgGateImpl called, pgapi before init: " << static_cast<void*>(pgapi);
   CHECK(!pgapi) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
 
   YBCInitFlags();
@@ -199,6 +200,8 @@ Status InitPgGateImpl(
       type_entities, pg_callbacks, init_postgres_info, ash_config, session_stats,
       is_binary_upgrade)).release();
 
+  LOG(INFO) << "InitPgGateImpl completed, pgapi after init: " << static_cast<void*>(pgapi)
+            << " at address: " << static_cast<void*>(&pgapi);
   VLOG(1) << "PgGate open";
   return Status::OK();
 }
@@ -1623,6 +1626,9 @@ YbcStatus YBCPgNewInsert(const YbcPgOid database_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
                          YbcPgStatement *handle) {
+  if (!pgapi) {
+    return ToYBCStatus(STATUS(IllegalState, "PgGate API not initialized (pgapi is NULL)"));
+  }
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewInsert(table_id, locality_info, transaction_setting, handle));
 }
@@ -2064,7 +2070,7 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     the TransactionSnapshot's read time serial number.
   //
   return !YBCIsObjectLockingEnabled() || !yb_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet()
-      || YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
+    || YBCIsSysTablePrefetchingStarted();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -3425,3 +3431,4 @@ bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle) {
 } // extern "C"
 
 } // namespace yb::pggate
+

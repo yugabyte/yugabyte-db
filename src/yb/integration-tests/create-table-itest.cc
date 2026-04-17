@@ -324,7 +324,7 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
   vector<string> ts_flags;
   vector<string> master_flags;
 
-  ts_flags.push_back("--follower_unavailable_considered_failed_sec=6");
+  ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
   master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
   ASSERT_OK(client_->CreateNamespace(
@@ -391,7 +391,7 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   vector<string> ts_flags;
   vector<string> master_flags;
 
-  ts_flags.push_back("--follower_unavailable_considered_failed_sec=6");
+  ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
   master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas, 1 /* num_masters */,
                                 true /* enable_ysql */));
@@ -460,7 +460,7 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
   TablespaceId tablespace_id = "";
   string namespace_id;
 
-  ts_flags.push_back("--follower_unavailable_considered_failed_sec=6");
+  ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
   ts_flags.push_back("--ysql_beta_feature_tablegroup=true");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas, 1 /* masters */,
                                 true /* enable_ysql (allows load balancing) */));

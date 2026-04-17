@@ -68,7 +68,7 @@ struct DocPgVarRef {
 
 const YbcPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type);
 
-Status DocPgInit(const std::string& postgres_executable_path);
+Status DocPgInit();
 
 //-----------------------------------------------------------------------------
 // Expressions/Values

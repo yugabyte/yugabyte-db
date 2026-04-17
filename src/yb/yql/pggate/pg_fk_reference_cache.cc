@@ -42,8 +42,8 @@ void Erase(Container& container, const Key& key) {
 
 class PgFKReferenceCache::Impl {
  public:
-  Impl(PgSession& session, const BufferingSettings& buffering_settings)
-      : ybctid_reader_(session), buffering_settings_(buffering_settings) {}
+  Impl(const PgSessionPtr& pg_session, const BufferingSettings& buffering_settings)
+      : ybctid_reader_(pg_session), buffering_settings_(buffering_settings) {}
 
   void Clear() {
     references_.clear();
@@ -183,8 +183,9 @@ class PgFKReferenceCache::Impl {
 };
 
 PgFKReferenceCache::PgFKReferenceCache(
-    PgSession& session, std::reference_wrapper<const BufferingSettings> buffering_settings)
-    : impl_(new Impl(session, buffering_settings)) {}
+    const PgSessionPtr& pg_session,
+    std::reference_wrapper<const BufferingSettings> buffering_settings)
+    : impl_(new Impl(pg_session, buffering_settings)) {}
 
 PgFKReferenceCache::~PgFKReferenceCache() = default;
 

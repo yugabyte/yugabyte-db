@@ -1154,7 +1154,7 @@ TEST_F(RemoteBootstrapITest, TestLimitNumberOfConcurrentRemoteBootstraps) {
   follower_considered_failed_sec = 10;
   ts_flags.push_back("--follower_unavailable_considered_failed_sec="+
                      std::to_string(follower_considered_failed_sec));
-  ts_flags.push_back("--raft_heartbeat_interval_ms=100");
+  ts_flags.push_back("--heartbeat_interval_ms=100");
   ts_flags.push_back("--enable_leader_failure_detection=false");
   ts_flags.push_back("--TEST_crash_if_remote_bootstrap_sessions_greater_than=" +
       std::to_string(kMaxConcurrentTabletRemoteBootstrapSessions + 1));

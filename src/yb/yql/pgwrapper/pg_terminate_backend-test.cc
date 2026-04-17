@@ -61,7 +61,7 @@ class PgTerminateBackendTest : public PgMiniTestBase {
 };
 
 // The test checks cleanup procedure of terminated process with conflicting txn/subtxn.
-TEST_F(PgTerminateBackendTest, YB_DISABLE_TEST_ON_MACOS(ConflictingSubTxn)) {
+TEST_F(PgTerminateBackendTest, ConflictingSubTxn) {
   auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("CREATE TABLE aux_t (k INT PRIMARY KEY, v INT)"));

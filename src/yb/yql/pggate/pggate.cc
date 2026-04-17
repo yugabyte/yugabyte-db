@@ -508,6 +508,29 @@ Result<bool> RetrieveYbctidsImpl(
          !YBCIsBinaryUpgrade();
 }
 
+// TODO(#29858): In spite of the fact ExplicitRowLockBuffer::ErrorStatusAdditionalInfo is used only
+//               for building proper error message to the user it is reasonable to add it into
+//               Status object to avoid ignoring.
+Status Flush(ExplicitRowLockBuffer& row_lock_buffer) {
+  std::optional<ExplicitRowLockBuffer::ErrorStatusAdditionalInfo> error_info;
+  auto status = row_lock_buffer.Flush(error_info);
+  if (PREDICT_FALSE(error_info.has_value())) {
+    LOG(INFO)
+        << "User error message might be inaccurate due to ignoring of "
+        << "ExplicitRowLockBuffer::ErrorStatusAdditionalInfo: " << yb::ToString(*error_info)
+        << " on error status: " << ToString(status);
+  }
+  return status;
+}
+
+Status OnPgSessionRunRWOperations(
+    ExplicitRowLockBuffer& row_lock_buffer, std::optional<PgSessionRunOperationMarker> marker) {
+  if (marker && *marker == PgSessionRunOperationMarker::ExplicitRowLock) {
+    return Status::OK();
+  }
+  return Flush(row_lock_buffer);
+}
+
 tserver::TServerSharedData& GetTServerSharedData() {
   PgBackendSetupSharedMemory();
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
@@ -763,8 +786,8 @@ PgApiImpl::PgApiImpl(
               ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
             return PgWaitEventWatcher{starter, wait_event, pggate_rpc};
       }),
-      is_parallel_worker_(init_postgres_info.parallel_leader_session_id != nullptr),
-      pg_shared_data_(*init_postgres_info.shared_data, !is_parallel_worker_),
+      pg_shared_data_(
+          *init_postgres_info.shared_data, !init_postgres_info.parallel_leader_session_id),
       tserver_shared_object_(GetTServerSharedData()),
       pg_client_(
           MakeProxyInitInfo(*proxy_cache_, tserver_shared_object_), wait_event_watcher_,
@@ -774,12 +797,17 @@ PgApiImpl::PgApiImpl(
       // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
-      enable_table_locking_(ShouldEnableTableLocks() && !is_parallel_worker_),
+      enable_table_locking_(
+          ShouldEnableTableLocks() && !init_postgres_info.parallel_leader_session_id),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
       pg_session_(PgSession::Make(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
-          wait_event_watcher_, buffering_settings_)),
-      fk_reference_cache_(*pg_session_, buffering_settings_) {
+          wait_event_watcher_, buffering_settings_,
+          [this](auto marker) {
+            return OnPgSessionRunRWOperations(explicit_row_lock_buffer_, marker);
+          })),
+      fk_reference_cache_(pg_session_, buffering_settings_),
+      explicit_row_lock_buffer_(pg_session_) {
   std::memcpy(ash_config.top_level_node_id, tserver_shared_object_.tserver_uuid(), kUuidSize);
   wait_state_ = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::PgWaitStateInfo>(ash_config);
   ash::WaitStateInfo::SetCurrentWaitState(wait_state_);
@@ -1594,7 +1622,9 @@ void PgApiImpl::ResetOperationsBuffering() {
 }
 
 Status PgApiImpl::FlushBufferedOperations(const PgFlushDebugContext& dbg_ctx) {
-  return ResultToStatus(FlushBufferedEntities(dbg_ctx));
+  RETURN_NOT_OK(Flush(explicit_row_lock_buffer_));
+  // TODO: Consider flushing FK reference intents also.
+  return ResultToStatus(pg_session_->FlushBufferedOperations(dbg_ctx));
 }
 
 Status PgApiImpl::AdjustOperationsBuffering(int multiple) {
@@ -2185,14 +2215,14 @@ bool PgApiImpl::IsRestartReadPointRequested() {
 
 Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
   RSTATUS_DCHECK(
-      explicit_row_lock_buffer().IsEmpty(),
+      explicit_row_lock_buffer_.IsEmpty(),
       IllegalState, "Expected row lock buffer to be empty");
   RSTATUS_DCHECK(
       pg_session_->IsInsertOnConflictBufferEmpty(),
       IllegalState, "Expected INSERT ... ON CONFLICT buffer to be empty");
   fk_reference_cache_.Clear();
 
-  RETURN_NOT_OK(FlushBufferedOperations(
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(
       PgFlushDebugContext::CommitTxn(
         ddl_commit_info.transform([](const auto& info){ return info.db_oid; }))));
   return pg_txn_manager_->CommitPlainTransaction(ddl_commit_info);
@@ -2242,7 +2272,7 @@ Status PgApiImpl::SetDdlStateInPlainTransaction() {
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::EnterDdlTxnMode()));
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(PgFlushDebugContext::EnterDdlTxnMode()));
   pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
@@ -2253,7 +2283,7 @@ bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
 
 Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::ExitDdlTxnMode()));
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(PgFlushDebugContext::ExitDdlTxnMode()));
   return pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification);
 }
 
@@ -2270,7 +2300,7 @@ Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
   // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
   // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
   // they are eventually sent to DocDB.
-  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::ActivateSubTxn(id)));
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(PgFlushDebugContext::ActivateSubTxn(id)));
   pg_txn_manager_->SetActiveSubTransactionId(id);
   return Status::OK();
 }
@@ -2374,7 +2404,7 @@ Status PgApiImpl::AddExplicitRowLockIntent(
     const PgObjectId& table_id, const Slice& ybctid, const YbcPgExplicitRowLockParams& params,
     const YbcPgTableLocalityInfo& locality_info, YbcPgExplicitRowLockErrorInfo& error_info) {
   ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  return explicit_row_lock_buffer().Add(
+  return explicit_row_lock_buffer_.Add(
       {.rowmark = params.rowmark,
        .pg_wait_policy = params.pg_wait_policy,
        .docdb_wait_policy = params.docdb_wait_policy,
@@ -2384,7 +2414,7 @@ Status PgApiImpl::AddExplicitRowLockIntent(
 
 Status PgApiImpl::FlushExplicitRowLockIntents(YbcPgExplicitRowLockErrorInfo& error_info) {
   ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  return explicit_row_lock_buffer().Flush(adapter);
+  return explicit_row_lock_buffer_.Flush(adapter);
 }
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
@@ -2485,10 +2515,6 @@ void PgApiImpl::StopSysTablePrefetching() {
 
 bool PgApiImpl::IsSysTablePrefetchingStarted() const {
   return static_cast<bool>(pg_sys_table_prefetcher_);
-}
-
-bool PgApiImpl::IsParallelWorker() const {
-  return is_parallel_worker_;
 }
 
 Status PgApiImpl::PrefetchRegisteredSysTables() {
@@ -2679,8 +2705,11 @@ Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
 }
 
 SetupPerformOptionsAccessorTag PgApiImpl::ClearSessionState() {
+  auto result = pg_session_->DropBufferedOperations();
   fk_reference_cache_.Clear();
-  return pg_session_->ClearState();
+  explicit_row_lock_buffer_.Clear();
+  pg_session_->ClearAllInsertOnConflictBuffers();
+  return result;
 }
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_.IsCronLeader(); }
@@ -2750,14 +2779,14 @@ Status PgApiImpl::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
 Result<std::string> PgApiImpl::ExportSnapshot(
     const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time) {
   return pg_txn_manager_->ExportSnapshot(
-      VERIFY_RESULT(FlushBufferedEntities(
+      VERIFY_RESULT(pg_session_->FlushBufferedOperations(
           PgFlushDebugContext::ExportSnapshot(snapshot.db_id, explicit_read_time))),
       snapshot, explicit_read_time);
 }
 
 Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
   return pg_txn_manager_->ImportSnapshot(
-      VERIFY_RESULT(FlushBufferedEntities(
+      VERIFY_RESULT(pg_session_->FlushBufferedOperations(
           PgFlushDebugContext::ImportSnapshot(snapshot_id))), snapshot_id);
 }
 
@@ -2802,16 +2831,6 @@ Status PgApiImpl::NewGlobalViewRead(const char* database_name, PgGlobalViewRead*
 
 YbcRemotePgExecResult PgApiImpl::Exec(PgGlobalViewRead* handle, std::string_view query) {
   return handle->ExecScan(pg_client_, query);
-}
-
-ExplicitRowLockBuffer& PgApiImpl::explicit_row_lock_buffer() {
-  return pg_session_->explicit_row_lock_buffer();
-}
-
-Result<SetupPerformOptionsAccessorTag> PgApiImpl::FlushBufferedEntities(
-    const PgFlushDebugContext& dbg_ctx) {
-  // TODO: Consider flushing FK reference intents also.
-  return pg_session_->FlushBufferedEntities(dbg_ctx);
 }
 
 } // namespace yb::pggate

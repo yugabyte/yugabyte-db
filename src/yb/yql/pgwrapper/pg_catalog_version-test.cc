@@ -3585,17 +3585,9 @@ TEST_P(PgCatalogVersionConnManagerTest,
   pg_ts = cluster_->tablet_server(0);
   if (enable_ysql_conn_mgr) {
     setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
-    if (IsObjectLockingEnabled()) {
-      // With object locking enabled, the password authentication should fail as
-      // the DDL commit codepath would force a catalog refresh on all tservers
-      // despite TEST_tserver_disable_catalog_refresh_on_heartbeat being set.
-      ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
-          "password authentication failed for user \"test_user\"");
-    } else {
-      // Verify the old password still works because we have set the gflag
-      // --TEST_tserver_disable_catalog_refresh_on_heartbeat=true.
-      ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
-    }
+    // Verify the old password still works because we have set the gflag
+    // --TEST_tserver_disable_catalog_refresh_on_heartbeat=true.
+    ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
 
     // Wait for the stale cache in tserver expires.
     SleepFor(1ms * stale_cache_bound_ms);
@@ -3767,7 +3759,7 @@ TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
 }
 
 TEST_F(PgCatalogVersionTest, ConcurrentNonSuperuserNewConnectionsTest) {
-  const int num_databases = ReleaseVsDebugVsAsanVsTsanVsApple(10, 10, 5, 4, 3);
+  const int num_databases = ReleaseVsDebugVsAsanVsTsanVsApple(10, 10, 10, 4, 3);
   const int connections_perdb = 10;
   // TSAN build needs more max allowed connections.
   RestartClusterWithInvalMessageEnabled(

@@ -3112,22 +3112,6 @@ void CatalogManager::CleanupHiddenTablets(
   }
 }
 
-bool CatalogManager::SkipRemovalOfHiddenColocatedTableFromTablet(
-    const TableInfoPtr& table, const TabletInfo& tablet_info,
-    const ScheduleMinRestoreTime& schedule_min_restore_time) {
-  if (FLAGS_enable_table_rewrite_for_cdcsdk_table &&
-      CDCSDKShouldRetainHiddenColocatedTable(table->id())) {
-    return true;
-  }
-
-  if (master_->snapshot_coordinator().ShouldRetainHiddenColocatedTable(
-          *table, tablet_info, schedule_min_restore_time)) {
-    return true;
-  }
-
-  return false;
-}
-
 void CatalogManager::RemoveHiddenColocatedTableFromTablet(
     const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
     const LeaderEpoch& epoch) {
@@ -3142,11 +3126,10 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
     return;
   }
   for (const auto& tablet_info : *list) {
-    if (SkipRemovalOfHiddenColocatedTableFromTablet(
-            table, *tablet_info, schedule_min_restore_time)) {
+    if (master_->snapshot_coordinator().ShouldRetainHiddenColocatedTable(
+            *table, *tablet_info, schedule_min_restore_time)) {
       continue;
     }
-
     LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
     auto call = std::make_shared<AsyncRemoveTableFromTablet>(
         master_, AsyncTaskPool(), tablet_info, table, epoch);
@@ -3272,24 +3255,19 @@ Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleReques
         STATUS(NotSupported, "Only one filter can be set on a snapshot schedule"));
   }
   auto& filter = req->options().filter().tables().tables(0).namespace_();
-  scoped_refptr<NamespaceInfo> ns_info;
-  if (filter.has_id()) {
-    ns_info = VERIFY_RESULT(FindNamespaceById(filter.id()));
-  } else {
+  if (!filter.has_id()) {
     NamespaceIdentifierPB ns_id;
     ns_id.set_database_type(filter.database_type());
     ns_id.set_name(filter.name());
-    ns_info = VERIFY_RESULT(FindNamespace(ns_id));
+    auto ns = VERIFY_RESULT(FindNamespace(ns_id));
+    LOG_WITH_FUNC(INFO) << "Namespace info obtained on master " << ns->ToString();
+    TableIdentifierPB* ns_req =
+        req_with_ns_id.mutable_options()->mutable_filter()->mutable_tables()->mutable_tables(0);
+    ns_req->mutable_namespace_()->set_id(ns->id());
+    ns_req->mutable_namespace_()->set_name(ns->name());
+    ns_req->mutable_namespace_()->set_database_type(ns->database_type());
+    LOG_WITH_FUNC(INFO) << "Modified request " << req_with_ns_id.ShortDebugString();
   }
-  LOG_WITH_FUNC(INFO) << "Namespace info obtained on master " << ns_info->ToString();
-  auto* ns_identifier = req_with_ns_id.mutable_options()
-                            ->mutable_filter()
-                            ->mutable_tables()
-                            ->mutable_tables(0)
-                            ->mutable_namespace_();
-  ns_identifier->set_id(ns_info->id());
-  ns_identifier->set_database_type(ns_info->database_type());
-  ns_identifier->clear_name();
 
   auto id = VERIFY_RESULT(master_->snapshot_coordinator().CreateSchedule(
       req_with_ns_id, leader_ready_term(), rpc->GetClientDeadline()));
@@ -3302,33 +3280,7 @@ Status CatalogManager::ListSnapshotSchedules(const ListSnapshotSchedulesRequestP
                                              rpc::RpcContext* rpc) {
   auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
 
-  RETURN_NOT_OK(master_->snapshot_coordinator().ListSnapshotSchedules(snapshot_schedule_id, resp));
-
-  // The namespace name stored in the schedule filter may be stale if the database was renamed.
-  // Look up each namespace by ID and overwrite the name with the current one.
-  for (auto& schedule : *resp->mutable_schedules()) {
-    if (!schedule.has_options() || !schedule.options().has_filter() ||
-        !schedule.options().filter().has_tables()) {
-      continue;
-    }
-    for (auto& table :
-         *schedule.mutable_options()->mutable_filter()->mutable_tables()->mutable_tables()) {
-      if (!table.has_namespace_() || table.namespace_().id().empty()) {
-        continue;
-      }
-      auto ns_result = FindNamespaceById(table.namespace_().id());
-      if (!ns_result.ok()) {
-        LOG(WARNING) << Format(
-            "Could not find namespace $0 referenced by snapshot schedule $1: $2",
-            table.namespace_().id(), TryFullyDecodeSnapshotScheduleId(schedule.id()),
-            ns_result.status());
-        continue;
-      }
-      table.mutable_namespace_()->set_name((*ns_result)->name());
-    }
-  }
-
-  return Status::OK();
+  return master_->snapshot_coordinator().ListSnapshotSchedules(snapshot_schedule_id, resp);
 }
 
 Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,

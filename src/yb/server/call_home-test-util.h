@@ -27,7 +27,6 @@ DECLARE_bool(callhome_enabled);
 DECLARE_int32(callhome_interval_secs);
 DECLARE_int32(callhome_ysql_connect_timeout_ms);
 DECLARE_int32(callhome_ysql_statement_timeout_ms);
-DECLARE_int32(callhome_ysql_interval_secs);
 
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_string(ysql_hba_conf_csv);
@@ -45,7 +44,6 @@ void TestCallHome(
     ServerType* server) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_ysql_connect_timeout_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_ysql_statement_timeout_ms) = 1000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_ysql_interval_secs) = 0;
 
   std::string json;
   CountDownLatch latch(1);
@@ -127,7 +125,6 @@ void TestCallHomeFlag(const std::string& webserver_dir, ServerType* server) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_ysql_connect_timeout_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_ysql_statement_timeout_ms) = 1000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_ysql_interval_secs) = 0;
 
   WebserverOptions opts;
   opts.port = 0;

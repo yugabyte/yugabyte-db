@@ -7629,7 +7629,6 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
   std::vector<std::pair<TableInfo::WriteLock, TransactionId>> table_lock_and_transaction_ids;
   std::vector<TableInfo*> tables_to_remove_from_map;
   std::vector<std::map<TabletId, std::weak_ptr<TabletInfo>>> tablets_to_remove_from_map;
-  std::vector<TableInfo*> newly_hidden_tables;
   for (const auto& table : tables) {
     if (table->is_deleted()) {
       tables_to_remove_from_map.push_back(table.get());
@@ -7643,9 +7642,6 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     }
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
-      if (lock_and_transaction_id.first.data().is_hidden()) {
-        newly_hidden_tables.push_back(table.get());
-      }
       table_lock_and_transaction_ids.push_back(std::move(lock_and_transaction_id));
       tables_to_update_on_disk.push_back(table.get());
     }
@@ -7655,14 +7651,6 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
           *this, epoch, std::move(tables_to_update_on_disk),
           std::move(table_lock_and_transaction_ids), sys_catalog_tablet_info),
       "Error marking tables as DELETED");
-
-  if (!newly_hidden_tables.empty()) {
-    LockGuard mutex_lock(mutex_);
-    for (const auto& table : newly_hidden_tables) {
-      UpdateHideTimeInHiddenColocatedTableToCDCSDKMap(*table);
-    }
-  }
-
   if (!tables_to_remove_from_map.empty()) {
     LockGuard lock(mutex_);
     auto table_map_checkout = tables_.CheckOut();
@@ -11340,22 +11328,12 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const TableInfo& table) 
 Status CatalogManager::DeleteOrHideTabletsOfTable(
     const TableInfo& table_info, const TabletDeleteRetainerInfo& delete_retainer,
     const LeaderEpoch& epoch) {
-  auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
   // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
   if (!CheckIfForbiddenToDeleteTabletOf(table_info).ok()) {
-    if (FLAGS_enable_table_rewrite_for_cdcsdk_table && delete_retainer.active_cdcsdk &&
-        table_info.IsSecondaryTable()) {
-      LockGuard lock(mutex_);
-      RSTATUS_DCHECK(
-          tablets.size() == 1, InternalError, "Colocated table has more than one tablet");
-      // An entry is added to colocated_tables_retained_by_cdcsdk_ here so that the colocated table
-      // is not deleted by the bg thread. The hide time will get overwritten when the table is
-      // marked as hidden.
-      colocated_tables_retained_by_cdcsdk_.emplace(
-          table_info.id(), std::make_pair(tablets[0]->tablet_id(), HybridTime::kMax));
-    }
     return Status::OK();
   }
+
+  auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
 
   std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->tablet_id() < rhs->tablet_id();
@@ -13462,14 +13440,6 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
       return;
     }
     lock.Commit();
-
-    {
-      LockGuard mutex_lock(mutex_);
-      if (table->is_hidden()) {
-        UpdateHideTimeInHiddenColocatedTableToCDCSDKMap(*table);
-      }
-    }
-
     if (!transaction_id.IsNil()) {
       TEST_SYNC_POINT("CatalogManager::CheckTableDeleted:BeforeRemoveDdlTransactionState");
       RemoveDdlTransactionState(table->id(), {transaction_id});

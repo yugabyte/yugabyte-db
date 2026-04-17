@@ -56,6 +56,8 @@
 
 #include "yb/util/logging.h"
 
+#include <cmath>
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
@@ -451,3 +453,4 @@ void AddPprofPathHandlers(Webserver* webserver) {
 }
 
 } // namespace yb
+

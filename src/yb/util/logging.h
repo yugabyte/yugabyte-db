@@ -50,22 +50,6 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <glog/logging.h>
 
-// Prefix string for DETAIL level logs, shared across YB and RocksDB logging.
-// Example line: I1011 20:44:27.393563 1874145280 cdc_service.cc:410] DETAIL: message...
-#define YB_DETAIL_LOG_PREFIX "DETAIL: "
-
-// We add LOG(DETAIL) as a pseudo-severity: same as INFO with a "DETAIL: " message prefix.
-// Stock glog only supports LOG(severity) for severities that participate in COMPACT_GOOGLE_LOG_*.
-// We replace LOG while keeping the same underlying expansion (see glog's LOG definition).
-#undef LOG
-#define LOG(severity) BOOST_PP_CAT(YB_LOG_, severity)
-#define YB_LOG_INFO COMPACT_GOOGLE_LOG_INFO.stream()
-#define YB_LOG_WARNING COMPACT_GOOGLE_LOG_WARNING.stream()
-#define YB_LOG_ERROR COMPACT_GOOGLE_LOG_ERROR.stream()
-#define YB_LOG_FATAL COMPACT_GOOGLE_LOG_FATAL.stream()
-#define YB_LOG_DFATAL COMPACT_GOOGLE_LOG_DFATAL.stream()
-#define YB_LOG_DETAIL COMPACT_GOOGLE_LOG_INFO.stream() << YB_DETAIL_LOG_PREFIX
-
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/walltime.h"
@@ -101,6 +85,21 @@
 #define VLOG_IF_EVERY_N(verboselevel, condition, n) \
   LOG_IF_EVERY_N(INFO, (condition) && VLOG_IS_ON(verboselevel), n) \
       << VERBOSITY_LEVEL_STR(verboselevel)
+
+////////////////////////////////////////////////////////////////////////////////
+// Yugabyte DETAIL logging
+////////////////////////////////////////////////////////////////////////////////
+
+// Prefix string for DETAIL level logs, shared across YB and RocksDB logging.
+#define YB_DETAIL_LOG_PREFIX "DETAIL: "
+
+// DETAIL logs show up as regular INFO messages with a "DETAIL: " prefix.
+// This allows you to use LOG_DETAIL syntax while still using glog's INFO level.
+// Ex: I1011 20:44:27.393563 1874145280 cdc_service.cc:410] DETAIL: Some DETAIL message
+#define ADD_DETAIL(log_expr) log_expr << YB_DETAIL_LOG_PREFIX
+
+#define LOG_DETAIL ADD_DETAIL(LOG(INFO))
+#define LOG_DETAIL_IF(condition) ADD_DETAIL(LOG_IF(INFO, condition))
 
 ////////////////////////////////////////////////////////////////////////////////
 // Throttled logging support
@@ -145,15 +144,6 @@
 
 #define YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) \
     YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) << LogPrefix()
-
-#define LOG_COND_SEVERITY(condition, severity_true, severity_false) \
-  google::LogMessage( \
-      __FILE__, __LINE__, \
-      (condition) ? YB_GLOG_SEVERITY(severity_true) \
-                  : YB_GLOG_SEVERITY(severity_false)).stream()
-
-#define LOG_WITH_PREFIX_COND_SEVERITY(condition, severity_true, severity_false) \
-    LOG_COND_SEVERITY(condition, severity_true, severity_false) << LogPrefix()
 
 ////////////////////////////////////////////////////////////////////////////////
 // Versions of glog macros for "LOG_EVERY" and "LOG_FIRST" that annotate the
@@ -405,6 +395,13 @@ ThrottledLogWriter MakeThrottledLogWriter(google::LogMessage&& log_writer, const
 #define LOG_WITH_FUNC(severity) LOG(severity) << __func__ << ": "
 #define LOG_WITH_PREFIX_AND_FUNC(severity) LOG_WITH_PREFIX(severity) << __func__ << ": "
 
+// Same as above, but for DETAIL-related macros
+#define LOG_WITH_PREFIX_DETAIL_UNLOCKED ADD_DETAIL(LOG(INFO)) << LogPrefixUnlocked()
+#define LOG_WITH_PREFIX_DETAIL ADD_DETAIL(LOG(INFO)) << LogPrefix()
+#define LOG_WITH_FUNC_DETAIL ADD_DETAIL(LOG(INFO)) << __func__ << ": "
+#define LOG_WITH_PREFIX_AND_FUNC_DETAIL \
+  ADD_DETAIL(LOG(INFO)) << LogPrefix() << __func__ << ": "
+
 #define VLOG_WITH_PREFIX(verboselevel) VLOG(verboselevel) << LogPrefix()
 #define VLOG_WITH_FUNC(verboselevel) VLOG(verboselevel) << __func__ << ": "
 #define DVLOG_WITH_FUNC(verboselevel) DVLOG(verboselevel) << __func__ << ": "
@@ -419,6 +416,12 @@ ThrottledLogWriter MakeThrottledLogWriter(google::LogMessage&& log_writer, const
   << ": "
 #define LOG_IF_WITH_PREFIX_AND_FUNC(severity, condition) LOG_IF_WITH_PREFIX(severity, condition) \
     << __func__ << ": "
+
+// Conditional DETAIL-related macros
+#define LOG_IF_WITH_PREFIX_DETAIL(condition) ADD_DETAIL(LOG_IF(INFO, condition)) << LogPrefix()
+#define LOG_IF_WITH_FUNC_DETAIL(condition) ADD_DETAIL(LOG_IF(INFO, condition)) << __func__ << ": "
+#define LOG_IF_WITH_PREFIX_AND_FUNC_DETAIL(condition) \
+  ADD_DETAIL(LOG_IF(INFO, condition)) << LogPrefix() << __func__ << ": "
 
 // DCHECK_ONLY_NOTNULL is like DCHECK_NOTNULL, but does not result in an unused expression in
 // release mode, so it is suitable for being used as a stand-alone statement. In other words, use
