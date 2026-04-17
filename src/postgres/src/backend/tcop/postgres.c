@@ -7859,12 +7859,12 @@ disable_statement_timeout(void)
 }
 
 /*
- * Extract trace parent from any block comment in a query.
+ * Extract trace parent from comment in a query.
  *
  * traceparent_out must point to a buffer of at least
  * YB_TRACEPARENT_VALUE_LEN + 1 bytes.
  *
- * The traceparent may appear in any block comment anywhere in the query:
+ * The traceparent comments may appear at the query start or end.
  * If multiple block comments contain a traceparent, the first one is returned.
  *
  * "/\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ SELECT 1;"
@@ -7874,39 +7874,55 @@ disable_statement_timeout(void)
 static YbTraceparentResult
 YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 {
-	const char *pos = query;
+	const char		   *pos;
+	const char		   *end;
+	const char		   *content;
+	const char		   *comment_end;
+	YbTraceparentResult result;
 
-	while (*pos != '\0')
+	/* Check for a leading block comment. */
+	pos = query;
+	while (isspace((unsigned char) *pos))
+		pos++;
+	if (pos[0] == '/' && pos[1] == '*')
 	{
-		const char *comment_start;
-		const char *content;
-		const char *comment_end;
-		YbTraceparentResult result;
-
-		/* Find the next block comment start. */
-		comment_start = strstr(pos, "/*");
-		if (!comment_start)
-			break;
-
-		content = comment_start + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
-
-		/* Find the matching comment end. */
+		content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
 		comment_end = strstr(content, "*/");
-		if (!comment_end)
-			break; /* Unterminated comment, let the main query parser to deal with it. */
+		if (comment_end)
+		{
+			result = YbGetTraceparentFromTraceContext(content, comment_end - content,
+													  traceparent_out);
+			if (result != YB_TRACEPARENT_NO_FIELD)
+				return result;
+		}
+	}
 
-		result = YbGetTraceparentFromTraceContext(content, comment_end - content,
-												  traceparent_out);
+	/* Check for a trailing block comment. */
+	end = query + strlen(query);
+	while (end > query && isspace((unsigned char) end[-1]))
+		end--;
+	/*
+	 * Require at least 4 chars (the two-char open and two-char close delimiters)
+	 * and verify the query ends with the star-slash close delimiter.
+	 */
+	if (end - query < 2 * YB_TRACEPARENT_COMMENT_DELIMITERS_LEN ||
+		end[-2] != '*' || end[-1] != '/')
+		return YB_TRACEPARENT_NO_COMMENT;
 
-		/*
-		 * this comment block contained no traceparent; 
-         * continue scanning remaining comments.
-		 */
-		if (result != YB_TRACEPARENT_NO_FIELD)
-			return result;
-
-		/* Advance past the closing "* /" of this comment. */
-		pos = comment_end + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+	/* Scan backwards to find the slash-star that opens the trailing comment. */
+	pos = end - YB_TRACEPARENT_COMMENT_DELIMITERS_LEN; /* points to '*' of closing delimiter */
+	while (pos > query)
+	{
+		pos--;
+		if (pos[0] == '/' && pos[1] == '*')
+		{
+			content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+			result = YbGetTraceparentFromTraceContext(
+				content,
+				(end - YB_TRACEPARENT_COMMENT_DELIMITERS_LEN) - content,
+				traceparent_out);
+			return result != YB_TRACEPARENT_NO_FIELD ? result : YB_TRACEPARENT_NO_COMMENT;
+		}
 	}
 
 	return YB_TRACEPARENT_NO_COMMENT;

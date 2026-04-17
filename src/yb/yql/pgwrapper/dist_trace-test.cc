@@ -602,7 +602,7 @@ TEST_F(DistTraceTest, TestFailedGucSetKeepsPreviousValue) {
 TEST_F(DistTraceTest, TestTraceparentCommentAppended) {
   std::vector<OtlpHttpCollector::SpanRecord> expected;
 
-  // Traceparent comment appended after the query body.
+  // Trailing comment (after the query body).
   {
     auto tp = GenerateTraceparent();
     auto query = Format("SELECT 1 /*traceparent='$0'*/", tp.full);
@@ -610,30 +610,29 @@ TEST_F(DistTraceTest, TestTraceparentCommentAppended) {
     expected.push_back(MakeExpected(query, tp.trace_id));
   }
 
-  // Traceparent comment embedded between SQL tokens.
+  // Trailing comment with surrounding whitespace.
   {
     auto tp = GenerateTraceparent();
-    auto query = Format("SELECT /*traceparent='$0'*/ 2", tp.full);
+    auto query = Format("SELECT 2 /*traceparent='$0'*/  ", tp.full);
     ASSERT_OK(conn_->Fetch(query));
     expected.push_back(MakeExpected(query, tp.trace_id));
   }
 
-  // Non-traceparent leading comment followed by a trailing traceparent comment.
-  {
-    auto tp = GenerateTraceparent();
-    auto query = Format("/* regular comment */ SELECT 3 /*traceparent='$0'*/", tp.full);
-    ASSERT_OK(conn_->Fetch(query));
-    expected.push_back(MakeExpected(query, tp.trace_id));
-  }
-
-  // When multiple comments contain traceparent, the first one wins.
+  // Leading traceparent comment wins over trailing one.
   {
     auto tp1 = GenerateTraceparent();
     auto tp2 = GenerateTraceparent();
     auto query = Format(
-        "/*traceparent='$0'*/ SELECT /*traceparent='$1'*/ 4", tp1.full, tp2.full);
+        "/*traceparent='$0'*/ SELECT 3 /*traceparent='$1'*/", tp1.full, tp2.full);
     ASSERT_OK(conn_->Fetch(query));
     expected.push_back(MakeExpected(query, tp1.trace_id));
+  }
+
+  // Mid-query comment must NOT produce a span (only leading/trailing are supported).
+  {
+    auto tp = GenerateTraceparent();
+    ASSERT_OK(conn_->FetchFormat("SELECT /*traceparent='$0'*/ 4", tp.full));
+    // Intentionally not pushed to expected — no span should be recorded.
   }
 
   ASSERT_OK(VerifySpans(expected));
