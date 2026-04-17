@@ -284,6 +284,9 @@ void CPU::Initialize() {
 #elif defined(__aarch64__)
   cpu_brand_.assign("ARM64");
   has_broken_neon_ = false;
+#elif defined(__powerpc64__) || defined(_ARCH_PPC64)
+  cpu_brand_.assign("PowerPC64");
+  has_broken_neon_ = false;
 #else
   #error unknown architecture
 #endif
@@ -302,3 +305,4 @@ CPU::IntelMicroArchitecture CPU::GetIntelMicroArchitecture() const {
 }
 
 }  // namespace base
+

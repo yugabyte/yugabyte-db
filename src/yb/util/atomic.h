@@ -37,8 +37,10 @@
 #include <thread>
 
 #include <boost/atomic.hpp>
+#include <boost/type_traits/make_signed.hpp>
 #include "yb/util/logging.h"
 
+#include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
@@ -66,91 +68,94 @@ enum MemoryOrder {
   kMemOrderBarrier = 3,
 };
 
-enum class AtomicOpKind { kLoad, kStore, kOther };
-constexpr std::memory_order ToStdMemoryOrder(MemoryOrder mem_order, AtomicOpKind op) {
-  switch (mem_order) {
-    case kMemOrderNoBarrier:
-      return std::memory_order_relaxed;
-    case kMemOrderAcquire:
-      return (op == AtomicOpKind::kStore) ? std::memory_order_seq_cst : std::memory_order_acquire;
-    case kMemOrderRelease:
-      return (op == AtomicOpKind::kLoad) ? std::memory_order_acquire : std::memory_order_release;
-    case kMemOrderBarrier:
-      if (op == AtomicOpKind::kLoad) {
-        return std::memory_order_acquire;
-      }
-      if (op == AtomicOpKind::kStore) {
-        return std::memory_order_release;
-      }
-      return std::memory_order_acq_rel;
-  }
-  return std::memory_order_relaxed;
-}
-
-// Atomic integer class wrapping std::atomic<T>.
+// Atomic integer class inspired by Impala's AtomicInt and
+// std::atomic<> in C++11.
+//
+// NOTE: All of public operations use an implicit memory order of
+// kMemOrderNoBarrier unless otherwise specified.
+//
+// Unlike std::atomic<>, overflowing an unsigned AtomicInt via Increment or
+// IncrementBy is undefined behavior (it is also undefined for signed types,
+// as always).
+//
+// See also: yb/gutil/atomicops.h
 template<typename T>
 class AtomicInt {
  public:
-  // Initialize the underlying value to 'initial_value'.
-  explicit AtomicInt(T initial_value) : value_(initial_value) {}
+  // Initialize the underlying value to 'initial_value'. The
+  // initialization performs a Store with 'kMemOrderNoBarrier'.
+  explicit AtomicInt(T initial_value);
 
   // Returns the underlying value.
-  T Load(MemoryOrder mem_order = kMemOrderNoBarrier) const {
-    return value_.load(ToStdMemoryOrder(mem_order, AtomicOpKind::kLoad));
-  }
+  //
+  // Does not support 'kMemOrderBarrier'.
+  T Load(MemoryOrder mem_order = kMemOrderNoBarrier) const;
 
   // Sets the underlying value to 'new_value'.
-  void Store(T new_value, MemoryOrder mem_order = kMemOrderNoBarrier) {
-    value_.store(new_value, ToStdMemoryOrder(mem_order, AtomicOpKind::kStore));
-  }
+  //
+  // Does not support 'kMemOrderBarrier'.
+  void Store(T new_value, MemoryOrder mem_order = kMemOrderNoBarrier);
 
   // Iff the underlying value is equal to 'expected_val', sets the
   // underlying value to 'new_value' and returns true; returns false
   // otherwise.
-  bool CompareAndSet(T expected_val, T new_value, MemoryOrder mem_order = kMemOrderNoBarrier) {
-    return value_.compare_exchange_strong(
-        expected_val, new_value, ToStdMemoryOrder(mem_order, AtomicOpKind::kOther));
-  }
+  //
+  // Does not support 'kMemOrderBarrier'.
+  bool CompareAndSet(T expected_val, T new_value, MemoryOrder mem_order = kMemOrderNoBarrier);
 
   // Iff the underlying value is equal to 'expected_val', sets the
-  // underlying value to 'new_value' and returns 'expected_val'.
-  // Otherwise, returns the current underlying value.
-  T CompareAndSwap(T expected_val, T new_value, MemoryOrder mem_order = kMemOrderNoBarrier) {
-    value_.compare_exchange_strong(
-        expected_val, new_value, ToStdMemoryOrder(mem_order, AtomicOpKind::kOther));
-    return expected_val;
-  }
+  // underlying value to 'new_value' and returns
+  // 'expected_val'. Otherwise, returns the current underlying
+  // value.
+  //
+  // Does not support 'kMemOrderBarrier'.
+  T CompareAndSwap(T expected_val, T new_value, MemoryOrder mem_order = kMemOrderNoBarrier);
 
   // Sets the underlying value to 'new_value' iff 'new_value' is
   // greater than the current underlying value.
+  //
+  // Does not support 'kMemOrderBarrier'.
   void StoreMax(T new_value, MemoryOrder mem_order = kMemOrderNoBarrier);
 
   // Sets the underlying value to 'new_value' iff 'new_value' is less
   // than the current underlying value.
+  //
+  // Does not support 'kMemOrderBarrier'.
   void StoreMin(T new_value, MemoryOrder mem_order = kMemOrderNoBarrier);
 
   // Increments the underlying value by 1 and returns the new
   // underlying value.
-  T Increment(MemoryOrder mem_order = kMemOrderNoBarrier) {
-    return IncrementBy(1, mem_order);
-  }
+  //
+  // Does not support 'kMemOrderAcquire' or 'kMemOrderRelease'.
+  T Increment(MemoryOrder mem_order = kMemOrderNoBarrier);
 
   // Increments the underlying value by 'delta' and returns the new
   // underlying value.
-  T IncrementBy(T delta, MemoryOrder mem_order = kMemOrderNoBarrier) {
-    return value_.fetch_add(
-               delta, ToStdMemoryOrder(mem_order, AtomicOpKind::kOther)) +
-               delta;
-  }
+
+  // Does not support 'kKemOrderAcquire' or 'kMemOrderRelease'.
+  T IncrementBy(T delta, MemoryOrder mem_order = kMemOrderNoBarrier);
 
   // Sets the underlying value to 'new_value' and returns the previous
   // underlying value.
-  T Exchange(T new_value, MemoryOrder mem_order = kMemOrderNoBarrier) {
-    return value_.exchange(new_value, ToStdMemoryOrder(mem_order, AtomicOpKind::kOther));
-  }
+  //
+  // Does not support 'kMemOrderBarrier'.
+  T Exchange(T new_value, MemoryOrder mem_order = kMemOrderNoBarrier);
 
  private:
-  std::atomic<T> value_;
+  // If a method 'caller' doesn't support memory order described as
+  // 'requested', exit by doing perform LOG(FATAL) logging the method
+  // called, the requested memory order, and the supported memory
+  // orders.
+  static void FatalMemOrderNotSupported(const char* caller,
+                                        const char* requested = "kMemOrderBarrier",
+                                        const char* supported =
+                                        "kMemNorderNoBarrier, kMemOrderAcquire, kMemOrderRelease");
+
+  // The gutil/atomicops.h functions only operate on signed types.
+  // So, even if the user specializes on an unsigned type, we use a
+  // signed type internally.
+  typedef typename boost::make_signed<T>::type SignedT;
+  SignedT value_;
 
   DISALLOW_COPY_AND_ASSIGN(AtomicInt);
 };
@@ -169,22 +174,143 @@ class AtomicBool {
     return underlying_.Load(m);
   }
   void Store(bool n, MemoryOrder m = kMemOrderNoBarrier) {
-    underlying_.Store(n, m);
+    underlying_.Store(static_cast<int32_t>(n), m);
   }
   bool CompareAndSet(bool e, bool n, MemoryOrder m = kMemOrderNoBarrier) {
-    return underlying_.CompareAndSet(e, n, m);
+    return underlying_.CompareAndSet(static_cast<int32_t>(e), static_cast<int32_t>(n), m);
   }
   bool CompareAndSwap(bool e, bool n, MemoryOrder m = kMemOrderNoBarrier) {
-    return underlying_.CompareAndSwap(e, n, m);
+    return underlying_.CompareAndSwap(static_cast<int32_t>(e), static_cast<int32_t>(n), m);
   }
   bool Exchange(bool n, MemoryOrder m = kMemOrderNoBarrier) {
-    return underlying_.Exchange(n, m);
+    return underlying_.Exchange(static_cast<int32_t>(n), m);
   }
  private:
-  AtomicInt<bool> underlying_;
+  AtomicInt<int32_t> underlying_;
 
   DISALLOW_COPY_AND_ASSIGN(AtomicBool);
 };
+
+template<typename T>
+inline T AtomicInt<T>::Load(MemoryOrder mem_order) const {
+  switch (mem_order) {
+    case kMemOrderNoBarrier: {
+      return base::subtle::NoBarrier_Load(&value_);
+    }
+    case kMemOrderBarrier: {
+      FatalMemOrderNotSupported("Load");
+      break;
+    }
+    case kMemOrderAcquire: {
+      return base::subtle::Acquire_Load(&value_);
+    }
+    case kMemOrderRelease: {
+      return base::subtle::Release_Load(&value_);
+    }
+  }
+  abort(); // Unnecessary, but avoids gcc complaining.
+}
+
+template<typename T>
+inline void AtomicInt<T>::Store(T new_value, MemoryOrder mem_order) {
+  switch (mem_order) {
+    case kMemOrderNoBarrier: {
+      base::subtle::NoBarrier_Store(&value_, new_value);
+      break;
+    }
+    case kMemOrderBarrier: {
+      FatalMemOrderNotSupported("Store");
+      break;
+    }
+    case kMemOrderAcquire: {
+      base::subtle::Acquire_Store(&value_, new_value);
+      break;
+    }
+    case kMemOrderRelease: {
+      base::subtle::Release_Store(&value_, new_value);
+      break;
+    }
+  }
+}
+
+template<typename T>
+inline bool AtomicInt<T>::CompareAndSet(T expected_val, T new_val, MemoryOrder mem_order) {
+  return CompareAndSwap(expected_val, new_val, mem_order) == expected_val;
+}
+
+template<typename T>
+inline T AtomicInt<T>::CompareAndSwap(T expected_val, T new_val, MemoryOrder mem_order) {
+  switch (mem_order) {
+    case kMemOrderNoBarrier: {
+      return base::subtle::NoBarrier_CompareAndSwap(
+          &value_, expected_val, new_val);
+    }
+    case kMemOrderBarrier: {
+      FatalMemOrderNotSupported("CompareAndSwap/CompareAndSet");
+      break;
+    }
+    case kMemOrderAcquire: {
+      return base::subtle::Acquire_CompareAndSwap(
+          &value_, expected_val, new_val);
+    }
+    case kMemOrderRelease: {
+      return base::subtle::Release_CompareAndSwap(
+          &value_, expected_val, new_val);
+    }
+  }
+  abort();
+}
+
+
+template<typename T>
+inline T AtomicInt<T>::Increment(MemoryOrder mem_order) {
+  return IncrementBy(1, mem_order);
+}
+
+template<typename T>
+inline T AtomicInt<T>::IncrementBy(T delta, MemoryOrder mem_order) {
+  switch (mem_order) {
+    case kMemOrderNoBarrier: {
+      return base::subtle::NoBarrier_AtomicIncrement(&value_, delta);
+    }
+    case kMemOrderBarrier: {
+      return base::subtle::Barrier_AtomicIncrement(&value_, delta);
+    }
+    case kMemOrderAcquire: {
+      FatalMemOrderNotSupported("Increment/IncrementBy",
+                                "kMemOrderAcquire",
+                                "kMemOrderNoBarrier and kMemOrderBarrier");
+      break;
+    }
+    case kMemOrderRelease: {
+      FatalMemOrderNotSupported("Increment/Incrementby",
+                                "kMemOrderAcquire",
+                                "kMemOrderNoBarrier and kMemOrderBarrier");
+      break;
+    }
+  }
+  abort();
+}
+
+template<typename T>
+inline T AtomicInt<T>::Exchange(T new_value, MemoryOrder mem_order) {
+  switch (mem_order) {
+    case kMemOrderNoBarrier: {
+      return base::subtle::NoBarrier_AtomicExchange(&value_, new_value);
+    }
+    case kMemOrderBarrier: {
+      FatalMemOrderNotSupported("Exchange");
+      break;
+    }
+    case kMemOrderAcquire: {
+      return base::subtle::Acquire_AtomicExchange(&value_, new_value);
+    }
+    case kMemOrderRelease: {
+      return base::subtle::Release_AtomicExchange(&value_, new_value);
+    }
+  }
+  abort();
+}
 
 template<typename T>
 inline void AtomicInt<T>::StoreMax(T new_value, MemoryOrder mem_order) {
@@ -329,9 +455,10 @@ namespace atomic_internal {
 
 template <class T>
 bool IsAcceptableAtomicImpl(const T& atomic_variable) {
-#ifdef __aarch64__
-  // TODO: ensure we are using proper 16-byte atomics on aarch64.
+#if defined(__aarch64__) || defined(__powerpc64__)
+  // TODO: ensure we are using proper 16-byte atomics on aarch64 and ppc64.
   // https://github.com/yugabyte/yugabyte-db/issues/9196
+  // PowerPC64 has similar issues with 16-byte atomics as ARM64
   return true;
 #else
   return atomic_variable.is_lock_free();
@@ -351,3 +478,4 @@ bool IsAcceptableAtomicImpl(const std::atomic<T>& atomic_variable) {
 }
 
 } // namespace yb
+

@@ -96,7 +96,7 @@ Status BadCPUStatus(const base::CPU& cpu, const char* instruction_set) {
 
 Status CheckCPUFlags() {
   base::CPU cpu;
-#ifndef __aarch64__
+#if !defined(__aarch64__) && !defined(__powerpc64__)
   if (!cpu.has_sse42()) {
     return BadCPUStatus(cpu, "SSE4.2");
   }
@@ -164,3 +164,4 @@ Status InitYB(const std::string &server_type, const char* argv0) {
 }
 
 } // namespace yb
+

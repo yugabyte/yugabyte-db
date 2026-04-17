@@ -3925,6 +3925,13 @@ struct kernel_statfs {
       LSS_REG(2, buf);
       LSS_BODY(void*, mmap2, "0"(__r2));
     }
+#elif defined(__powerpc64__) || defined(_ARCH_PPC64)
+    /* On PPC64, use mmap instead of mmap2 */
+    #define __NR__mmap2 __NR_mmap
+    LSS_INLINE _syscall6(void*, _mmap2,            void*, s,
+                         size_t,                   l, int,               p,
+                         int,                      f, int,               d,
+                         off_t,                    o)
 #else
     #define __NR__mmap2 __NR_mmap2
     LSS_INLINE _syscall6(void*, _mmap2,            void*, s,
@@ -4534,3 +4541,4 @@ struct kernel_statfs {
 
 #endif
 #endif
+
