@@ -19,6 +19,10 @@ METRIC_DEFINE_counter(table, vector_index_compact_write_bytes,
     "Vector index compaction write bytes", yb::MetricUnit::kBytes,
     "Number of bytes written during vector index compaction");
 
+METRIC_DEFINE_counter(table, vector_index_compact_read_bytes,
+    "Vector index compaction read bytes", yb::MetricUnit::kBytes,
+    "Number of bytes read during vector index compaction");
+
 METRIC_DEFINE_event_stats(table, vector_index_num_chunks,
     "Vector index lookup chunks", yb::MetricUnit::kEntries,
     "Number of chunks used during vector index search.");
@@ -39,6 +43,7 @@ namespace yb::vector_index {
 
 VectorLSMMetrics::VectorLSMMetrics(const MetricEntityPtr& entity)
     : compact_write_bytes(METRIC_vector_index_compact_write_bytes.Instantiate(entity)),
+      compact_read_bytes(METRIC_vector_index_compact_read_bytes.Instantiate(entity)),
       num_chunks(METRIC_vector_index_num_chunks.Instantiate(entity)),
       total_found_entries(METRIC_vector_index_total_found_entries.Instantiate(entity)),
       insert_registry_entries(METRIC_vector_index_insert_registry_entries.Instantiate(entity)),
