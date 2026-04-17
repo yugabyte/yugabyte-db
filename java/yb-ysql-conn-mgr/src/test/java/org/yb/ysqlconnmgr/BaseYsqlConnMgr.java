@@ -61,7 +61,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
   private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
-  private static boolean ysql_conn_mgr_deallocate_if_invalid_prep_stmt = true;
+  private static boolean ysql_conn_mgr_enable_prep_stmt_close = true;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -83,8 +83,8 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
     builder.addCommonTServerFlag("ysql_conn_mgr_optimized_extended_query_protocol",
       Boolean.toString(ysql_conn_mgr_optimized_extended_query_protocol));
-    builder.addCommonTServerFlag("ysql_conn_mgr_deallocate_if_invalid_prep_stmt",
-      Boolean.toString(ysql_conn_mgr_deallocate_if_invalid_prep_stmt));
+    builder.addCommonTServerFlag("ysql_conn_mgr_enable_prep_stmt_close",
+      Boolean.toString(ysql_conn_mgr_enable_prep_stmt_close));
   }
 
   @Override
@@ -179,7 +179,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     ysql_conn_mgr_optimized_extended_query_protocol = optimized_extended_query_protocol;
     // ysql_conn_mgr_deallocate_prepared_statements can only be enabled if
     // optimized_extended_query_protocol is enabled.
-    ysql_conn_mgr_deallocate_if_invalid_prep_stmt = optimized_extended_query_protocol;
+    ysql_conn_mgr_enable_prep_stmt_close = optimized_extended_query_protocol;
     restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 

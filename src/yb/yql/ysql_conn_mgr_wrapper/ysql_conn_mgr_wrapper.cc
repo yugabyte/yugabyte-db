@@ -137,12 +137,15 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
     "Enable optimized extended query protocol in Ysql Connection Manager. "
     "If set to false, extended query protocol handling is fully correct but unoptimized.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_deallocate_if_invalid_prep_stmt, true,
-    "When enabled, the YSQL Connection Manager deallocates a prepared statement "
-    "upon receiving a Close message if the statement exists on the backend "
-    "but is marked invalid. If flag is disabled then receiving CLOSE packet is a no-operation "
-    "from connection manager and can cause errors. ysql_conn_mgr_optimized_extended_query_protocol "
-    "needs to be enabled to enable this flag.");
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_prep_stmt_close, true,
+    "When enabled, the YSQL Connection Manager forwards Close messages to the backend, which "
+    "drops the prepared statement only if its cached plan is invalid or the connection is sticky; "
+    "valid plans on non-sticky connections are retained for reuse across logical connections. "
+    "When disabled, Close messages are handled as a no-op by the connection manager itself "
+    "and never reach the backend, which can cause errors. "
+    "Requires ysql_conn_mgr_optimized_extended_query_protocol to be enabled.");
+
+DEPRECATE_FLAG(bool, ysql_conn_mgr_deallocate_if_invalid_prep_stmt, "04_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, true,
     "Enable the use of the dynamic multi-route pooling. "
@@ -211,7 +214,7 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 
-DEFINE_validator(ysql_conn_mgr_deallocate_if_invalid_prep_stmt,
+DEFINE_validator(ysql_conn_mgr_enable_prep_stmt_close,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
 
 namespace yb {

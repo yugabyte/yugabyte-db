@@ -4010,6 +4010,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_conn_mgr_selective_deallocate", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Enables connection-manager-aware DEALLOCATE behavior."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_conn_mgr_selective_deallocate,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
