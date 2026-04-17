@@ -251,17 +251,17 @@ Location of .htpasswd file containing usernames and hashed passwords, for authen
 
 ##### --defer_index_backfill
 
+Default: `false`
+
 If enabled, YB-Master avoids launching any new index-backfill jobs on the cluster for all new YCQL indexes.
 You will need to run [`yb-admin backfill_indexes_for_table`](../../../admin/yb-admin/#backfill-indexes-for-table) manually for indexes to be functional.
 See [`CREATE DEFERRED INDEX`](../../../api/ycql/ddl_create_index/#deferred-index) for reference.
 
-Default: `false`
-
 ##### --allow_batching_non_deferred_indexes
 
-If enabled, indexes on the same (YCQL) table may be batched together during backfill, even if they were not deferred.
-
 Default: `true`
+
+If enabled, indexes on the same (YCQL) table may be batched together during backfill, even if they were not deferred.
 
 ##### --time_source
 
@@ -296,9 +296,9 @@ Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron exte
 
 ##### --ysql_follower_reads_avoid_waiting_for_safe_time
 
-Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
-
 Default: `true`
+
+Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
 
 ##### --master_ysql_operation_lease_ttl_ms
 
@@ -326,23 +326,23 @@ Color messages logged to `stderr` (if supported by terminal).
 
 ##### --logbuflevel
 
+Default: `1`
+
 Buffer log messages logged at this level (or lower).
 
 Valid values: `-1` (don't buffer); `0` (INFO); `1` (WARN); `2` (ERROR); `3` (FATAL)
 
-Default: `1`
-
 ##### --logbufsecs
-
-Buffer log messages for at most this many seconds.
 
 Default: `30`
 
+Buffer log messages for at most this many seconds.
+
 ##### --logtostderr
 
-Write log messages to `stderr` instead of `logfiles`.
-
 Default: `false`
+
+Write log messages to `stderr` instead of `logfiles`.
 
 ##### --log_dir
 
@@ -355,39 +355,42 @@ The directory to write YB-Master log files.
 
 ##### --log_link
 
-Put additional links to the log files in this directory.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `""`
+{{% /tags/wrap %}}
+
+Put additional links to the log files in this directory.
 
 ##### --log_prefix
 
-Prepend the log prefix to each log line.
-
 Default:  `true`
+
+Prepend the log prefix to each log line.
 
 ##### --max_log_size
 
-The maximum log size, in megabytes (MB). A value of `0` will be silently overridden to `1`.
-
 Default: `1800` (1.8 GB)
+
+The maximum log size, in megabytes (MB). A value of `0` will be silently overridden to `1`.
 
 ##### --minloglevel
 
-The minimum level to log messages. Values are: `0` (INFO), `1` (WARN), `2` (ERROR), `3` (FATAL).
-
 Default: `0` (INFO)
+
+The minimum level to log messages. Values are: `0` (INFO), `1` (WARN), `2` (ERROR), `3` (FATAL).
 
 ##### --stderrthreshold
 
-Log messages at, or above, this level are copied to `stderr` in addition to log files.
-
 Default: `3`
+
+Log messages at, or above, this level are copied to `stderr` in addition to log files.
 
 ##### --callhome_enabled
 
-Disable callhome diagnostics.
-
 Default: `true`
+
+Disable callhome diagnostics.
 
 ## Memory division flags
 
@@ -400,7 +403,6 @@ Ensure you do not oversubscribe memory when changing these flags.
 When reserving memory for TServer and Master (if present), you must leave enough memory on the node for PostgreSQL, any required other processes like monitoring agents, and the memory needed by the kernel.
 
 {{< /warning >}}
-
 
 ### Flags controlling the defaults for the other memory division flags
 
@@ -922,9 +924,9 @@ Number of seconds between checks for whether to split a tablet whose key range i
 
 ##### --sort_automatic_tablet_splitting_candidates
 
-Determines whether to sort automatic split candidates from largest to smallest (prioritizing larger tablets for split).
-
 Default: `true`
+
+Determines whether to sort automatic split candidates from largest to smallest (prioritizing larger tablets for split).
 
 Syntax:
 
