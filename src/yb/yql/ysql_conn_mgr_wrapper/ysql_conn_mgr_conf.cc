@@ -35,7 +35,6 @@ DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
 DECLARE_uint32(ysql_conn_mgr_max_conns_per_db);
 DECLARE_uint32(ysql_conn_mgr_idle_time);
-DECLARE_string(ysql_conn_mgr_internal_conn_db);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_uint32(ysql_conn_mgr_num_workers);
@@ -54,7 +53,7 @@ DECLARE_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout);
 DECLARE_uint32(ysql_conn_mgr_control_connection_pool_size);
 DECLARE_uint32(ysql_conn_mgr_pool_timeout);
 DECLARE_bool(ysql_conn_mgr_optimized_extended_query_protocol);
-DECLARE_bool(ysql_conn_mgr_deallocate_if_invalid_prep_stmt);
+DECLARE_bool(ysql_conn_mgr_enable_prep_stmt_close);
 DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_jitter_time);
@@ -204,7 +203,6 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%log_rotate_interval%}", std::to_string(FLAGS_ysql_conn_mgr_log_rotate_interval)},
     {"{%pid_file%}", pid_file_},
     {"{%quantiles%}", quantiles_},
-    {"{%control_conn_db%}", FLAGS_ysql_conn_mgr_internal_conn_db},
     {"{%postgres_host%}", postgres_address_.host()},
     {"{%control_connection_pool_size%}", std::to_string(conf_->control_connection_pool_size)},
     {"{%global_pool_size%}", std::to_string(conf_->global_pool_size)},
@@ -238,8 +236,8 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%pool_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_pool_timeout)},
     {"{%yb_optimized_extended_query_protocol%}",
       BoolToString(FLAGS_ysql_conn_mgr_optimized_extended_query_protocol)},
-    {"{%yb_deallocate_if_invalid_prep_stmt%}",
-      BoolToString(FLAGS_ysql_conn_mgr_deallocate_if_invalid_prep_stmt)},
+    {"{%yb_enable_prep_stmt_close%}",
+      BoolToString(FLAGS_ysql_conn_mgr_enable_prep_stmt_close)},
     {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
     {"{%yb_ysql_max_connections%}", std::to_string(conf_->ysql_max_connections)},
     {"{%yb_optimized_session_parameters%}",

@@ -5991,12 +5991,24 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, CreateDuplicateSchedules,
 
   ASSERT_OK(CreateSnapshotScheduleAndWaitSnapshot(
       "ysql." + client::kTableName.namespace_name(), kInterval, kRetention));
+  std::string ns_id;
+  {
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+    master::GetNamespaceInfoRequestPB ns_req;
+    master::GetNamespaceInfoResponsePB ns_resp;
+    rpc::RpcController controller;
+    auto* ns_identifier = ns_req.mutable_namespace_();
+    ns_identifier->set_name(kTableName.namespace_name());
+    ns_identifier->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    ASSERT_OK(proxy.GetNamespaceInfo(ns_req, &ns_resp, &controller));
+    ASSERT_OK(ResponseStatus(ns_resp));
+    ns_id = ns_resp.namespace_().id();
+  }
 
   // Try and fail to create a snapshot in the same keyspace.
   auto res = CreateSnapshotSchedule(kInterval, kRetention, "ysql." + kTableName.namespace_name());
   ASSERT_FALSE(res.ok());
-  ASSERT_STR_CONTAINS(res.ToString(),
-    "already exists for the given keyspace ysql." + kTableName.namespace_name());
+  ASSERT_STR_CONTAINS(res.ToString(), "already exists for the namespace " + ns_id);
 }
 
 void YbAdminSnapshotScheduleTestWithYsql::TestTransactionDuringPITR() {
@@ -6024,6 +6036,29 @@ void YbAdminSnapshotScheduleTestWithYsql::TestTransactionDuringPITR() {
 
 TEST_F(YbAdminSnapshotScheduleTestWithYsql, TransactionDuringPITR) {
   TestTransactionDuringPITR();
+}
+
+TEST_F(YbAdminSnapshotScheduleTestWithYsql, ListScheduleAfterDatabaseRename) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  // Verify the schedule shows the original database name.
+  auto schedule = ASSERT_RESULT(GetSnapshotSchedule(schedule_id));
+  auto& options = ASSERT_RESULT_REF(GetMember(schedule, "options"));
+  auto filter = ASSERT_RESULT(GetMemberAsStr(options, "filter"));
+  ASSERT_EQ(filter, Format("ysql.$0", client::kTableName.namespace_name()));
+
+  // Rename the database. Must connect to a different DB since PG disallows renaming the current
+  // one.
+  constexpr std::string_view kNewName{"renamed_db"};
+  auto conn = ASSERT_RESULT(PgConnect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER DATABASE $0 RENAME TO $1", client::kTableName.namespace_name(), kNewName));
+
+  // Verify the schedule now reflects the new database name.
+  schedule = ASSERT_RESULT(GetSnapshotSchedule(schedule_id));
+  auto& new_options = ASSERT_RESULT_REF(GetMember(schedule, "options"));
+  auto new_filter = ASSERT_RESULT(GetMemberAsStr(new_options, "filter"));
+  ASSERT_EQ(new_filter, Format("ysql.$0", kNewName));
 }
 
 class YbAdminSnapshotScheduleTestWithYsqlRepro23399 : public YbAdminSnapshotScheduleTestWithYsql {

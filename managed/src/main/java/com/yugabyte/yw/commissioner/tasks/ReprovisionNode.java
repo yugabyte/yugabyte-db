@@ -100,7 +100,7 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
               || !userIntent.useSystemd;
 
       // Need to reinstall node agent.
-      deleteNodeAgent(currentNode);
+      createRemoveNodeAgentTasks(universe, nodeCollection, true /*forceRemove*/);
       if (userIntent.providerType != CloudType.local) {
         createSetupYNPTask(universe, nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);

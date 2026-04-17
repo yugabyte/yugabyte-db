@@ -285,15 +285,6 @@ export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStep
     }
   };
 
-  const handleMaxNodesPerBatchBlur = (event: FocusEvent<HTMLInputElement>) => {
-    const fieldValue = Number(event.target.value);
-    if (fieldValue > maxNodesPerBatchMaximum) {
-      setValue('maxNodesPerBatch', maxNodesPerBatchMaximum);
-    } else if (fieldValue < 1) {
-      setValue('maxNodesPerBatch', 1);
-    }
-  };
-
   return (
     <div className={classes.stepContainer}>
       <Typography className={classes.stepHeader} variant="h5">
@@ -375,7 +366,7 @@ export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStep
                                   type="number"
                                   className={classes.numericInputField}
                                   disabled={isFormDisabled || maxNodesPerBatchMaximum <= 1}
-                                  onBlur={handleMaxNodesPerBatchBlur}
+                                  hideInlineError
                                   rules={{
                                     required: {
                                       value: true,

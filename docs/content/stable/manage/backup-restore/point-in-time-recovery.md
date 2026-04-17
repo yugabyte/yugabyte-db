@@ -40,7 +40,7 @@ PITR in YugabyteDB is based on a combination of the following:
 
 1. Periodic distributed snapshots
 
-    [Distributed snapshots](../snapshot-ysql) capture a lightweight zero-cost copy of database data files, including all detailed data changes, for the specified retention period. By creating and saving snapshots periodically, you effectively create a total PITR history, which is the combination of all of the individual snapshots.
+    [Distributed snapshots](../snapshot-ysql/) capture a lightweight zero-cost copy of database data files, including all detailed data changes, for the specified retention period. By creating and saving snapshots periodically, you effectively create a total PITR history, which is the combination of all of the individual snapshots.
 
 For example, if your overall retention target for PITR is three days, you can specify the following configuration:
 

@@ -1,6 +1,6 @@
 module node-agent
 
-go 1.24.13
+go 1.26.2
 
 replace golang.org/x/crypto => golang.org/x/crypto v0.18.0
 

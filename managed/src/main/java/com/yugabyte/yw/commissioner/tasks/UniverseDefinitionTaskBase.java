@@ -2249,41 +2249,45 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     boolean skipHostNameCheck = skipType == NodeManager.SkipCertValidationType.HOSTNAME;
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("CheckCertificateConfig", SubTaskGroupType.ValidateConfigurations);
-    clusters.stream()
-        .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
-        .forEach(
-            cluster -> {
-              nodes.stream()
-                  .filter(node -> cluster.uuid.equals(node.placementUuid))
-                  .forEach(
-                      node -> {
-                        CheckCertificateConfig task = createTask(CheckCertificateConfig.class);
-                        CheckCertificateConfig.Params params = new CheckCertificateConfig.Params();
-                        params.nodeName = node.nodeName;
-                        params.nodeUuid = node.nodeUuid;
-                        params.azUuid = node.azUuid; // Required for using getProvider() in task.
-                        params.placementUuid = node.placementUuid; // Required for getting gFlags.
-                        params.setUniverseUUID(taskParams().getUniverseUUID());
-                        params.rootAndClientRootCASame =
-                            enableClientToNodeEncrypt
-                                && taskParams()
-                                    .rootAndClientRootCASame; // Required till we fix PLAT-14979
-                        params.rootCA = rootCA;
-                        params.setClientRootCA(clientRootCA);
-                        params.SkipHostNameCheck = skipHostNameCheck;
-                        // If ssh user is passed, then always use that
-                        if (StringUtils.isNotBlank(sshUserOverride)) {
-                          params.sshUserOverride = sshUserOverride;
-                        }
-                        task.initialize(params);
-                        subTaskGroup.addSubTask(task);
-                      });
-            });
-    if (subTaskGroup.getSubTaskCount() > 0) {
-      getRunnableTask().addSubTaskGroup(subTaskGroup);
-    }
+    Consumer<SubTaskGroup> certConfigCheckTaskConsumer =
+        subTaskGroup -> {
+          clusters.stream()
+              .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+              .forEach(
+                  cluster -> {
+                    nodes.stream()
+                        .filter(node -> cluster.uuid.equals(node.placementUuid))
+                        .forEach(
+                            node -> {
+                              CheckCertificateConfig task =
+                                  createTask(CheckCertificateConfig.class);
+                              CheckCertificateConfig.Params params =
+                                  new CheckCertificateConfig.Params();
+                              params.nodeName = node.nodeName;
+                              params.nodeUuid = node.nodeUuid;
+                              params.azUuid =
+                                  node.azUuid; // Required for using getProvider() in task.
+                              params.placementUuid =
+                                  node.placementUuid; // Required for getting gFlags.
+                              params.setUniverseUUID(taskParams().getUniverseUUID());
+                              params.rootAndClientRootCASame =
+                                  enableClientToNodeEncrypt
+                                      && taskParams()
+                                          .rootAndClientRootCASame; // Required till we fix
+                              // PLAT-14979
+                              params.rootCA = rootCA;
+                              params.setClientRootCA(clientRootCA);
+                              params.SkipHostNameCheck = skipHostNameCheck;
+                              // If ssh user is passed, then always use that
+                              if (StringUtils.isNotBlank(sshUserOverride)) {
+                                params.sshUserOverride = sshUserOverride;
+                              }
+                              task.initialize(params);
+                              subTaskGroup.addSubTask(task);
+                            });
+                  });
+        };
+    doInPrecheckSubTaskGroup("CheckCertificateConfig", certConfigCheckTaskConsumer);
   }
 
   /**
@@ -2429,6 +2433,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
           }
+          params.userIntent = userIntent;
           YNPProvisioning task = createTask(YNPProvisioning.class);
           task.initialize(params);
           subTaskGroup.addSubTask(task);
@@ -3264,20 +3269,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (!masterChanged && !tserverChanged) {
       return;
     }
-    SubTaskGroup validateSubTaskGroup =
-        createSubTaskGroup(
-            ValidateNodeDiskSize.class.getSimpleName(), SubTaskGroupType.ValidateConfigurations);
-    ValidateNodeDiskSize.Params params =
-        Json.fromJson(Json.toJson(taskParams()), ValidateNodeDiskSize.Params.class);
-    params.clusterUuid = cluster.uuid;
-    params.nodePrefix = universe.getUniverseDetails().nodePrefix;
-    params.mastersChanged = masterChanged;
-    params.tserversChanged = tserverChanged;
-    params.targetDiskUsagePercentage = targetDiskUsagePercentage;
-    ValidateNodeDiskSize task = createTask(ValidateNodeDiskSize.class);
-    task.initialize(params);
-    validateSubTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(validateSubTaskGroup);
+    final boolean masterChangedParam = masterChanged;
+    final boolean tserverChangedParam = tserverChanged;
+    doInPrecheckSubTaskGroup(
+        ValidateNodeDiskSize.class.getSimpleName(),
+        subTaskGroup -> {
+          ValidateNodeDiskSize.Params params =
+              Json.fromJson(Json.toJson(taskParams()), ValidateNodeDiskSize.Params.class);
+          params.clusterUuid = cluster.uuid;
+          params.nodePrefix = universe.getUniverseDetails().nodePrefix;
+          params.mastersChanged = masterChangedParam;
+          params.tserversChanged = tserverChangedParam;
+          params.targetDiskUsagePercentage = targetDiskUsagePercentage;
+          ValidateNodeDiskSize task = createTask(ValidateNodeDiskSize.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   protected AnsibleConfigureServers getAnsibleConfigureServerTask(
@@ -3514,8 +3521,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         confGetter.getConfForScope(
             getUniverse(), UniverseConfKeys.underReplicatedTabletsCheckEnabled);
     if (underReplicatedTabletsCheckEnabled && processTypes.contains(ServerType.TSERVER)) {
-      createCheckUnderReplicatedTabletsTask(node, targetSoftwareVersion)
-          .setSubTaskGroupType(subGroupType);
+      SubTaskGroup subTaskGroup =
+          createCheckUnderReplicatedTabletsTask(node, targetSoftwareVersion);
+      if (!taskParams().isRunOnlyPrechecks()) {
+        subTaskGroup.setSubTaskGroupType(subGroupType);
+      }
     }
     if (!skipCheckNodesAreSafeToTakeDown) {
       createCheckNodesAreSafeToTakeDownTask(
@@ -3535,22 +3545,27 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   protected SubTaskGroup createCheckUnderReplicatedTabletsTask(
       NodeDetails node, @Nullable String targetSoftwareVersion) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
+    Function<Duration, ITask> taskFunc =
+        maxWaitTime -> {
+          CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
+          params.targetSoftwareVersion = targetSoftwareVersion;
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.maxWaitTime = maxWaitTime;
+          params.nodeName = node.nodeName;
+          CheckUnderReplicatedTablets task = createTask(CheckUnderReplicatedTablets.class);
+          task.initialize(params);
+          return task;
+        };
+    if (taskParams().isRunOnlyPrechecks()) {
+      return doInPrecheckSubTaskGroup(
+          "CheckUnderReplicatedTables",
+          subTaskGroup -> subTaskGroup.addSubTask(taskFunc.apply(Duration.ofMillis(1))));
+    }
     Duration maxWaitTime =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
-    if (taskParams().isRunOnlyPrechecks()) {
-      maxWaitTime = Duration.ofMillis(1);
-    }
-    CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
-    params.targetSoftwareVersion = targetSoftwareVersion;
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.maxWaitTime = maxWaitTime;
-    params.nodeName = node.nodeName;
-
-    CheckUnderReplicatedTablets checkUnderReplicatedTablets =
-        createTask(CheckUnderReplicatedTablets.class);
-    checkUnderReplicatedTablets.initialize(params);
-    subTaskGroup.addSubTask(checkUnderReplicatedTablets);
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("CheckUnderReplicatedTables", SubTaskGroupType.PreflightChecks);
+    subTaskGroup.addSubTask(taskFunc.apply(maxWaitTime));
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
@@ -4094,8 +4109,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             serverType,
             (node, params) -> {
               params.force = true;
-              params.gflags =
-                  ImmutableMap.of(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
+              Map<String, String> gflags = new HashMap<>();
+              gflags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
+              Cluster cluster = universe.getCluster(node.placementUuid);
+              Map<String, String> nodeGFlags =
+                  GFlagsUtil.getGFlagsForNode(
+                      node, serverType, cluster, universe.getUniverseDetails().clusters);
+              String userYsqlPgConfCsv = nodeGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
+              if (StringUtils.isNotBlank(userYsqlPgConfCsv)) {
+                gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, userYsqlPgConfCsv);
+              }
+              params.gflags = gflags;
             })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }

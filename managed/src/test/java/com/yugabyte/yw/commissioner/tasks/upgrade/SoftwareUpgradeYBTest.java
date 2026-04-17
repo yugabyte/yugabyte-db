@@ -18,7 +18,10 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -50,7 +53,6 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -850,7 +852,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
   @Test
   public void testSoftwareUpgradeRetries() {
-    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.21.0.0-b2";
     taskParams.expectedUniverseVersion = -1;
@@ -1109,8 +1111,9 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     try {
-      RuntimeConfigEntry.upsert(
-          defaultUniverse, UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey(), "5000");
+      factory
+          .forUniverse(defaultUniverse)
+          .setValue(UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey(), "5000");
       defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
       taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
 
@@ -1120,10 +1123,12 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
               () -> commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams));
       assertThat(ex.getMessage(), containsString("per-AZ stage pause durations are non-zero"));
 
-      RuntimeConfigEntry.upsert(
-          defaultUniverse, UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey(), "0");
-      RuntimeConfigEntry.upsert(
-          defaultUniverse, UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey(), "5000");
+      factory
+          .forUniverse(defaultUniverse)
+          .setValue(UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey(), "0");
+      factory
+          .forUniverse(defaultUniverse)
+          .setValue(UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey(), "5000");
       defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
       taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
 
@@ -1133,8 +1138,9 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
               () -> commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams));
       assertThat(ex.getMessage(), containsString("per-AZ stage pause durations are non-zero"));
 
-      RuntimeConfigEntry.upsert(
-          defaultUniverse, UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey(), "0");
+      factory
+          .forUniverse(defaultUniverse)
+          .setValue(UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey(), "0");
       defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
       taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
 
@@ -1149,10 +1155,12 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
       assertEquals(Success, taskInfo.getTaskState());
     } finally {
       defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-      RuntimeConfigEntry.upsert(
-          defaultUniverse, UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey(), "0");
-      RuntimeConfigEntry.upsert(
-          defaultUniverse, UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey(), "0");
+      factory
+          .forUniverse(defaultUniverse)
+          .setValue(UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey(), "0");
+      factory
+          .forUniverse(defaultUniverse)
+          .setValue(UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey(), "0");
     }
   }
 

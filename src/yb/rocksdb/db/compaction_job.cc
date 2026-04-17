@@ -1132,7 +1132,8 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
-    LOG_WITH_PREFIX_DETAIL << "Updating flushed frontier to " << largest_user_frontier_->ToString();
+    LOG_WITH_PREFIX(DETAIL) << "Updating flushed frontier to "
+                            << largest_user_frontier_->ToString();
     compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),

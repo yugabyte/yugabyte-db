@@ -24,10 +24,6 @@
 #include "access/heapam.h"
 #include "utils/load/age_load.h"
 
-#define AGE_VERTIX 1
-#define AGE_EDGE 2
-
-
 struct counts {
     long unsigned fields;
     long unsigned allvalues;
@@ -51,7 +47,6 @@ typedef struct {
     char *label_name;
     int label_id;
     Oid label_seq_relid;
-    Oid temp_table_relid;
     bool id_field_exists;
     bool load_as_agtype;
     int curr_seq_num;

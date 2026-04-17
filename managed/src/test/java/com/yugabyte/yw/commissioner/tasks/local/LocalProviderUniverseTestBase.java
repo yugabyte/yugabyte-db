@@ -70,7 +70,6 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -535,7 +534,9 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
             5.5,
             new InstanceType.InstanceTypeDetails());
 
-    RuntimeConfigEntry.upsertGlobal("yb.task.verify_cluster_state", "true");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.verify_cluster_state", "true");
   }
 
   /**

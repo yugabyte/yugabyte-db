@@ -368,6 +368,66 @@
             "dbUpgradeInitiated": "Database upgrade initiated",
             "dbUpgradeFailed": "Database upgrade request failed"
           }
+        },
+        "rollbackModal": {
+          "modalTitle": "Roll Back Upgrade",
+          "confirmationMessage": "Are you sure you want to roll back to",
+          "rollbackPaceTitle": "ROLLBACK PACE",
+          "rollbackPaceRolling": "Rolling rollback of nodes in upgraded AZs",
+          "rollbackPaceConcurrent": "Concurrent rollback of all upgraded nodes",
+          "concurrentRollbackDowntimeWarning": "<bold>Requires downtime.</bold> The universe will be unavailable while the rollback is in progress.",
+          "upgradedAzsLabel": "Upgraded AZs:",
+          "submitLabel": "Proceed to Roll Back",
+          "rollingOptions": {
+            "maxNodesPerBatch": "Max nodes per batch:",
+            "maxNodesPerBatchTooltip": "Applies to T-Servers.\nMasters are upgraded one at a time.",
+            "waitBetweenBatches": "Wait between batches:",
+            "waitBetweenBatchesTooltip": "Applies between all batches\n(Masters and T-Servers)."
+          },
+          "toast": {
+            "rollbackFailedLabel": "Rollback request failed"
+          },
+          "validation": {
+            "maxNodesPerBatchMinimum": "Must be at least 1.",
+            "maxNodesPerBatchMaximum": "Must be less than or equal to the maxium batch size {{max}}.",
+            "waitBetweenBatchesMin": "Must be 0 or greater."
+          }
+        },
+        "dbUpgradeManagementSidePanel": {
+          "title": "DB Upgrade Management",
+          "descriptionTitle": "DESCRIPTION",
+          "description": "Upgrade to YugabyteDB {{targetDbVersion}}",
+          "ysqlMajorUpgrade": "YSQL Major Upgrade",
+          "progressPanel": {
+            "title": "Upgrade Progress",
+            "preCheckStage": {
+              "title": "Pre-Check",
+              "description": "Checks upgrade readiness and flags anything that needs fixing."
+            },
+            "upgradeMasterServersStage": {
+              "title": "Upgrade Master Servers",
+              "description": "This step upgrades master servers to {{version}}."
+            },
+            "upgradeAzStage": {
+              "title": "Upgrade AZ : {{azLabel}}",
+              "description": "This step upgrades T-servers in {{azName}} to {{version}}.",
+              "upgradeInProgressInfo": "Upgrade in progress. DDLs and some universe operations are not available at this time.",
+              "learnMore": "Learn more"
+            },
+            "finalizeStage": {
+              "title": "Finalize Upgrade",
+              "assessPerformanceTitle": "Before finalizing, assess your universe's performance",
+              "assessPerformanceDescription": "Compare the performance of PostgreSQL statements before and after upgrade.",
+              "rollBack": "Roll Back",
+              "finalizeUpgradeNow": "Finalize Upgrade Now"
+            },
+            "temporaryRestrictions": {
+              "tag": "Temporary Restrictions",
+              "duringAzUpgradeItem1": "DDLs and some operations are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "duringAzUpgradeItem2": "The universe may have slower performance.",
+              "beforeFinalize": "DDLs and some operations remain blocked until the upgrade is either finalized or rolled back."
+            }
+          }
         }
       },
       "dbRollbackUpgrade": {
@@ -1205,6 +1265,7 @@
           "status": {
             "Initializing": "Initializing",
             "Replicating": "Replicating",
+            "Paused": "Paused",
             "Switchover in Progress": "Switchover in Progress",
             "Failover in Progress": "Failover in Progress",
             "Halted": {
@@ -1219,6 +1280,7 @@
             "Ready to replicate": "Ready to replicate",
             "Waiting for DR": "Waiting for DR",
             "Replicating data": "Replicating data",
+            "Replication paused": "Replication paused",
             "Preparing for switchover": "Preparing for switchover",
             "Switching to DR replica": "Switching to DR replica",
             "Universe marked as DR failed": "Marked as DR failed",
@@ -1228,6 +1290,7 @@
             "Unconfigured for DR": "Unconfigured",
             "Bootstrapping": "Bootstrapping",
             "Receiving data, Ready for reads": "Receiving data, Ready for reads",
+            "Replication paused": "Replication paused",
             "Switching to DR primary": "Switching to DR primary",
             "Universe marked as DR failed": "Marked as DR failed",
             "undefined": "Undefined"

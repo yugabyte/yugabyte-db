@@ -19,7 +19,7 @@ interface PlacementAzMetadata {
 /**
  * Get placement AZ metadata list for a cluster.
  */
-const getPlacementAzMetadataList = (cluster: ClusterSpec | null): PlacementAzMetadata[] => {
+export const getPlacementAzMetadataList = (cluster: ClusterSpec | null): PlacementAzMetadata[] => {
   if (!cluster) {
     return [];
   }

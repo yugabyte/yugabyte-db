@@ -95,7 +95,7 @@ public class RemoteReadClient {
           try {
             parseChunkedReadResponse(inputStream, metricConsumer);
           } catch (Exception e) {
-            throw new RuntimeException("Failed to parse metrics response", e);
+            throw new RuntimeException("Failed to parse metrics response: " + e.getMessage(), e);
           }
         });
   }

@@ -401,6 +401,15 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
     "Enable pushdown of scalar array operation expressions in mixed mode of a YSQL Major version "
     "upgrade. For example, IN, ANY, ALL.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_conn_mgr_selective_deallocate, true,
+    "When enabled, DEALLOCATE commands sent via YSQL Connection Manager only drop prepared "
+    "statements whose cached plans are invalid (e.g. stale due to schema changes or "
+    "search_path drift), while preserving valid statements that may be shared across "
+    "logical connections on the same backend. SQL-level statements (from PREPARE) are "
+    "always dropped since they make the connection sticky. When disabled, standard "
+    "PostgreSQL DEALLOCATE behavior is used: DEALLOCATE ALL unconditionally drops all "
+    "statements, and DEALLOCATE <name> will fail for protocol-level prepared statements");
+
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidate_table_cache_entry, true,
@@ -849,7 +858,7 @@ PgWrapper::PgWrapper(PgProcessConf conf)
 }
 
 Status PgWrapper::PreflightCheck() {
-  RETURN_NOT_OK(CheckExecutableValid(GetPostgresExecutablePath()));
+  RETURN_NOT_OK(CheckExecutableValid(PgWrapper::GetPostgresExecutablePath()));
   RETURN_NOT_OK(CheckExecutableValid(GetInitDbExecutablePath()));
   return Status::OK();
 }
@@ -857,7 +866,7 @@ Status PgWrapper::PreflightCheck() {
 Status PgWrapper::Start() {
   RETURN_NOT_OK(CleanupPreviousPostgres());
 
-  auto postgres_executable = GetPostgresExecutablePath();
+  auto postgres_executable = PgWrapper::GetPostgresExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(postgres_executable));
 
   bool log_to_file = !FLAGS_logtostderr && !FLAGS_log_dir.empty() && !conf_.force_disable_log_file;

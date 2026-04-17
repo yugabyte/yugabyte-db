@@ -54,13 +54,12 @@ func IsUserSystemd(username, serverName string) (bool, string, error) {
 	return false, "", err
 }
 
-func getUserOptionForUserLevel(
+// getSystemdCommandPrefix returns the systemd command prefix and the effective user to run the command.
+func getSystemdCommandPrefix(
 	ctx context.Context,
 	username, serverName string,
 	logOut util.Buffer,
 ) (string, string, error) {
-	userOption := ""
-	cmdUser := ""
 	if username != "" {
 		yes, _, err := IsUserSystemd(username, serverName)
 		if err != nil {
@@ -71,14 +70,14 @@ func getUserOptionForUserLevel(
 				serverName,
 				err.Error(),
 			)
-			return userOption, cmdUser, err
+			return "", "", err
 		}
 		if yes {
-			userOption = "--user "
-			cmdUser = username
+			return "systemctl --user", username, nil
 		}
 	}
-	return userOption, cmdUser, nil
+	// sudo prefix is needed for root level systemd commands.
+	return "sudo systemctl", "", nil
 }
 
 func EnableSystemdService(
@@ -86,7 +85,7 @@ func EnableSystemdService(
 	username, serverName string,
 	logOut util.Buffer,
 ) error {
-	userOption, cmdUser, err := getUserOptionForUserLevel(ctx, username, serverName, logOut)
+	cmdPrefix, cmdUser, err := getSystemdCommandPrefix(ctx, username, serverName, logOut)
 	if err != nil {
 		return err
 	}
@@ -94,8 +93,8 @@ func EnableSystemdService(
 		Desc string
 		Cmd  string
 	}{
-		{"ReloadSystemdDaemon", fmt.Sprintf("systemctl %sdaemon-reload", userOption)},
-		{"EnableSystemdService", fmt.Sprintf("systemctl %senable %s", userOption, serverName)},
+		{"ReloadSystemdDaemon", fmt.Sprintf("%s daemon-reload", cmdPrefix)},
+		{"EnableSystemdService", fmt.Sprintf("%s enable %s", cmdPrefix, serverName)},
 	}
 	_, err = RunShellStepsWithRetry(ctx, SystemdBackOff, cmdUser, steps, logOut)
 	return err
@@ -106,11 +105,11 @@ func StartSystemdService(
 	username, serverName string,
 	logOut util.Buffer,
 ) error {
-	userOption, cmdUser, err := getUserOptionForUserLevel(ctx, username, serverName, logOut)
+	cmdPrefix, cmdUser, err := getSystemdCommandPrefix(ctx, username, serverName, logOut)
 	if err != nil {
 		return err
 	}
-	cmd := fmt.Sprintf("systemctl %sstart %s", userOption, serverName)
+	cmd := fmt.Sprintf("%s start %s", cmdPrefix, serverName)
 	_, err = RunShellCmdWithRetry(
 		ctx,
 		SystemdBackOff,
@@ -127,11 +126,11 @@ func StopSystemdService(
 	username, serverName string,
 	logOut util.Buffer,
 ) error {
-	userOption, cmdUser, err := getUserOptionForUserLevel(ctx, username, serverName, logOut)
+	cmdPrefix, cmdUser, err := getSystemdCommandPrefix(ctx, username, serverName, logOut)
 	if err != nil {
 		return err
 	}
-	cmd := fmt.Sprintf("systemctl %s stop %s", userOption, serverName)
+	cmd := fmt.Sprintf("%s stop %s", cmdPrefix, serverName)
 	_, err = RunShellCmdWithRetry(ctx, SystemdBackOff, cmdUser, "StopSystemdService", cmd, logOut)
 	return err
 }
@@ -141,7 +140,7 @@ func DisableSystemdService(
 	username, serverName, unitPathToBeRemoved string,
 	logOut util.Buffer,
 ) error {
-	userOption, cmdUser, err := getUserOptionForUserLevel(ctx, username, serverName, logOut)
+	cmdPrefix, cmdUser, err := getSystemdCommandPrefix(ctx, username, serverName, logOut)
 	if err != nil {
 		return err
 	}
@@ -149,9 +148,9 @@ func DisableSystemdService(
 		Desc string
 		Cmd  string
 	}{
-		{"ReloadSystemdDaemon", fmt.Sprintf("systemctl %sdaemon-reload", userOption)},
-		{"StopSystemdService", fmt.Sprintf("systemctl %sstop %s", userOption, serverName)},
-		{"DisableSystemdService", fmt.Sprintf("systemctl %sdisable %s", userOption, serverName)},
+		{"ReloadSystemdDaemon", fmt.Sprintf("%s daemon-reload", cmdPrefix)},
+		{"StopSystemdService", fmt.Sprintf("%s stop %s", cmdPrefix, serverName)},
+		{"DisableSystemdService", fmt.Sprintf("%s disable %s", cmdPrefix, serverName)},
 	}
 	_, err = RunShellStepsWithRetry(ctx, SystemdBackOff, cmdUser, steps, logOut)
 	if err != nil {
@@ -171,7 +170,7 @@ func DisableSystemdService(
 			return err
 		}
 	}
-	cmd := fmt.Sprintf("systemctl %sdaemon-reload", userOption)
+	cmd := fmt.Sprintf("%s daemon-reload", cmdPrefix)
 	_, err = RunShellCmdWithRetry(
 		ctx,
 		SystemdBackOff,
@@ -223,13 +222,13 @@ func SystemdUnitPath(
 	username, serverName string,
 	logOut util.Buffer,
 ) (string, error) {
-	userOption, cmdUser, err := getUserOptionForUserLevel(ctx, username, serverName, logOut)
+	cmdPrefix, cmdUser, err := getSystemdCommandPrefix(ctx, username, serverName, logOut)
 	if err != nil {
 		return "", err
 	}
 	cmd := fmt.Sprintf(
-		"systemctl %scat %s --no-pager 2>/dev/null | head -1 | sed -e 's/#\\s*//g' || true",
-		userOption,
+		"%s cat %s --no-pager 2>/dev/null | head -1 | sed -e 's/#\\s*//g' || true",
+		cmdPrefix,
 		serverName,
 	)
 	cmdInfo, err := RunShellCmdWithRetry(
@@ -272,11 +271,11 @@ func IsProcessEnabled(
 	username, process string,
 	logOut util.Buffer,
 ) (bool, error) {
-	userOption, _, err := getUserOptionForUserLevel(ctx, username, process, logOut)
+	cmdPrefix, _, err := getSystemdCommandPrefix(ctx, username, process, logOut)
 	if err != nil {
 		return false, err
 	}
-	cmd := fmt.Sprintf("systemctl %sis-enabled %s 2>/dev/null || true", userOption, process)
+	cmd := fmt.Sprintf("%s is-enabled %s 2>/dev/null || true", cmdPrefix, process)
 	cmdInfo, err := RunShellCmdWithRetry(
 		ctx,
 		SystemdBackOff,
@@ -348,4 +347,20 @@ func UpdateUserSystemdUnits(
 		logOut,
 	)
 	return err
+}
+
+// IsUserSystemdEnabled checks if the user systemd is enabled.
+func IsUserSystemdEnabled(ctx context.Context, username string, logOut util.Buffer) (bool, error) {
+	cmdInfo, err := RunShellCmd(
+		ctx,
+		username,
+		"IsUserSystemdEnabled",
+		`systemctl --user status >/dev/null 2>&1 && echo "true" || echo "false"`,
+		logOut,
+	)
+	if err != nil {
+		return false, err
+	}
+	stdout := strings.TrimSpace(cmdInfo.StdOut.String())
+	return stdout == "true", nil
 }

@@ -43,13 +43,6 @@ SELECT load_labels_from_file('agload_test_graph', 'Country',
  
 (1 row)
 
--- A temporary table should have been created with 54 ids; 1 from CREATE and 53 from file
-SELECT COUNT(*)=54 FROM "_agload_test_graph_ag_vertex_ids";
- ?column? 
-----------
- t
-(1 row)
-
 -- Sequence should be equal to max entry id i.e. 248
 SELECT currval('agload_test_graph."Country_id_seq"')=248;
  ?column? 
@@ -72,13 +65,6 @@ NOTICE:  VLabel "City" has been created
  load_labels_from_file 
 -----------------------
  
-(1 row)
-
--- Temporary table should have 54+72485 rows now
-SELECT COUNT(*)=54+72485 FROM "_agload_test_graph_ag_vertex_ids";
- ?column? 
-----------
- t
 (1 row)
 
 -- Sequence should be equal to max entry id i.e. 146941

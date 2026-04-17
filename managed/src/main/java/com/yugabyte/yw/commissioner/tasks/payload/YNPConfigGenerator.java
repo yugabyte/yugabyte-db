@@ -63,6 +63,7 @@ public class YNPConfigGenerator {
     private NodeDetails nodeDetails;
     private Universe universe;
     private boolean isYbPrebuiltImage;
+    private UserIntent userIntent;
   }
 
   @Inject
@@ -101,6 +102,9 @@ public class YNPConfigGenerator {
         "tmp_directory", confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
     if (!provider.getYbHome().isEmpty()) {
       ynpNode.put("yb_home_dir", provider.getYbHome());
+    }
+    if (confGetter.getConfForScope(provider, ProviderConfKeys.useSystemLevelSystemd)) {
+      ynpNode.put("use_system_level_systemd", true);
     }
     ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
     ynpNode.put("check_available_ports", provider.isManualOnprem());
@@ -151,9 +155,12 @@ public class YNPConfigGenerator {
     Universe universe =
         Objects.requireNonNull(
             params.getUniverse(), "Universe must be provided if node details are provided");
-    UserIntent userIntent =
-        Objects.requireNonNull(
-            universe.getCluster(node.placementUuid).userIntent, "User intent must be available");
+    UserIntent userIntent = params.userIntent;
+    if (userIntent == null) {
+      userIntent =
+          Objects.requireNonNull(
+              universe.getCluster(node.placementUuid).userIntent, "User intent must be available");
+    }
     if (node.cloudInfo.private_ip != null) {
       ynpNode.put("node_ip", node.cloudInfo.private_ip);
     }

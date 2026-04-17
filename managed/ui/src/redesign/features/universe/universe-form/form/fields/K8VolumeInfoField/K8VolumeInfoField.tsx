@@ -161,7 +161,7 @@ export const K8VolumeInfoField = ({
                         inputProps={{
                           'data-testid': `K8VolumeInfoField-${nodeTypeTag}-StorageClassInput`
                         }}
-                        value={fieldValue?.storageClass ?? 'standard'}
+                        value={fieldValue?.storageClass}
                         onChange={(event) => onStorageClassChanged(event.target.value)}
                       />
                     </Box>

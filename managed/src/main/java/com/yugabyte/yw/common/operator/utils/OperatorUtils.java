@@ -799,6 +799,13 @@ public class OperatorUtils {
     return spec;
   }
 
+  public DeviceInfo defaultDeviceInfo() {
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 100;
+    masterDeviceInfo.numVolumes = 2;
+    return masterDeviceInfo;
+  }
+
   public DeviceInfo defaultMasterDeviceInfo() {
     DeviceInfo masterDeviceInfo = new DeviceInfo();
     masterDeviceInfo.volumeSize = 50;

@@ -549,7 +549,7 @@ class WriteQueryCompletionCallback {
       }
 
       if (status.IsTryAgain()) {
-          LOG_DETAIL << "Write failed: " << status;
+          LOG(DETAIL) << "Write failed: " << status;
       } else {
           LOG(INFO) << "Write failed: " << status;
       }
@@ -3080,11 +3080,9 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
     return;
   }
   Status s = scope->StepDown(req, resp);
-  if (!resp->has_error()) {
+  if (resp->has_error()) {
     LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " failed. Resp code="
               << TabletServerErrorPB::Code_Name(resp->error().code());
-  } else {
-    LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " succeeded";
   }
   scope.CheckStatus(s, resp);
 }

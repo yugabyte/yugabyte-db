@@ -3,7 +3,6 @@ package com.yugabyte.yw.common.supportbundle;
 import com.fasterxml.jackson.core.JsonEncoding;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -34,6 +33,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -166,9 +166,8 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
 
   /**
    * Export metrics via Prometheus Remote Read API with 1-hour batching. Uses readMetrics for both
-   * formats; points are downsampled by supportBundlePromDumpStepInSecs. PROMQL_JSON: pretty JSON
-   * array of {metrics, values}. PROM_CHUNK: binary ChunkedReadResponse (XOR chunks, size-prefixed +
-   * CRC32C).
+   * formats; points are downsampled by supportBundlePromDumpStepInSecs. PROMQL_JSON: JSON array of
+   * {metrics, values}. PROM_CHUNK: binary ChunkedReadResponse (XOR chunks, size-prefixed + CRC32C).
    */
   private void exportMetricsViaRemoteRead(
       SupportBundleFormData data, String destDir, Universe universe, PrometheusMetricsFormat format)
@@ -282,7 +281,6 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
     JsonFactory jfactory = new JsonFactory();
     try (JsonGenerator jGenerator =
         jfactory.createGenerator(output, JsonEncoding.UTF8).setCodec(objectMapper)) {
-      jGenerator.setPrettyPrinter(new DefaultPrettyPrinter());
       jGenerator.writeStartArray();
       remoteReadClient.readMetrics(
           baseUrl,
@@ -299,13 +297,18 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
               for (Pair<Long, Double> point : stepped) {
                 jGenerator.writeStartArray();
                 jGenerator.writeNumber((long) (point.getKey() / 1000));
-                jGenerator.writeString(String.valueOf(point.getValue()));
+                if (point.getValue().isNaN() || point.getValue().isInfinite()) {
+                  jGenerator.writeString(String.valueOf(point.getValue()));
+                } else {
+                  jGenerator.writeString(
+                      BigDecimal.valueOf(point.getValue()).stripTrailingZeros().toPlainString());
+                }
                 jGenerator.writeEndArray();
               }
               jGenerator.writeEndArray();
               jGenerator.writeEndObject();
             } catch (IOException e) {
-              throw new RuntimeException("Failed to write metrics", e);
+              throw new RuntimeException("Failed to write metrics: " + e.getMessage(), e);
             }
           });
       jGenerator.writeEndArray();
@@ -319,6 +322,10 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
     switch (type) {
       case PROMETHEUS:
         labels.put("job", "prometheus");
+        break;
+      case PLATFORM:
+        labels.put("job", "platform");
+        labels.put("node_prefix", nodePrefix);
         break;
       default:
         labels.put("export_type", typeName);

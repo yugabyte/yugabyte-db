@@ -726,7 +726,7 @@ Determine the status of a restore task:
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql) workloads in your local environment.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) workloads in your local environment.
 
 To use encryption in transit, OpenSSL must be installed on the nodes.
 

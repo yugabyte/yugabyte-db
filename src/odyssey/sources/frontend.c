@@ -1776,7 +1776,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				/*
 				 * YB: TODO(mkumar):GH#30481 Add support for closing unnamed prepared statements.
 				 */
-				if (name[0] != '\0' && instance->config.yb_deallocate_if_invalid_prep_stmt) {
+				if (name[0] != '\0' && instance->config.yb_enable_prep_stmt_close) {
 
 					od_hashmap_elt_t key;
 					key.len = name_len;
@@ -1877,7 +1877,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						&instance->logger,
 						"close prepared statement",
 						client, server, "ignore closing prepared statement: %.*s. Consider setting "
-						"ysql_conn_mgr_deallocate_if_invalid_prep_stmt to true to enable support for "
+						"ysql_conn_mgr_enable_prep_stmt_close to true to enable support for "
 						"CLOSE packet.",
 						name_len, name);
 

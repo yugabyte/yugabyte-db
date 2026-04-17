@@ -1417,19 +1417,19 @@ templates:
     defaultThresholdCondition: LESS_THAN
     defaultThresholdUnit: MILLISECOND
     thresholdUnitName: ms
-    thresholdReadOnly: true
+    thresholdReadOnly: false
     labels:
       affected_slot_names_severe: >-
         {{ range $index, $element := query "min_over_time(cdcsdk_expiry_time_ms{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
         < 1" }}{{if $index}},{{end}}{{ $element.Labels.slot_name }}{{ end }}
       affected_slot_names_warning: >-
         {{ range $index, $element := query "min_over_time(cdcsdk_expiry_time_ms{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
-        > 0 and min_over_time(cdcsdk_expiry_time_ms{universe_uuid='{{ $labels.universe_uuid }}'}[10m]) < 7200000" }}{{if $index}},{{end}}{{ $element.Labels.slot_name }}{{ end }}
+        > 0 and min_over_time(cdcsdk_expiry_time_ms{universe_uuid='{{ $labels.universe_uuid }}'}[10m]) {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.slot_name }}{{ end }}
     annotations:
       summary: >-
         {{ if eq $labels.severity "SEVERE" }}CDC SDK replication slot(s) have expired for universe '{{ $labels.source_name }}'.
         Expired replication slots: {{ $labels.affected_slot_names_severe }}{{ else }}CDC SDK replication slot(s) are near expiry for universe '{{ $labels.source_name }}'.
-        Minimum expiry time is {{ $value | printf "%.0f" }} ms (less than 2 hours remaining).
+        Minimum expiry time is {{ $value | printf "%.0f" }} ms (less than {{ $labels.threshold }} ms remaining).
         Affected replication slots: {{ $labels.affected_slot_names_warning }}{{ end }}
 
   SSH_KEY_ROTATION_FAILURE:
@@ -2220,7 +2220,7 @@ templates:
         Incorrect THP settings found for universe '{{ $labels.source_name }}'
         on {{ $value | printf "%.0f" }} node(s).
         Affected nodes: {{ $labels.affected_node_names }}
-  
+
   YNP_VERSION_SKEW:
     name: YNP Version Skew
     description: YNP version on node is behind the YBA YNP version or version file is missing
@@ -2309,3 +2309,105 @@ templates:
         DB metrics export is failing for universe '{{ $labels.source_name }}'
         on {{ $value | printf "%.0f" }} node(s).
         Affected nodes: {{ $labels.affected_node_names }}
+
+  PA_COLLECTOR_DOWN:
+    name: PA Collector Down
+    description: Performance Advisor collector is expected to be running but is not reporting metrics
+    queryTemplate: ybp_pa_collector_expected_up{customer_uuid = "__customerUuid__"} == 1
+      and on() absent(up{job="perf-advisor"}) == 1
+    createForNewCustomer: true
+    defaultDurationSec: 900
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 1.0
+    targetType: PLATFORM
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdMaxValue: 1.0
+    thresholdReadOnly: true
+    annotations:
+      summary: >-
+        Performance Advisor collector is expected to be running but has not
+        reported metrics for configured interval - check PA collector service
+        status or PA collector logs for details
+
+  PA_UNIVERSE_COLLECTION_FAILURE:
+    name: PA Universe Collection Failure
+    description: Performance Advisor data collection for universe is failing
+    queryTemplate: count by (universe_uuid)
+      (ts_universe_task_status{job="perf-advisor", universe_uuid="__universeUuid__"} == 0)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultDurationSec: 1800
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdMaxValue: 1000.0
+    thresholdReadOnly: true
+    labels:
+      affected_task_types: >-
+        {{ range $index, $element := query "ts_universe_task_status{job='perf-advisor',
+        universe_uuid='{{ $labels.universe_uuid }}'} == 0" }}{{if $index}},
+        {{end}}{{ $element.Labels.task_type }}{{ end }}
+    annotations:
+      summary: >-
+        Performance Advisor data collection has been failing for universe
+        '{{ $labels.source_name }}' for configured time interval.
+
+        Affected task types: {{ $labels.affected_task_types }}
+
+  PA_UNIVERSE_COLLECTION_STALE:
+    name: PA Universe Collection Stale
+    description: Performance Advisor data collection for universe is taking longer than expected
+    queryTemplate: count by (universe_uuid)
+      (ts_universe_task_status{job="perf-advisor", universe_uuid="__universeUuid__"} == 1
+      and ignoring (universe_uuid, saved_name) (time() * 1000
+      - ts_universe_last_sync_time{job="perf-advisor", universe_uuid="__universeUuid__"})
+      > ignoring(universe_uuid, saved_name) ts_universe_sync_interval_ms{job="perf-advisor"} * 2)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdMaxValue: 1000.0
+    thresholdReadOnly: true
+    labels:
+      affected_task_types: >-
+        {{ range $index, $element := query "ts_universe_task_status{job='perf-advisor',
+        universe_uuid='{{ $labels.universe_uuid }}'} == 1
+        and ignoring (universe_uuid, saved_name) (time() * 1000
+        - ts_universe_last_sync_time{job='perf-advisor',
+        universe_uuid='{{ $labels.universe_uuid }}'})
+        > ignoring(universe_uuid, saved_name)
+        ts_universe_sync_interval_ms{job='perf-advisor'} * 2" }}{{if $index}},
+        {{end}}{{ $element.Labels.task_type }}{{ end }}
+    annotations:
+      summary: >-
+        Performance Advisor data collection for universe '{{ $labels.source_name }}'
+        has not been run or completed within the expected interval.
+
+        Affected task types: {{ $labels.affected_task_types }}
+
+  PA_EMBEDDED_COLLECTOR_ERROR:
+    name: PA Embedded Collector Error
+    description: Embedded Performance Advisor collector initialization failed
+    queryTemplate: last_over_time(ybp_pa_embedded_collector_init_status[5m]) {{ query_condition }} 1
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 1.0
+    targetType: PLATFORM
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdMaxValue: 1.0
+    thresholdReadOnly: true
+    annotations:
+      summary: >-
+        Embedded Performance Advisor collector initialization failed -
+        check YBA logs for details or contact YB support team

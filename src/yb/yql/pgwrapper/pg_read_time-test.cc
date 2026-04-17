@@ -603,6 +603,45 @@ TEST_F(PgMiniTestBase, DisallowSequenceWritesWithYbReadTime) {
   ASSERT_EQ(val, 201);
 }
 
+// Test that advisory lock acquisition is disallowed when yb_read_time is set to non-zero.
+TEST_F(PgMiniTestBase, DisallowAdvisoryLocksWithYbReadTime) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (k,v) SELECT i,i FROM generate_series(1,4) AS i"));
+
+  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  LOG(INFO) << "Setting yb_read_time to " << t1;
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+
+  LOG(INFO) << "Trying pg_advisory_lock when yb_read_time is set (should fail)";
+  ASSERT_NOK(conn.Execute("SELECT pg_advisory_lock(12345)"));
+
+  LOG(INFO) << "Trying pg_try_advisory_lock when yb_read_time is set (should fail)";
+  ASSERT_NOK(conn.Fetch("SELECT pg_try_advisory_lock(12345)"));
+
+  LOG(INFO) << "Trying pg_advisory_xact_lock when yb_read_time is set (should fail)";
+  ASSERT_NOK(conn.Execute("SELECT pg_advisory_xact_lock(12345)"));
+
+  LOG(INFO) << "Trying pg_try_advisory_xact_lock when yb_read_time is set (should fail)";
+  ASSERT_NOK(conn.Fetch("SELECT pg_try_advisory_xact_lock(12345)"));
+
+  LOG(INFO) << "Trying pg_advisory_lock with two int4 keys when yb_read_time is set (should fail)";
+  ASSERT_NOK(conn.Execute("SELECT pg_advisory_lock(1, 2)"));
+
+  LOG(INFO) << "Trying shared advisory lock when yb_read_time is set (should fail)";
+  ASSERT_NOK(conn.Execute("SELECT pg_advisory_lock_shared(12345)"));
+
+  LOG(INFO) << "Resetting yb_read_time to 0";
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+
+  LOG(INFO) << "Trying pg_advisory_lock after resetting yb_read_time (should succeed)";
+  ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(12345)"));
+
+  LOG(INFO) << "Releasing the advisory lock";
+  ASSERT_OK(conn.Fetch("SELECT pg_advisory_unlock(12345)"));
+}
+
 // Test the read-time flag of ysql_dump to generate the schema of the database as of a timestamp t
 // 1- Create two tables
 // 2- Get the current timestamp t

@@ -95,24 +95,25 @@ uint64_t RWOperationCounter::Update(uint64_t delta) {
   return result;
 }
 
-bool RWOperationCounter::WaitMutexAndIncrement(CoarseTimePoint deadline) {
+RWOperationCounter::IncrementResult RWOperationCounter::WaitMutexAndIncrement(
+    CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
     deadline = CoarseMonoClock::now() + 10ms * kTimeMultiplier;
   } else if (deadline == CoarseTimePoint::min()) {
-    return false;
+    return IncrementResult::kFailed;
   }
   for (;;) {
     std::unique_lock<decltype(disable_)> lock(disable_, deadline);
     if (!lock.owns_lock()) {
-      return false;
+      return IncrementResult::kFailed;
     }
 
     if (Increment()) {
-      return true;
+      return IncrementResult::kSuccess;
     }
 
     if (counters_.load(std::memory_order_acquire) & kStopDelta) {
-      return false;
+      return IncrementResult::kStopped;
     }
   }
 }
@@ -198,10 +199,14 @@ ScopedRWOperation::ScopedRWOperation(
     // anyone has started an exclusive operation since we did the increment, and don't proceed
     // with this shared-ownership operation in that case.
     VTRACE(1, "$0 $1", __func__, resource_name());
-    if (!counter->Increment() && !counter->WaitMutexAndIncrement(deadline)) {
-      data_.counter_ = nullptr;
-      data_.abort_status_holder_ = nullptr;
-      data_.resource_name_ = counter->resource_name();
+    if (!counter->Increment()) {
+      auto result = counter->WaitMutexAndIncrement(deadline);
+      if (result != RWOperationCounter::IncrementResult::kSuccess) {
+        data_.counter_ = nullptr;
+        data_.abort_status_holder_ = nullptr;
+        data_.resource_name_ = counter->resource_name();
+        data_.stopped_ = result == RWOperationCounter::IncrementResult::kStopped;
+      }
     }
   }
 }
@@ -268,8 +273,14 @@ void ScopedRWOperationPause::ReleaseMutexButKeepDisabled() {
 }
 
 Status MoveStatus(const ScopedRWOperation& scoped) {
-  return scoped.ok() ? Status::OK()
-                     : STATUS_FORMAT(TryAgain, "Resource unavailable: $0", scoped.resource_name());
+  if (scoped.ok()) {
+    return Status::OK();
+  }
+  if (scoped.stopped()) {
+    return STATUS_FORMAT(
+        ShutdownInProgress, "$0 is shutting down", scoped.resource_name());
+  }
+  return STATUS_FORMAT(TryAgain, "Resource unavailable: $0", scoped.resource_name());
 }
 
 }  // namespace yb

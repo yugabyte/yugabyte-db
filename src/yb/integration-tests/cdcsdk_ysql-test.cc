@@ -10536,7 +10536,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfUnqualifiedTableOnDrop) {
   }
 
   CheckTabletsInCDCStateTable(
-      expected_tablets, test_client(), stream_id,
+      expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
       "Waiting for cdc_state table to be in sync after table removal");
 
   DropTable(&test_cluster_, Format("$0$1", kTableName, table_list_suffix[0]).c_str());
@@ -10549,7 +10549,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfUnqualifiedTableOnDrop) {
       expected_unqualified_tables);
 
   CheckTabletsInCDCStateTable(
-      expected_tablets, test_client(), stream_id,
+      expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
       "Waiting for cdc_state table to be in sync after table drop");
 }
 
@@ -11383,7 +11383,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfEligibleAndNonEligibleTables) {
   }
 
   CheckTabletsInCDCStateTable(
-      expected_tablets, test_client(), stream_id,
+      expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
       "Waiting for cdc state entries after creating indexes post stream creation");
   LOG(INFO) << "Stream contains the user tables as well as indexes";
 
@@ -11402,7 +11402,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfEligibleAndNonEligibleTables) {
       expected_unqualified_tables);
 
   CheckTabletsInCDCStateTable(
-      expected_tablets, test_client(), stream_id,
+      expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
       "Waiting for cdc state entries after table removal request");
 
   // Non-eligible tables like the index will be removed from stream on a master restart.
@@ -11435,7 +11435,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfEligibleAndNonEligibleTables) {
   }
 
   CheckTabletsInCDCStateTable(
-      expected_tablets, test_client(), stream_id,
+      expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
       "Waiting for cdc state entries after master restart");
   LOG(INFO) << "Stream, after master restart, only contains the table_1.";
 }
@@ -12048,7 +12048,9 @@ TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   auto result = ASSERT_RESULT(conn.Fetch(
-      "SELECT to_char(yb_restart_time, 'YYYY-MM-DD HH24:MI:SS.USOF') FROM pg_replication_slots"));
+      "SELECT to_char(yb_restart_time AT TIME ZONE 'UTC',"
+          " 'YYYY-MM-DD HH24:MI:SS.US') || '+00'"
+          " FROM pg_replication_slots"));
 
   ASSERT_EQ(PQntuples(result.get()), 1);
 
@@ -13126,6 +13128,7 @@ TEST_F(CDCSDKYsqlTest, TestPopulationOfDroppedTableListInStreamMetadata) {
       "Timed out waiting for cleanup of stream metadata" /* timeout_msg */);
   CheckTabletsInCDCStateTable(
       {tablets_non_dropped[0].tablet_id()}, test_client(), stream_id,
+      {} /* expected_colocated_table_ids */,
       "Timed out waiting for state table entries to get deleted");
 }
 
