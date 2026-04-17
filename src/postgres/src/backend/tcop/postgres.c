@@ -7865,7 +7865,7 @@ disable_statement_timeout(void)
  * YB_TRACEPARENT_VALUE_LEN + 1 bytes.
  *
  * The traceparent comments may appear at the query start or end.
- * If multiple block comments contain a traceparent, the first one is returned.
+ * If both comment blocks are present and contain traceparent, the one at the start is returned.
  *
  * "/\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ SELECT 1;"
  * "SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/;"
@@ -7874,16 +7874,16 @@ static YbTraceparentResult
 YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 {
 	const char *pos;
-	const char		   *end;
-	const char		   *content;
-	const char		   *comment_end;
+	const char *end;
+	const char *content;
+	const char *comment_end;
 	YbTraceparentResult result;
 
 	/* Check for a leading block comment. */
 	pos = query;
 	while (isspace((unsigned char) *pos))
 		pos++;
-		
+
 	if (pos[0] == '/' && pos[1] == '*')
 	{
 		content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
@@ -7891,7 +7891,7 @@ YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 		if (comment_end)
 		{
 			result = YbGetTraceparentFromTraceContext(content, comment_end - content,
-													  traceparent_out);
+								  traceparent_out);
 			if (result != YB_TRACEPARENT_NO_FIELD)
 				return result;
 		}
