@@ -918,14 +918,20 @@ TEST_F(DistTraceTest, TestAbortSpan) {
 }
 
 TEST_F(DistTraceTest, TestTraceparentCommentAppended) {
-  std::vector<OtlpHttpCollector::SpanRecord> expected;
+  std::vector<Trace> expected_traces;
+  std::string mid_query;
+
+  const std::vector<ExpectedSpan> kSelectSpans = {
+    {SpanType::kRoot, 1}, {SpanType::kParse, 1}, {SpanType::kRewrite, 1},
+    {SpanType::kExecute, 1}, {SpanType::kPlan, 1}, {SpanType::kCommit, 1},
+  };
 
   // Trailing comment (after the query body).
   {
     auto tp = GenerateTraceparent();
     auto query = Format("SELECT 1 /*traceparent='$0'*/", tp.full);
     ASSERT_OK(conn_->Fetch(query));
-    expected.push_back(MakeExpected(query, tp.trace_id));
+    expected_traces.push_back(MakeExpectedTrace(query, tp.trace_id, kSelectSpans));
   }
 
   // Trailing comment with surrounding whitespace.
@@ -933,7 +939,7 @@ TEST_F(DistTraceTest, TestTraceparentCommentAppended) {
     auto tp = GenerateTraceparent();
     auto query = Format("SELECT 2 /*traceparent='$0'*/  ", tp.full);
     ASSERT_OK(conn_->Fetch(query));
-    expected.push_back(MakeExpected(query, tp.trace_id));
+    expected_traces.push_back(MakeExpectedTrace(query, tp.trace_id, kSelectSpans));
   }
 
   // Leading traceparent comment wins over trailing one.
@@ -943,17 +949,18 @@ TEST_F(DistTraceTest, TestTraceparentCommentAppended) {
     auto query = Format(
         "/*traceparent='$0'*/ SELECT 3 /*traceparent='$1'*/", tp1.full, tp2.full);
     ASSERT_OK(conn_->Fetch(query));
-    expected.push_back(MakeExpected(query, tp1.trace_id));
+    expected_traces.push_back(MakeExpectedTrace(query, tp1.trace_id, kSelectSpans));
   }
 
   // Mid-query comment must NOT produce a span (only leading/trailing are supported).
   {
     auto tp = GenerateTraceparent();
-    ASSERT_OK(conn_->FetchFormat("SELECT /*traceparent='$0'*/ 4", tp.full));
-    // Intentionally not pushed to expected — no span should be recorded.
+    mid_query = Format("SELECT /*traceparent='$0'*/ 4", tp.full);
+    ASSERT_OK(conn_->Fetch(mid_query));
   }
 
-  ASSERT_OK(VerifySpans(expected));
+  ASSERT_OK(collector_.VerifyAgainstCollectorTraces(expected_traces));
+  ASSERT_OK(collector_.VerifyQueryNotTraced(mid_query));
 }
 
 TEST_F(DistTraceDisabledTest, TestTraceparentWhenDistTraceDisabled) {
