@@ -726,7 +726,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
           << ". Destination peer: " << peer_uuid;
       return s;
     } else {
-      LOG_WITH_PREFIX(FATAL)
+      LOG_WITH_PREFIX(WARNING)
           << "Error reading the log while preparing peer request or GetChanges response: "
           << s.ToString() << ". Destination peer: " << peer_uuid;
       return s;
