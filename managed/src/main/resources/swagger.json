@@ -982,7 +982,11 @@
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
-            "OTEL_METRIC_EXPORT_FAILURE"
+            "OTEL_METRIC_EXPORT_FAILURE",
+            "PA_COLLECTOR_DOWN",
+            "PA_UNIVERSE_COLLECTION_FAILURE",
+            "PA_UNIVERSE_COLLECTION_STALE",
+            "PA_EMBEDDED_COLLECTOR_ERROR"
           ],
           "type" : "string"
         },
@@ -1167,7 +1171,11 @@
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
-            "OTEL_METRIC_EXPORT_FAILURE"
+            "OTEL_METRIC_EXPORT_FAILURE",
+            "PA_COLLECTOR_DOWN",
+            "PA_UNIVERSE_COLLECTION_FAILURE",
+            "PA_UNIVERSE_COLLECTION_STALE",
+            "PA_EMBEDDED_COLLECTOR_ERROR"
           ],
           "type" : "string"
         },
@@ -1448,7 +1456,11 @@
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
-            "OTEL_METRIC_EXPORT_FAILURE"
+            "OTEL_METRIC_EXPORT_FAILURE",
+            "PA_COLLECTOR_DOWN",
+            "PA_UNIVERSE_COLLECTION_FAILURE",
+            "PA_UNIVERSE_COLLECTION_STALE",
+            "PA_EMBEDDED_COLLECTOR_ERROR"
           ],
           "type" : "string"
         },

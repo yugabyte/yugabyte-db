@@ -128,6 +128,11 @@ public class YNPProvisioningTest extends FakeDBApplication {
         .thenReturn("/tmp");
     lenient()
         .when(
+            confGetter.getConfForScope(
+                any(Provider.class), eq(ProviderConfKeys.useSystemLevelSystemd)))
+        .thenReturn(false);
+    lenient()
+        .when(
             confGetter.getConfForScope(any(Provider.class), eq(ProviderConfKeys.minHomeDirSpaceGb)))
         .thenReturn(5);
     lenient()
