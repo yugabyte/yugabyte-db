@@ -87,9 +87,11 @@ DEFINE_RUNTIME_int32(follower_unavailable_considered_failed_sec, 900,
              "evicted from the config.");
 TAG_FLAG(follower_unavailable_considered_failed_sec, advanced);
 DEFINE_validator(follower_unavailable_considered_failed_sec,
-    FLAG_GE_VALUE_VALIDATOR(
-      FLAGS_raft_heartbeat_interval_ms *
-      static_cast<int64_t>(FLAGS_leader_failure_max_missed_heartbeat_periods) / 1000));
+  FLAG_DELAYED_COND_VALIDATOR(
+      _value >= FLAGS_raft_heartbeat_interval_ms *
+                static_cast<double>(FLAGS_leader_failure_max_missed_heartbeat_periods) / 1000,
+      yb::Format("Must be >= ($0 * $1) / 1000",
+                 "raft_heartbeat_interval_ms", "leader_failure_max_missed_heartbeat_periods")));
 
 DEFINE_UNKNOWN_int32(consensus_inject_latency_ms_in_notifications, 0,
              "Injects a random sleep between 0 and this many milliseconds into "

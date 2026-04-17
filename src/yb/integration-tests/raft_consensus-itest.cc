@@ -989,7 +989,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
     "--TEST_delay_end_rbs_session_ms=1000"s,
-    "--follower_unavailable_considered_failed_sec=5"s,
+    "--follower_unavailable_considered_failed_sec=6"s,
   };
   vector<string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
