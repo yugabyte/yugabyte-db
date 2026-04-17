@@ -3512,6 +3512,19 @@ class PgClientSession::Impl {
     if (options.restart_transaction()) {
       VLOG_WITH_PREFIX(3) << "Restarting transaction";
       RETURN_NOT_OK(RestartTransaction(kind, deadline));
+      if (options.clamp_uncertainty_window()) {
+        // The clamp uncertainty option is set by catalog reads (among other cases).
+        // Catalog cache invalidation messages are processed by resetting the catalog snapshot,
+        // so a subsequent catalog read must use the latest snapshot. Reusing a restarted read
+        // time from a prior error can predate the invalidations and return stale catalog rows.
+        // Therefore, override the restarted read point here with the current time.
+        // This override loses the restart read information until TODO(#31142) is fixed.
+        RSTATUS_DCHECK(
+          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+        session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
+        VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
+      }
     } else {
       const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
       const auto has_time_manipulation =
