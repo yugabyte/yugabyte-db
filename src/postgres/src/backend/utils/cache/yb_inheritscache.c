@@ -290,8 +290,6 @@ GetYbPgInheritsCacheEntryByParent(Oid parentOid)
 			YbNumCatalogCacheMisses++;
 			YbNumCatalogCacheTableMisses[YbAdhocCacheTable_pg_inherits]++;
 			FindChildren(parentOid, &entry->tuples);
-			if (entry->tuples == NIL)
-				YbNumCatalogCacheNegMisses[YbAdhocCacheTable_pg_inherits]++;
 		}
 	}
 	else
@@ -329,8 +327,6 @@ GetYbPgInheritsCacheEntryByChild(Oid relid)
 			elog(yb_debug_log_catcache_events ? LOG : DEBUG3,
 				 "YbPgInheritsCacheByChild miss for oid %d", relid);
 			GetChildCacheEntryMiss(relid, entry);
-			if (entry->tuples == NIL)
-				YbNumCatalogCacheNegMisses[YbAdhocCacheTable_pg_inherits]++;
 		}
 	}
 	else

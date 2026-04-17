@@ -12,6 +12,8 @@
 #define ROUTE_INVALID_DB_OID 1
 #define ROUTE_INVALID_ROLE_OID 2
 #define YB_ROUTE_INVALID 1
+#define YB_CTRL_CONN_DB_NAME "yugabyte"
+#define YB_CTRL_CONN_USER_NAME "yugabyte"
 
 enum yb_oid_status { YB_OID_ACTIVE, YB_OID_DROPPED };
 enum yb_oid_object { YB_USER, YB_DATABASE };

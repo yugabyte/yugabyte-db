@@ -73,12 +73,6 @@ int od_reset(od_server_t *server)
 		}
 	}
 
-	if (server->yb_has_unsynced_pending_packets) {
-		od_log(&instance->logger, "reset", server->client, server,
-		       "server has extra unsynchronized packets, closing");
-		goto drop;
-	}
-
 	/* Server is not synchronized.
 	 *
 	 * Number of queries sent to server is not equal

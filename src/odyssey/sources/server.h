@@ -95,17 +95,6 @@ struct od_server {
 	 * This would be cleared after server gets detached.
 	*/
 	od_id_t yb_unnamed_prep_stmt_client_id;
-
-	/*
-	 * YB: If this is true, it means that some packets have been sent to the
-	 * server after the last Sync packet. This means that we can't detach from
-	 * the server.
-	 *
-	 * This is helpful in case of pipelining when a client might've sent a Sync
-	 * immediately followed by more packets. In that case, simply checking that
-	 * number of RFQ == number of Sync is not sufficient for detaching.
-	 */
-	bool yb_has_unsynced_pending_packets;
 };
 
 static const size_t OD_SERVER_DEFAULT_HASHMAP_SZ = 420;
@@ -138,7 +127,6 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->yb_logical_client_version = UINT64_MAX;
 	server->yb_marked_for_close = false;
 	server->yb_expiry_time_us = UINT64_MAX;
-	server->yb_has_unsynced_pending_packets = false;
 
 #ifdef USE_SCRAM
 	od_scram_state_init(&server->scram_state);
@@ -192,8 +180,6 @@ static inline void od_server_free(od_server_t *server)
 static inline void od_server_sync_request(od_server_t *server, uint64_t count)
 {
 	server->sync_request += count;
-	/* YB: A sync is sent, there are no unsynced packets now */
-	server->yb_has_unsynced_pending_packets = false;
 }
 
 static inline void od_server_sync_reply(od_server_t *server)
@@ -208,12 +194,7 @@ static inline int od_server_in_deploy(od_server_t *server)
 
 static inline int od_server_synchronized(od_server_t *server)
 {
-	/*
-	 * YB: We are not synchronized as long as there have been packets
-	 * sent after the last sync
-	 */
-	return server->sync_request == server->sync_reply &&
-	       !server->yb_has_unsynced_pending_packets;
+	return server->sync_request == server->sync_reply;
 }
 
 static inline int od_server_grac_shutdown(od_server_t *server)

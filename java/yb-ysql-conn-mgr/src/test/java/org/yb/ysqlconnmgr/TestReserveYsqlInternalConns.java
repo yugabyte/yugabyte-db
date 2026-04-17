@@ -65,7 +65,7 @@ public class TestReserveYsqlInternalConns extends BaseYsqlConnMgr {
     // Otherwise it creates extra backend to default user / db which limits number
     // of connection to other user/db & can cause test to fail.
     @Override
-    public void verifyClusterAcceptsConnMgrConnections() throws Exception {
+    public void verifyClusterAcceptsPGConnections() throws Exception {
         LOG.info("Waiting for the cluster to accept pg connections");
         TestUtils.waitFor(() -> {
             try {

@@ -1453,17 +1453,6 @@ Exec_ListenCommit(const char *channel)
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	listenChannels = lappend(listenChannels, pstrdup(channel));
 	MemoryContextSwitchTo(oldcontext);
-
-	/*
-	 * If connection manager is used, mark the connection as sticky. Not doing
-	 * so can cause the listening client to miss notifications, while
-	 * non-listening clients receive spurious notifications.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Incrementing sticky object count for LISTEN %s", channel);
-		increment_sticky_object_count();
-	}
 }
 
 /*

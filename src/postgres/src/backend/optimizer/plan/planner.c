@@ -9490,13 +9490,17 @@ ybBuildRtIndexMap(List *rtable, List *sortedRtable)
 
 		ListCell *lc;
 		int sortedRtIndex = 1;
+#ifdef USE_ASSERT_CHECKING
 		bool found = false;
+#endif
 		foreach(lc, sortedRtable)
 		{
 			RangeTblEntry *rte2 = (RangeTblEntry *) lfirst(lc);
 			if (rte == rte2)
 			{
+#ifdef USE_ASSERT_CHECKING
 				found = true;
+#endif
 				break;
 			}
 

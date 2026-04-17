@@ -600,7 +600,7 @@ HANDLE		PostmasterHandle;
  * suppressing them in all occurrences of strdup.
  */
 char *
-yb_postmaster_strdup(const char *in)
+postmaster_strdup(const char *in)
 {
 	char	   *result = strdup(in);
 
@@ -760,11 +760,11 @@ PostmasterMain(int argc, char *argv[])
 				break;
 
 			case 'C':
-				output_config_variable = yb_postmaster_strdup(optarg);
+				output_config_variable = postmaster_strdup(optarg);
 				break;
 
 			case 'D':
-				userDoption = yb_postmaster_strdup(optarg);
+				userDoption = postmaster_strdup(optarg);
 				break;
 
 			case 'd':
@@ -4926,8 +4926,8 @@ BackendInitialize(Port *port)
 	 * Save remote_host and remote_port in port structure (after this, they
 	 * will appear in log_line_prefix data for log messages).
 	 */
-	port->remote_host = yb_postmaster_strdup(remote_host);
-	port->remote_port = yb_postmaster_strdup(remote_port);
+	port->remote_host = strdup(remote_host);
+	port->remote_port = strdup(remote_port);
 
 	/* And now we can issue the Log_connections message, if wanted */
 	if (Log_connections)

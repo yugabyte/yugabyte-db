@@ -604,13 +604,6 @@ extern bool yb_enable_saop_pushdown;
 extern int	yb_toast_catcache_threshold;
 
 /*
- * Maximum number of tuples in a preloaded catalog cache for which a
- * list-cache miss can be answered by scanning the local cache instead of
- * doing an RPC.  Set to 0 to disable the optimization entirely.
- */
-extern int	yb_catcache_list_from_preloaded_limit;
-
-/*
  * Configure size of the parallel range in requests for parallel keys.
  */
 extern int	yb_parallel_range_size;

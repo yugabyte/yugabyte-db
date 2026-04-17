@@ -247,8 +247,6 @@ extern bool RelationHasCachedLists(Relation relation);
 extern long YbGetCatCacheMisses();
 extern long *YbGetCatCacheIdMisses();
 extern long *YbGetCatCacheTableMisses();
-extern long *YbGetCatCacheListMisses();
-extern long *YbGetCatCacheNegMisses();
 extern long YbGetCatCacheRefreshes();
 extern long YbGetCatCacheDeltaRefreshes();
 extern long YbGetHintCacheRefreshes();

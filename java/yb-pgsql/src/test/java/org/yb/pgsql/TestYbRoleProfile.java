@@ -67,6 +67,10 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Parameterized.Parameters
   public static List<ConnectionEndpoint> parameters() {
+    final String enableYsqlConnMgr = System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
+    if (enableYsqlConnMgr != null && enableYsqlConnMgr.equalsIgnoreCase("true"))
+      return Arrays.asList(ConnectionEndpoint.YSQL_CONN_MGR);
+
     if (SystemUtil.IS_LINUX)
       return Arrays.asList(ConnectionEndpoint.POSTGRES, ConnectionEndpoint.YSQL_CONN_MGR);
     else
@@ -95,20 +99,16 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Override
   protected Connection createTestRole() throws Exception {
-    try (Connection initialConnection =
-             getConnectionBuilder().withUser(DEFAULT_PG_USER)
-                                   .withPassword(DEFAULT_PG_PASS)
-                                   .withConnectionEndpoint(connectionEndpoint)
-                                   .connect();
+    try (Connection initialConnection = getConnectionBuilder().withUser(DEFAULT_PG_USER)
+                                                              .withPassword(DEFAULT_PG_PASS)
+                                                              .connect();
          Statement statement = initialConnection.createStatement()) {
       statement.execute(
           String.format("CREATE ROLE %s SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN "
                         + "PASSWORD '%s'", TEST_PG_USER, TEST_PG_PASS));
     }
 
-    return getConnectionBuilder().withPassword(TEST_PG_PASS)
-                                 .withConnectionEndpoint(connectionEndpoint)
-                                 .connect();
+    return getConnectionBuilder().withPassword(TEST_PG_PASS).connect();
   }
 
   private void attemptLogin(
@@ -119,7 +119,6 @@ public class TestYbRoleProfile extends BasePgSQLTest {
       getConnectionBuilder().withTServer(0)
                             .withUser(username)
                             .withPassword(password)
-                            .withConnectionEndpoint(connectionEndpoint)
                             .connect();
       fail("Expected incorrect password");
     } catch (PSQLException e) {
@@ -272,7 +271,6 @@ public class TestYbRoleProfile extends BasePgSQLTest {
                                                  .withTServer(0)
                                                  .withUser(DEFAULT_PG_USER)
                                                  .withPassword(DEFAULT_PG_PASS)
-                                                 .withConnectionEndpoint(connectionEndpoint)
                                                  .connect();
          Statement stmt = conn.createStatement()) {
       stmt.execute("CREATE PROFILE p LIMIT FAILED_LOGIN_ATTEMPTS 3");

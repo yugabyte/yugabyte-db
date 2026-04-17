@@ -53,10 +53,6 @@ public class TestPgRegressPgAsync extends BasePgRegressTestPorted {
 
   @Test
   public void testIsolationPgRegress() throws Exception {
-    // The isolation tester caches backend PIDs via PQbackendPID() and matches
-    // them against notification sender PIDs. With connection manager, the
-    // actual backend can change, causing PID mismatches.
-    skipYsqlConnMgr(UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
     BasePgListenNotifyTest.waitForNotificationsTableReady(connection, getConnectionBuilder());
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,

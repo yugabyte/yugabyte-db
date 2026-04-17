@@ -1097,23 +1097,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			 "%s", kiwi_fe_type_to_string(type));
 
 	od_frontend_status_t retstatus = OD_OK;
-	/*
-	 * YB: This will be set to false if the packet produces a
-	 * ReadyForQuery response
-	 */
-	server->yb_has_unsynced_pending_packets = true;
 	switch (type) {
 	case KIWI_FE_COPY_DONE:
 	case KIWI_FE_COPY_FAIL:
 		/* client finished copy */
 		server->done_fail_response_received++;
-		/*
-		 * YB: CopyDone/CopyFail packets work like Sync, as the
-		 * backend will exit Copy sub-protocol and then revert to
-		 * simple query/extended query protocol. Then it sends a
-		 * ReadyForQuery packet
-		 */
-		server->yb_has_unsynced_pending_packets = false;
 		break;
 	case KIWI_FE_QUERY:
 		if (instance->config.log_query || route->rule->log_query)
