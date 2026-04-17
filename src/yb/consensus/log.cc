@@ -614,7 +614,12 @@ void Log::Appender::Shutdown() {
 // This task is submitted to allocation_pool_ in order to asynchronously pre-allocate new log
 // segments.
 void Log::SegmentAllocationTask() {
-  allocation_status_.Set(PreAllocateNewSegment());
+  auto status = PreAllocateNewSegment();
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(ERROR) << "Failed to pre-allocate new WAL segment: " << status;
+    allocation_state_.store(SegmentAllocationState::kAllocationFailed, std::memory_order_release);
+  }
+  allocation_status_.Set(status);
 }
 
 const Status Log::kLogShutdownStatus(
@@ -1010,6 +1015,14 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
       RETURN_NOT_OK(RollOver());
       // Rollover prevents potential overflow.
       segment_will_overflow = false;
+    } else if (allocation_state() == SegmentAllocationState::kAllocationFailed) {
+      auto alloc_status = allocation_status_.Get();
+      LOG_WITH_PREFIX(ERROR)
+          << "WAL segment allocation failed: " << alloc_status
+          << ". Resetting state to allow retry on next append.";
+      allocation_state_.store(
+          SegmentAllocationState::kAllocationNotStarted, std::memory_order_release);
+      return alloc_status;
     } else {
       VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
     }
