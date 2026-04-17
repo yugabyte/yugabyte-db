@@ -491,6 +491,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<consensus::RetryableRequests> GetRetryableRequests();
   Status FlushBootstrapState();
   Result<OpId> CopyBootstrapStateTo(const std::string& dest_path);
+  Status CopyBootstrapStateForTabletSplit(const std::string& child_wal_dir);
   Status SubmitFlushBootstrapStateTask();
 
   void EnableFlushBootstrapState();

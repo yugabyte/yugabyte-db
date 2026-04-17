@@ -58,7 +58,7 @@ namespace yb {
 
 static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 
-void AppendPathSegments(std::string* out, const std::string &b) {
+void AppendPathSegments(std::string* out, std::string_view b) {
   CHECK(!out->empty()) << "empty first component: " << *out;
   CHECK(!b.empty() && b[0] != '/')
     << "second path component must be non-empty and relative: "
