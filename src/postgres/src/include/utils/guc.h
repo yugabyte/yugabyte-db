@@ -294,6 +294,9 @@ extern int	tcp_keepalives_count;
 extern bool trace_sort;
 #endif
 
+/* YB */
+extern PGDLLIMPORT bool yb_disable_pg_snapshot_mgmt_in_repeatable_read;
+
 /*
  * Functions exported by guc.c
  */

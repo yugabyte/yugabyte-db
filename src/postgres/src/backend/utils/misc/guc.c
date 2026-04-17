@@ -225,11 +225,14 @@ static const char *show_data_directory_mode(void);
 static bool check_transaction_priority_lower_bound(double *newval, void **extra, GucSource source);
 extern void YBCAssignTransactionPriorityLowerBound(double newval, void* extra);
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
+
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 extern double YBCGetTransactionPriority();
 extern TxnPriorityRequirement YBCGetTransactionPriorityType();
 static bool yb_check_no_txn(int* newval, void **extra, GucSource source);
 
+static bool yb_disable_pg_snapshot_mgmt_in_repeatable_read_check_hook(bool *newval, void **extra,
+	GucSource source);
 static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 
@@ -630,6 +633,7 @@ static bool integer_datetimes;
 static bool assert_enabled;
 static char *restrict_nonsystem_relation_kind_string;
 
+bool		yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
@@ -2915,6 +2919,20 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_ignore_bool_cond_for_legacy_estimate,
 		false,
 		NULL, NULL, NULL
+  },
+
+  {
+		{"yb_disable_pg_snapshot_mgmt_in_repeatable_read", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("[Advanced GUC. Use only after consulting YugabyteDB support.] Various foreign "
+				"key action triggers require using a new snapshot instead of the transaction snapshot. Not "
+				"doing so can result in issues such as #26163. This GUC is a way to revert the fix for the "
+				"issue and fallback to using the transaction snapshot for all fk triggers."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_pg_snapshot_mgmt_in_repeatable_read,
+		false,
+		yb_disable_pg_snapshot_mgmt_in_repeatable_read_check_hook, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -13570,6 +13588,26 @@ static void
 assign_tcmalloc_sample_period(int newval, void *extra)
 {
 	YBCSetTCMallocSamplingPeriod(newval);
+}
+
+bool
+yb_disable_pg_snapshot_mgmt_in_repeatable_read_check_hook(bool *newval, void **extra,
+	GucSource source)
+{
+	if (IsTransactionBlock())
+	{
+		ereport(ERROR,
+			(errmsg("can only be modified outside of a transaction block.")));
+	}
+
+	if (GetCurrentCommandId(false) != 0)
+	{
+		ereport(ERROR,
+			(errmsg("can only be modified when no command has been executed in the current transaction"
+					" yet.")));
+	}
+
+	return true;
 }
 
 static List *

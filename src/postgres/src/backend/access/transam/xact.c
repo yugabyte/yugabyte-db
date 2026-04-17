@@ -2145,7 +2145,7 @@ YBCRestartWriteTransaction()
 	 */
 	PopAllActiveSnapshots();
 
-	if (TopTransactionResourceOwner != NULL)
+	if (!yb_disable_pg_snapshot_mgmt_in_repeatable_read && TopTransactionResourceOwner != NULL)
 	{
 		ResourceOwnerRelease(TopTransactionResourceOwner,
 							 RESOURCE_RELEASE_BEFORE_LOCKS,
@@ -2157,8 +2157,9 @@ YBCRestartWriteTransaction()
 							 RESOURCE_RELEASE_AFTER_LOCKS,
 							 false, true);
 	}
-	AtEOXact_SPI(false /* isCommit */);
-	AtEOXact_Snapshot(false, true); /* and release the transaction's snapshots */
+	AtEOXact_SPI(false /* isCommit */ );
+	if (!yb_disable_pg_snapshot_mgmt_in_repeatable_read)
+		AtEOXact_Snapshot(false, true); /* and release the transaction's snapshots */
 
 	/*
 	 * Recreate the global state present for triggers that would have changed

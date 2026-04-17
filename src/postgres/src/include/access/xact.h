@@ -54,7 +54,8 @@ extern PGDLLIMPORT int XactIsoLevel;
  * YB: When using Read Committed or Read Uncommitted isolation, we fall back to Snapshot isolation
  * if yb_enable_read_committed_isolation is not enabled.
  */
-#define IsolationUsesXactSnapshot() (XactIsoLevel >= XACT_REPEATABLE_READ || !IsYBReadCommitted())
+#define IsolationUsesXactSnapshot() (XactIsoLevel >= XACT_REPEATABLE_READ || \
+		(!yb_disable_pg_snapshot_mgmt_in_repeatable_read && !IsYBReadCommitted()))
 #define IsolationIsSerializable() (XactIsoLevel == XACT_SERIALIZABLE)
 
 /* Xact read-only state */

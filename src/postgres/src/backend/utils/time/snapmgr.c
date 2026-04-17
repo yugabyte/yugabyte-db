@@ -362,12 +362,15 @@ YBCOnActiveSnapshotChange()
 	if (snap &&
 			snap->yb_read_point_handle.has_value)
 	{
-		YbcReadPointHandle current_read_point = YBCPgGetCurrentReadPoint();
-		if (snap->yb_read_point_handle.value == current_read_point)
+		if (!yb_disable_pg_snapshot_mgmt_in_repeatable_read)
 		{
-			elog(YbSnapshotMgmtLogLevel(),
-					 "Avoid restoring read point since it is already set to %" PRIu64, current_read_point);
-			return;
+			YbcReadPointHandle current_read_point = YBCPgGetCurrentReadPoint();
+			if (snap->yb_read_point_handle.value == current_read_point)
+			{
+				elog(YbSnapshotMgmtLogLevel(),
+						"Avoid restoring read point since it is already set to %" PRIu64, current_read_point);
+				return;
+			}
 		}
 		HandleYBStatus(YBCPgRestoreReadPoint(snap->yb_read_point_handle.value));
 	}
@@ -471,6 +474,31 @@ GetTransactionSnapshot(void)
 
 	/* Don't allow catalog snapshot to be older than xact snapshot. */
 	InvalidateCatalogSnapshot();
+
+	if (yb_disable_pg_snapshot_mgmt_in_repeatable_read)
+	{
+		/*
+		 * YB: We have to RESET read point in YSQL for READ COMMITTED isolation level.
+		 * A read point is analogous to the snapshot in PostgreSQL.
+		 *
+		 * We also need to flush all earlier operations so that they complete on the
+		 * previous snapshot.
+		 */
+		if (YbIsReadCommittedTxn())
+		{
+			HandleYBStatus(YBCPgFlushBufferedOperations());
+
+			/*
+			 * If this is a retry for a kReadRestart error, avoid resetting the
+			 * read point
+			 */
+			if (!YBCIsRestartReadPointRequested())
+			{
+				elog(DEBUG2, "Resetting read point for statement in Read Committed txn");
+				HandleYBStatus(YBCPgResetTransactionReadPoint());
+			}
+		}
+	}
 
 	CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
 
@@ -722,7 +750,8 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 	CurrentSnapshot->takenDuringRecovery = sourcesnap->takenDuringRecovery;
 	/* NB: curcid should NOT be copied, it's a local matter */
 
-	CurrentSnapshot->yb_read_point_handle = sourcesnap->yb_read_point_handle;
+	if (!yb_disable_pg_snapshot_mgmt_in_repeatable_read)
+		CurrentSnapshot->yb_read_point_handle = sourcesnap->yb_read_point_handle;
 
 	/*
 	 * Now we have to fix what GetSnapshotData did with MyPgXact->xmin and

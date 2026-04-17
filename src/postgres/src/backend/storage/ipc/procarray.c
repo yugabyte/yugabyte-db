@@ -1829,10 +1829,19 @@ GetSnapshotData(Snapshot snapshot)
 		MaintainOldSnapshotTimeMapping(snapshot->whenTaken, xmin);
 	}
 
-	if (!snapshot->yb_is_catalog_snapshot)
-		snapshot->yb_read_point_handle = YbResetTransactionReadPoint();
-	YbLogSnapshotData("Fetched new snapshot", snapshot,
-		yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
+	if (!yb_disable_pg_snapshot_mgmt_in_repeatable_read)
+	{
+		if (!snapshot->yb_is_catalog_snapshot)
+		{
+			snapshot->yb_read_point_handle = YbResetTransactionReadPoint();
+			YbLogSnapshotData("Fetched new snapshot", snapshot,
+				yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
+		}
+	}
+	else
+	{
+		snapshot->yb_read_point_handle = YbBuildCurrentReadPointHandle();
+	}
 	return snapshot;
 }
 
