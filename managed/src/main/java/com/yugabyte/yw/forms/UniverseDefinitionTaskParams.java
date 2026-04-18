@@ -947,6 +947,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     @JsonIgnore
+    public void removeNonRequiredAZs(Set<UUID> usedAZs) {
+      if (MapUtils.isEmpty(azOverrides)) {
+        return;
+      }
+      azOverrides.keySet().retainAll(usedAZs);
+    }
+
+    @JsonIgnore
     public boolean allNull() {
       return Stream.of(this.getAzOverrides(), this.getPerProcess()).allMatch(Objects::isNull);
     }

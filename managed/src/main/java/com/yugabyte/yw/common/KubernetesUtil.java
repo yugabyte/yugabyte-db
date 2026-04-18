@@ -1567,6 +1567,9 @@ public class KubernetesUtil {
             universeOverridesStr,
             azOverrides,
             null /* skipAZs */));
+    if (userIntent.getUserIntentOverrides() != null) {
+      userIntent.getUserIntentOverrides().removeNonRequiredAZs(placementInfo.getAllAZUUIDs());
+    }
   }
 
   /**
@@ -1650,7 +1653,7 @@ public class KubernetesUtil {
         };
     azUUIDs.stream().forEach(azUUID -> overridesApplier.accept(azUUID, ServerType.MASTER));
     azUUIDs.stream().forEach(azUUID -> overridesApplier.accept(azUUID, ServerType.TSERVER));
-    return userIntentOverridesClone;
+    return userIntentOverridesClone.allNull() ? null : userIntentOverridesClone;
   }
 
   private static DeviceInfo fetchDeviceInfo(String overrides, ServerType serverType) {

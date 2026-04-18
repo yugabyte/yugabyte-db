@@ -503,29 +503,40 @@ public class OperatorUtils {
       Cluster curCluster, UserIntent newIntent, YBUniverse ybUniverse) {
     if (ybUniverse.getSpec().getTserverVolume() != null
         || ybUniverse.getSpec().getMasterVolume() != null) {
+      UserIntent newIntentClone = newIntent.clone();
       AtomicBoolean deviceInfoChanged = new AtomicBoolean(false);
-      if (!curCluster.userIntent.deviceInfo.equals(newIntent.deviceInfo)) {
-        deviceInfoChanged.set(true);
+      // If new userIntent does not contain perAZ overrides for tserver, first assign old
+      // userIntentOverrides
+      if (!(ybUniverse.getSpec().getTserverVolume() != null
+          && ybUniverse.getSpec().getTserverVolume().getPerAZ() != null)) {
+        newIntentClone.updateAZVolumeOverrides(
+            curCluster.userIntent,
+            curCluster.placementInfo.getAllAZUUIDs(),
+            null,
+            false /* isDedicatedMaster */);
       }
-      if (curCluster.clusterType != ClusterType.ASYNC) {
-        if (!curCluster.userIntent.masterDeviceInfo.equals(newIntent.masterDeviceInfo)) {
-          deviceInfoChanged.set(true);
-        }
+      // If new userIntent does not contain perAZ overrides for master, first assign old
+      // userIntentOverrides
+      if (curCluster.clusterType != ClusterType.ASYNC
+          && !(ybUniverse.getSpec().getMasterVolume() != null
+              && ybUniverse.getSpec().getMasterVolume().getPerAZ() != null)) {
+        newIntentClone.updateAZVolumeOverrides(
+            curCluster.userIntent,
+            curCluster.placementInfo.getAllAZUUIDs(),
+            null,
+            true /* isDedicatedMaster */);
       }
       curCluster
           .placementInfo
           .getAllAZUUIDs()
           .forEach(
               azUUID -> {
-                if (ybUniverse.getSpec().getTserverVolume() != null
-                    && ybUniverse.getSpec().getTserverVolume().getPerAZ() != null) {
-                  DeviceInfo tsDeviceInfo = curCluster.userIntent.getDeviceInfoForAz(azUUID, false);
-                  deviceInfoChanged.set(
-                      deviceInfoChanged.get()
-                          || !tsDeviceInfo.equals(newIntent.getDeviceInfoForAz(azUUID, false)));
-                }
-                if (ybUniverse.getSpec().getMasterVolume() != null
-                    && ybUniverse.getSpec().getMasterVolume().getPerAZ() != null) {
+                DeviceInfo tsDeviceInfo = curCluster.userIntent.getDeviceInfoForAz(azUUID, false);
+                deviceInfoChanged.set(
+                    deviceInfoChanged.get()
+                        || !tsDeviceInfo.equals(newIntent.getDeviceInfoForAz(azUUID, false)));
+
+                if (curCluster.clusterType != ClusterType.ASYNC) {
                   DeviceInfo masterDeviceInfo =
                       curCluster.userIntent.getDeviceInfoForAz(azUUID, true);
                   deviceInfoChanged.set(
