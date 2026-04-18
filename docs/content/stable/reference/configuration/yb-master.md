@@ -1514,8 +1514,10 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
+Default: `false`
 {{% /tags/wrap %}}
+
+When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL. If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
@@ -1614,7 +1616,7 @@ Note that it is not recommended to set the flag to true for Masters as you canno
 Default: `6`
 {{% /tags/wrap %}}
 
-The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds, is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
+The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [--raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
 For read replica clusters, set the value to `10` in all yb-tserver and yb-master configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
@@ -1638,7 +1640,7 @@ Leader lease duration should be longer than the heartbeat interval, and less tha
 Default: `500`
 {{% /tags/wrap %}}
 
-The heartbeat interval, in milliseconds, for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
+The heartbeat interval, in milliseconds (ms), for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
 
 ### RocksDB and compaction/performance flags
 
@@ -2050,12 +2052,12 @@ To learn about advisory locks, see [Advisory locks](../../../architecture/transa
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-Default: true
+Default: `true`
 {{% /tags/wrap %}}
 
 Enables advisory locking.
 
-This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
+This value must match on all YB-Master and YB-TServer configurations of a YugabyteDB cluster.
 
 ### Index backfill flags
 
@@ -2083,7 +2085,7 @@ If enabled, indexes on the same (YCQL) table may be batched together during back
 
 {{% tags/wrap %}}
 
-Default: 300000
+Default: `300000`
 {{% /tags/wrap %}}
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
@@ -2116,7 +2118,7 @@ After adding a preview flag to the `allowed_preview_flags_csv` list, you still n
 
 {{% tags/wrap %}}
 
-Default: 1440 (1 day)
+Default: `1440` (1 day)
 {{% /tags/wrap %}}
 
 Number of minutes to wait before no longer displaying a dead node (no heartbeat) in the [YB-Master Admin UI](#admin-ui) (the node is presumed to have been removed from the cluster).
@@ -2130,7 +2132,7 @@ Number of minutes to wait before no longer displaying a dead node (no heartbeat)
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables concurrent replication of multiple write operations within a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
+Enables concurrent replication of multiple write operations in a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
 
 Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
 
@@ -2177,7 +2179,7 @@ Allow insecure connections. Set to `false` to prevent any process with unencrypt
 Default: `false`
 {{% /tags/wrap %}}
 
-Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enabling this flag is helpful for debugging certificate issues.
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enable this flag to debug certificate issues.
 
 ##### --use_client_to_server_encryption
 

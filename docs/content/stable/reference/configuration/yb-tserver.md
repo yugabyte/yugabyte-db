@@ -177,7 +177,7 @@ Location of the `.htpasswd` file containing usernames and hashed passwords, for 
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: The same as [`--fs_data_dirs`](#fs-data-dirs)
+Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
 {{% /tags/wrap %}}
 
 The directory to write yb-tserver log files.
@@ -185,7 +185,6 @@ The directory to write yb-tserver log files.
 ##### --logtostderr
 
 {{% tags/wrap %}}
-
 
 Default: `false`
 {{% /tags/wrap %}}
@@ -206,7 +205,6 @@ The maximum log size, in megabytes (MB). A value of `0` will be silently overrid
 
 {{% tags/wrap %}}
 
-
 Default: `0` (INFO)
 {{% /tags/wrap %}}
 
@@ -215,7 +213,6 @@ The minimum level to log messages. Values are: `0` (INFO), `1`, `2`, `3` (FATAL)
 ##### --stderrthreshold
 
 {{% tags/wrap %}}
-
 
 Default: `3`
 {{% /tags/wrap %}}
@@ -255,7 +252,7 @@ Default: `true`
 
 This flag controls whether #TYPE and #HELP information is included as part of the Prometheus metrics output by default.
 
-To override this flag on a per-scrape basis, set the URL parameter `show_help` to `true` to include or to `false` to not include type and help information.  For example, querying `http://localhost:9000/prometheus-metrics?show_help=true` returns type and help information regardless of the setting of this flag.
+To override this flag on a per-scrape basis, set the URL parameter `show_help` to `true` to include, or to `false` to not include type and help information.  For example, querying `http://localhost:9000/prometheus-metrics?show_help=true` returns type and help information regardless of the setting of this flag.
 
 ##### --max_prometheus_metric_entries
 
@@ -1163,7 +1160,6 @@ Enable support for creating streams for transactional CDC.
 
 {{% tags/wrap %}}
 
-
 Default: `15000`
 {{% /tags/wrap %}}
 
@@ -1172,7 +1168,6 @@ The rate at which CDC state's checkpoint is updated.
 ##### --cdc_max_stream_intent_records
 
 {{% tags/wrap %}}
-
 
 Default: `1680`
 {{% /tags/wrap %}}
@@ -1183,7 +1178,6 @@ Maximum number of intent records allowed in a single CDC batch.
 
 {{% tags/wrap %}}
 
-
 Default: `250`
 {{% /tags/wrap %}}
 
@@ -1192,7 +1186,6 @@ Number of records fetched in a single batch of snapshot operation of CDC.
 ##### --cdc_min_replicated_index_considered_stale_secs
 
 {{% tags/wrap %}}
-
 
 Default: `900` (15 minutes)
 {{% /tags/wrap %}}
@@ -1203,7 +1196,6 @@ If `cdc_min_replicated_index` hasn't been replicated in this amount of time, we 
 
 {{% tags/wrap %}}
 
-
 Default: `900` (15 minutes)
 {{% /tags/wrap %}}
 
@@ -1212,7 +1204,6 @@ Time interval (in seconds) to retain history or older versions of data.
 ##### --update_min_cdc_indices_interval_secs
 
 {{% tags/wrap %}}
-
 
 Default: `60`
 {{% /tags/wrap %}}
@@ -1254,7 +1245,6 @@ Stop retaining logs if the space available for the logs falls below this limit, 
 
 {{% tags/wrap %}}
 
-
 Default: `28800000` (8 hours)
 {{% /tags/wrap %}}
 
@@ -1264,7 +1254,6 @@ The time period, in milliseconds, after which the intents will be cleaned up if 
 
 {{% tags/wrap %}}
 
-
 Default: `28800` (8 hours)
 {{% /tags/wrap %}}
 
@@ -1273,7 +1262,6 @@ WAL retention time, in seconds, to be used for tables for which a CDC stream was
 ##### --cdcsdk_table_processing_limit_per_run
 
 {{% tags/wrap %}}
-
 
 Default: `2`
 {{% /tags/wrap %}}
@@ -1568,7 +1556,6 @@ Controls whether to use the PostgreSQL relcache init file, which caches critical
 
 {{% tags/wrap %}}
 
-
 Default: `2048`
 {{% /tags/wrap %}}
 
@@ -1579,7 +1566,6 @@ To minimize performance impact when enabling this flag, set it to 2KB or higher.
 ##### --ysql_yb_enable_invalidation_messages
 
 {{% tags/wrap %}}
-
 
 Default: `true`
 {{% /tags/wrap %}}
@@ -1684,7 +1670,7 @@ Each tablet replica generally requires 700 MiB of this memory.
 
 ### Raft and consistency/timing flags
 
-With the exception of flags that have different defaults between `yb-master` and `yb-tserver` (for example, `--evict_failed_followers`), the values used for Raft-related flags in `yb-tserver` configurations should match those in [`yb-master`](../yb-master/#raft-and-consistency-timing-flags) configurations in a typical deployment.
+With the exception of flags that have different defaults between `yb-master` and `yb-tserver` (for example, `--evict_failed_followers`), the values used for Raft-related flags in `yb-tserver` configurations should match those in [yb-master](../yb-master/#raft-and-consistency-timing-flags) configurations in a typical deployment.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -1999,7 +1985,6 @@ Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is,
 ##### --automatic_compaction_extra_priority
 
 {{% tags/wrap %}}
-
 
 Default: `50`
 {{% /tags/wrap %}}
@@ -2425,7 +2410,7 @@ The directory that contains certificate authority, private key, and certificates
 Default: `true`
 {{% /tags/wrap %}}
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [`use_node_to_node_encryption`](#use-node-to-node-encryption) to be enabled and [`use_client_to_server_encryption`](#use-client-to-server-encryption) to be enabled.
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [use_node_to_node_encryption](#use-node-to-node-encryption) to be enabled and [use_client_to_server_encryption](#use-client-to-server-encryption) to be enabled.
 
 ##### --dump_certificate_entries
 
@@ -2448,8 +2433,7 @@ Use client-to-server (client-to-node) encryption to protect data in transit betw
 ##### --use_node_to_node_encryption
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -2488,7 +2472,7 @@ Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use [--cipher_list](#c
 Use a colon (":") separated list of TLSv1.3 ciphersuite names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
 
 ```sh
---ciphersuite DEFAULTS:!CHACHA20
+--ciphersuites DEFAULTS:!CHACHA20
 ```
 
 This allows all ciphersuites for TLS 1.3 to be accepted, except CHACHA20 ciphers.
@@ -2538,6 +2522,7 @@ The following flags support the use of the [YSQL API](../../../api/ysql/):
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
 Default: `true`
 {{% /tags/wrap %}}
 
