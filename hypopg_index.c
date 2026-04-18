@@ -1249,7 +1249,7 @@ hypopg(PG_FUNCTION_ARGS)
 		values[i++] = CStringGetTextDatum(entry->indexname);
 		values[i++] = ObjectIdGetDatum(entry->oid);
 		values[i++] = ObjectIdGetDatum(entry->relid);
-		values[i++] = Int8GetDatum(entry->ncolumns);
+		values[i++] = Int32GetDatum(entry->ncolumns);
 		values[i++] = BoolGetDatum(entry->unique);
 		values[i++] = PointerGetDatum(buildint2vector(entry->indexkeys, entry->ncolumns));
 		values[i++] = PointerGetDatum(buildoidvector(entry->indexcollations, entry->ncolumns));
@@ -2290,7 +2290,7 @@ hypo_can_return(hypoIndex * entry, Oid atttype, int i, char *amname)
 										ObjectIdGetDatum(entry->opfamily[i]),
 										ObjectIdGetDatum(entry->opcintype[i]),
 										ObjectIdGetDatum(entry->opcintype[i]),
-										Int8GetDatum(GIST_FETCH_PROC));
+										Int16GetDatum(GIST_FETCH_PROC));
 
 				if (!HeapTupleIsValid(tuple))
 					return false;
@@ -2315,7 +2315,7 @@ hypo_can_return(hypoIndex * entry, Oid atttype, int i, char *amname)
 										ObjectIdGetDatum(entry->opfamily[i]),
 										ObjectIdGetDatum(entry->opcintype[i]),
 										ObjectIdGetDatum(entry->opcintype[i]),
-										Int8GetDatum(SPGIST_CONFIG_PROC));
+										Int16GetDatum(SPGIST_CONFIG_PROC));
 
 				/* just in case */
 				if (!HeapTupleIsValid(tuple))
