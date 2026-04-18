@@ -477,7 +477,8 @@ class FillBenchmark : public Benchmark {
     num_write_ops_per_thread_ = FLAGS_num_operations;
   }
 
-  void RunThreads(std::vector<std::thread>* threads, uint64_t* bytes_written,
+  void RunThreads(std::vector<std::thread>* threads,  // NOLINT(build/std_thread)
+                  uint64_t* bytes_written,
                   uint64_t* bytes_read, bool write,
                   uint64_t* read_hits) override {
     FillBenchmarkThread(table_, key_gen_, bytes_written, bytes_read, sequence_,
@@ -493,7 +494,8 @@ class ReadBenchmark : public Benchmark {
     num_read_ops_per_thread_ = FLAGS_num_operations / FLAGS_num_threads;
   }
 
-  void RunThreads(std::vector<std::thread>* threads, uint64_t* bytes_written,
+  void RunThreads(std::vector<std::thread>* threads,  // NOLINT(build/std_thread)
+                  uint64_t* bytes_written,
                   uint64_t* bytes_read, bool write,
                   uint64_t* read_hits) override {
     for (int i = 0; i < FLAGS_num_threads; ++i) {
@@ -517,7 +519,8 @@ class SeqReadBenchmark : public Benchmark {
     num_read_ops_per_thread_ = FLAGS_num_scans;
   }
 
-  void RunThreads(std::vector<std::thread>* threads, uint64_t* bytes_written,
+  void RunThreads(std::vector<std::thread>* threads,  // NOLINT(build/std_thread)
+                  uint64_t* bytes_written,
                   uint64_t* bytes_read, bool write,
                   uint64_t* read_hits) override {
     for (int i = 0; i < FLAGS_num_threads; ++i) {
@@ -544,7 +547,8 @@ class ReadWriteBenchmark : public Benchmark {
     num_write_ops_per_thread_ = FLAGS_num_operations;
   }
 
-  void RunThreads(std::vector<std::thread>* threads, uint64_t* bytes_written,
+  void RunThreads(std::vector<std::thread>* threads,  // NOLINT(build/std_thread)
+                  uint64_t* bytes_written,
                   uint64_t* bytes_read, bool write,
                   uint64_t* read_hits) override {
     std::atomic_int threads_done;
