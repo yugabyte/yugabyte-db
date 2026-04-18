@@ -8,10 +8,10 @@ menu:
     identifier: yb-tserver
     parent: configuration
     weight: 2100
-rightNav:
-  hideH4: true
 type: docs
 body_class: configuration
+rightNav:
+  hideH4: true
 ---
 
 The YugabyteDB Tablet Server ([YB-TServer](../../../architecture/yb-tserver/)) is a critical component responsible for managing data storage, processing client requests, and handling replication in a YugabyteDB cluster. It ensures data consistency, fault tolerance, and scalability by storing and serving data as tablets (sharded units of storage distributed across multiple nodes). Proper configuration of the YB-TServer is important to optimize performance, manage system resources effectively, help establish secure communication, and provide high availability (HA).
@@ -86,7 +86,7 @@ Specifies the file to load the configuration flags from. The configuration flags
 
 ##### --version
 
-Shows version and build info, then exits.
+Shows version and build information, then exits.
 
 ##### --max_clock_skew_usec
 
@@ -120,8 +120,7 @@ Specifies the time source used by the database. Set this to `clockbound` for con
 ##### --webserver_interface
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `0.0.0.0` (`127.0.0.1`)
 {{% /tags/wrap %}}
 
@@ -130,8 +129,7 @@ The address to bind for the web server user interface.
 ##### --webserver_port
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `9000`
 {{% /tags/wrap %}}
 
@@ -140,8 +138,7 @@ The port for monitoring the web server.
 ##### --webserver_doc_root
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: The `www` directory in the YugabyteDB home directory.
 {{% /tags/wrap %}}
 
@@ -253,7 +250,6 @@ YB-TServer metrics are available in Prometheus format at `http://localhost:9000/
 
 {{% tags/wrap %}}
 
-
 Default: `true`
 {{% /tags/wrap %}}
 
@@ -264,7 +260,6 @@ To override this flag on a per-scrape basis, set the URL parameter `show_help` t
 ##### --max_prometheus_metric_entries
 
 {{% tags/wrap %}}
-
 
 Default: `UINT32_MAX`
 {{% /tags/wrap %}}
@@ -720,6 +715,7 @@ The number of comma-separated values should match the total number of YB-Master 
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
 {{% /tags/wrap %}}
 
 Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
@@ -753,6 +749,7 @@ Specifies the public IP or DNS hostname of the server (with an optional port). T
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
+{{% tags/feature/t-server %}}
 Default: `60000` (1 minute)
 {{% /tags/wrap %}}
 
@@ -824,7 +821,6 @@ The unique identifier for the cluster.
 
 {{% tags/wrap %}}
 
-
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -888,7 +884,7 @@ Specifies which RPC compression algorithm to use. Requires `enable_stream_compre
 
 In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead. However, the default is set to 0, to avoid latency penalty on workloads.
 
-## Storage & Data Management
+## Storage & data management
 
 ### Filesystem and WAL directories
 
@@ -915,19 +911,7 @@ Specifies a comma-separated list of directories, where yb-tserver will store wri
 
 ### Write ahead log (WAL) flags
 
-In a typical deployment, the values used for write ahead log (WAL) flags in `yb-tserver` configurations should align with those in [`yb-master`](../yb-master/#write-ahead-log-wal-flags) configurations.
-
-Ensure that values used for the write ahead log (WAL) in yb-tserver configurations match the values for yb-master configurations.
-
-##### --fs_wal_dirs
-
-{{% tags/wrap %}}
-{{<tags/feature/t-server>}}
-{{<tags/feature/restart-needed>}}
-Default: The same as `--fs_data_dirs`
-{{% /tags/wrap %}}
-
-The directory where the yb-tserver retains WAL files. May be the same as one of the directories listed in [--fs_data_dirs](#fs-data-dirs), but not a subdirectory of a data directory.
+In a typical deployment, the values used for write ahead log (WAL) flags in yb-tserver configurations should align with those in [yb-master](../yb-master/#write-ahead-log-wal-flags) configurations.
 
 ##### --durable_wal_write
 
@@ -1062,7 +1046,6 @@ Clusters created using yugabyted always use a default value of `1`.
 
 {{% tags/wrap %}}
 
-
 Default: `60`
 {{% /tags/wrap %}}
 
@@ -1120,7 +1103,6 @@ The number of tablet replicas that each GiB reserved by YB-TServers for tablet o
 
 {{% tags/wrap %}}
 
-
 Default: `true`
 {{% /tags/wrap %}}
 
@@ -1136,7 +1118,6 @@ Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB 
 
 {{% tags/wrap %}}
 
-
 Default: `true`
 {{% /tags/wrap %}}
 
@@ -1151,7 +1132,6 @@ This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`,
 ##### ysql_ddl_transaction_wait_for_ddl_verification
 
 {{% tags/wrap %}}
-
 
 Default: `true`
 {{% /tags/wrap %}}
@@ -1409,7 +1389,6 @@ Turn on the file expiration for TTL feature.
 
 {{% tags/wrap %}}
 
-
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -1423,7 +1402,6 @@ If `rocksdb_max_file_size_for_compaction` was set to a certain value on a cluste
 
 {{% tags/wrap %}}
 
-
 Default: `24`
 {{% /tags/wrap %}}
 
@@ -1433,7 +1411,6 @@ Threshold for number of SST files per tablet. When exceeded, writes to a tablet 
 
 {{% tags/wrap %}}
 
-
 Default: `48`
 {{% /tags/wrap %}}
 
@@ -1442,7 +1419,6 @@ Threshold for number of SST files per tablet. When exceeded, writes to a tablet 
 ##### --file_expiration_ignore_value_ttl
 
 {{% tags/wrap %}}
-
 
 Default: `false`
 {{% /tags/wrap %}}
@@ -1456,7 +1432,6 @@ Use of this flag can potentially result in expiration of live data. Use at your 
 ##### --file_expiration_value_ttl_overrides_table_ttl
 
 {{% tags/wrap %}}
-
 
 Default: `false`
 {{% /tags/wrap %}}
@@ -1491,7 +1466,6 @@ To learn about the packed row feature, see [Packed rows in DocDB](../../../archi
 
 {{% tags/wrap %}}
 
-
 Default: `true`
 {{% /tags/wrap %}}
 
@@ -1502,7 +1476,6 @@ Packed Row for YSQL can be used from version 2.16.4 in production environments i
 ##### --ysql_enable_packed_row_for_colocated_table
 
 {{% tags/wrap %}}
-
 
 Default: `true`
 {{% /tags/wrap %}}
@@ -1679,8 +1652,7 @@ These settings control the division of memory available to the TServer process.
 ##### --db_block_cache_size_bytes
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `-1`
 {{% /tags/wrap %}}
 
@@ -1689,8 +1661,7 @@ Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to
 ##### --db_block_cache_size_percentage
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `50`
 {{% /tags/wrap %}}
 
@@ -1701,8 +1672,7 @@ Percentage of the process' hard memory limit to use for the shared RocksDB block
 ##### --tablet_overhead_size_percentage
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -1750,8 +1720,7 @@ For read replica clusters, set the value to `10` in all yb-tserver and yb-master
 ##### --leader_lease_duration_ms
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/restart-needed>}}
 Default: `2000`
 {{% /tags/wrap %}}
 
@@ -1764,7 +1733,6 @@ Leader lease duration should be longer than the heartbeat interval, and less tha
 ##### --max_stale_read_bound_time_ms
 
 {{% tags/wrap %}}
-
 
 Default: `10000` (10 seconds)
 {{% /tags/wrap %}}
@@ -1824,7 +1792,6 @@ Only change this flag to `three_shared_parts` after you migrate the whole cluste
 ##### --rocksdb_compact_flush_rate_limit_bytes_per_sec
 
 {{% tags/wrap %}}
-
 
 Default: `1073741824`
 {{% /tags/wrap %}}
@@ -1887,7 +1854,6 @@ Compactions run only if there are at least `rocksdb_universal_compaction_min_mer
 
 {{% tags/wrap %}}
 
-
 Default: `900` (15 minutes)
 {{% /tags/wrap %}}
 
@@ -1897,7 +1863,6 @@ The time interval, in seconds, to retain history/older versions of data. Point-i
 
 {{% tags/wrap %}}
 
-
 Default: `268435456`
 {{% /tags/wrap %}}
 
@@ -1906,7 +1871,6 @@ Rate control across all tablets being remote bootstrapped from or to this proces
 ##### --remote_bootstrap_from_leader_only
 
 {{% tags/wrap %}}
-
 
 Default: `false`
 {{% /tags/wrap %}}
@@ -1923,7 +1887,6 @@ The code for the feature is present from version 2.16 and later, and can be enab
 
 {{% tags/wrap %}}
 
-
 Default: `5`
 {{% /tags/wrap %}}
 
@@ -1932,7 +1895,6 @@ When the flag [remote_bootstrap_from_leader_only](#remote-bootstrap-from-leader-
 ##### --db_block_cache_num_shard_bits
 
 {{% tags/wrap %}}
-
 
 Default: `-1`
 {{% /tags/wrap %}}
@@ -1976,7 +1938,6 @@ The interval at which the full compaction task will check for tablets eligible f
 
 {{% tags/wrap %}}
 
-
 Default: `300`
 {{% /tags/wrap %}}
 
@@ -1987,7 +1948,6 @@ Window of time in seconds over which DocDB read statistics are analyzed for the 
 ##### --auto_compact_percent_obsolete
 
 {{% tags/wrap %}}
-
 
 Default: `99`
 {{% /tags/wrap %}}
@@ -2000,7 +1960,6 @@ For example, if the flag is set to `99` and 100000 keys are read over that windo
 
 {{% tags/wrap %}}
 
-
 Default: `10000`
 {{% /tags/wrap %}}
 
@@ -2009,7 +1968,6 @@ Minimum number of keys that must be read over the last [auto_compact_stat_window
 ##### --auto_compact_min_wait_between_seconds
 
 {{% tags/wrap %}}
-
 
 Default: `0`
 {{% /tags/wrap %}}
@@ -2020,7 +1978,6 @@ Minimum wait time between statistics-based and scheduled full compactions. To be
 
 {{% tags/wrap %}}
 
-
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -2029,7 +1986,6 @@ The frequency with which full compactions should be scheduled on tablets. `0` in
 ##### --scheduled_full_compaction_jitter_factor_percentage
 
 {{% tags/wrap %}}
-
 
 Default: `33`
 {{% /tags/wrap %}}
@@ -2090,7 +2046,6 @@ If `enable_wait_queues=true`, this controls the rate at which each tablet's wait
 ##### --ysql_enable_db_catalog_version_mode
 
 {{% tags/wrap %}}
-
 
 Default: `true`
 {{% /tags/wrap %}}
@@ -2334,7 +2289,6 @@ This value must match on all YB-Master and YB-TServer configurations of a Yugaby
 
 {{% tags/wrap %}}
 
-
 Default: `1`
 {{% /tags/wrap %}}
 
@@ -2368,7 +2322,6 @@ For details on how online index backfill works, see the [Online Index Backfill](
 
 {{% tags/wrap %}}
 
-
 Default: `-1` (automatic setting)
 {{% /tags/wrap %}}
 
@@ -2392,7 +2345,6 @@ Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 
 {{% tags/wrap %}}
 
-
 Default: `-1`, where the system automatically calculates the value to be approximately 1 second.
 {{% /tags/wrap %}}
 
@@ -2401,7 +2353,6 @@ The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms]
 ##### --backfill_index_write_batch_size
 
 {{% tags/wrap %}}
-
 
 Default: `128`
 {{% /tags/wrap %}}
@@ -2579,7 +2530,7 @@ As the `ssl_protocols` setting does not propagate to PostgreSQL, if you specify 
 
 ### Authentication and authorization flags
 
-### YSQL
+#### YSQL
 
 The following flags support the use of the [YSQL API](../../../api/ysql/):
 
@@ -2867,7 +2818,6 @@ Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron exte
 
 {{% tags/wrap %}}
 
-
 Default: `yugabyte`
 {{% /tags/wrap %}}
 
@@ -2892,7 +2842,6 @@ As long as no data has been flushed from the buffer, the database can retry quer
 
 {{% tags/wrap %}}
 
-
 Default: `1024`
 {{% /tags/wrap %}}
 
@@ -2904,7 +2853,6 @@ See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If
 
 {{% tags/wrap %}}
 
-
 Default: `true`
 {{% /tags/wrap %}}
 
@@ -2913,7 +2861,6 @@ Controls whether YSQL follower reads that specify a not-yet-safe read time shoul
 ##### --enable_ysql_operation_lease
 
 {{% tags/wrap %}}
-
 
 Default: `true`
 {{% /tags/wrap %}}
@@ -2926,7 +2873,6 @@ On YB-TServers, a new PostgreSQL process is spawned only after establishing a le
 
 {{% tags/wrap %}}
 
-
 Default: `1000` (1 second)
 {{% /tags/wrap %}}
 
@@ -2934,7 +2880,7 @@ Determines the interval a YB-TServer waits before initiating another YSQL lease 
 
 Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-refresher-interval-ms) for more details.
 
-### YCQL
+#### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
 
