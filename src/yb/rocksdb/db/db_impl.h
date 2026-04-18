@@ -36,6 +36,7 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/background_error.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/compaction.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -970,7 +971,7 @@ class DBImpl : public DB {
   };
 
   // Have we encountered a background error in paranoid mode?
-  Status bg_error_;
+  BackgroundError bg_error_;
 
   // shall we disable deletion of obsolete files
   // if 0 the deletion is enabled.
