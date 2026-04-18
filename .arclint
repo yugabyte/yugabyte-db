@@ -1,1 +1,245 @@
-.lint
+{
+  "exclude": [
+     "([.]clang-tidy)",
+     "([.]csv$)",
+     "([.]dump$)",
+     "([.]gitignore$)",
+     "([.]ipynb$)",
+     "([.]l$)",
+     "([.]out$)",
+     "([.]patch$)",
+     "([.]svg$)",
+     "([.]txt$)",
+     "(^[.]gitmodules$)",
+     "(Makefile$)",
+     "(src/yb/common/ql_type[.]cc$)",
+     "(src/yb/gutil/valgrind[.]h$)",
+     "(^src/odyssey/)",
+     "(^src/inline-thirdparty/)",
+     "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
+     "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
+     "(^managed/src/main/resources/alert/.*[.]template$)",
+     "(^managed/src/main/resources/v1[.]routes$)",
+     "(^managed/src/main/public/swagger-ui/)",
+     "(^managed/src/main/resources/swagger[.]json$)",
+     "(^managed/src/main/resources/swagger-strict[.]json$)",
+     "(^managed/src/main/resources/logback.*[.]xml$)",
+     "(^managed/src/test/resources/alert/test_alert_definition[.]yml$)",
+     "(^managed/src/test/resources/audit/.*[.]yml$)",
+     "(^managed/src/test/resources/metric/targets_.*[.]json$)",
+     "(^managed/src/test/resources/backup/ybc_success_file_with_index_tables.json$)",
+     "(^managed/src/test/resources/logback.*[.]xml$)",
+     "(^managed/build[.]sbt$)",
+     "(^managed/src/main/resources/aws_pricing/)",
+     "(^python/yugabyte/test_data/.*[.](log|out|json)$)",
+     "(^managed/src/main/resources/metric/Dashboard[.]json$)",
+     "(^managed/src/main/resources/metric/recording_rules[.]yml$)",
+     "(^managed/devops/replicated[.]yml$)",
+     "(^managed/devops/roles/)",
+     "(^python/yb/py[.]typed$)",
+     "(^managed/RUNTIME-FLAGS[.]md$)",
+     "(^managed/yba-cli/docs/)",
+     "(^managed/yba-cli/.*/LICENSE$)",
+     "(^managed/yba-cli/NOTICE$)",
+     "(^managed/yba-cli/internal/formatter/tabwriter/*)",
+     "(^managed/yba-cli/internal/formatter/templates/*)",
+     "(^managed/yba-cli/templates/*)",
+     "(/py.typed)",
+     "(^troubleshoot/backend/gradlew)",
+     "(^troubleshoot/backend/gradlew[.]bat)",
+     "(^troubleshoot/backend/build.gradle.kts)",
+     "(^troubleshoot/backend/.*/application[.]properties)",
+     "(^troubleshoot/backend/src/main/resources/)",
+     "(^troubleshoot/backend/src/test/resources/)",
+     "(^managed/src/main/resources/gflag_groups/)",
+     "(^managed/src/main/resources/openapi/)",
+     "(^managed/src/main/resources/openapi_templates/)",
+     "(^managed/client/go/templates/)",
+     "(^yb_release_manifest.json$)",
+     "(^src/yb/tools/.*pl$)",
+     "(^yugabyted-ui/ui/package-lock.json)",
+     "(^managed/node-agent/resources/.*\\.ini$)",
+     "(^managed/node-agent/resources/.*\\.j2$)",
+     "(^managed/src/main/java/com/yugabyte/yw/common/operator/resources/.*\\.yaml$)"
+  ],
+  "linters": {
+    "go-files": {
+         "type": "golint",
+         "include": "(^managed/yba-cli/.*[.]go$)"
+     },
+     "go-files-length": {
+         "type": "text",
+        "text.max-line-length": 120,
+         "include": "(^managed/yba-cli/.*[.]go$)",
+         "severity": {
+             "2": "disabled"
+         }
+     },
+    "script-and-regex.script": {
+      "type": "script-and-regex",
+      "include": "(^managed/.*[.]java$)",
+      "script-and-regex.script":
+      "managed/lint/lint-java.sh",
+      "script-and-regex.regex":
+        "/(?P<message>.*)/is"
+    },
+    "text": {
+      "type": "text",
+      "text.max-line-length": 100,
+      "exclude": [
+        "(/pom[.]xml$)",
+        "([.]md$)",
+        "([.]sql$)",
+        "(^pg15_tests/.*[.](sh|tsv)$)",
+        "(^managed/.*[.]go$)",
+        "(^managed/.*/go[.]mod)",
+        "(^managed/.*/go[.]sum)",
+        "(^managed/yba-cli/GNUmakefile)",
+        "(^managed/ui/)",
+        "(^troubleshoot/troubleshooting-framework-ui/)",
+        "(^yugabyted-ui/.*/go[.]mod)",
+        "(^yugabyted-ui/.*/go[.]sum)",
+        "(^yugabyted-ui/ui/src/api/)",
+        "(^yugabyted-ui/ui/src/assets/)",
+        "(^yugabyted-ui/ui/src/translations/)",
+        "(^yugabyted-ui/ui/.*[.]json)",
+        "(^thirdparty/thirdparty_src_checksums[.]txt$)",
+        "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
+        "(^cmake_modules/cotire[.]cmake$)",
+        "(^cmake_modules/FindBoost[.]cmake$)",
+        "(^[.]fossa[.]yml$)",
+        "(^managed/.*[.]conf)",
+        "(^src/postgres/)"
+      ]
+    },
+    "pycodestyle": {
+      "type": "pep8",
+      "include": "([.]py$)",
+      "exclude": [
+        "(^[.]ycm_extra_conf[.]py$)",
+        "(^src/postgres/)",
+        "(^thirdparty/)"
+      ],
+      "bin": "pycodestyle",
+      "flags": ["--max-line-length=100"]
+    },
+    "googlecpplint": {
+      "type": "googlecpplint",
+      "exclude": [
+        "(^src/postgres/)",
+        "(^src/yb/yql/cql/ql/kwlist[.]h$)",
+        "(^src/yb/gutil/linux_syscall_support[.]h$)",
+        "(^src/yb/gutil/cycleclock-inl[.]h$)",
+        "(^src/yb/gutil/spinlock_linux-inl[.]h$)",
+        "(^src/yb/gutil/port[.]h$)",
+        "(^src/yb/rocksdb/util/murmurhash[.]cc$)",
+        "(_pch[.]h$)"
+      ],
+      "include": [
+        "([.]cpp$)",
+        "([.]cc$)",
+        "([.]c$)",
+        "([.]hpp$)",
+        "([.]h$)"
+      ],
+      "cpplint.header_guard_root_dir": "src",
+      "cpplint.max_line_length": 100,
+      "severity.rules": {
+        "(^readability/inheritance$)": "disabled",
+        "(^readability/todo$)": "disabled",
+        "(^runtime/string$)": "disabled",
+        "(^whitespace/parens$)": "disabled",
+        "(^whitespace/blank_line$)": "disabled",
+        "(^build/include_what_you_use$)": "disabled",
+        "(^build/c[+][+]11$)": "disabled",
+        "(.*)": "error"
+      }
+    },
+    "postgres": {
+      "type": "script-and-regex",
+      "exclude": [
+        "(^src/yb/)"
+      ],
+      "include": [
+        "([.]c$)",
+        "([.]h$)"
+      ],
+      "script-and-regex.script": "src/lint/postgres.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "regress_schedule": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/.+/yb_[^/]*schedule$)"
+      ],
+      "script-and-regex.script": "src/lint/regress_schedule.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "regress_test": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/.+/(specs|sql|expected)/[^/]+$)",
+        "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*[^/]*$)"
+      ],
+      "exclude": [
+        "(^src/postgres/third-party-extensions/age/sql/)",
+        "(^src/postgres/third-party-extensions/documentdb/pg_documentdb/sql/.*$)",
+        "(^src/postgres/third-party-extensions/documentdb/pg_documentdb_core/sql/.*$)",
+        "(^src/postgres/third-party-extensions/pg_hint_plan/.*$)",
+        "(^src/postgres/third-party-extensions/pgvector/sql/.*$)"
+      ],
+      "script-and-regex.script": "src/lint/regress_test.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "typedefs_list": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/postgres/src/.*typedefs.list$)"
+      ],
+      "script-and-regex.script": "src/lint/typedefs_list.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "unique_sort": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/lint/upstream_repositories.csv$)",
+        "(^src/postgres/src/.+/yb[^/]*typedefs.list$)"
+      ],
+      "script-and-regex.script": "src/lint/unique_sort.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+)/m"
+    },
+    "ybc_pg": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/yb/yql/.+/ybc_[^/]*[.]h$)"
+      ],
+      "script-and-regex.script": "src/lint/ybc_pg.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "yql_extern_c": {
+      "type": "script-and-regex",
+      "include": [
+        "(^src/yb/yql/.+[.]h$)"
+      ],
+      "script-and-regex.script": "src/lint/yql_extern_c.sh",
+      "script-and-regex.regex":
+        "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "client-version-check": {
+      "type": "script-and-regex",
+      "include": [
+        "(^managed/src/main/resources/swagger[.]json$)",
+        "(^managed/src/main/resources/openapi/.*[.]yaml$)"
+      ],
+      "script-and-regex.script": "managed/lint/check-client-version.sh",
+      "script-and-regex.regex":
+        "/^ERROR: (?P<message>.*)$/m"
+    }
+  }
+}
