@@ -440,9 +440,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection = null;
     }
 
-    verifyClusterAcceptsPGConnections(
-                    WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS *
-                    BuildTypeUtil.nonSanitizerVsSanitizer(1, 3));
+    long pgStartTimeoutMs = WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS *
+        BuildTypeUtil.nonSanitizerVsSanitizer(1, 3);
+    verifyClusterAcceptsPGConnections(pgStartTimeoutMs);
+    waitForAllTServerPgWebservers(pgStartTimeoutMs);
 
     connection = createTestRole();
     allowSchemaPublic();
@@ -479,6 +480,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         }
       }, timeoutMs);
     LOG.info("done Waiting for cluster to accept pg connections");
+  }
+
+  protected void waitForAllTServerPgWebservers(long timeoutMs) throws Exception {
+    if (!pg_connection_check_after_startup) {
+      return;
+    }
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      TestUtils.waitForServer(ts.getLocalhostIP(), ts.getPgsqlWebPort(), timeoutMs);
+    }
   }
 
   protected void disablePGConnectionCheck() {
