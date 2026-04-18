@@ -160,7 +160,7 @@ Location of the SSL certificate file (in .pem format) to use for the web server.
 Default: `""`
 {{% /tags/wrap %}}
 
-Domain used for `.htpasswd` authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
+Domain used for `.htpasswd` authentication. This should be used in conjunction with [--webserver_password_file](#webserver-password-file).
 
 ##### --webserver_password_file
 
@@ -177,7 +177,7 @@ Location of the `.htpasswd` file containing usernames and hashed passwords, for 
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
+Default: Same as [--fs_data_dirs](#fs-data-dirs)
 {{% /tags/wrap %}}
 
 The directory to write yb-tserver log files.
@@ -584,7 +584,7 @@ For example:
 SET default_transaction_isolation='repeatable read';
 ```
 
-See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
+See [transaction isolation levels](../../../architecture/transactions/isolation-levels/) for reference.
 
 See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
 
@@ -712,12 +712,8 @@ The number of comma-separated values should match the total number of YB-Master 
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{% tags/feature/t-server %}}
+{{<tags/feature/t-server>}}
 {{% /tags/wrap %}}
-
-Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
-
-The values must match on all [yb-master](../yb-master/#rpc-bind-addresses) and yb-tserver configurations.
 
 Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/tserver/conf/server.conf`. For example:
 
@@ -726,7 +722,11 @@ egrep -i rpc /home/yugabyte/tserver/conf/server.conf
 --rpc_bind_addresses=172.161.x.x:9100
 ```
 
-Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) flag is set correctly if the following applies:
+Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
+
+The values must match on all [yb-master](../yb-master/#rpc-bind-addresses) and yb-tserver configurations.
+
+Make sure that the [server_broadcast_addresses](#server-broadcast-addresses) flag is set correctly if the following applies:
 
 - `rpc_bind_addresses` is set to `0.0.0.0`
 - `rpc_bind_addresses` involves public IP addresses such as, for example, `0.0.0.0:9100`, which instructs the server to listen on all available network interfaces.
@@ -746,7 +746,6 @@ Specifies the public IP or DNS hostname of the server (with an optional port). T
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-{{% tags/feature/t-server %}}
 Default: `60000` (1 minute)
 {{% /tags/wrap %}}
 
@@ -765,10 +764,10 @@ Specifies the policy that determines when to use private IP addresses for inter-
 
 Valid values for the policy are:
 
-- `never` — Always use [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
-- `cloud` — Use the private IP address across all zones in a cloud; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the cloud.
-- `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
+- `never` — Always use [--server_broadcast_addresses](#server-broadcast-addresses).
+- `zone` — Use the private IP inside a zone; use [--server_broadcast_addresses](#server-broadcast-addresses) outside the zone.
+- `cloud` — Use the private IP address across all zones in a cloud; use [--server_broadcast_addresses](#server-broadcast-addresses) outside the cloud.
+- `region` — Use the private IP address across all zone in a region; use [--server_broadcast_addresses](#server-broadcast-addresses) outside the region.
 
 ### Geo-distribution flags
 
@@ -1035,7 +1034,7 @@ Clusters created using yugabyted always use a default value of `1`.
 
 - This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 - If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
-- The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
+- The [CREATE TABLE ...SPLIT INTO](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
 
 {{< /note >}}
 
@@ -1268,7 +1267,7 @@ Default: `2`
 
 Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
 
-The following set of flags are only relevant for CDC using the PostgreSQL replication protocol. To learn about CDC using the PostgreSQL replication protocol, see [CDC using logical replication](../../../architecture/docdb-replication/cdc-logical-replication).
+The following set of flags are only relevant for CDC using the PostgreSQL replication protocol. To learn about CDC using the PostgreSQL replication protocol, see [CDC using logical replication](../../../architecture/docdb-replication/cdc-logical-replication/).
 
 ##### --ysql_yb_default_replica_identity
 
@@ -1311,7 +1310,7 @@ Default: `4194304` (4MB)
 
 Maximum size (in bytes) of changes from a tablet sent from the CDC service to the gRPC connector when using the gRPC replication protocol.
 
-Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol.
+Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication/) (VWAL) to the Walsender process when using the PostgreSQL replication protocol.
 
 ##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
 
@@ -1321,7 +1320,7 @@ Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architec
 Default: `1 MB`
 {{% /tags/wrap %}}
 
-Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
+Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication/)(VWAL) for a particular tablet.
 
 ##### --ysql_cdc_active_replication_slot_window_ms
 
@@ -1448,7 +1447,7 @@ The RPC queue size of the xCluster service. Should match the size of [tablet_ser
 
 The packed row format for the YSQL API is {{<tags/feature/ga>}} as of v2.20.0, and for the YCQL API is {{<tags/feature/tp>}}.
 
-To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
+To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows/) in the architecture section.
 
 ##### --ysql_enable_packed_row
 
@@ -2561,7 +2560,7 @@ Default: `0.0.0.0:5433`
 
 Specifies the TCP/IP bind addresses for the YSQL API. The default value of `0.0.0.0:5433` allows listening for all IPv4 addresses access to localhost on port `5433`. The `--pgsql_proxy_bind_address` value overwrites `listen_addresses` (default value of `127.0.0.1:5433`) that controls which interfaces accept connection attempts.
 
-To specify fine-grained access control over who can access the server, use [`--ysql_hba_conf`](#ysql-hba-conf).
+To specify fine-grained access control over who can access the server, use [--ysql_hba_conf](#ysql-hba-conf).
 
 ##### --pgsql_proxy_webserver_port
 
@@ -2821,7 +2820,7 @@ Default: `1048576`
 
 Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
 
-As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-restart-error).
+As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-restart-error/).
 
 ##### --ysql_yb_bnl_batch_size
 
@@ -2913,7 +2912,7 @@ Specifies if YCQL tables are created with transactions enabled by default.
 Default: `false`
 {{% /tags/wrap %}}
 
-Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate/) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table/) privileges.
+Set this flag to `true` to reject [TRUNCATE](../../../api/ycql/dml_truncate/) statements unless allowed by [DROP TABLE](../../../api/ycql/ddl_drop_table/) privileges.
 
 ##### --ycql_enable_audit_log
 
@@ -2931,7 +2930,7 @@ Default: `false`
 
 Set this flag to `true` to enable a superuser to reset a password.
 
-Note that to enable the password reset feature, you must first set the [`use_cassandra_authentication`](#use-cassandra-authentication) flag to false.
+Note that to enable the password reset feature, you must first set the [use_cassandra_authentication](#use-cassandra-authentication) flag to false.
 
 <!--
 ## Admin UI

@@ -127,7 +127,7 @@ Specifies the time source used by the database. Set this to `clockbound` for con
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `""` (empty; the web UI binds to the first host IP from [`--rpc_bind_addresses`](#rpc-bind-addresses))
+Default: `""` (empty; the web UI binds to the first host IP from [--rpc_bind_addresses](#rpc-bind-addresses))
 {{% /tags/wrap %}}
 
 The address to bind for the web server user interface.
@@ -166,7 +166,7 @@ Location of the SSL certificate file (in .pem format) to use for the web server.
 Default: `""`
 {{% /tags/wrap %}}
 
-Domain used for `.htpasswd` authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
+Domain used for `.htpasswd` authentication. This should be used in conjunction with [--webserver_password_file](#webserver-password-file).
 
 ##### --webserver_password_file
 
@@ -183,7 +183,7 @@ Location of the `.htpasswd` file containing usernames and hashed passwords, for 
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
+Default: Same as [--fs_data_dirs](#fs-data-dirs)
 {{% /tags/wrap %}}
 
 The directory to write YB-Master log files.
@@ -336,10 +336,6 @@ The number of comma-separated values should match the total number of YB-Master 
 {{% tags/feature/t-server %}}
 {{% /tags/wrap %}}
 
-Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
-
-The values used must match on all yb-master and [yb-tserver](../yb-tserver/#rpc-bind-addresses) configurations.
-
 Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/master/conf/server.conf`. For example:
 
 ```sh
@@ -347,7 +343,11 @@ egrep -i rpc /home/yugabyte/master/conf/server.conf
 --rpc_bind_addresses=172.161.x.x:7100
 ```
 
-Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) flag is set correctly if the following applies:
+Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
+
+The values used must match on all yb-master and [yb-tserver](../yb-tserver/#rpc-bind-addresses) configurations.
+
+Make sure that the [server_broadcast_addresses](#server-broadcast-addresses) flag is set correctly if the following applies:
 
 - `rpc_bind_addresses` is set to `0.0.0.0`
 - `rpc_bind_addresses` involves public IP addresses such as, for example, `0.0.0.0:7100`, which instructs the server to listen on all available network interfaces.
@@ -390,10 +390,10 @@ Specifies the policy that determines when to use private IP addresses for inter-
 
 Valid values for the policy are:
 
-- `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP if destination node is located in the same cloud, region and zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
+- `never` — Always use the [--server_broadcast_addresses](#server-broadcast-addresses).
+- `zone` — Use the private IP if destination node is located in the same cloud, region and zone; use the [--server_broadcast_addresses](#server-broadcast-addresses) outside the zone.
 - `cloud` - Use the private IP if destination node is located in the same cloud.
-- `region` — Use the private IP address if destination node is located in the same cloud and region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
+- `region` — Use the private IP address if destination node is located in the same cloud and region; use [--server_broadcast_addresses](#server-broadcast-addresses) outside the region.
 
 ### Geo-distribution flags
 
@@ -531,7 +531,7 @@ In a typical deployment, the values used for write ahead log (WAL) flags in [yb-
 Default: `true`
 {{% /tags/wrap %}}
 
-If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-ms) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. Using `false` is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single-AZ deployments, keep this flag `true`.
+If set to `false`, the writes to the WAL are synced to disk every [interval_durable_wal_write_ms](#interval-durable-wal-write-ms) milliseconds (ms) or every [bytes_durable_wal_write_mb](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. Using `false` is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single-AZ deployments, keep this flag `true`.
 
 ##### --interval_durable_wal_write_ms
 
@@ -540,7 +540,7 @@ If set to `false`, the writes to the WAL are synced to disk every [`interval_dur
 Default: `1000`
 {{% /tags/wrap %}}
 
-When [`--durable_wal_write`](#durable-wal-write) is false, writes to the WAL are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
+When [--durable_wal_write](#durable-wal-write) is false, writes to the WAL are synced to disk every `--interval_durable_wal_write_ms` or [--bytes_durable_wal_write_mb](#bytes-durable-wal-write-mb), whichever comes first.
 
 ##### --bytes_durable_wal_write_mb
 
@@ -549,7 +549,7 @@ When [`--durable_wal_write`](#durable-wal-write) is false, writes to the WAL are
 Default: `1`
 {{% /tags/wrap %}}
 
-When [`--durable_wal_write`](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
+When [--durable_wal_write](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
 ##### --log_min_seconds_to_retain
 
@@ -560,7 +560,7 @@ Default: `7200` (2 hours)
 
 The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted in the given time period.
 
-The `--log_min_seconds_to_retain` value should match the value for [`--follower_unavailable_considered_failed_sec`](#follower-unavailable-considered-failed-sec).
+The `--log_min_seconds_to_retain` value should match the value for [--follower_unavailable_considered_failed_sec](#follower-unavailable-considered-failed-sec).
 
 ##### --log_min_segments_to_retain
 
@@ -742,7 +742,7 @@ Clusters created using yugabyted always use a default value of `1`.
 
 - This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 - If the value is set to *Default* (`-1`), then the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
-- The [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used on a per-table basis to override the `yb_num_shards_per_tserver` value.
+- The [CREATE TABLE ... WITH TABLETS = <num>](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used on a per-table basis to override the `yb_num_shards_per_tserver` value.
 
 {{< /note >}}
 
@@ -772,7 +772,7 @@ Clusters created using yugabyted always use a default value of `1`.
 
 - This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 - If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
-- The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
+- The [CREATE TABLE ...SPLIT INTO](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
 
 {{< /note >}}
 
@@ -865,7 +865,7 @@ This value must match on all yb-master and yb-tserver configurations of a Yugaby
 Default: `1`
 {{% /tags/wrap %}}
 
-The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_low_phase_size_threshold_bytes`](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
+The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [--tablet_split_low_phase_size_threshold_bytes](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
 
 ##### --tablet_split_low_phase_size_threshold_bytes
 
@@ -874,7 +874,7 @@ The threshold number of shards (per cluster node) in a table below which automat
 Default: `134217728`
 {{% /tags/wrap %}}
 
-The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
+The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [--tablet_split_low_phase_shard_count_per_node](./#tablet-split-low-phase-shard-count-per-node).
 
 ##### --tablet_split_high_phase_shard_count_per_node
 
@@ -883,7 +883,7 @@ The size threshold used to determine if a tablet should be split when the tablet
 Default: `24`
 {{% /tags/wrap %}}
 
-The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_high_phase_size_threshold_bytes`](./#tablet-split-high-phase-size-threshold-bytes) to determine which tablets to split.
+The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [--tablet_split_high_phase_size_threshold_bytes](./#tablet-split-high-phase-size-threshold-bytes) to determine which tablets to split.
 
 ##### --tablet_split_high_phase_size_threshold_bytes
 
@@ -892,7 +892,7 @@ The threshold number of shards (per cluster node) in a table below which automat
 Default: `10737418240`
 {{% /tags/wrap %}}
 
-The size threshold used to determine if a tablet should be split when the tablet's table is in the "high" phase of automatic tablet splitting. See [`--tablet_split_high_phase_shard_count_per_node`](./#tablet-split-high-phase-shard-count-per-node).
+The size threshold used to determine if a tablet should be split when the tablet's table is in the "high" phase of automatic tablet splitting. See [--tablet_split_high_phase_shard_count_per_node](./#tablet-split-high-phase-shard-count-per-node).
 
 ##### --tablet_force_split_threshold_bytes
 
@@ -1004,7 +1004,7 @@ yb-admin --master_addresses <master-addresses> --tablet_force_split_size_thresho
 
 For details on automatic tablet splitting, see the following:
 
-- [Automatic tablet splitting](../../../architecture/docdb-sharding/tablet-splitting) — Architecture overview.
+- [Automatic tablet splitting](../../../architecture/docdb-sharding/tablet-splitting/) — Architecture overview.
 - [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) — Architecture design document in the GitHub repository.
 
 ### DDL atomicity flags
@@ -1291,7 +1291,7 @@ Use of this flag can potentially result in expiration of live data. Use at your 
 
 The packed row format for the YSQL API is {{<tags/feature/ga>}} as of v2.20.0, and for the YCQL API is {{<tags/feature/tp>}}.
 
-To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
+To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows/) in the architecture section.
 
 ##### --ysql_enable_packed_row
 
@@ -1569,7 +1569,7 @@ Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to
 Default: `-1000` (use the built-in default percentage; commonly `25` when [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is false).
 {{% /tags/wrap %}}
 
-Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [`--db_block_cache_size_bytes`](#db-block-cache-size-bytes) is `-1`. The special value `-1000` means to use the built-in default for this flag. The special value `-3` means to use an older default that does not take the amount of RAM into account.
+Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [--db_block_cache_size_bytes](#db-block-cache-size-bytes) is `-1`. The special value `-1000` means to use the built-in default for this flag. The special value `-3` means to use an older default that does not take the amount of RAM into account.
 
 ##### --tablet_overhead_size_percentage
 
@@ -1596,7 +1596,7 @@ Default: `7200` (2 hours)
 
 The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat.
 
-The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
+The `--follower_unavailable_considered_failed_sec` value should match the value for [--log_min_seconds_to_retain](#log-min-seconds-to-retain).
 
 ##### --evict_failed_followers
 
@@ -2031,7 +2031,7 @@ For information on using this parameter to configure CBO, refer to [Enable cost-
 
 ### Auto Analyze service flags
 
-To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 Auto analyze is automatically enabled when the [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO) is enabled by setting the [yb_enable_cbo](../yb-tserver/#yb_enable_cbo) flag to `on`.
 
@@ -2069,8 +2069,9 @@ Default: `false`
 {{% /tags/wrap %}}
 
 If enabled, YB-Master avoids launching any new index-backfill jobs on the cluster for all new YCQL indexes.
-You will need to run [`yb-admin backfill_indexes_for_table`](../../../admin/yb-admin/#backfill-indexes-for-table) manually for indexes to be functional.
-See [`CREATE DEFERRED INDEX`](../../../api/ycql/ddl_create_index/#deferred-index) for reference.
+
+You will need to run [yb-admin backfill_indexes_for_table](../../../admin/yb-admin/#backfill-indexes-for-table) manually for indexes to be functional.
+See [CREATE DEFERRED INDEX](../../../api/ycql/ddl_create_index/#deferred-index) for reference.
 
 ##### --allow_batching_non_deferred_indexes
 
@@ -2319,7 +2320,7 @@ Default: `0.0.0.0:5433`
 
 Specifies the TCP/IP bind addresses for the YSQL API. The default value of `0.0.0.0:5433` allows listening for all IPv4 addresses access to localhost on port `5433`. The `--pgsql_proxy_bind_address` value overwrites `listen_addresses` (default value of `127.0.0.1:5433`) that controls which interfaces accept connection attempts.
 
-To specify fine-grained access control over who can access the server, use [`--ysql_hba_conf`](#ysql-hba-conf).
+To specify fine-grained access control over who can access the server, use [--ysql_hba_conf](#ysql-hba-conf).
 
 ##### --pgsql_proxy_webserver_port
 
@@ -2579,7 +2580,7 @@ Default: `1048576`
 
 Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
 
-As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-restart-error).
+As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-restart-error/).
 
 ##### --ysql_yb_bnl_batch_size
 
