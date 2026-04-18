@@ -1128,7 +1128,7 @@ void TabletServerPathHandlers::HandleXClusterPage(
   output << "<h1>xCluster state</h1>\n";
 
   if (!xcluster_outbound_stream_stats.empty()) {
-    output << "<h3>xCluster outbound streams</h3>\n";
+    auto group_fs = html_print_helper.CreateFieldset("xCluster outbound streams");
 
     auto xcluster_streams = html_print_helper.CreateTablePrinter(
         "xcluster_streams",
@@ -1137,18 +1137,20 @@ void TabletServerPathHandlers::HandleXClusterPage(
          "WAL index sent", "WAL end index", "Last poll at", "Status"});
 
     for (const auto& stat : xcluster_outbound_stream_stats) {
-      xcluster_streams.AddRow(
-          stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
-          stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
-          StringPrintf("%.3f", stat.mbs_sent), stat.records_sent, stat.avg_get_changes_latency_ms,
-          stat.sent_index, stat.latest_index, stat.last_poll_time.ToFormattedString(), stat.status);
+      xcluster_streams
+          .AddRow(
+              stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
+              stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
+              StringPrintf("%.3f", stat.mbs_sent), stat.records_sent,
+              stat.avg_get_changes_latency_ms, stat.sent_index, stat.latest_index,
+              stat.last_poll_time.ToFormattedString(), stat.status)
+          .SetColor(stat.status);
     }
     xcluster_streams.Print();
   }
 
   if (!xcluster_inbound_stream_stats.empty()) {
-    output << "<h3>xCluster inbound streams</h3>\n";
-
+    auto group_fs = html_print_helper.CreateFieldset("xCluster inbound streams");
     auto xcluster_pollers = html_print_helper.CreateTablePrinter(
         "xcluster_pollers",
         {"ReplicationGroup Id", "Stream Id", "Consumer Table Id", "Consumer Tablet Id",
@@ -1157,12 +1159,15 @@ void TabletServerPathHandlers::HandleXClusterPage(
          "Avg apply latency (ms)", "WAL index received", "Last poll At", "Status"});
 
     for (const auto& stat : xcluster_inbound_stream_stats) {
-      xcluster_pollers.AddRow(
-          stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
-          stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
-          StringPrintf("%.3f", stat.avg_throughput_kbps), StringPrintf("%.3f", stat.mbs_received),
-          stat.records_received, stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms,
-          stat.received_index, stat.last_poll_time.ToFormattedString(), stat.status);
+      xcluster_pollers
+          .AddRow(
+              stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
+              stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
+              StringPrintf("%.3f", stat.avg_throughput_kbps),
+              StringPrintf("%.3f", stat.mbs_received), stat.records_received,
+              stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms, stat.received_index,
+              stat.last_poll_time.ToFormattedString(), stat.status)
+          .SetColor(stat.status);
     }
     xcluster_pollers.Print();
   }

@@ -3461,13 +3461,12 @@ Status CatalogManager::DoSplitTablet(
       source_tablet_info, split_encoded_keys, split_partition_keys, is_manual_split, epoch);
 }
 
-Result<TabletInfoPtr> CatalogManager::GetTabletInfo(TabletIdView tablet_id)
-    EXCLUDES(mutex_) {
+Result<TabletInfoPtr> CatalogManager::GetTabletInfo(TabletIdView tablet_id) const EXCLUDES(mutex_) {
   SharedLock lock(mutex_);
   return GetTabletInfoUnlocked(tablet_id);
 }
 
-Result<TabletInfoPtr> CatalogManager::GetTabletInfoUnlocked(TabletIdView tablet_id)
+Result<TabletInfoPtr> CatalogManager::GetTabletInfoUnlocked(TabletIdView tablet_id) const
     REQUIRES_SHARED(mutex_) {
   const auto tablet_info = FindPtrOrNull(*tablet_map_, tablet_id);
   if (tablet_info == nullptr) {

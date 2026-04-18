@@ -37,6 +37,7 @@
 #include <iomanip>
 #include <map>
 #include <memory>
+#include <regex>
 #include <sstream>
 #include <unordered_set>
 
@@ -59,6 +60,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/async_rbs_info_task.h"
@@ -185,6 +187,84 @@ std::string TSDescriptorToHtml(const std::string& ts_uuid,
                 EscapeForHtmlToString(HostPortPBToString(*public_http_hp)),
                 UrlEncodeToString(tablet_id),
                 EscapeForHtmlToString(public_http_hp->host()));
+}
+
+std::unordered_map<xcluster::ReplicationGroupId, std::unordered_map<TabletId, TabletId>>
+GetProducerTabletToConsumerTabletMap(const master::SysClusterConfigEntryPB& config) {
+  std::unordered_map<xcluster::ReplicationGroupId, std::unordered_map<TabletId, TabletId>> map;
+  for (const auto& [replication_group_id, producer_entry] :
+       config.consumer_registry().producer_map()) {
+    auto& tablet_map = map[xcluster::ReplicationGroupId(replication_group_id)];
+    for (const auto& [_, stream_entry] : producer_entry.stream_map()) {
+      for (const auto& [consumer_tablet_id, producer_tablets] :
+           stream_entry.consumer_producer_tablet_map()) {
+        for (const auto& producer_tablet_id : producer_tablets.tablets()) {
+          tablet_map[producer_tablet_id] = consumer_tablet_id;
+        }
+      }
+    }
+  }
+  return map;
+}
+
+Result<std::string> GetTserverXClusterUrlForLeader(
+    const master::CatalogManagerIf& catalog_manager,
+    const std::unordered_map<TabletId, TabletId>& producer_tablet_to_consumer_tablet_map,
+    const TabletId& producer_tablet_id) {
+  auto* consumer_tablet_id = FindOrNull(producer_tablet_to_consumer_tablet_map, producer_tablet_id);
+  SCHECK(
+      consumer_tablet_id, NotFound, "Consumer tablet not found for producer tablet $0",
+      producer_tablet_id);
+  auto tablet_info = VERIFY_RESULT(catalog_manager.GetTabletInfo(*consumer_tablet_id));
+  auto tablet_leader = VERIFY_RESULT(tablet_info->GetLeader());
+  auto public_http_hp = GetPublicHttpHostPort(tablet_leader->GetRegistration());
+  SCHECK(
+      public_http_hp, NotFound, "Unable to get public HTTP host port for consumer tablet $0",
+      *consumer_tablet_id);
+  return Format(
+      "$0://$1/xcluster", GetProtocol(),
+      EscapeForHtmlToString(HostPortPBToString(*public_http_hp)));
+}
+
+std::string LinkifyTabletIds(
+    const std::string& xcluster_status, const master::CatalogManagerIf& catalog_manager,
+    const std::unordered_map<TabletId, TabletId>& producer_tablet_to_consumer_tablet_map) {
+  static const std::regex kTabletIdRegex("Producer Tablet IDs: ([0-9a-f,]+)");
+
+  // Extract all tablet IDs from the status string and resolve their tserver URLs.
+  std::unordered_map<TabletId, std::string> tablet_to_link;
+  for (auto it =
+           std::sregex_iterator(xcluster_status.begin(), xcluster_status.end(), kTabletIdRegex);
+       it != std::sregex_iterator(); ++it) {
+    if (it->size() < 2) {
+      VLOG(1) << "Invalid tablet ID regex match: " << it->str();
+      continue;
+    }
+    for (const auto& tablet_id : SplitStringUsing((*it)[1].str(), ",")) {
+      if (tablet_to_link.contains(tablet_id)) {
+        continue;
+      }
+      auto url = GetTserverXClusterUrlForLeader(
+          catalog_manager, producer_tablet_to_consumer_tablet_map, tablet_id);
+      if (url && !url->empty()) {
+        tablet_to_link[tablet_id] = Format("<a href=\"$0\">$1</a>", url, tablet_id);
+      } else {
+        LOG_IF(WARNING, !url) << "Unable to get XCluster URL for tablet " << tablet_id << ": "
+                              << url.status();
+        tablet_to_link[tablet_id] = tablet_id;
+      }
+    }
+  }
+
+  // Replace each tablet ID in the HTML-escaped status string with its link.
+  auto result = EscapeForHtmlToString(xcluster_status);
+  for (const auto& [tablet_id, link] : tablet_to_link) {
+    auto pos = result.find(tablet_id);
+    if (pos != std::string::npos) {
+      result.replace(pos, tablet_id.size(), link);
+    }
+  }
+  return result;
 }
 
 }  // namespace
@@ -3112,10 +3192,18 @@ void MasterPathHandlers::HandleXCluster(
         outbound_group_table_id++;
 
         for (const auto& table_status : namespace_status.table_statuses) {
-          outbound_replication_group.AddRow(
-              table_status.full_table_name, table_status.table_id, table_status.stream_id,
-              table_status.state, BoolToString(table_status.is_checkpointing),
-              BoolToString(table_status.is_part_of_initial_bootstrap));
+          auto color = HtmlTableRowColor::Default;
+          if (table_status.state.contains("PAUSED") || table_status.state.contains("INITIATED")) {
+            color = HtmlTableRowColor::Yellow;
+          } else if (table_status.state != "ACTIVE") {
+            color = HtmlTableRowColor::Red;
+          }
+          outbound_replication_group
+              .AddRow(
+                  table_status.full_table_name, table_status.table_id, table_status.stream_id,
+                  table_status.state, BoolToString(table_status.is_checkpointing),
+                  BoolToString(table_status.is_part_of_initial_bootstrap))
+              .SetColor(color);
         }
         outbound_replication_group.Print();
       }
@@ -3123,13 +3211,21 @@ void MasterPathHandlers::HandleXCluster(
   }
 
   if (!xcluster_status.outbound_table_stream_statuses.empty()) {
-    output << "<br><h3>Outbound table streams</h3>\n";
+    auto group_fs = html_print_helper.CreateFieldset("Outbound table streams");
     auto outbound_streams = html_print_helper.CreateTablePrinter(
         "outbound_table_streams", {"Table name", "Table Id", "Stream Id", "State"});
     for (const auto& table_status : xcluster_status.outbound_table_stream_statuses) {
-      outbound_streams.AddRow(
-          table_status.full_table_name, table_status.table_id, table_status.stream_id,
-          table_status.state);
+      auto color = HtmlTableRowColor::Default;
+      if (table_status.state.contains("PAUSED")) {
+        color = HtmlTableRowColor::Yellow;
+      } else if (table_status.state != "OK") {
+        color = HtmlTableRowColor::Red;
+      }
+      outbound_streams
+          .AddRow(
+              table_status.full_table_name, table_status.table_id, table_status.stream_id,
+              table_status.state)
+          .SetColor(color);
     }
     outbound_streams.Print();
   }
@@ -3137,6 +3233,17 @@ void MasterPathHandlers::HandleXCluster(
   output << "<br><h3>Inbound Replication Groups</h3>\n";
 
   uint32 inbound_group_table_id = 0;
+
+  std::unordered_map<xcluster::ReplicationGroupId, std::unordered_map<TabletId, TabletId>>
+      producer_tablet_to_consumer_tablet_map;
+  auto cluster_config_result = master_->catalog_manager()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
+    LOG(WARNING) << "Failed to get cluster config: " << cluster_config_result.status().ToString();
+  } else {
+    producer_tablet_to_consumer_tablet_map =
+        GetProducerTabletToConsumerTabletMap(*cluster_config_result);
+  }
+
   for (const auto& inbound_replication_group : xcluster_status.inbound_replication_group_statuses) {
     auto group_fs = html_print_helper.CreateFieldset(
         Format("Group: $0", inbound_replication_group.replication_group_id));
@@ -3161,21 +3268,35 @@ void MasterPathHandlers::HandleXCluster(
          inbound_replication_group.table_statuses_by_namespace) {
       auto namespace_fs = html_print_helper.CreateFieldset(Format("Namespace: $0", namespace_name));
 
-      auto inbound_replication_group = html_print_helper.CreateTablePrinter(
+      auto inbound_group_table = html_print_helper.CreateTablePrinter(
           "inbound_replication_group", inbound_group_table_id,
           {"Table name", "Producer Table Id", "Stream Id", "Consumer Table Id",
            "Producer Tablet Count", "Consumer Tablet Count", "Local tserver optimized",
            "Producer schema version", "Consumer schema version", "Status"});
       inbound_group_table_id++;
       for (const auto& table_status : table_statuses) {
-        inbound_replication_group.AddRow(
-            table_status.full_table_name, table_status.source_table_id, table_status.stream_id,
-            table_status.target_table_id, table_status.source_tablet_count,
-            table_status.target_tablet_count, BoolToString(table_status.local_tserver_optimized),
-            table_status.source_schema_version, table_status.target_schema_version,
-            table_status.status);
+        std::string status_html;
+        HtmlTableRowColor color =
+            table_status.status == "OK" ? HtmlTableRowColor::Default : HtmlTableRowColor::Red;
+        if (producer_tablet_to_consumer_tablet_map.contains(
+                inbound_replication_group.replication_group_id)) {
+          status_html = LinkifyTabletIds(
+              table_status.status, *master_->catalog_manager(),
+              producer_tablet_to_consumer_tablet_map.at(
+                  inbound_replication_group.replication_group_id));
+        } else {
+          status_html = table_status.status;
+        }
+        inbound_group_table
+            .AddRow(
+                table_status.full_table_name, table_status.source_table_id, table_status.stream_id,
+                table_status.target_table_id, table_status.source_tablet_count,
+                table_status.target_tablet_count,
+                BoolToString(table_status.local_tserver_optimized),
+                table_status.source_schema_version, table_status.target_schema_version, status_html)
+            .SetColor(color);
       }
-      inbound_replication_group.Print();
+      inbound_group_table.Print();
     }
   }
 }
