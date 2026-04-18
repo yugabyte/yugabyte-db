@@ -794,8 +794,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
 
   @Test
   public void testDmlTransactionAfterAlterOnCurrentResourceWithCachedMetadata() throws Exception {
-    skipYsqlConnMgr(BasePgSQLTest.CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE,
-                isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE);
     // Scenario 2. Execute any DML type after DDL.
     // a) For PG metadata cached table:
     //    Transaction should conflict since we are using
@@ -838,8 +837,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, two logical
     // connections use the same physical connection, leading to unexpected
     // results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
-        isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
 
     for (AlterCommand alterType : AlterCommand.values()) {
       String expectedErrorOnInsert;
@@ -866,8 +864,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, any two
     // logical connections share the same physical connection, leading to
     // unexpected results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
-        isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
 
     LOG.info("Run multiple transactions before altering the resource");
     runMultipleTxnsBeforeAlterTable();
@@ -898,8 +895,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
   public void testTransactionConflictErrorCode() throws Exception {
     // (DB-12741) Disabling the test due to a flaky failure point when run with
     // connection manager, needs further investigation.
-    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR,
-        isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR);
 
     try (Connection conn1 = getConnectionBuilder().connect();
          Statement stmt1 = conn1.createStatement();

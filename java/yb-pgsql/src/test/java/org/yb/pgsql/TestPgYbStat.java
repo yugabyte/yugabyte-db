@@ -153,8 +153,7 @@ public class TestPgYbStat extends BasePgSQLTest {
   public void testYbTerminatedQueriesMultipleCauses() throws Exception {
     // (DB-12741) Test is flaky with connection manager irrespective of warmup
     // mode. Disable the test for now when running with connection manager.
-    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR,
-        isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.INCORRECT_CONN_STATE_BEHAVIOR);
 
     // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
     // that can potentially be leftover from another test in this class. This would let us start

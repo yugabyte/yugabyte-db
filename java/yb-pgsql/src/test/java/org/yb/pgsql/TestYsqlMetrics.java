@@ -261,8 +261,7 @@ public class TestYsqlMetrics extends BasePgSQLTest {
   public void testMetricRows() throws Exception {
     // Reason for skipping the test with Connection Manager is mentioned in the test below wherever
     // it fails.
-    skipYsqlConnMgr(CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN,
-          isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN);
     try (Statement stmt = getConnectionBuilder()
                           .withConnectionEndpoint(ConnectionEndpoint.DEFAULT)
                           .connect()
