@@ -11,9 +11,11 @@
 # is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
-#
-# YugabyteDB linter: reads .lint and runs the configured linters on changed files (or files
-# passed on the command line).
+"""YugabyteDB linter.
+
+Reads the repo's ``.lint`` config and runs the configured linters on changed files (or files
+passed on the command line).
+"""
 
 from __future__ import annotations
 
@@ -35,6 +37,8 @@ DEFAULT_CPPLINT = (shutil.which("cpplint.py")
 
 @dataclass
 class Message:
+    """A single lint finding."""
+
     path: str
     line: int | None
     severity: str
@@ -43,12 +47,15 @@ class Message:
     linter: str
 
     def format(self) -> str:
+        """Render the message as a single display line."""
         loc = f":{self.line}" if self.line else ""
         return f"{self.severity.upper()} {self.linter}/{self.code} {self.path}{loc}: {self.message}"
 
 
 @dataclass
 class Linter:
+    """A configured linter from ``.lint`` with compiled include/exclude regexes."""
+
     name: str
     config: dict
     includes: list[re.Pattern] = field(default_factory=list)
@@ -56,11 +63,13 @@ class Linter:
 
     @classmethod
     def build(cls, name: str, config: dict, global_excludes: list[re.Pattern]) -> "Linter":
+        """Create a Linter from raw JSON config plus the repo-wide exclude patterns."""
         includes = _compile_patterns(config.get("include", []))
         excludes = list(global_excludes) + _compile_patterns(config.get("exclude", []))
         return cls(name=name, config=config, includes=includes, excludes=excludes)
 
     def matches(self, path: str) -> bool:
+        """Return True if ``path`` should be linted by this linter."""
         if self.includes and not any(p.search(path) for p in self.includes):
             return False
         return not any(p.search(path) for p in self.excludes)
@@ -93,20 +102,14 @@ def _changed_files() -> list[str]:
         except subprocess.CalledProcessError:
             continue
     ref = base or "HEAD"
-    committed = _git("diff", "--name-only", "--diff-filter=d", ref).splitlines()
-    uncommitted = _git("diff", "--name-only", "--diff-filter=d", "HEAD").splitlines()
-    untracked = _git("ls-files", "--others", "--exclude-standard").splitlines()
-    seen: set[str] = set()
-    result: list[str] = []
-    for path in committed + uncommitted + untracked:
-        if path and path not in seen:
-            seen.add(path)
-            result.append(path)
-    return result
+    committed = set(_git("diff", "--name-only", "--diff-filter=d", ref).splitlines())
+    uncommitted = set(_git("diff", "--name-only", "--diff-filter=d", "HEAD").splitlines())
+    untracked = set(_git("ls-files", "--others", "--exclude-standard").splitlines())
+    return sorted(p for p in (committed | uncommitted | untracked) if p)
 
 
 def _load_config() -> dict:
-    with open(REPO_ROOT / ".lint") as f:
+    with open(REPO_ROOT / ".lint", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -124,6 +127,7 @@ def _normalize_path(path: str) -> str:
 
 
 def run_text(linter: Linter, files: list[str]) -> list[Message]:
+    """Built-in text linter: line length, trailing whitespace, EOF newline, tab characters."""
     max_len = int(linter.config.get("text.max-line-length", 80))
     severity = linter.config.get("severity", {})
     msgs: list[Message] = []
@@ -134,10 +138,9 @@ def run_text(linter: Linter, files: list[str]) -> list[Message]:
         except OSError as exc:
             msgs.append(Message(path, None, "error", "read", str(exc), linter.name))
             continue
-        if data and not data.endswith(b"\n"):
-            if severity.get("3") != "disabled":
-                msgs.append(Message(path, None, "warning", "file-no-newline",
-                                    "File does not end with newline", linter.name))
+        if data and not data.endswith(b"\n") and severity.get("3") != "disabled":
+            msgs.append(Message(path, None, "warning", "file-no-newline",
+                                "File does not end with newline", linter.name))
         for i, raw in enumerate(data.splitlines(), start=1):
             try:
                 line = raw.decode("utf-8")
@@ -148,7 +151,8 @@ def run_text(linter: Linter, files: list[str]) -> list[Message]:
                                     "Trailing whitespace", linter.name))
             if len(line) > max_len and severity.get("2") != "disabled":
                 msgs.append(Message(path, i, "warning", "line-too-long",
-                                    f"Line longer than {max_len} chars ({len(line)})", linter.name))
+                                    f"Line longer than {max_len} chars ({len(line)})",
+                                    linter.name))
             if b"\t" in raw and severity.get("2") != "disabled":
                 msgs.append(Message(path, i, "advice", "tab-literal",
                                     "Tab character in source", linter.name))
@@ -156,6 +160,7 @@ def run_text(linter: Linter, files: list[str]) -> list[Message]:
 
 
 def run_pep8(linter: Linter, files: list[str]) -> list[Message]:
+    """Run pycodestyle (a.k.a. pep8) on ``files``."""
     binary = linter.config.get("bin", "pycodestyle")
     flags = linter.config.get("flags", [])
     msgs: list[Message] = []
@@ -163,7 +168,7 @@ def run_pep8(linter: Linter, files: list[str]) -> list[Message]:
         print(f"[lint] skipping {linter.name}: {binary} not found", file=sys.stderr)
         return msgs
     proc = subprocess.run([binary, *flags, *files], cwd=REPO_ROOT, text=True,
-                          capture_output=True)
+                          capture_output=True, check=False)
     pat = re.compile(r"^(?P<path>.+?):(?P<line>\d+):(?P<col>\d+):\s+(?P<code>\S+)\s+(?P<msg>.*)$")
     for line in proc.stdout.splitlines():
         m = pat.match(line)
@@ -175,7 +180,13 @@ def run_pep8(linter: Linter, files: list[str]) -> list[Message]:
     return msgs
 
 
+def _cpplint_filter_arg(severity_rules: dict) -> str:
+    disabled = [rule.strip("()^$") for rule, sev in severity_rules.items() if sev == "disabled"]
+    return ",".join(f"-{d}" for d in disabled) if disabled else ""
+
+
 def run_cpplint(linter: Linter, files: list[str]) -> list[Message]:
+    """Run Google's cpplint.py on ``files``."""
     binary = DEFAULT_CPPLINT
     if not os.access(binary, os.X_OK):
         print(f"[lint] skipping {linter.name}: cpplint.py not executable at {binary}",
@@ -183,20 +194,14 @@ def run_cpplint(linter: Linter, files: list[str]) -> list[Message]:
         return []
     max_len = int(linter.config.get("cpplint.max_line_length", 80))
     header_root = linter.config.get("cpplint.header_guard_root_dir", "")
-    severity_rules = linter.config.get("severity.rules", {})
-    disabled: list[str] = []
-    for rule, sev in severity_rules.items():
-        if sev == "disabled":
-            raw = rule.strip("()^$")
-            disabled.append(raw)
-    filter_arg = ",".join(f"-{d}" for d in disabled) if disabled else ""
+    filter_arg = _cpplint_filter_arg(linter.config.get("severity.rules", {}))
     cmd = [binary, f"--linelength={max_len}"]
     if header_root:
         cmd.append(f"--root={header_root}")
     if filter_arg:
         cmd.append(f"--filter={filter_arg}")
     cmd.extend(files)
-    proc = subprocess.run(cmd, cwd=REPO_ROOT, text=True, capture_output=True)
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, text=True, capture_output=True, check=False)
     pat = re.compile(
         r"^(?P<path>.+?):(?P<line>\d+):\s+(?P<msg>.+?)\s+\[(?P<code>[^\]]+)\]\s+\[\d+\]$")
     msgs: list[Message] = []
@@ -213,11 +218,13 @@ def run_cpplint(linter: Linter, files: list[str]) -> list[Message]:
 
 
 def run_golint(linter: Linter, files: list[str]) -> list[Message]:
+    """Run ``golint`` on ``files``."""
     binary = shutil.which("golint")
     if not binary:
         print(f"[lint] skipping {linter.name}: golint not found", file=sys.stderr)
         return []
-    proc = subprocess.run([binary, *files], cwd=REPO_ROOT, text=True, capture_output=True)
+    proc = subprocess.run([binary, *files], cwd=REPO_ROOT, text=True, capture_output=True,
+                          check=False)
     pat = re.compile(r"^(?P<path>.+?):(?P<line>\d+):\d+:\s+(?P<msg>.*)$")
     msgs: list[Message] = []
     for line in proc.stdout.splitlines():
@@ -228,9 +235,8 @@ def run_golint(linter: Linter, files: list[str]) -> list[Message]:
     return msgs
 
 
-def run_script_and_regex(linter: Linter, files: list[str]) -> list[Message]:
-    script = linter.config["script-and-regex.script"]
-    raw_regex = linter.config["script-and-regex.regex"]
+def _parse_perl_regex(raw_regex: str) -> re.Pattern:
+    """Convert a Perl-style ``/pattern/flags`` string (as used in .lint) into a Python pattern."""
     delim = raw_regex[0]
     end = raw_regex.rfind(delim)
     body = raw_regex[1:end]
@@ -242,18 +248,24 @@ def run_script_and_regex(linter: Linter, files: list[str]) -> list[Message]:
         re_flags |= re.DOTALL
     if "m" in flags_str:
         re_flags |= re.MULTILINE
-    pat = re.compile(body, re_flags)
+    return re.compile(body, re_flags)
 
+
+def run_script_and_regex(linter: Linter, files: list[str]) -> list[Message]:
+    """Run a shell script per file and parse its output with the configured regex."""
+    script = linter.config["script-and-regex.script"]
+    pat = _parse_perl_regex(linter.config["script-and-regex.regex"])
     msgs: list[Message] = []
     for path in files:
         proc = subprocess.run(["bash", "-c", f"{script} \"$0\"", path], cwd=REPO_ROOT,
-                              text=True, capture_output=True)
+                              text=True, capture_output=True, check=False)
         output = (proc.stdout or "") + (proc.stderr or "")
-        matches = list(pat.finditer(output)) if re_flags & re.MULTILINE else (
-            [pat.search(output)] if pat.search(output) else [])
+        if pat.flags & re.MULTILINE:
+            matches = list(pat.finditer(output))
+        else:
+            m = pat.search(output)
+            matches = [m] if m else []
         for m in matches:
-            if m is None:
-                continue
             gd = m.groupdict()
             line = gd.get("line")
             msgs.append(Message(
@@ -279,14 +291,25 @@ RUNNERS = {
 # --- Main ------------------------------------------------------------------------------------
 
 
+def _resolve_files(args: argparse.Namespace) -> list[str]:
+    if args.everything:
+        return subprocess.check_output(
+            ["git", "ls-files"], cwd=REPO_ROOT, text=True).splitlines()
+    if args.paths:
+        return [_normalize_path(p) for p in args.paths]
+    return _changed_files()
+
+
 def main() -> int:
+    """Entry point: parse args, load config, run linters, print findings."""
     ap = argparse.ArgumentParser(description="YugabyteDB linter.")
     ap.add_argument("paths", nargs="*", help="Files to lint. If omitted, uses changed files.")
     ap.add_argument("--everything", action="store_true",
                     help="Lint all tracked files (ignores paths).")
     ap.add_argument("--only", action="append", default=[],
                     help="Only run linters whose name matches (repeatable).")
-    ap.add_argument("--list-linters", action="store_true", help="List configured linters and exit.")
+    ap.add_argument("--list-linters", action="store_true",
+                    help="List configured linters and exit.")
     args = ap.parse_args()
 
     cfg = _load_config()
@@ -299,14 +322,7 @@ def main() -> int:
             print(f"{linter.name}\t{linter.config.get('type')}")
         return 0
 
-    if args.everything:
-        files = subprocess.check_output(
-            ["git", "ls-files"], cwd=REPO_ROOT, text=True).splitlines()
-    elif args.paths:
-        files = [_normalize_path(p) for p in args.paths]
-    else:
-        files = _changed_files()
-
+    files = _resolve_files(args)
     if not files:
         print("No files to lint.")
         return 0
@@ -323,7 +339,7 @@ def main() -> int:
             continue
         try:
             all_msgs.extend(runner(linter, matched))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             print(f"[lint] {linter.name} failed: {exc}", file=sys.stderr)
 
     for m in all_msgs:
