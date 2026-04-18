@@ -424,7 +424,7 @@ class Benchmark {
   virtual ~Benchmark() {}
   virtual void Run() {
     std::cout << "Number of threads: " << num_threads_ << std::endl;
-    std::vector<std::thread> threads;
+    std::vector<std::thread> threads;  // NOLINT(build/std_thread)
     uint64_t bytes_written = 0;
     uint64_t bytes_read = 0;
     uint64_t read_hits = 0;
@@ -456,7 +456,7 @@ class Benchmark {
     }
   }
 
-  virtual void RunThreads(std::vector<std::thread>* threads,
+  virtual void RunThreads(std::vector<std::thread>* threads,  // NOLINT(build/std_thread)
                           uint64_t* bytes_written, uint64_t* bytes_read,
                           bool write, uint64_t* read_hits) = 0;
 
