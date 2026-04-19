@@ -32,9 +32,9 @@ HostPortPB MakeHostPortPB(std::string&& host, uint32_t port) {
 
 CloudInfoPB MakeCloudInfoPB(std::string&& cloud, std::string&& region, std::string&& zone) {
   CloudInfoPB result;
-  *result.mutable_placement_cloud() = std::move(cloud);
-  *result.mutable_placement_region() = std::move(region);
-  *result.mutable_placement_zone() = std::move(zone);
+  if (cloud != "*") *result.mutable_placement_cloud() = std::move(cloud);
+  if (region != "*") *result.mutable_placement_region() = std::move(region);
+  if (zone != "*") *result.mutable_placement_zone() = std::move(zone);
   return result;
 }
 
@@ -63,10 +63,15 @@ bool PlacementInfoContainsCloudInfo(
   return false;
 }
 
+// Returns true if cloud_info is compatible with at least one placement block in placement_info.
+// Compatibility is bidirectional: cloud_info matches a block if either the block contains
+// cloud_info or cloud_info contains the block (where containment accounts for wildcards,
+// represented as unset fields).
 bool CloudInfoMatchesPlacementInfo(
     const CloudInfoPB& cloud_info, const PlacementInfoPB& placement_info) {
   for (const auto& placement_block : placement_info.placement_blocks()) {
-    if (CloudInfoContainsCloudInfo(cloud_info, placement_block.cloud_info())) {
+    if (CloudInfoContainsCloudInfo(cloud_info, placement_block.cloud_info()) ||
+        CloudInfoContainsCloudInfo(placement_block.cloud_info(), cloud_info)) {
       return true;
     }
   }
