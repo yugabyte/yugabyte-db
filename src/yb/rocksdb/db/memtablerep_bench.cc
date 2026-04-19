@@ -60,25 +60,21 @@ using GFLAGS::ParseCommandLineFlags;
 using GFLAGS::SetUsageMessage;
 
 DEFINE_UNKNOWN_string(benchmarks, "fillrandom",
-              "Comma-separated list of benchmarks to run. Options:\n"
-              "\tfillrandom             -- write N random values\n"
-              "\tfillseq                -- write N values in sequential order\n"
-              "\treadrandom             -- read N values in random order\n"
-              "\treadseq                -- scan the DB\n"
-              "\treadwrite              -- 1 thread writes while N - 1 threads "
-              "do random\n"
-              "\t                          reads\n"
-              "\tseqreadwrite           -- 1 thread writes while N - 1 threads "
-              "do scans\n");
+              "Comma-separated list of benchmarks to run. Options: "
+              "fillrandom -- write N random values; "
+              "fillseq -- write N values in sequential order; "
+              "readrandom -- read N values in random order; "
+              "readseq -- scan the DB; "
+              "readwrite -- 1 thread writes while N - 1 threads do random reads; "
+              "seqreadwrite -- 1 thread writes while N - 1 threads do scans.");
 
 DEFINE_UNKNOWN_string(memtablerep, "skiplist",
               "Which implementation of memtablerep to use. See "
-              "include/memtablerep.h for\n"
-              "  more details. Options:\n"
-              "\tskiplist            -- backed by a skiplist\n"
-              "\tvector              -- backed by an std::vector\n"
-              "\thashskiplist        -- backed by a hash skip list\n"
-              "\thashlinklist        -- backed by a hash linked list\n");
+              "include/memtablerep.h for more details. Options: "
+              "skiplist -- backed by a skiplist; "
+              "vector -- backed by an std::vector; "
+              "hashskiplist -- backed by a hash skip list; "
+              "hashlinklist -- backed by a hash linked list.");
 
 DEFINE_UNKNOWN_int64(bucket_count, 1000000,
              "bucket_count parameter to pass into NewHashSkiplistRepFactory or "
@@ -110,8 +106,8 @@ DEFINE_UNKNOWN_int32(
 
 DEFINE_UNKNOWN_int32(
     num_threads, 1,
-    "Number of concurrent threads to run. If the benchmark includes writes,\n"
-    "then at most one thread will be a writer");
+    "Number of concurrent threads to run. If the benchmark includes writes, "
+    "then at most one thread will be a writer.");
 
 DEFINE_UNKNOWN_int32(num_operations, 1000000,
              "Number of operations to do for write and random read benchmarks");
@@ -428,7 +424,7 @@ class Benchmark {
   virtual ~Benchmark() {}
   virtual void Run() {
     std::cout << "Number of threads: " << num_threads_ << std::endl;
-    std::vector<std::thread> threads;
+    std::vector<std::thread> threads;  // NOLINT(build/std_thread)
     uint64_t bytes_written = 0;
     uint64_t bytes_read = 0;
     uint64_t read_hits = 0;
@@ -460,7 +456,7 @@ class Benchmark {
     }
   }
 
-  virtual void RunThreads(std::vector<std::thread>* threads,
+  virtual void RunThreads(std::vector<std::thread>* threads,  // NOLINT(build/std_thread)
                           uint64_t* bytes_written, uint64_t* bytes_read,
                           bool write, uint64_t* read_hits) = 0;
 
@@ -481,7 +477,8 @@ class FillBenchmark : public Benchmark {
     num_write_ops_per_thread_ = FLAGS_num_operations;
   }
 
-  void RunThreads(std::vector<std::thread>* threads, uint64_t* bytes_written,
+  void RunThreads(std::vector<std::thread>* threads,  // NOLINT(build/std_thread)
+                  uint64_t* bytes_written,
                   uint64_t* bytes_read, bool write,
                   uint64_t* read_hits) override {
     FillBenchmarkThread(table_, key_gen_, bytes_written, bytes_read, sequence_,
@@ -497,7 +494,8 @@ class ReadBenchmark : public Benchmark {
     num_read_ops_per_thread_ = FLAGS_num_operations / FLAGS_num_threads;
   }
 
-  void RunThreads(std::vector<std::thread>* threads, uint64_t* bytes_written,
+  void RunThreads(std::vector<std::thread>* threads,  // NOLINT(build/std_thread)
+                  uint64_t* bytes_written,
                   uint64_t* bytes_read, bool write,
                   uint64_t* read_hits) override {
     for (int i = 0; i < FLAGS_num_threads; ++i) {
@@ -521,7 +519,8 @@ class SeqReadBenchmark : public Benchmark {
     num_read_ops_per_thread_ = FLAGS_num_scans;
   }
 
-  void RunThreads(std::vector<std::thread>* threads, uint64_t* bytes_written,
+  void RunThreads(std::vector<std::thread>* threads,  // NOLINT(build/std_thread)
+                  uint64_t* bytes_written,
                   uint64_t* bytes_read, bool write,
                   uint64_t* read_hits) override {
     for (int i = 0; i < FLAGS_num_threads; ++i) {
@@ -548,7 +547,8 @@ class ReadWriteBenchmark : public Benchmark {
     num_write_ops_per_thread_ = FLAGS_num_operations;
   }
 
-  void RunThreads(std::vector<std::thread>* threads, uint64_t* bytes_written,
+  void RunThreads(std::vector<std::thread>* threads,  // NOLINT(build/std_thread)
+                  uint64_t* bytes_written,
                   uint64_t* bytes_read, bool write,
                   uint64_t* read_hits) override {
     std::atomic_int threads_done;
