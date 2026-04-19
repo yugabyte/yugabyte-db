@@ -61,7 +61,7 @@ class Socket;
 
 namespace rpc {
 
-using ThreadPoolProvider = std::function<ThreadPoolScopedPtr(ThreadPoolTag)>;
+using ThreadPoolProvider = std::function<ThreadPoolPtr(ThreadPoolTag)>;
 
 // A pool of threads that handle new incoming RPC calls.
 // Also includes a queue that calls get pushed onto for handling by the pool.

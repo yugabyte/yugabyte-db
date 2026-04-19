@@ -675,84 +675,74 @@ void YBTaggedThreadPools::Shutdown() {
   {
     std::lock_guard lock(mutex_);
     shutting_down_ = true;
-    pools_by_tag_.Emplace();
-    std::swap(pools, pools_holder_);
+    std::swap(pools, pools_);
   }
   for (auto& pool : pools | std::views::values) {
     pool->Shutdown();
   }
 }
 
-YBThreadPoolScopedPtr YBTaggedThreadPools::LookupPool(Tag tag) {
-  auto pools_by_tag = pools_by_tag_.get();
-  auto itr = pools_by_tag->find(tag);
-  if (itr != pools_by_tag->end()) {
+YBThreadPoolPtr YBTaggedThreadPools::LookupPool(Tag tag) {
+  auto itr = pools_.find(tag);
+  if (itr != pools_.end()) {
     return itr->second;
   }
   return nullptr;
 }
 
-Result<YBThreadPoolScopedPtr> YBTaggedThreadPools::Pool(Tag tag) {
-  if (auto pool = LookupPool(tag)) {
-    return pool;
+Result<YBThreadPoolPtr> YBTaggedThreadPools::Pool(Tag tag) {
+  {
+    SharedLock lock(mutex_);
+    if (auto pool = LookupPool(tag)) {
+      return pool;
+    }
   }
 
-  UniqueLock<std::mutex> lock(mutex_);
-  if (auto pool = LookupPool(tag)) {
-    return pool;
-  }
-  if (shutting_down_) {
-    return STATUS(ShutdownInProgress, "thread pools shutting down");
+  std::vector<YBThreadPoolPtr> to_shutdown;
+  YBThreadPoolPtr pool;
+  {
+    std::lock_guard lock(mutex_);
+    if (auto pool = LookupPool(tag)) {
+      return pool;
+    }
+    if (shutting_down_) {
+      return STATUS(ShutdownInProgress, "thread pools shutting down");
+    }
+    to_shutdown = CleanupIdlePools();
+
+    pool = pools_.try_emplace(
+      tag, std::make_shared<YBThreadPool>(options_generator_(tag))).first->second;
   }
 
-  CleanupIdlePools(lock);
-
-  auto pool = pools_holder_.try_emplace(
-      tag, make_scoped_refptr<RefCountedData<YBThreadPool>>(options_generator_(tag))).first->second;
-  pools_by_tag_.Emplace(pools_holder_);
+  for (const auto& shutdown_pool : to_shutdown) {
+    shutdown_pool->Shutdown();
+  }
   return pool;
 }
 
-void YBTaggedThreadPools::CleanupIdlePools(UniqueLock<std::mutex>& lock) {
-  // To avoid the case where someone calls Pool(tag) on an idle pool, then CleanupIdlePools()
-  // shuts down the pool before they are able to queue on the pool, we do the following:
-  // 1. prevent new callers of Pool(tag) from accessing the pool without mutex, by updating
-  //    pools_by_tag_ with idle pools removed.
-  // 2. shutdown and delete any pool with ref_count == 2 and no workers, since this means no one
-  //    else has access to it to queue new tasks, and nothing is running.
-  // 3. add any other removed pools back to pools_by_tag_, since someone else holds a reference and
-  //    may queue new tasks.
-  // This depends on the ref_count increment having acquire memory order, which is true for
-  // RefCountedThreadSafe + scoped_refptr but not for std::shared_ptr.
-  std::vector<YBThreadPoolScopedPtr> shutdown;
+size_t YBTaggedThreadPools::ActivePools() {
+  SharedLock lock(mutex_);
+  return pools_.size();
+}
 
-  PoolMap temp_pools_by_tag;
-  PoolMap shutdown_candidates;
-  for (auto& [tag, pool] : pools_holder_) {
-    // Two references: pools_holder_ and pools_by_tag_.
-    if (pool.HasTwoRef() && pool->NumWorkers() == 0) {
-      shutdown_candidates.try_emplace(tag, pool);
+std::vector<YBThreadPoolPtr> YBTaggedThreadPools::CleanupIdlePools() {
+  std::vector<YBThreadPoolPtr> to_shutdown;
+  auto itr = pools_.begin();
+  while (itr != pools_.end()) {
+    auto& pool = itr->second;
+    // use_count() and shared_ptr reference count increment are both relaxed memory ordering. But
+    // obtaining a reference from YBTaggedThreadPools requires mutex, and assuming absence of
+    // weak_ptr, it is impossible to obtain a reference from outside YBTaggedThreadPools when
+    // use_count() == 1. So there is no issue with use_count() increasing after this check, unless
+    // weak_ptr is used.
+    if (pool.use_count() == 1 && pool->NumWorkers() == 0) {
+      to_shutdown.emplace_back(std::move(pool));
+      itr = pools_.erase(itr);
     } else {
-      temp_pools_by_tag.try_emplace(tag, pool);
+      ++itr;
     }
   }
-  pools_by_tag_.Emplace(std::move(temp_pools_by_tag));
-  for (auto& [tag, pool] : shutdown_candidates) {
-    // Two references: pools_holder_ and to_remove.
-    if (pool.HasTwoRef() && pool->NumWorkers() == 0) {
-      shutdown.emplace_back(std::move(pool));
-      pools_holder_.erase(tag);
-    }
-  }
-  pools_by_tag_.Emplace(pools_holder_);
-
-  [&] NO_THREAD_SAFETY_ANALYSIS {
-    lock.unlock();
-    for (auto& pool : shutdown) {
-      pool->Shutdown();
-    }
-    lock.lock();
-  }();
+  return to_shutdown;
 }
 
 } // namespace yb

@@ -178,7 +178,7 @@ class TestServer {
 
  private:
   std::unique_ptr<Messenger> messenger_;
-  ThreadPoolScopedPtr thread_pool_;
+  ThreadPoolPtr thread_pool_;
   scoped_refptr<ServicePool> service_pool_;
   Endpoint bound_endpoint_;
 };

@@ -21,7 +21,6 @@
 
 #include "yb/gutil/port.h"
 
-#include "yb/util/concurrent_value.h"
 #include "yb/util/debug/leakcheck_disabler.h"
 #include "yb/util/metrics.h"
 #include "yb/util/lockfree.h"
@@ -275,7 +274,7 @@ class ThreadSubPool : public ThreadSubPoolBase, public TaskRecipient<ThreadPoolT
   bool Enqueue(ThreadPoolTask* task) override;
 };
 
-using YBThreadPoolScopedPtr = scoped_refptr<RefCountedData<YBThreadPool>>;
+using YBThreadPoolPtr = std::shared_ptr<YBThreadPool>;
 // Set of thread pools where each thread pool is associated with a tag (uint64_t). This is useful
 // for managing sets of thread pools where each is associated with a different cgroup.
 // Pools are cleaned up when they have no threads in them and no one else holding references to
@@ -291,29 +290,22 @@ class YBTaggedThreadPools {
 
   void Shutdown() EXCLUDES(mutex_);
 
-  Result<YBThreadPoolScopedPtr> Pool(Tag tag) EXCLUDES(mutex_);
+  Result<YBThreadPoolPtr> Pool(Tag tag) EXCLUDES(mutex_);
 
-  size_t ActivePools() {
-    return pools_by_tag_.get()->size();
-  }
+  size_t ActivePools() EXCLUDES(mutex_);
 
  private:
-  YBThreadPoolScopedPtr LookupPool(Tag tag);
+  YBThreadPoolPtr LookupPool(Tag tag) REQUIRES_SHARED(mutex_);
 
-  void CleanupIdlePools(UniqueLock<std::mutex>& lock) REQUIRES(mutex_);
+  std::vector<YBThreadPoolPtr> CleanupIdlePools() REQUIRES(mutex_);
 
-  // We must use a scoped_refptr instead of std::shared_ptr, because we check ref_count == 1 in
-  // order to determine whether it is safe to shutdown an idle pool. std::shared_ptr::use_count()
-  // cannot be used for this purpose since std::shared_ptr is allowed to use relaxed atomic
-  // increments.
-  using PoolMap = std::unordered_map<uint64_t, YBThreadPoolScopedPtr>;
+  using PoolMap = std::unordered_map<uint64_t, YBThreadPoolPtr>;
 
   const OptionsGenerator options_generator_;
 
-  std::mutex mutex_;
+  std::shared_mutex mutex_;
   bool shutting_down_ GUARDED_BY(mutex_) = false;
-  PoolMap pools_holder_ GUARDED_BY(mutex_);
-  ConcurrentValue<PoolMap> pools_by_tag_;
+  PoolMap pools_ GUARDED_BY(mutex_);
 };
 
 } // namespace yb

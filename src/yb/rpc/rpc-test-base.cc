@@ -527,7 +527,7 @@ class AbacusService: public rpc_test::AbacusServiceIf {
 TestServer::TestServer(std::unique_ptr<Messenger>&& messenger,
                        const TestServerOptions& options)
     : messenger_(std::move(messenger)),
-      thread_pool_(make_scoped_refptr<RefCountedData<ThreadPool>>(ThreadPoolOptions {
+      thread_pool_(std::make_shared<ThreadPool>(ThreadPoolOptions {
         .name = "rpc-test",
         .max_workers = options.n_worker_threads,
       })) {

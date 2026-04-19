@@ -131,7 +131,7 @@ using Strand = yb::Strand;
 using StrandTask = yb::StrandTask;
 using TaggedThreadPools = YBTaggedThreadPools;
 using ThreadPool = YBThreadPool;
-using ThreadPoolScopedPtr = scoped_refptr<RefCountedData<ThreadPool>>;
+using ThreadPoolPtr = std::shared_ptr<ThreadPool>;
 using ThreadPoolTag = uint64_t;
 using ThreadPoolTask = yb::ThreadPoolTask;
 

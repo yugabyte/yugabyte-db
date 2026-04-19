@@ -108,9 +108,9 @@ class ThreadPoolToken {
 class ThreadPool {
  public:
   explicit ThreadPool(const ThreadPoolOptions& options)
-      : underlying_(make_scoped_refptr<RefCountedData<YBThreadPool>>(options)) {}
+      : underlying_(std::make_shared<YBThreadPool>(options)) {}
 
-  explicit ThreadPool(YBThreadPoolScopedPtr underlying) : underlying_(std::move(underlying)) {}
+  explicit ThreadPool(YBThreadPoolPtr underlying) : underlying_(std::move(underlying)) {}
 
   void Shutdown() {
     underlying_->Shutdown();
@@ -158,7 +158,7 @@ class ThreadPool {
   template <class F>
   Status DoSubmit(const F& f);
 
-  YBThreadPoolScopedPtr underlying_;
+  YBThreadPoolPtr underlying_;
 };
 
 class ThreadPoolBuilder {

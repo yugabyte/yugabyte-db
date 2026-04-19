@@ -415,7 +415,7 @@ rpc::ThreadPool& Messenger::ThreadPool(ServicePriority priority) {
   return *ThreadPoolPtr(priority);
 }
 
-const ThreadPoolScopedPtr& Messenger::ThreadPoolPtr(ServicePriority priority) {
+const ThreadPoolPtr& Messenger::ThreadPoolPtr(ServicePriority priority) {
   switch (priority) {
     case ServicePriority::kNormal:
       return default_normal_thread_pool_;
@@ -427,7 +427,7 @@ const ThreadPoolScopedPtr& Messenger::ThreadPoolPtr(ServicePriority priority) {
       if (high_priority_thread_pool_ready_.load(std::memory_order_acquire)) {
         return high_priority_thread_pool_;
       }
-      high_priority_thread_pool_ = make_scoped_refptr<RefCountedData<rpc::ThreadPool>>(
+      high_priority_thread_pool_ = std::make_shared<rpc::ThreadPool>(
           rpc::ThreadPoolOptions {
             .name = name_ + "-high-pri",
             .max_workers = thread_pool_workers_limit_,
@@ -438,7 +438,7 @@ const ThreadPoolScopedPtr& Messenger::ThreadPoolPtr(ServicePriority priority) {
   FATAL_INVALID_ENUM_VALUE(ServicePriority, priority);
 }
 
-Result<ThreadPoolScopedPtr> Messenger::TaggedThreadPool(TaggedThreadPools::Tag tag) {
+Result<ThreadPoolPtr> Messenger::TaggedThreadPool(TaggedThreadPools::Tag tag) {
   return normal_thread_pools_->Pool(tag);
 }
 

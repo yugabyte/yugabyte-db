@@ -626,7 +626,7 @@ TEST_F(ThreadPoolTest, TestCgroupTaggedPools) {
 
   SleepFor(DefaultIdleTimeout() * 2);
 
-  ASSERT_OK(tagged_pools.Pool(kTotalPools + 1));
+  ASSERT_OK(tagged_pools.Pool(kTotalPools));
   // Newly created pool + pool 1.
   ASSERT_EQ(tagged_pools.ActivePools(), 2);
 }

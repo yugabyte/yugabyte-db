@@ -196,7 +196,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
 
   std::unique_ptr<ServiceIf> service(new GenericCalculatorService());
   auto service_name = service->service_name();
-  ThreadPoolScopedPtr thread_pool = make_scoped_refptr<RefCountedData<ThreadPool>>(
+  ThreadPoolPtr thread_pool = std::make_shared<ThreadPool>(
       ThreadPoolOptions {
         .name = "bogus_pool",
         .max_workers = 0

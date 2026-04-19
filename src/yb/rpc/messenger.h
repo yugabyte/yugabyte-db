@@ -303,9 +303,9 @@ class Messenger : public ProxyContext {
 
   rpc::ThreadPool& ThreadPool(ServicePriority priority = ServicePriority::kNormal);
 
-  const ThreadPoolScopedPtr& ThreadPoolPtr(ServicePriority priority = ServicePriority::kNormal);
+  const rpc::ThreadPoolPtr& ThreadPoolPtr(ServicePriority priority = ServicePriority::kNormal);
 
-  Result<ThreadPoolScopedPtr> TaggedThreadPool(TaggedThreadPools::Tag pool_tag = 0);
+  Result<rpc::ThreadPoolPtr> TaggedThreadPool(TaggedThreadPools::Tag pool_tag = 0);
 
   const std::shared_ptr<RpcMetrics>& rpc_metrics() override {
     return rpc_metrics_;
@@ -433,12 +433,12 @@ class Messenger : public ProxyContext {
   // Thread pools that are used by services running in this messenger.
   std::unique_ptr<TaggedThreadPools> normal_thread_pools_;
 
-  ThreadPoolScopedPtr default_normal_thread_pool_;
+  rpc::ThreadPoolPtr default_normal_thread_pool_;
 
   std::mutex mutex_high_priority_thread_pool_;
 
   // This could be used for high-priority services such as Consensus.
-  ThreadPoolScopedPtr high_priority_thread_pool_;
+  rpc::ThreadPoolPtr high_priority_thread_pool_;
   std::atomic<bool> high_priority_thread_pool_ready_;
 
   std::unique_ptr<DnsResolver> resolver_;
