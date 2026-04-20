@@ -11,6 +11,7 @@ import logging
 import json
 import os
 from ybops.utils.remote_shell import RemoteShell
+from ybops.common.exceptions import YBOpsExitCodeException
 
 warnings.filterwarnings("ignore")
 
@@ -428,6 +429,8 @@ def main():
         try:
             client = RemoteShell(ssh_options)
         except Exception as e:
+            if isinstance(e, YBOpsExitCodeException):
+                sys.exit(e.exitcode())
             sys.exit("Failed to establish SSH connection to {}:{} - {}"
                      .format(args.ip, args.port, str(e)))
     elif args.node_type == 'rpc':
@@ -444,6 +447,8 @@ def main():
         try:
             client = RemoteShell(rpc_options)
         except Exception as e:
+            if isinstance(e, YBOpsExitCodeException):
+                sys.exit(e.exitcode())
             sys.exit("Failed to establish RPC connection to {}:{} - {}"
                      .format(args.node_agent_ip, args.node_agent_port, str(e)))
     else:
