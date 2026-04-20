@@ -63,6 +63,14 @@ Display low-level runtime metrics related to [Cache and storage subsystems](../.
 
 Define the desired output format, choosing from TEXT, XML, JSON, or YAML. Non-text output retains the same information as the text format, but is more programmatically accessible (default: `TEXT`).
 
+### QUERYID
+
+Output the query ID (`EXPLAIN (QUERYID ON)`). Use this ID to match queries in the [Query Plan Manager](../../../../../launch-and-manage/monitor-and-alert/query-tuning/query-plan-manager/), to see if execution time has recently increased, and detect plan regressions. Default is OFF.
+
+### PLANID
+
+Output the plan ID (`EXPLAIN (PLANID ON)`). Use this ID to match plans in the [Query Plan Manager](../../../../../launch-and-manage/monitor-and-alert/query-tuning/query-plan-manager/) to see if this is a new plan or if its execution time has recently increased, and detect plan regressions. Default is OFF.
+
 ### SUMMARY
 
 Display the overall timing and counters of the various execution nodes in the query execution plan (default: `TRUE`).
