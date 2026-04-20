@@ -726,6 +726,18 @@ TEST_F(DistTraceTest, TestMalformedTraceparentComment) {
     ASSERT_STR_CONTAINS(warnings.back(), "traceparent field doesn't have the correct size");
   }
 
+  // Invalid leading traceparent takes priority over a valid trailing one.
+  // The leading comment is parsed first, fails validation, emits a warning,
+  // and the query runs without tracing; the trailing valid traceparent is ignored.
+  {
+    auto tp_valid = GenerateTraceparent();
+    ASSERT_OK(conn_->FetchFormat(
+        "/*traceparent='$0'*/ SELECT 1 /*traceparent='$1'*/",
+        kTraceparentValueTooShort, tp_valid.full));
+    ASSERT_EQ(warnings.size(), ++num_warnings);
+    ASSERT_STR_CONTAINS(warnings.back(), "traceparent field doesn't have the correct size");
+  }
+
   ASSERT_OK(collector_.VerifyNoTracesEmitted());
 }
 
@@ -919,7 +931,7 @@ TEST_F(DistTraceTest, TestAbortSpan) {
 
 TEST_F(DistTraceTest, TestTraceparentCommentAppended) {
   std::vector<Trace> expected_traces;
-  std::string mid_query;
+  std::vector<std::string> untraced_queries;
 
   const std::vector<ExpectedSpan> kSelectSpans = {
     {SpanType::kRoot, 1}, {SpanType::kParse, 1}, {SpanType::kRewrite, 1},
@@ -955,12 +967,31 @@ TEST_F(DistTraceTest, TestTraceparentCommentAppended) {
   // Mid-query comment must NOT produce a span (only leading/trailing are supported).
   {
     auto tp = GenerateTraceparent();
-    mid_query = Format("SELECT /*traceparent='$0'*/ 4", tp.full);
-    ASSERT_OK(conn_->Fetch(mid_query));
+    untraced_queries.push_back(Format("SELECT /*traceparent='$0'*/ 4", tp.full));
+    ASSERT_OK(conn_->Fetch(untraced_queries.back()));
+  }
+
+  // Non-traceparent leading comment followed by traceparent in the middle -- not traced.
+  // The first /* */ block has no traceparent field so the leading check falls through,
+  // and the second comment is not at the query end so the trailing check also misses it.
+  {
+    auto tp = GenerateTraceparent();
+    untraced_queries.push_back(Format("/* abc */ /*traceparent='$0'*/ SELECT 5", tp.full));
+    ASSERT_OK(conn_->Fetch(untraced_queries.back()));
+  }
+
+  // Traceparent is not the last comment -- the final /* abc */ has no traceparent field
+  // so the trailing check finds no traceparent and returns NO_COMMENT.
+  {
+    auto tp = GenerateTraceparent();
+    untraced_queries.push_back(Format("SELECT 6 /*traceparent='$0'*/ /* abc */", tp.full));
+    ASSERT_OK(conn_->Fetch(untraced_queries.back()));
   }
 
   ASSERT_OK(collector_.VerifyAgainstCollectorTraces(expected_traces));
-  ASSERT_OK(collector_.VerifyQueryNotTraced(mid_query));
+  for (const auto& q : untraced_queries) {
+    ASSERT_OK(collector_.VerifyQueryNotTraced(q));
+  }
 }
 
 TEST_F(DistTraceDisabledTest, TestTraceparentWhenDistTraceDisabled) {

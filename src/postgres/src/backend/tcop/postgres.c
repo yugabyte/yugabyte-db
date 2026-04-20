@@ -7892,8 +7892,19 @@ disable_statement_timeout(void)
  * The traceparent comments may appear at the query start or end.
  * If both comment blocks are present and contain traceparent, the one at the start is returned.
  *
+ * Parsed (traceparent extracted):
  * "/\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ SELECT 1;"
  * "SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/;"
+ *
+ * Not parsed (no traceparent extracted)
+ * "/\* abc *\/ /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ SELECT 1;"
+ *   -- leading comment has no traceparent field
+ * "SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ /\* abc *\/;"
+ *   -- trailing comment has no traceparent field
+ *
+ * Special case -- leading invalid traceparent takes priority over a valid trailing one;
+ * a warning is emitted and the query runs without tracing:
+ * "/\*traceparent='INVALID'*\/ SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/;"
  */
 static YbTraceparentResult
 YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
@@ -7943,8 +7954,7 @@ YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 		if (pos[0] == '/' && pos[1] == '*')
 		{
 			content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
-			result = YbGetTraceparentFromTraceContext(
-				content,
+			result = YbGetTraceparentFromTraceContext(content,
 				(end - YB_TRACEPARENT_COMMENT_DELIMITERS_LEN) - content,
 				traceparent_out);
 			return result != YB_TRACEPARENT_NO_FIELD ? result : YB_TRACEPARENT_NO_COMMENT;
