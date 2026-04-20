@@ -2,10 +2,11 @@
 name: create-pr
 description: >-
   Push the current branch to the user's fork of yugabyte/yugabyte-db and open
-  a cross-repo GitHub pull request. Commits pending changes, ensures a fork
-  exists and is used as the push target, prompts for issue reference /
-  component / title, then uses `gh pr create`. Use when the user wants to
-  publish a branch for review as a GitHub PR.
+  a cross-repo GitHub pull request. Commits pending changes, runs
+  the linter, ensures a fork exists and is used as the push
+  target, prompts for issue reference / component / title, then uses
+  `gh pr create`. Use when the user wants to publish a branch for review as a
+  GitHub PR.
 ---
 
 # Create PR
@@ -26,7 +27,7 @@ This skill requires the `gh` CLI installed and authenticated:
 
 ### Step 1: Commit pending changes
 
-`git rebase` in Step 2 refuses to run against a dirty working copy, and `gh pr create` in Step 8 only pushes committed changes — so commit first.
+`git rebase` in Step 2 refuses to run against a dirty working copy, and `gh pr create` in Step 9 only pushes committed changes — so commit first.
 
 Run `git status`. If there are uncommitted changes:
 
@@ -57,18 +58,26 @@ With the working copy clean (from Step 1), bring the branch up to date with upst
 
 4. **Resolve any conflicts** with the user. For each conflict: show the conflicted files, help the user resolve them, `git add` the resolved files, and run `git rebase --continue`. If the user wants to bail out, `git rebase --abort` returns the branch to its pre-rebase state.
 
-### Step 3: Base branch
+### Step 3: Run linter and confirm no lint errors
 
-The PR always targets `master`. Do **not** prompt the user for a base branch and do not offer alternatives. Use `master` as `--base` in Step 8 (the `gh pr create` step).
+Run `./build-support/lint.sh` from the repo root. Report the output to the user.
 
-### Step 4: Identify (or create) the fork and its remote
+- If there are **errors**, stop and fix the issues before continuing. Do not proceed to push or `gh pr create`.
+- If there are only **warnings or advice**, show them to the user and ask whether to proceed.
+- If the output is clean, continue to the next step.
+
+### Step 4: Base branch
+
+The PR always targets `master`. Do **not** prompt the user for a base branch and do not offer alternatives. Use `master` as `--base` in Step 9 (the `gh pr create` step).
+
+### Step 5: Identify (or create) the fork and its remote
 
 Contributors do **not** have push access to `yugabyte/yugabyte-db`, so the branch must be pushed to a personal fork.
 
 1. **Inspect existing remotes** with `git remote -v`. Identify which remote (if any) points at a fork (any GitHub repo that is not `yugabyte/yugabyte-db`). Common setups:
    - `origin` = `yugabyte/yugabyte-db`, `fork` or `<username>` = the personal fork
    - `origin` = the personal fork, `upstream` = `yugabyte/yugabyte-db`
-2. **If a fork remote is already configured**, record its name and use it as the push target in Step 5.
+2. **If a fork remote is already configured**, record its name and use it as the push target in Step 6.
 3. **If no fork remote exists**, check whether the user has a fork on GitHub:
    ```
    gh repo view <username>/yugabyte-db --json parent -q .parent.nameWithOwner
@@ -84,9 +93,9 @@ Contributors do **not** have push access to `yugabyte/yugabyte-db`, so the branc
    Then add the resulting fork as a `fork` remote as above.
 5. **Never push to a remote that points at `yugabyte/yugabyte-db`.** Verify the chosen push target is a fork before continuing.
 
-### Step 5: Push the branch to the fork
+### Step 6: Push the branch to the fork
 
-Push the current branch to the fork remote identified in Step 4:
+Push the current branch to the fork remote identified in Step 5:
 
 ```
 git push -u <fork-remote> HEAD
@@ -94,7 +103,7 @@ git push -u <fork-remote> HEAD
 
 If the push is rejected because the branch already exists on the fork with different history, ask the user how to proceed — do **not** force-push without explicit permission. If the user authorizes a force push, use `git push --force-with-lease` rather than `--force`.
 
-### Step 6: Gather PR metadata
+### Step 7: Gather PR metadata
 
 Prompt the user for the following, one at a time:
 
@@ -110,7 +119,7 @@ Prompt the user for the following, one at a time:
 
 3. **Title** — a short description of the change. If the user doesn't provide one, propose a title based on the commit messages on the branch and confirm it with the user.
 
-### Step 7: Build the title
+### Step 8: Build the title
 
 Construct the title in the format:
 
@@ -122,7 +131,7 @@ Examples:
 - `[#31151] DocDB: Fix SamplingProfilerTest.EstimatedBytesAndCount in release`
 - `[PLAT-20518] YBA: Fix full move edit universe to populate userIntentOverrides during configure call`
 
-### Step 8: Create the PR with `gh pr create`
+### Step 9: Create the PR with `gh pr create`
 
 Run `gh pr create` against `yugabyte/yugabyte-db`, passing the constructed title and a body derived from the branch commits. A typical invocation:
 
@@ -141,7 +150,7 @@ Pre-fill the body file with:
 
 Confirm the title and body with the user before running `gh pr create`.
 
-### Step 9: Report back to the user
+### Step 10: Report back to the user
 
 Output:
 
