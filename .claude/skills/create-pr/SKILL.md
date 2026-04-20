@@ -1,12 +1,9 @@
 ---
 name: create-pr
 description: >-
-  Push the current branch to the user's fork of yugabyte/yugabyte-db and open
-  a cross-repo GitHub pull request. Commits pending changes, runs
-  the linter, ensures a fork exists and is used as the push
-  target, prompts for issue reference / component / title, then uses
-  `gh pr create`. Use when the user wants to publish a branch for review as a
-  GitHub PR.
+  Create a Pull Request for the current branch's changes.
+  Use when the user wants to publish a branch for review as a GitHub PR.
+allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git diff:*), Bash(git add:*), Bash(git remote:*), Bash(git fetch:*), Bash(git rebase:*), Bash(git show:*), Bash(gh auth:*), Bash(gh pr create:*), Bash(gh repo view:*), Bash(gh repo fork:*), Bash(./build-support/lint.sh:*), Read
 ---
 
 # Create PR

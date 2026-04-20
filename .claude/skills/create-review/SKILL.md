@@ -2,9 +2,8 @@
 name: create-review
 description: >-
   Create a YugabyteDB Phorge review (diff) for the current branch's changes.
-  Commits pending changes, runs the linter, prompts for issue tracker references and component, then
-  uses `arc diff --create` to create the review with the proper title format
-  and subscribers. Use when the user wants to publish their changes for review.
+  Use when the user wants to publish their changes for review.
+allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git diff:*), Bash(git add:*), Bash(git remote:*), Bash(git show:*), Bash(arc diff:*), Bash(./build-support/lint.sh:*), Read
 ---
 
 # Create Review
