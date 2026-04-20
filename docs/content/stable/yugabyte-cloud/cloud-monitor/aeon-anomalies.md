@@ -27,7 +27,7 @@ For each detected anomaly, you can drill down to view a root cause analysis page
 
 To view the raw metrics used for anomaly detection, navigate to [Performance>Cluster Load](../monitor-load/).
 
-Anomalies is only available for clusters running YugabyteDB v2024.2 and later.
+Anomalies is only available for clusters running YugabyteDB v2024.2.7 and later.
 
 {{< note title="Tech Preview" >}}
 
@@ -125,7 +125,7 @@ Possible causes include:
 - CPU/IO/Memory resource pressure
 - Lock contention
 - Plan regression
-- Retry loops from read restarts (only document when we can expose metrics)
+<!-- Retry loops from read restarts (only document when we can expose metrics) -->
 
 Investigation steps:
 

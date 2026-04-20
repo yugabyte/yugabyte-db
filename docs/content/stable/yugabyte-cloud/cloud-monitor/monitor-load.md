@@ -21,7 +21,7 @@ The dashboard shows the status of your cluster at a glance:
 - When it was idle, active, or bottlenecked.
 - What type of load - CPU, I/O, or something else.
 
-Load monitoring is only available for clusters running YugabyteDB v2024.2 and later.
+Load monitoring is only available for clusters running YugabyteDB v2024.2.7 and later.
 
 {{< note title="Tech Preview" >}}
 
