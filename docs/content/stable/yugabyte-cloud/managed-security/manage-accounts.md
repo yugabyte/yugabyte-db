@@ -22,12 +22,10 @@ This feature is Early Access; to try it, contact {{% support-cloud %}}.
 
 Each account can have its own users, and can create and manage its own clusters. A single user can be added to multiple accounts, with different roles and permissions in each.
 
-Accounts are broken out separately in your billing summary.
-
-You must be a superadmin user to add and manage accounts.
-
 To manage accounts, click the Profile icon in the top right corner and choose **Manage Accounts** to display the **Manage Account** page.
 
+ Note that only accounts designated by Yugabyte Support when you enabled the feature can add and manage accounts.
+ 
 ![Accounts page](/images/yb-cloud/managed-accounts.png)
 
 Your accounts are listed under **Organization**.
@@ -37,6 +35,7 @@ Keep in mind the following when using multiple accounts:
 - When [adding users](../manage-access/), be sure to [switch to the account](#switch-accounts) where you want to add them first.
 - To add users to multiple accounts, you must sign in to each account and send an invitation.
 - If multiple accounts are enabled, all users must choose the account to sign into when they sign in.
+- Each account uses a different [billing profile](../../cloud-admin/cloud-billing-profile/). You must set up a new billing profile for each account you create.
 
 ## Add accounts
 
@@ -48,10 +47,6 @@ To add an account:
 1. Enter a name for the account and click **Create Account**.
 
 The account is listed under **Accounts** on the **Manage Account** page.
-
-{{<tip title="Set up a billing profile">}}
-Billing for each account is independant. After adding an account, you need to set up a [billing profile](../../cloud-admin/cloud-billing-profile/) for it.
-{{</tip>}}
 
 ## Switch accounts
 
