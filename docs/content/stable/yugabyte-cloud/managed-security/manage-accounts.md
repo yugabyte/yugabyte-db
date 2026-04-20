@@ -49,6 +49,10 @@ To add an account:
 
 The account is listed under **Accounts** on the **Manage Account** page.
 
+{{<tip title="Set up a billing profile">}}
+Billing for each account is independant. After adding an account, you need to set up a [billing profile](../../cloud-admin/cloud-billing-profile/) for it.
+{{</tip>}}
+
 ## Switch accounts
 
 To switch to an account:
