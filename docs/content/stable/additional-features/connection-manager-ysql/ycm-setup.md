@@ -147,7 +147,7 @@ The following table outlines the various authentication methods supported by Yug
 Client connection behavior and server-side policy are handled separately as follows:
 
 - **SSL mode** (client-side connection behavior): controls whether the client uses TLS and how it verifies the server (disable, allow, prefer, require, verify-ca, verify-full). Connection Manager supports all of these client SSL modes.
-- **ysql_hba.conf** ([host-based authentication](../../../secure/authentication/host-based-authentication/)): controls whether the connection must be over TLS, if the client must present a certificate, and whether the server authenticates the client via that certificate. Currently, Connection Manager does not support HBA certificate authentication.
+- **ysql_hba.conf** ([host-based authentication](../../../secure/authentication/host-based-authentication/)): controls client authentication for YSQL connections, including whether connections must use SSL/TLS, whether the client must present a certificate, and whether the server verifies the client's identity using that certificate. Currently, Connection Manager does not support HBA certificate authentication.
 
 ### Encryption in transit
 
