@@ -87,20 +87,26 @@ def _git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=REPO_ROOT, text=True).strip()
 
 
-def _changed_files() -> list[str]:
+def _changed_files(base: str | None = None) -> list[str]:
     """Files modified in the working copy plus files changed on this branch vs its base.
 
-    Base resolution tries @{upstream}, then origin/master, then falls back to HEAD (so only
-    uncommitted changes are considered).
+    If ``base`` is provided, it is used directly as the diff base. Otherwise base resolution
+    tries @{upstream}, then origin/master, then falls back to HEAD (so only uncommitted changes
+    are considered).
     """
-    base: str | None = None
-    for candidate in ("@{upstream}", "origin/master"):
+    if base is not None:
         try:
-            _git("rev-parse", "--verify", "--quiet", candidate)
-            base = candidate
-            break
+            _git("rev-parse", "--verify", "--quiet", base)
         except subprocess.CalledProcessError:
-            continue
+            sys.exit(f"[lint] --rev: unknown git ref {base!r}")
+    else:
+        for candidate in ("@{upstream}", "origin/master"):
+            try:
+                _git("rev-parse", "--verify", "--quiet", candidate)
+                base = candidate
+                break
+            except subprocess.CalledProcessError:
+                continue
     ref = base or "HEAD"
     committed = set(_git("diff", "--name-only", "--diff-filter=d", ref).splitlines())
     uncommitted = set(_git("diff", "--name-only", "--diff-filter=d", "HEAD").splitlines())
@@ -297,7 +303,7 @@ def _resolve_files(args: argparse.Namespace) -> list[str]:
             ["git", "ls-files"], cwd=REPO_ROOT, text=True).splitlines()
     if args.paths:
         return [_normalize_path(p) for p in args.paths]
-    return _changed_files()
+    return _changed_files(args.rev)
 
 
 def main() -> int:
@@ -306,6 +312,9 @@ def main() -> int:
     ap.add_argument("paths", nargs="*", help="Files to lint. If omitted, uses changed files.")
     ap.add_argument("--everything", action="store_true",
                     help="Lint all tracked files (ignores paths).")
+    ap.add_argument("--rev", default=None,
+                    help="Git ref to diff against when selecting changed files "
+                         "(default: @{upstream} or origin/master).")
     ap.add_argument("--only", action="append", default=[],
                     help="Only run linters whose name matches (repeatable).")
     ap.add_argument("--list-linters", action="store_true",
