@@ -205,7 +205,7 @@ The columns of the yb_pg_stat_plans view are described in the following table.
 | hints | These hints, if applied during query planning, would lead to the same plan being used. |
 | plan | Text representation of the plan. |
 
-You can retrive query text by joining with pg_stat_statements on queryid. For example:
+`yb_pg_stat_plans` does not track query text. You can retrive query text by joining with pg_stat_statements on queryid. For example:
 
 ```sql
 SELECT CASE WHEN ss.query IS NOT NULL THEN ss.query ELSE '<NULL>' END as query_string, hints, … 
@@ -230,8 +230,6 @@ The table is fixed size (default 5000 unique pairs), set using `yb_pg_stat_plans
 When the limit on the number of entries is reached, the oldest entry is dropped using a replacement strategy, set using `yb_pg_stat_plans_cache_replacement_algorithm`.
 
 If the hint or plan text does not fit into the fixed size memory slot (4096 bytes for plan text, 2048 bytes for hint text), the text is compressed. If the hint or plan text does not fit after compression, then the text payload is truncated. Truncated hints can not be used to pin the plan.
-
-`yb_pg_stat_plans` does not track QueryText. Query text can be retrieved by joining with PGSS. [how?]
 
 ### yb_pg_stat_plans_get_insights
 
