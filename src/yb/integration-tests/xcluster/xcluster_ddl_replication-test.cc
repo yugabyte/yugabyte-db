@@ -4798,6 +4798,10 @@ TEST_F(XClusterDDLReplicationTest, VectorIndex) {
 // index's hybrid_time, so the write can be missing from the vector index. This test verifies
 // the fix.
 TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
   auto params = XClusterDDLReplicationTestBase::kDefaultParams;
   params.start_yb_controller_servers = true;
