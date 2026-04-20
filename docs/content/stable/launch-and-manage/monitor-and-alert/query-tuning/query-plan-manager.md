@@ -32,7 +32,7 @@ Because plans can change over time (you turn on the cost-based optimizer, for ex
 QPM is enabled by default, and you view QPM results using two views:
 
 - [yb_pg_stat_plans](#yb-pg-stat-plans)
-- [yb_pg_stat_plans_get_insights](#yb-pg-stat-plans-get-insights)
+- [yb_pg_stat_plans_insights](#yb-pg-stat-plans-insights)
 
 If you notice a query is performing poorly, you can run [EXPLAIN](../../../../api/ysql/the-sql-language/statements/perf_explain/) to get its current query ID and/or plan ID, and then use this ID to check the yb_pg_stat_plans view to see if this is a new plan or if its execution time has recently increased, helping you detect plan regressions. For example:
 
@@ -199,17 +199,17 @@ The columns of the yb_pg_stat_plans view are described in the following table.
 | last_used | Last recorded instance of the [dbid query id, plan id] use. |
 | calls | Number of times [dbid query id, plan id] pair is used. |
 | avg_exec_time | Average execution time. |
-| max_exec_time | Highest recorded execution time for the planMaximum recorded execution time for this plan. |
+| max_exec_time | Maximum recorded execution time for this plan. |
 | max_exec_time_params | This particular set of query parameters led to the longest execution time. |
 | avg_est_cost | Planner's average estimated cost for the plan. |
 | hints | These hints, if applied during query planning, would lead to the same plan being used. |
 | plan | Text representation of the plan. |
 
-You can retrive query text by joining with pg_stat_statements on queryid. For example:
+You can retrieve query text by joining with pg_stat_statements on queryid. For example:
 
 ```sql
 SELECT CASE WHEN ss.query IS NOT NULL THEN ss.query ELSE '<NULL>' END as query_string, hints, … 
-FROM yb_query_plan_management qpm LEFT JOIN pg_stat_statements ss ON qpm.queryId=ss.queryid;
+FROM yb_pg_stat_plans qpm LEFT JOIN pg_stat_statements ss ON qpm.queryid=ss.queryid;
 ```
 
 yb_pg_stat_plans is pre-configured, and enabled by default. The following YSQL configuration parameters control yb_pg_stat_plans:
@@ -233,7 +233,7 @@ If the hint or plan text does not fit into the fixed size memory slot (4096 byte
 
 `yb_pg_stat_plans` does not track QueryText. Query text can be retrieved by joining with PGSS. [how?]
 
-### yb_pg_stat_plans_get_insights
+### yb_pg_stat_plans_insights
 
 This view identifies the plan with the lowest execution time for each query ID (`plan_min_exec_time` column displays `Yes`; otherwise `No`).
 
