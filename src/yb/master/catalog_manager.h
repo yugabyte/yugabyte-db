@@ -1725,7 +1725,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status BackfillMetadataForXRepl(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
-  Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override EXCLUDES(mutex_);
+  Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) const override EXCLUDES(mutex_);
 
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
@@ -2220,7 +2220,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // partitions_vtable_cache_refresh_secs seconds.
   void RebuildYQLSystemPartitions();
 
-  Result<TabletInfoPtr> GetTabletInfoUnlocked(const TabletId& tablet_id)
+  Result<TabletInfoPtr> GetTabletInfoUnlocked(const TabletId& tablet_id) const
       REQUIRES_SHARED(mutex_);
 
   Status DoSplitTablet(

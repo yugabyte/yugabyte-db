@@ -3420,13 +3420,13 @@ Status CatalogManager::DoSplitTablet(
       epoch);
 }
 
-Result<TabletInfoPtr> CatalogManager::GetTabletInfo(const TabletId& tablet_id)
+Result<TabletInfoPtr> CatalogManager::GetTabletInfo(const TabletId& tablet_id) const
     EXCLUDES(mutex_) {
   SharedLock lock(mutex_);
   return GetTabletInfoUnlocked(tablet_id);
 }
 
-Result<TabletInfoPtr> CatalogManager::GetTabletInfoUnlocked(const TabletId& tablet_id)
+Result<TabletInfoPtr> CatalogManager::GetTabletInfoUnlocked(const TabletId& tablet_id) const
     REQUIRES_SHARED(mutex_) {
   const auto tablet_info = FindPtrOrNull(*tablet_map_, tablet_id);
   if (tablet_info == nullptr) {

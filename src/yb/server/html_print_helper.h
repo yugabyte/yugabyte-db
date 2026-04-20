@@ -24,6 +24,7 @@ class HtmlTablePrintHelper;
 class HtmlFieldsetScope;
 
 YB_DEFINE_ENUM(HtmlTableCellAlignment, (Left)(Right));
+YB_DEFINE_ENUM(HtmlTableRowColor, (Default)(Red)(Yellow));
 
 // Helper class to print HTML.
 class HtmlPrintHelper {
@@ -63,6 +64,7 @@ class HtmlTablePrintHelper {
  public:
   struct TableRow {
     std::vector<std::string> column_values_;
+    HtmlTableRowColor color_ = HtmlTableRowColor::Default;
 
     template <typename T>
     void AddColumn(const T& cell_value) {
@@ -77,12 +79,18 @@ class HtmlTablePrintHelper {
     void AddColumns(const Ts&... values) {
       (AddColumn(values), ...);
     }
+
+    void SetColor(HtmlTableRowColor color) { color_ = color; }
+    void SetColor(const Status& status) {
+      color_ = status.ok() ? HtmlTableRowColor::Default : HtmlTableRowColor::Red;
+    }
   };
 
   template <typename... Ts>
-  void AddRow(const Ts&... column_values) {
+  TableRow& AddRow(Ts&&... column_values) {
     auto& row = AddRow();
-    row.AddColumns(column_values...);
+    row.AddColumns(std::forward<Ts>(column_values)...);
+    return row;
   }
 
   HtmlTablePrintHelper::TableRow& AddRow();
