@@ -1241,8 +1241,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       Set<UUID> done = completedByCluster.getOrDefault(cluster.uuid, Collections.emptySet());
       Set<UUID> inProgress = inProg.getOrDefault(cluster.uuid, Collections.emptySet());
       Set<UUID> failedAzs = failed.getOrDefault(cluster.uuid, Collections.emptySet());
+      // Restrict role nodes to this cluster so AZs shared between primary and read-replica
+      // do not leak entries (e.g., MASTER entries for read-replica clusters).
+      List<NodeDetails> roleNodesInCluster =
+          roleNodes.stream()
+              .filter(n -> cluster.uuid.equals(n.placementUuid))
+              .collect(Collectors.toList());
       for (UUID azUUID : azOrder) {
-        if (getNodesInAZ(roleNodes, azUUID).isEmpty()) {
+        if (getNodesInAZ(roleNodesInCluster, azUUID).isEmpty()) {
           continue;
         }
         AvailabilityZone zone = AvailabilityZone.getOrBadRequest(azUUID);
