@@ -91,6 +91,8 @@ YB_DEFINE_ENUM(RejectMode, (kNone)(kAll)(kNonEmpty));
 std::unique_ptr<ConsensusRoundCallback> MakeNonTrackedRoundCallback(
     ConsensusRound* round, const StdStatusCallback& callback);
 
+YB_DEFINE_ENUM(RaftConsensusShutdownState, (kNotStarted)(kStarted)(kCompleted));
+
 class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                       public Consensus,
                       public PeerMessageQueueObserver,
@@ -211,6 +213,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   void DumpStatusHtml(std::ostream& out) const override;
 
+  void StartShutdown();
+  void CompleteShutdown();
   void Shutdown() override;
 
   // Return the active (as opposed to committed) role.
@@ -752,7 +756,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   std::atomic<bool> outstanding_report_failure_task_{false};
 
-  AtomicBool shutdown_;
+  using ShutdownState = RaftConsensusShutdownState;
+  std::atomic<ShutdownState> shutdown_state_{ShutdownState::kNotStarted};
 
   scoped_refptr<Counter> deprecated_follower_memory_pressure_rejections_;
   scoped_refptr<AtomicGauge<int64_t>> term_metric_;

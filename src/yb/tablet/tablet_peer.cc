@@ -481,6 +481,11 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
+  auto consensus = GetRaftConsensusUnsafe();
+  if (consensus) {
+    consensus->StartShutdown();
+  }
+
   {
     std::lock_guard lock(lock_);
     DEBUG_ONLY_TEST_SYNC_POINT("TabletPeer::StartShutdown:1");
@@ -510,9 +515,8 @@ bool TabletPeer::StartShutdown() {
   // indirectly end up calling into the log, which we are about to shut down.
   UnregisterMaintenanceOps();
 
-  auto consensus = GetRaftConsensusUnsafe();
   if (consensus) {
-    consensus->Shutdown();
+    consensus->CompleteShutdown();
   }
 
   return true;

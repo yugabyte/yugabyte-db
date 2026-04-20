@@ -63,32 +63,34 @@ using namespace std::literals;
 
 using yb::tablet::GetTransactionTimeout;
 
-DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
-DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
-DECLARE_bool(TEST_master_fail_transactional_tablet_lookups);
-DECLARE_bool(TEST_transaction_allow_rerequest_status);
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_ondisk_compression);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_disable_compactions);
-DECLARE_bool(enable_ondisk_compression);
-DECLARE_int32(TEST_delay_init_tablet_peer_ms);
-DECLARE_int32(log_min_seconds_to_retain);
-DECLARE_int32(intents_flush_max_delay_ms);
-DECLARE_int32(remote_bootstrap_max_chunk_size);
-DECLARE_int64(transaction_rpc_timeout_ms);
-DECLARE_int64(db_block_cache_size_bytes);
-DECLARE_int64(db_write_buffer_size);
-DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
-DECLARE_uint64(aborted_intent_cleanup_ms);
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
+DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
 DECLARE_bool(TEST_load_transactions_sync);
-DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_bool(TEST_master_fail_transactional_tablet_lookups);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_skip_remove_intent);
+DECLARE_bool(TEST_transaction_allow_rerequest_status);
+DECLARE_int32(intents_flush_max_delay_ms);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(remote_bootstrap_max_chunk_size);
+DECLARE_int32(TEST_delay_init_tablet_peer_ms);
+DECLARE_int32(TEST_inject_load_transaction_delay_ms);
+DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_uint64(log_segment_size_bytes);
+DECLARE_uint64(max_clock_skew_usec);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
+DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
 
 namespace yb {
 namespace client {
@@ -2081,6 +2083,35 @@ TEST_F_EX(QLTransactionTest, FlushBecauseOfWriteStop, QLTransactionTestSmallWrit
     ASSERT_OK(WriteRows(session, txn_idx++));
     ASSERT_OK(write_txn->CommitFuture().get());
   }
+}
+
+TEST_F_EX(QLTransactionTest, ShutdownWhileLoadingTransactions, QLTransactionTestSingleTablet) {
+  constexpr int kNumTransactions = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_load_transaction_delay_ms) = 200;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) = 100000;
+  DisableApplyingIntents();
+
+  auto* ts = cluster_->mini_tablet_server(0);
+
+  for (int i = 0; i != kNumTransactions; ++i) {
+    auto txn = CreateTransaction();
+    ASSERT_OK(WriteRows(CreateSession(txn), i));
+    ASSERT_OK(txn->CommitFuture().get());
+  }
+
+  LOG(INFO) << "Shutting down tserver";
+  ts->Shutdown();
+
+  SetIgnoreApplyingProbability(0.0);
+
+  LOG(INFO) << "Starting tserver";
+  ASSERT_OK(ts->Start(tserver::WaitTabletsBootstrapped::kFalse));
+  std::this_thread::sleep_for(1s);
+
+  LOG(INFO) << "Restarting tserver";
+  ASSERT_OK(ts->Restart(tserver::WaitTabletsBootstrapped::kFalse));
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get(), 30s * kTimeMultiplier));
 }
 
 } // namespace client
