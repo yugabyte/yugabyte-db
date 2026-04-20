@@ -3,7 +3,6 @@ name: create-pr
 description: >-
   Create a Pull Request for the current branch's changes.
   Use when the user wants to publish a branch for review as a GitHub PR.
-allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git diff:*), Bash(git add:*), Bash(git remote:*), Bash(git fetch:*), Bash(git rebase:*), Bash(git show:*), Bash(gh auth:*), Bash(gh pr create:*), Bash(gh repo view:*), Bash(gh repo fork:*), Bash(./build-support/lint.sh:*), Read
 ---
 
 # Create PR

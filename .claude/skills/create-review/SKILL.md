@@ -3,7 +3,6 @@ name: create-review
 description: >-
   Create a YugabyteDB Phorge review (diff) for the current branch's changes.
   Use when the user wants to publish their changes for review.
-allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git diff:*), Bash(git add:*), Bash(git remote:*), Bash(git show:*), Bash(arc diff:*), Bash(./build-support/lint.sh:*), Read
 ---
 
 # Create Review
