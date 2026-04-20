@@ -52,14 +52,11 @@ class TserverXClusterContextIf;
     (CreateSequencesDataTable) \
     (CreateTable) \
     (CreateTablegroup) \
-    (DeleteDBSequences) \
-    (DeleteSequenceTuple) \
     (DropDatabase) \
     (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
     (FetchData) \
-    (FetchSequenceTuple) \
     (FinishTransaction) \
     (GetActiveTransactionList) \
     (GetCatalogMasterVersion) \
@@ -75,7 +72,6 @@ class TserverXClusterContextIf;
     (GetTserverCatalogVersionInfo) \
     (GetXClusterRole) \
     (Heartbeat) \
-    (InsertSequenceTuple) \
     (IsInitDbDone) \
     (IsObjectPartOfXRepl) \
     (ListClones) \
@@ -83,7 +79,6 @@ class TserverXClusterContextIf;
     (ListLiveTabletServers) \
     (ListSlotEntries) \
     (ListReplicationSlots) \
-    (ReadSequenceTuple) \
     (RemoteExec) \
     (ReserveOids) \
     (GetNewObjectId) \
@@ -93,7 +88,6 @@ class TserverXClusterContextIf;
     (GetTabletForKey) \
     (TabletServerCount) \
     (TruncateTable) \
-    (UpdateSequenceTuple) \
     (ValidatePlacement) \
     (WaitForBackendsCatalogVersion) \
     (YCQLStatementStats) \
@@ -108,15 +102,31 @@ class TserverXClusterContextIf;
     (ReleaseSessionObjectLock) \
     /**/
 
+#define YB_PG_CLIENT_LW_METHODS \
+    (DeleteDBSequences) \
+    (DeleteSequenceTuple) \
+    (FetchSequenceTuple) \
+    (InsertSequenceTuple) \
+    (ReadSequenceTuple) \
+    (UpdateSequenceTuple) \
+    /**/
+
 #define YB_PG_CLIENT_TRIVIAL_METHODS \
     (PollVectorIndexReady) \
     /**/
 
+#define YB_PG_CLIENT_METHOD_ARG(prefix, method, type) \
+    BOOST_PP_CAT(BOOST_PP_CAT(BOOST_PP_CAT(BOOST_PP_CAT(\
+        BOOST_PP_APPLY(prefix), Pg), method), type), PB)
+
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
-    (AcquireObjectLock) \
     (OpenTable) \
+    /**/
+
+#define YB_PG_CLIENT_ASYNC_LW_METHODS \
+    (AcquireObjectLock) \
     (GetTableKeyRanges) \
     /**/
 
@@ -151,17 +161,20 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \
   void method( \
-      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
-      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+      const YB_PG_CLIENT_METHOD_ARG(data, method, Request)* req, \
+      YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, \
       rpc::RpcContext context) override;
 
 #define YB_PG_CLIENT_TRIVIAL_METHOD_DECLARE(r, data, method) \
-  Result<BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)> method( \
-      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
+  Result<YB_PG_CLIENT_METHOD_ARG(data, method, Response)> method( \
+      const YB_PG_CLIENT_METHOD_ARG(data, method, Request)& req, \
       CoarseTimePoint deadline) override;
 
-  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_METHODS);
-  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_ASYNC_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, BOOST_PP_NIL, YB_PG_CLIENT_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, BOOST_PP_NIL, YB_PG_CLIENT_ASYNC_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(
+      YB_PG_CLIENT_METHOD_DECLARE, (LW), YB_PG_CLIENT_LW_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, (LW), YB_PG_CLIENT_ASYNC_LW_METHODS);
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_TRIVIAL_METHOD_DECLARE, ~, YB_PG_CLIENT_TRIVIAL_METHODS);
 
@@ -172,9 +185,14 @@ class PgClientServiceImpl : public PgClientServiceIf {
 };
 
 #define YB_PG_CLIENT_MOCKABLE_METHODS \
-    (Perform) \
     YB_PG_CLIENT_METHODS \
     YB_PG_CLIENT_ASYNC_METHODS \
+    /**/
+
+#define YB_PG_CLIENT_MOCKABLE_LW_METHODS \
+    (Perform) \
+    YB_PG_CLIENT_LW_METHODS \
+    YB_PG_CLIENT_ASYNC_LW_METHODS \
     /**/
 
 // PgClientServiceMockImpl implements the PgClientService interface to allow for mocking of tserver
@@ -198,11 +216,15 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
 #define YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE(r, data, method) \
   [[nodiscard]] Handle BOOST_PP_CAT(Mock, method)( \
       const std::function<Status( \
-          const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)*, \
-          BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)*, rpc::RpcContext*)>& mock);
+          const YB_PG_CLIENT_METHOD_ARG(data, method, Request)*, \
+          YB_PG_CLIENT_METHOD_ARG(data, method, Response)*, rpc::RpcContext*)>& mock);
 
-  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
-  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, BOOST_PP_NIL, YB_PG_CLIENT_MOCKABLE_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, (LW), YB_PG_CLIENT_MOCKABLE_LW_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(
+      YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE, BOOST_PP_NIL, YB_PG_CLIENT_MOCKABLE_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(
+      YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE, (LW), YB_PG_CLIENT_MOCKABLE_LW_METHODS);
 
   Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
       const PgPollVectorIndexReadyRequestPB& req, CoarseTimePoint deadline) override {

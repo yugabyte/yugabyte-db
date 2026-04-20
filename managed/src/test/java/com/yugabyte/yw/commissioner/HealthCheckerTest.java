@@ -210,7 +210,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             mockConfigHelper) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
-            return new RuntimeConfig<>(mockRuntimeConfig);
+            return new RuntimeConfig<>(mockRuntimeConfig, (t, e) -> {});
           }
         };
     healthChecker.initialize();

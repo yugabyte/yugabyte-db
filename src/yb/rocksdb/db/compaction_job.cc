@@ -294,7 +294,7 @@ CompactionJob::CompactionJob(
     const EnvOptions& env_options, VersionSet* versions,
     std::atomic<bool>* shutting_down, LogBuffer* log_buffer,
     Directory* db_directory, Directory* output_directory, Statistics* stats,
-    InstrumentedMutex* db_mutex, Status* db_bg_error,
+    InstrumentedMutex* db_mutex, BackgroundError* db_bg_error,
     std::vector<SequenceNumber> existing_snapshots,
     SequenceNumber earliest_write_conflict_snapshot,
     FileNumbersProvider* file_numbers_provider,
@@ -1082,9 +1082,8 @@ Status CompactionJob::FinishCompactionOutputFile(
       }
       if (sfm->IsMaxAllowedSpaceReached()) {
         InstrumentedMutexLock l(db_mutex_);
-        if (db_bg_error_->ok()) {
-          status = STATUS(IOError, "Max allowed space was reached");
-          *db_bg_error_ = status;
+        if (db_bg_error_->TrySet(STATUS(IOError, "Max allowed space was reached"))) {
+          status = *db_bg_error_;
           DEBUG_ONLY_TEST_SYNC_POINT(
               "CompactionJob::FinishCompactionOutputFile:MaxAllowedSpaceReached");
         }
@@ -1132,7 +1131,8 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
-    LOG_WITH_PREFIX_DETAIL << "Updating flushed frontier to " << largest_user_frontier_->ToString();
+    LOG_WITH_PREFIX(DETAIL) << "Updating flushed frontier to "
+                            << largest_user_frontier_->ToString();
     compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),

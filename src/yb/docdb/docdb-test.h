@@ -227,16 +227,20 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 }
       )#", SubDocument::FromQLValuePB(f, SortingType::kNotSpecified).ToString());
 
+    auto arena = SharedThreadSafeArena();
     ASSERT_OK(InsertSubDocument(
-        DocPath(encoded_doc_key), ValueRef(root), 1000_usec_ht));
+        DocPath(encoded_doc_key), ValueRef(*arena->NewArenaObject<LWQLValuePB>(root)),
+        1000_usec_ht));
     // The Insert above could have been an Extend with no difference in external behavior.
     // Internally however, an insert writes an extra key (with value tombstone).
     ASSERT_OK(SetPrimitive(
         DocPath(encoded_doc_key, KeyEntryValue("a"), KeyEntryValue("2")),
-        ValueRef(QLValue::Primitive(11)), 2000_usec_ht));
-    ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key, KeyEntryValue("b")), ValueRef(b2),
+        QLValue::Primitive(11), 2000_usec_ht));
+    ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key, KeyEntryValue("b")),
+                                ValueRef(*arena->NewArenaObject<LWQLValuePB>(b2)),
                                 3000_usec_ht));
-    ASSERT_OK(ExtendSubDocument(DocPath(encoded_doc_key, KeyEntryValue("a")), ValueRef(f),
+    ASSERT_OK(ExtendSubDocument(DocPath(encoded_doc_key, KeyEntryValue("a")),
+                                ValueRef(*arena->NewArenaObject<LWQLValuePB>(f)),
                                 4000_usec_ht));
     ASSERT_OK(SetPrimitive(
         DocPath(encoded_doc_key, KeyEntryValue("b"), KeyEntryValue("e"), KeyEntryValue("2")),
@@ -357,7 +361,8 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
         AddMapValue(key, value, &map_value);
       }
       ASSERT_OK(InsertSubDocument(
-          DocPath(collection_key.Encode()), ValueRef(map_value), 1000_usec_ht, 10s));
+          DocPath(collection_key.Encode()),
+          ValueRef(*arena->NewArenaObject<LWQLValuePB>(map_value)), 1000_usec_ht, 10s));
 
       ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
           SubDocKey($0, [HT{ physical: 1000 }]) -> {}; ttl: 10.000s
@@ -377,7 +382,8 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
       QLValuePB map_value;
       AddMapValue(key, value, &map_value);
       ASSERT_OK(ExtendSubDocument(
-          DocPath(collection_key.Encode()), ValueRef(map_value), 1100_usec_ht,
+          DocPath(collection_key.Encode()),
+          ValueRef(*arena->NewArenaObject<LWQLValuePB>(map_value)), 1100_usec_ht,
           MonoDelta::FromSeconds(20 + i)));
       if (intermediate_flushes) {
         ASSERT_OK(FlushRocksDbAndWait());
@@ -420,6 +426,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
                             std::set<std::pair<string, string>>* docdb_dump) {
     auto collection_key = MakeDocKey(key_string);
 
+    auto arena = SharedThreadSafeArena();
     QLValuePB map_value;
     for (int i = 0; i < kNumSubKeysForCollectionsWithTTL; i++) {
       string key = "sk" + std::to_string(i);
@@ -428,7 +435,8 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
     }
 
     ASSERT_OK(InsertSubDocument(
-        DocPath(collection_key.Encode()), ValueRef(map_value), **time_iter));
+        DocPath(collection_key.Encode()), ValueRef(*arena->NewArenaObject<LWQLValuePB>(map_value)),
+        **time_iter));
     ++*time_iter;
 
     QLValuePB new_map_value;
@@ -440,7 +448,8 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
       (*val_string)[1]++;
     }
     ASSERT_OK(ExtendSubDocument(
-      DocPath(collection_key.Encode()), ValueRef(new_map_value), **time_iter));
+      DocPath(collection_key.Encode()),
+      ValueRef(*arena->NewArenaObject<LWQLValuePB>(new_map_value)), **time_iter));
     ++*time_iter;
   }
 };

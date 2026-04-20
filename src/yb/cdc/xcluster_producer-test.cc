@@ -111,7 +111,8 @@ class XClusterProducerTest : public MiniClusterTestWithClient<MiniCluster> {
 
     LOG(INFO) << "Writing " << end - start << (delete_op ? " deletes" : " inserts");
     for (int32_t i = start; i < end; i++) {
-      auto op = delete_op ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
+      auto op = delete_op ? table_handle.NewDeleteOp(session->arena())
+                          : table_handle.NewInsertOp(session->arena());
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, i);
       table_handle.AddInt32ColumnValue(req, table_handle->schema().Column(1).name(), i);

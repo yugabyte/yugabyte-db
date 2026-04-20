@@ -196,15 +196,14 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
 
   std::unique_ptr<ServiceIf> service(new GenericCalculatorService());
   auto service_name = service->service_name();
-  ThreadPool thread_pool(ThreadPoolOptions {
-    .name = "bogus_pool",
-    .max_workers = 0
-  });
-  scoped_refptr<ServicePool> service_pool(new ServicePool(kMaxConcurrency,
-                                                          &thread_pool,
-                                                          &server_messenger->scheduler(),
-                                                          std::move(service),
-                                                          metric_entity()));
+  ThreadPoolScopedPtr thread_pool = make_scoped_refptr<RefCountedData<ThreadPool>>(
+      ThreadPoolOptions {
+        .name = "bogus_pool",
+        .max_workers = 0
+      });
+  scoped_refptr<ServicePool> service_pool(new ServicePool(
+      kMaxConcurrency, [thread_pool](auto) { return thread_pool; },
+      &server_messenger->scheduler(), std::move(service), metric_entity()));
   ASSERT_OK(server_messenger->RegisterService(service_name, service_pool));
   ASSERT_OK(server_messenger->StartAcceptor());
 
@@ -224,7 +223,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   // The rest would time out after 10 sec, but we help them along.
   server_messenger->UnregisterAllServices();
   service_pool->Shutdown();
-  thread_pool.Shutdown();
+  thread_pool->Shutdown();
   server_messenger->Shutdown();
 
   for (const auto& thread : threads) {

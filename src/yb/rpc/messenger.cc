@@ -412,27 +412,34 @@ void Messenger::ShutdownAcceptor() {
 }
 
 rpc::ThreadPool& Messenger::ThreadPool(ServicePriority priority) {
+  return *ThreadPoolPtr(priority);
+}
+
+const ThreadPoolScopedPtr& Messenger::ThreadPoolPtr(ServicePriority priority) {
   switch (priority) {
     case ServicePriority::kNormal:
-      return *normal_thread_pool_;
+      return default_normal_thread_pool_;
     case ServicePriority::kHigh:
-      auto high_priority_thread_pool = high_priority_thread_pool_.get();
-      if (high_priority_thread_pool) {
-        return *high_priority_thread_pool;
+      if (high_priority_thread_pool_ready_.load(std::memory_order_acquire)) {
+        return high_priority_thread_pool_;
       }
       std::lock_guard lock(mutex_high_priority_thread_pool_);
-      high_priority_thread_pool = high_priority_thread_pool_.get();
-      if (high_priority_thread_pool) {
-        return *high_priority_thread_pool;
+      if (high_priority_thread_pool_ready_.load(std::memory_order_acquire)) {
+        return high_priority_thread_pool_;
       }
-      const ThreadPoolOptions& options = normal_thread_pool_->options();
-      high_priority_thread_pool_.reset(new rpc::ThreadPool(rpc::ThreadPoolOptions {
-        .name = name_ + "-high-pri",
-        .max_workers = options.max_workers
-      }));
-      return *high_priority_thread_pool_.get();
+      high_priority_thread_pool_ = make_scoped_refptr<RefCountedData<rpc::ThreadPool>>(
+          rpc::ThreadPoolOptions {
+            .name = name_ + "-high-pri",
+            .max_workers = thread_pool_workers_limit_,
+          });
+      high_priority_thread_pool_ready_.store(true, std::memory_order_release);
+      return high_priority_thread_pool_;
   }
   FATAL_INVALID_ENUM_VALUE(ServicePriority, priority);
+}
+
+Result<ThreadPoolScopedPtr> Messenger::TaggedThreadPool(TaggedThreadPools::Tag tag) {
+  return normal_thread_pools_->Pool(tag);
 }
 
 // Register a new RpcService to handle inbound requests.
@@ -444,10 +451,10 @@ Status Messenger::RegisterService(
 }
 
 void Messenger::ShutdownThreadPools() {
-  normal_thread_pool_->Shutdown();
-  auto high_priority_thread_pool = high_priority_thread_pool_.get();
-  if (high_priority_thread_pool) {
-    high_priority_thread_pool->Shutdown();
+  normal_thread_pools_->Shutdown();
+  std::lock_guard lock(mutex_high_priority_thread_pool_);
+  if (high_priority_thread_pool_) {
+    high_priority_thread_pool_->Shutdown();
   }
 }
 
@@ -595,13 +602,13 @@ Messenger::Messenger(const MessengerBuilder &bld)
       metric_entity_(bld.metric_entity_),
       io_thread_pool_(name_, FLAGS_io_thread_pool_size),
       scheduler_(&io_thread_pool_.io_service()),
-      normal_thread_pool_(new rpc::ThreadPool(rpc::ThreadPoolOptions {
-        .name = name_,
-        .max_workers = bld.workers_limit_,
-      })),
+      thread_pool_workers_limit_(bld.workers_limit_),
+      normal_thread_pools_(new TaggedThreadPools(
+          [this](TaggedThreadPools::Tag tag) { return MakeNormalThreadPoolOptions(tag); })),
       resolver_(new DnsResolver(&io_thread_pool_.io_service(), metric_entity_)),
       rpc_metrics_(std::make_shared<RpcMetrics>(bld.metric_entity_)),
-      num_connections_to_server_(bld.num_connections_to_server_) {
+      num_connections_to_server_(bld.num_connections_to_server_),
+      cgroup_provider_(bld.cgroup_provider_) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);
 #endif
@@ -641,6 +648,8 @@ Reactor* Messenger::RemoteToReactor(const Endpoint& remote, uint32_t idx) {
 }
 
 Status Messenger::Init(const MessengerBuilder &bld) {
+  default_normal_thread_pool_ = VERIFY_RESULT(normal_thread_pools_->Pool(/*tag=*/0));
+
   reactors_.reserve(bld.num_reactors_);
   ReactorMonitor* reactor_monitor = nullptr;
   if (FLAGS_rpc_reactor_task_timeout_ms) {
@@ -784,6 +793,20 @@ Result<ScheduledTaskId> Messenger::ScheduleOnReactor(
 
 scoped_refptr<MetricEntity> Messenger::metric_entity() const {
   return metric_entity_;
+}
+
+ThreadPoolOptions Messenger::MakeNormalThreadPoolOptions(TaggedThreadPools::Tag tag) const {
+  if (tag == 0 || !cgroup_provider_) {
+    return ThreadPoolOptions {
+      .name = name_,
+      .max_workers = thread_pool_workers_limit_,
+    };
+  }
+  return ThreadPoolOptions {
+    .name = Format("$0_pool_$1", name_, tag),
+    .max_workers = thread_pool_workers_limit_,
+    .cgroup = cgroup_provider_(tag),
+  };
 }
 
 } // namespace rpc

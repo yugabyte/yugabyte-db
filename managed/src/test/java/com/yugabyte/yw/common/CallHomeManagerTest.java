@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -31,10 +32,13 @@ import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.cdc.CdcStream;
+import com.yugabyte.yw.common.cdc.CdcStreamManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
+import com.yugabyte.yw.forms.CDCReplicationSlotResponse;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
@@ -42,15 +46,20 @@ import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.time.Clock;
 import java.time.Instant;
@@ -96,6 +105,8 @@ public class CallHomeManagerTest extends FakeDBApplication {
   @Mock MetricQueryHelper metricQueryHelper;
 
   @Mock UniverseTableHandler universeTableHandler;
+
+  @Mock CdcStreamManager cdcStreamManager;
 
   Customer defaultCustomer;
   Users defaultUser;
@@ -283,23 +294,35 @@ public class CallHomeManagerTest extends FakeDBApplication {
   public void testRuntimeConfigPayload() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
 
-    RuntimeConfigEntry.upsert(defaultCustomer, "yb.test.override", "customerOverrideValue");
-    RuntimeConfigEntry.upsert(defaultCustomer, "yb.customer.region", "customerRegionValue");
-    RuntimeConfigEntry.upsert(defaultCustomer, "yb.security.secret", "customerSecretValue");
+    mutableConfigFactory
+        .forCustomer(defaultCustomer)
+        .setValue("yb.test.override", "customerOverrideValue");
+    mutableConfigFactory
+        .forCustomer(defaultCustomer)
+        .setValue("yb.customer.region", "customerRegionValue");
+    mutableConfigFactory
+        .forCustomer(defaultCustomer)
+        .setValue("yb.security.secret", "customerSecretValue");
 
-    RuntimeConfigEntry.upsert(defaultProvider, "yb.provider.region", "providerRegionValue");
-    RuntimeConfigEntry.upsert(defaultProvider, "yb.provider.key", "providerValue");
-    RuntimeConfigEntry.upsert(
-        defaultProvider, "yb.security.ldap.ldap_service_account_password", "providerSecretValue");
+    mutableConfigFactory
+        .forProvider(defaultProvider)
+        .setValue("yb.provider.region", "providerRegionValue");
+    mutableConfigFactory.forProvider(defaultProvider).setValue("yb.provider.key", "providerValue");
+    mutableConfigFactory
+        .forProvider(defaultProvider)
+        .setValue("yb.security.ldap.ldap_service_account_password", "providerSecretValue");
 
-    RuntimeConfigEntry.upsert(u, "yb.universe.region", "universeRegionValue");
-    RuntimeConfigEntry.upsert(u, "yb.universe.key", "universeValue");
+    mutableConfigFactory.forUniverse(u).setValue("yb.universe.region", "universeRegionValue");
+    mutableConfigFactory.forUniverse(u).setValue("yb.universe.key", "universeValue");
 
-    RuntimeConfigEntry.upsertGlobal("yb.test.override", "globalShouldBeFilteredOut");
-    RuntimeConfigEntry.upsertGlobal("yb.global.region", "globalRegionValue");
-    RuntimeConfigEntry.upsertGlobal("yb.global.key", "globalValue");
-    RuntimeConfigEntry.upsertGlobal(
-        "yb.security.ldap.ldap_service_account_password", "globalSecretValue");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.test.override", "globalShouldBeFilteredOut");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.global.region", "globalRegionValue");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.global.key", "globalValue");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.ldap.ldap_service_account_password", "globalSecretValue");
 
     when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
         .thenReturn(
@@ -674,5 +697,176 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertEquals(0.0, m.get("ycql_read_ops").asDouble(), 0.01);
     assertEquals(0.0, m.get("ycql_write_ops").asDouble(), 0.01);
     assertEquals(8.0, m.get("memory_used_gb").asDouble(), 0.01);
+  }
+
+  @Test
+  public void testSendPlatformDiagnosticsSkipsWhenCallhomeDisabled() {
+    ModelFactory.setCallhomeLevel(defaultCustomer, "NONE");
+    callHomeManager.sendPlatformDiagnostics();
+    verifyNoInteractions(apiHelper);
+  }
+
+  @Test
+  public void testCollectPlatformDiagnostics() {
+    String yugawareUuid = "0146179d-a623-4b2a-a095-bfb0062eae9f";
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(ImmutableMap.of("yugaware_uuid", yugawareUuid, "version", "2.25.0"));
+    when(clock.instant()).thenReturn(Instant.parse("2024-03-25T10:00:00.000Z"));
+    when(mockRuntimeConf.getGlobalConfValues(any())).thenReturn(Collections.emptyMap());
+
+    JsonNode payload = callHomeManager.collectPlatformDiagnostics();
+    assertEquals("platform", payload.get("payload_type").asText());
+    assertEquals(yugawareUuid, payload.get("yugaware_uuid").asText());
+    assertEquals("2.25.0", payload.get("yba_version").asText());
+    assertEquals(
+        Instant.parse("2024-03-25T10:00:00.000Z").getEpochSecond(),
+        payload.get("timestamp").asLong());
+    assertTrue(payload.get("customer_uuids").isArray());
+    assertEquals(1, payload.get("customer_uuids").size());
+    assertEquals(
+        defaultCustomer.getUuid().toString(), payload.get("customer_uuids").get(0).asText());
+    assertFalse(payload.get("is_yba_ha_enabled").asBoolean());
+    assertEquals(0, payload.get("hostname_of_standby_yba_ha_instances").size());
+    assertEquals(0, payload.get("yba_backup_history").size());
+    assertEquals(0, payload.get("yba_restore_history").size());
+    assertFalse(payload.get("is_user_auth_via_oidc_configured").asBoolean());
+    assertFalse(payload.get("is_user_auth_via_ldap").asBoolean());
+    assertTrue(payload.get("oidc_config").isNull());
+    assertTrue(payload.get("ldap_config").isNull());
+
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.create("test-cluster-key");
+    PlatformInstance.create(haConfig, "http://local.yba.example.com", true, true);
+    PlatformInstance.create(haConfig, "http://standby.yba.example.com", false, false);
+    JsonNode haPayload = callHomeManager.collectPlatformDiagnostics();
+    assertTrue(haPayload.get("is_yba_ha_enabled").asBoolean());
+    JsonNode standbys = haPayload.get("hostname_of_standby_yba_ha_instances");
+    assertEquals(1, standbys.size());
+    assertEquals("http://standby.yba.example.com", standbys.get(0).asText());
+  }
+
+  @Test
+  public void testSendPlatformDiagnostics() {
+    String yugawareUuid = "0146179d-a623-4b2a-a095-bfb0062eae9f";
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(ImmutableMap.of("yugaware_uuid", yugawareUuid, "version", "2.25.0"));
+    when(clock.instant()).thenReturn(Instant.parse("2024-03-25T10:00:00.000Z"));
+    when(mockRuntimeConf.getGlobalConfValues(any())).thenReturn(Collections.emptyMap());
+
+    ObjectNode responseJson = Json.newObject();
+    responseJson.put("success", true);
+    when(apiHelper.postRequest(anyString(), any(), any())).thenReturn(Json.toJson(responseJson));
+
+    callHomeManager.sendPlatformDiagnostics();
+
+    ArgumentCaptor<String> url = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<JsonNode> params = ArgumentCaptor.forClass(JsonNode.class);
+    ArgumentCaptor<Map<String, String>> headers = ArgumentCaptor.forClass(Map.class);
+
+    verify(apiHelper).postRequest(url.capture(), params.capture(), headers.capture());
+
+    assertEquals("https://diagnostics.yugabyte.com", url.getValue());
+    assertEquals("platform", params.getValue().get("payload_type").asText());
+    assertEquals(yugawareUuid, params.getValue().get("yugaware_uuid").asText());
+    assertNull(headers.getValue());
+  }
+
+  @Test
+  public void testUniverseCdcEnrichment() throws Exception {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
+    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(inv -> RuntimeConfigEntry.getAll(inv.getArgument(0, java.util.Set.class)));
+
+    // CDC not configured
+    JsonNode payload =
+        callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
+    JsonNode universeNode = payload.get("universes").get(0);
+    assertFalse(universeNode.get("is_cdc_configured").asBoolean());
+    assertEquals("", universeNode.get("cdc_replication_slots").asText());
+
+    //  CDC configured with slots
+    CdcStream stream = new CdcStream("stream-id-1", Collections.emptyMap(), "ns-1");
+    when(cdcStreamManager.getAllCdcStreams(any(Universe.class)))
+        .thenReturn(ImmutableList.of(stream));
+
+    CDCReplicationSlotResponse slotResp = new CDCReplicationSlotResponse();
+    CDCReplicationSlotResponse.CDCReplicationSlotDetails slot1 =
+        new CDCReplicationSlotResponse.CDCReplicationSlotDetails();
+    slot1.slotName = "slot_a";
+    CDCReplicationSlotResponse.CDCReplicationSlotDetails slot2 =
+        new CDCReplicationSlotResponse.CDCReplicationSlotDetails();
+    slot2.slotName = "slot_b";
+    slotResp.replicationSlots = ImmutableList.of(slot1, slot2);
+    when(cdcStreamManager.listReplicationSlot(any(Universe.class))).thenReturn(slotResp);
+
+    payload =
+        callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
+    universeNode = payload.get("universes").get(0);
+    assertTrue(universeNode.get("is_cdc_configured").asBoolean());
+    assertEquals("slot_a,slot_b", universeNode.get("cdc_replication_slots").asText());
+
+    // Exception case
+    when(cdcStreamManager.getAllCdcStreams(any(Universe.class)))
+        .thenThrow(new RuntimeException("simulated failure"));
+
+    payload =
+        callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
+    universeNode = payload.get("universes").get(0);
+    assertTrue(universeNode.get("is_cdc_configured").isNull());
+    assertTrue(universeNode.get("cdc_replication_slots").isNull());
+  }
+
+  @Test
+  public void testTasksPayloadIncludesTaskParams() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
+    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(inv -> RuntimeConfigEntry.getAll(inv.getArgument(0, java.util.Set.class)));
+
+    ObjectNode taskParamsJson = Json.newObject();
+    taskParamsJson.put("ybSoftwareVersion", "2.29.0.0-b369");
+    taskParamsJson.put("ybPrevSoftwareVersion", "2025.2.0.1-b1");
+    taskParamsJson.put("ysqlPassword", "mysecret");
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setTaskParams(taskParamsJson);
+    taskInfo.setOwner("test-owner");
+    taskInfo.setTaskState(TaskInfo.State.Success);
+    taskInfo.save();
+
+    CustomerTask ct =
+        CustomerTask.create(
+            defaultCustomer,
+            u.getUniverseUUID(),
+            taskInfo.getUuid(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.SoftwareUpgrade,
+            u.getName());
+    ct.markAsCompleted();
+
+    JsonNode payload =
+        callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
+
+    JsonNode tasks = payload.get("tasks");
+    assertNotNull(tasks);
+    assertEquals(1, tasks.size());
+
+    JsonNode task = tasks.get(0);
+    assertEquals("SoftwareUpgradeYB", task.get("task_name").asText());
+    assertEquals("Universe", task.get("target_type").asText());
+    assertEquals(u.getUniverseUUID().toString(), task.get("target_uuid").asText());
+    assertEquals("Success", task.get("task_state").asText());
+    assertFalse(task.get("task_params").isNull());
+    assertEquals("2.29.0.0-b369", task.get("task_params").get("ybSoftwareVersion").asText());
+    assertEquals("2025.2.0.1-b1", task.get("task_params").get("ybPrevSoftwareVersion").asText());
+    assertEquals("REDACTED", task.get("task_params").get("ysqlPassword").asText());
   }
 }

@@ -434,5 +434,29 @@ Result<int64_t> LibPqTestBase::GetCatCacheTableMissMetric(const std::string& tab
   return STATUS(NotFound, "metric for " + table_name + " not found");
 }
 
+Result<int64_t> LibPqTestBase::GetCatCacheListMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheListMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      return metric.value;
+    }
+  }
+  return STATUS(NotFound, "list miss metric for " + table_name + " not found");
+}
+
+Result<int64_t> LibPqTestBase::GetCatCacheNegMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheNegMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      return metric.value;
+    }
+  }
+  return STATUS(NotFound, "negative miss metric for " + table_name + " not found");
+}
+
 } // namespace pgwrapper
 } // namespace yb

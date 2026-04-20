@@ -31,7 +31,7 @@
 //
 #include "yb/tablet/tablet_metrics.h"
 
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 
 #include "yb/util/metrics.h"
 
@@ -433,6 +433,17 @@ void ScopedTabletMetrics::AddAggregateStats(
 
 void ScopedTabletMetrics::CopyToPgsqlResponse(
     PgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const {
+  DoCopyToPgsqlResponse(response, metrics_capture);
+}
+
+void ScopedTabletMetrics::CopyToPgsqlResponse(
+    LWPgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const {
+  DoCopyToPgsqlResponse(response, metrics_capture);
+}
+
+template <class PB>
+void ScopedTabletMetrics::DoCopyToPgsqlResponse(
+    PB* response, PgsqlMetricsCaptureType metrics_capture) const {
   const auto& metrics_lists = GetMetricsForCaptureType(metrics_capture);
   auto* metrics = response->mutable_metrics();
   for (const auto& counter : metrics_lists.counters) {

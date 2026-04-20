@@ -14,11 +14,13 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/opid.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/dockv/doc_key.h"
@@ -46,6 +48,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -82,11 +85,13 @@ DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_bool(get_changes_honor_deadline);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(TEST_get_changes_read_loop_delay_ms);
+DECLARE_int32(TEST_entries_per_log_index_chuck);
 DECLARE_double(cdc_read_safe_deadline_ratio);
 DECLARE_bool(TEST_xcluster_simulate_have_more_records);
 DECLARE_bool(TEST_xcluster_skip_meta_ops);
 DECLARE_bool(TEST_cdc_inject_replication_index_update_failure);
 DECLARE_bool(TEST_disable_wal_retention_time);
+DECLARE_bool(TEST_log_cache_evict_ignore_min_pinned);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 
 DECLARE_double(cdc_get_changes_free_rpc_ratio);
@@ -397,7 +402,11 @@ Status CDCServiceTest::WriteToProxyWithRetries(
     RpcController* rpc) {
   return LoggedWaitFor(
       [&req, resp, rpc, proxy]() -> Result<bool> {
-        auto s = proxy->Write(req, resp, rpc);
+        auto arena = SharedThreadSafeArena();
+        auto lw_req = arena->NewArenaObject<tserver::LWWriteRequestPB>(req);
+        auto lw_resp = arena->NewArenaObject<tserver::LWWriteResponsePB>();
+        auto s = proxy->Write(*lw_req, lw_resp, rpc);
+        lw_resp->ToGoogleProtobuf(resp);
         if (s.IsTryAgain() ||
             (resp->has_error() && StatusFromPB(resp->error().status()).IsTryAgain())) {
           rpc->Reset();
@@ -775,6 +784,56 @@ TEST_F(CDCServiceTest, TestWALPrematureGCErrorCode) {
   GetChanges(tablet_id, stream_id_, /* term */ 0, /* index */ 1, &has_error, &code);
   ASSERT_TRUE(has_error);
   ASSERT_EQ(cdc::CDCErrorPB::CHECKPOINT_TOO_OLD, code);
+}
+
+TEST_F(CDCServiceTest, TestGetChangesFromGCedCheckpointWithNewerWal) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_entries_per_log_index_chuck) = 1;
+  stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
+  const std::string tablet_id = GetTablet();
+  auto* ts = cluster_->mini_tablet_server(0)->server();
+  const auto& proxy = ts->proxy();
+  auto peer = ASSERT_RESULT(ts->tablet_manager()->GetTablet(tablet_id));
+
+  // Create two closed segments and one open segment.
+  // The second closed segment is needed to ensure log index is GCed.
+  WriteTestRow(0, kRowCount, "key0", tablet_id, proxy);
+  GetChangesResponsePB first;
+  ASSERT_NO_FATALS(GetChangesWithResp(tablet_id, stream_id_, 0, 0, &first));
+  ASSERT_FALSE(first.has_error());
+  const auto& cp = first.checkpoint().op_id();
+  ASSERT_GT(cp.index(), 0);
+  ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
+  WriteTestRow(42, kRowCount + 42, "mid", tablet_id, proxy);
+  ASSERT_OK(peer->log()->WaitUntilAllFlushed());
+  ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
+
+  // GC the oldest segment.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_wal_retention_time) = true;
+  ASSERT_OK(peer->log()->WaitUntilAllFlushed());
+  log::SegmentSequence segs;
+  auto* log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segs));
+  ASSERT_EQ(segs.size(), 3u);
+  const auto& oldest = ASSERT_RESULT(segs.front()).get();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) =
+      static_cast<int32_t>(segs.size() - 1);
+  int n_gced = 0;
+  ASSERT_OK(peer->log()->GC(std::numeric_limits<int64_t>::max(), &n_gced));
+  ASSERT_EQ(1, n_gced);
+  ASSERT_FALSE(Env::Default()->FileExists(oldest->path()));
+  ASSERT_RESULT(peer->GetRaftConsensus())->EvictLogCache(
+      std::numeric_limits<size_t>::max());  // all entries except 0 should be evicted
+
+  // Now write a new row and read changes from the GCed checkpoint.
+  WriteTestRow(1, kRowCount + 1, "key1", tablet_id, proxy);
+  bool has_error = false;
+  GetChangesResponsePB resumed;
+  ASSERT_NO_FATALS(GetChangesWithResp(
+      tablet_id, stream_id_, cp.term(), cp.index(), &resumed, &has_error, /*code=*/nullptr));
+  ASSERT_FALSE(has_error);
+  ASSERT_FALSE(resumed.has_error());
+  ASSERT_GT(resumed.records_size(), 0);
 }
 
 TEST_F(CDCServiceTest, TestGetChanges) {

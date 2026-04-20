@@ -2465,12 +2465,13 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // Write to the PGSQL table.
   shared_ptr<YBTable> pgsq_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId , &pgsq_table));
+  auto arena = SharedThreadSafeArena();
   rpc::Sidecars sidecars;
-  auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsq_table, &sidecars);
-  PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
+  auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsq_table, arena, &sidecars);
+  auto* psql_write_request = pgsql_write_op->mutable_request();
 
-  psql_write_request->add_range_column_values()->mutable_value()->set_string_value("pgsql_key1");
-  PgsqlColumnValuePB* pgsql_column = psql_write_request->add_column_values();
+  psql_write_request->add_range_column_values()->mutable_value()->ref_string_value("pgsql_key1");
+  auto* pgsql_column = psql_write_request->add_column_values();
   // 1 is the index for column value.
 
   pgsql_column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
@@ -2493,7 +2494,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   EXPECT_OK(table.Open(yql_table_name, client_.get()));
   auto write_op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = write_op->mutable_request();
-  req->add_range_column_values()->mutable_value()->set_string_value("key1");
+  req->add_range_column_values()->mutable_value()->ref_string_value("key1");
   auto* column = req->add_column_values();
   // 1 is the index for column value.
   column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
@@ -2795,12 +2796,13 @@ TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
   shared_ptr<YBTable> pgsql_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId, &pgsql_table));
   std::shared_ptr<YBSession> session = CreateSession(client_.get());
+  auto arena = SharedThreadSafeArena();
   rpc::Sidecars sidecars;
   auto create_insert_pgsql_row = [&](const std::string& key) -> YBPgsqlWriteOpPtr {
-    auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsql_table, &sidecars);
-    PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
-    psql_write_request->add_range_column_values()->mutable_value()->set_string_value(key);
-    PgsqlColumnValuePB* pgsql_column = psql_write_request->add_column_values();
+    auto pgsql_write_op = client::YBPgsqlWriteOp::NewInsert(pgsql_table, arena, &sidecars);
+    auto* psql_write_request = pgsql_write_op->mutable_request();
+    psql_write_request->add_range_column_values()->mutable_value()->dup_string_value(key);
+    auto* pgsql_column = psql_write_request->add_column_values();
     pgsql_column->set_column_id(pgsql_table->schema().ColumnId(1));
     pgsql_column->mutable_expr()->mutable_value()->set_int64_value(3);
     return pgsql_write_op;

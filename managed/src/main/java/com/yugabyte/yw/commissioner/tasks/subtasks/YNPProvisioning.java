@@ -56,13 +56,18 @@ public class YNPProvisioning extends NodeTaskBase {
 
   @VisibleForTesting
   Path generateProvisionConfig(
-      Universe universe, NodeDetails node, Provider provider, Path nodeAgentHome) {
+      Universe universe,
+      NodeDetails node,
+      Provider provider,
+      Path nodeAgentHome,
+      UserIntent userIntent) {
     YNPConfigGenerator.ConfigParams configParams =
         YNPConfigGenerator.ConfigParams.builder()
             .nodeAgentHome(nodeAgentHome)
             .provider(provider)
             .nodeDetails(node)
             .universe(universe)
+            .userIntent(userIntent)
             .isYbPrebuiltImage(taskParams().isYbPrebuiltImage)
             .build();
     return ynpConfigGenerator.generateConfigFile(configParams);
@@ -99,7 +104,9 @@ public class YNPProvisioning extends NodeTaskBase {
         Paths.get(
                 customTmpDirectory, String.format("config_%d.json", Instant.now().getEpochSecond()))
             .toString();
-    Path tmpConfigFilepath = generateProvisionConfig(universe, node, provider, nodeAgentHomePath);
+    Path tmpConfigFilepath =
+        generateProvisionConfig(
+            universe, node, provider, nodeAgentHomePath, taskParams().userIntent);
     nodeUniverseManager.uploadFileToNode(
         node, universe, tmpConfigFilepath.toString(), targetConfigPath, "755", shellContext);
     // Copy the conf file to scripts folder and run the provisioning script as in manual onprem.

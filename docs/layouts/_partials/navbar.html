@@ -16,7 +16,7 @@
 {{- end -}}
 
 {{- if eq $versionDir "" -}}
-  {{ $versionDir = .Site.Params.yb.preview_version_slug }}
+  {{ $versionDir = .Site.Params.yb.fallback_version_slug }}
 {{- end -}}
 
 {{ $.Scratch.Set "docVersion" $versionDir }}

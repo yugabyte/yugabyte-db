@@ -220,6 +220,46 @@ typedef enum YbStatementType
 	HintCacheMisses,
 	AuthorizedConnection,
 	RelCachePreload,
+	CatCacheListMisses_Start,
+	CatCacheListMisses_0 = CatCacheListMisses_Start,
+	CatCacheListMisses_1, CatCacheListMisses_2, CatCacheListMisses_3,
+	CatCacheListMisses_4, CatCacheListMisses_5, CatCacheListMisses_6,
+	CatCacheListMisses_7, CatCacheListMisses_8, CatCacheListMisses_9,
+	CatCacheListMisses_10, CatCacheListMisses_11, CatCacheListMisses_12,
+	CatCacheListMisses_13, CatCacheListMisses_14, CatCacheListMisses_15,
+	CatCacheListMisses_16, CatCacheListMisses_17, CatCacheListMisses_18,
+	CatCacheListMisses_19, CatCacheListMisses_20, CatCacheListMisses_21,
+	CatCacheListMisses_22, CatCacheListMisses_23, CatCacheListMisses_24,
+	CatCacheListMisses_25, CatCacheListMisses_26, CatCacheListMisses_27,
+	CatCacheListMisses_28, CatCacheListMisses_29, CatCacheListMisses_30,
+	CatCacheListMisses_31, CatCacheListMisses_32, CatCacheListMisses_33,
+	CatCacheListMisses_34, CatCacheListMisses_35, CatCacheListMisses_36,
+	CatCacheListMisses_37, CatCacheListMisses_38, CatCacheListMisses_39,
+	CatCacheListMisses_40, CatCacheListMisses_41, CatCacheListMisses_42,
+	CatCacheListMisses_43, CatCacheListMisses_44, CatCacheListMisses_45,
+	CatCacheListMisses_46, CatCacheListMisses_47, CatCacheListMisses_48,
+	CatCacheListMisses_49, CatCacheListMisses_50,
+	CatCacheListMisses_End = CatCacheListMisses_50,
+	CatCacheNegMisses_Start,
+	CatCacheNegMisses_0 = CatCacheNegMisses_Start,
+	CatCacheNegMisses_1, CatCacheNegMisses_2, CatCacheNegMisses_3,
+	CatCacheNegMisses_4, CatCacheNegMisses_5, CatCacheNegMisses_6,
+	CatCacheNegMisses_7, CatCacheNegMisses_8, CatCacheNegMisses_9,
+	CatCacheNegMisses_10, CatCacheNegMisses_11, CatCacheNegMisses_12,
+	CatCacheNegMisses_13, CatCacheNegMisses_14, CatCacheNegMisses_15,
+	CatCacheNegMisses_16, CatCacheNegMisses_17, CatCacheNegMisses_18,
+	CatCacheNegMisses_19, CatCacheNegMisses_20, CatCacheNegMisses_21,
+	CatCacheNegMisses_22, CatCacheNegMisses_23, CatCacheNegMisses_24,
+	CatCacheNegMisses_25, CatCacheNegMisses_26, CatCacheNegMisses_27,
+	CatCacheNegMisses_28, CatCacheNegMisses_29, CatCacheNegMisses_30,
+	CatCacheNegMisses_31, CatCacheNegMisses_32, CatCacheNegMisses_33,
+	CatCacheNegMisses_34, CatCacheNegMisses_35, CatCacheNegMisses_36,
+	CatCacheNegMisses_37, CatCacheNegMisses_38, CatCacheNegMisses_39,
+	CatCacheNegMisses_40, CatCacheNegMisses_41, CatCacheNegMisses_42,
+	CatCacheNegMisses_43, CatCacheNegMisses_44, CatCacheNegMisses_45,
+	CatCacheNegMisses_46, CatCacheNegMisses_47, CatCacheNegMisses_48,
+	CatCacheNegMisses_49, CatCacheNegMisses_50,
+	CatCacheNegMisses_End = CatCacheNegMisses_50,
 	kMaxStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
@@ -266,6 +306,8 @@ static long last_catcache_delta_refresh_val = 0;
 static long last_cache_misses_val = 0;
 static long last_cache_id_misses_val[SysCacheSize] = {0};
 static long last_cache_table_misses_val[YbNumCatalogCacheTables] = {0};
+static long last_cache_list_misses_val[YbNumCatalogCacheTables] = {0};
+static long last_cache_neg_misses_val[YbNumCatalogCacheTables] = {0};
 
 static long last_hint_cache_refreshes_val = 0;
 static long last_hint_cache_hits_val = 0;
@@ -406,6 +448,30 @@ set_metric_names(void)
 				 table_name);
 	}
 
+	for (int i = CatCacheListMisses_Start; i <= CatCacheListMisses_End; ++i)
+	{
+		int			table_id = i - CatCacheListMisses_Start;
+
+		strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheListMisses");
+		const char *table_name = YbGetCatalogCacheTableNameFromTableId(table_id);
+
+		Assert(strlen(table_name) < YB_PG_METRIC_NAME_LEN);
+		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
+				 table_name);
+	}
+
+	for (int i = CatCacheNegMisses_Start; i <= CatCacheNegMisses_End; ++i)
+	{
+		int			table_id = i - CatCacheNegMisses_Start;
+
+		strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheNegMisses");
+		const char *table_name = YbGetCatalogCacheTableNameFromTableId(table_id);
+
+		Assert(strlen(table_name) < YB_PG_METRIC_NAME_LEN);
+		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
+				 table_name);
+	}
+
 	strcpy(ybpgm_table[HintCacheRefresh].name,
 		   YSQL_METRIC_PREFIX "HintCacheRefresh");
 	strcpy(ybpgm_table[HintCacheHits].name,
@@ -503,6 +569,22 @@ set_metric_names(void)
 	{
 		snprintf(ybpgm_table[i].count_help, YB_PG_METRIC_NAME_LEN,
 				 "Number of catalog cache misses for table %s",
+				 ybpgm_table[i].table_name);
+		strcpy(ybpgm_table[i].sum_help, "Not applicable");
+	}
+
+	for (int i = CatCacheListMisses_Start; i <= CatCacheListMisses_End; ++i)
+	{
+		snprintf(ybpgm_table[i].count_help, YB_PG_METRIC_NAME_LEN,
+				 "Number of catalog cache list misses for table %s",
+				 ybpgm_table[i].table_name);
+		strcpy(ybpgm_table[i].sum_help, "Not applicable");
+	}
+
+	for (int i = CatCacheNegMisses_Start; i <= CatCacheNegMisses_End; ++i)
+	{
+		snprintf(ybpgm_table[i].count_help, YB_PG_METRIC_NAME_LEN,
+				 "Number of catalog cache negative misses for table %s",
 				 ybpgm_table[i].table_name);
 		strcpy(ybpgm_table[i].sum_help, "Not applicable");
 	}
@@ -1138,6 +1220,8 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 		long		current_cache_misses = YbGetCatCacheMisses();
 		long	   *current_cache_id_misses = YbGetCatCacheIdMisses();
 		long	   *current_cache_table_misses = YbGetCatCacheTableMisses();
+		long	   *current_cache_list_misses = YbGetCatCacheListMisses();
+		long	   *current_cache_neg_misses = YbGetCatCacheNegMisses();
 
 		total_delta = current_cache_misses - last_cache_misses_val;
 
@@ -1169,6 +1253,28 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 							 (current_cache_table_misses[j] -
 							  last_cache_table_misses_val[j]));
 			last_cache_table_misses_val[j] = current_cache_table_misses[j];
+		}
+		for (int i = CatCacheListMisses_Start;
+			 i <= CatCacheListMisses_End;
+			 ++i)
+		{
+			int			j = i - CatCacheListMisses_Start;
+
+			ybpgm_StoreCount(i, 0,
+							 (current_cache_list_misses[j] -
+							  last_cache_list_misses_val[j]));
+			last_cache_list_misses_val[j] = current_cache_list_misses[j];
+		}
+		for (int i = CatCacheNegMisses_Start;
+			 i <= CatCacheNegMisses_End;
+			 ++i)
+		{
+			int			j = i - CatCacheNegMisses_Start;
+
+			ybpgm_StoreCount(i, 0,
+							 (current_cache_neg_misses[j] -
+							  last_cache_neg_misses_val[j]));
+			last_cache_neg_misses_val[j] = current_cache_neg_misses[j];
 		}
 
 		/* Hint cache metrics */

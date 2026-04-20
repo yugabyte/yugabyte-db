@@ -39,6 +39,19 @@ public class TestPgViewYCQLStats extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgViewYCQLStats.class);
   protected int cqlClientTimeoutMs = 120 * 1000;
 
+  /*
+   * ycql_stat_statements reflects this(local) tablet server's CQL proxy only, while the Java
+   * driver load-balances across tservers. So SUM(calls) for a fingerprint is in (0, N] on this node
+   * where N is the number of executions issued in the test (cluster-wide), never more than N.
+   */
+  private static void assertLocalCallsPositiveAndAtMost(
+      long sumCalls, int maxClusterWideExecutions, String label) {
+    assertTrue(label + ": expected SUM(calls) > 0 on local TS, got " + sumCalls, sumCalls > 0);
+    assertTrue(label + ": expected SUM(calls) <= " + maxClusterWideExecutions
+        + " on local TS (CQL LB spreads load across tservers), got " + sumCalls,
+        sumCalls <= maxClusterWideExecutions);
+  }
+
   /** Convenient default cluster for tests to use, cleaned after each test. */
   protected Cluster cluster;
 
@@ -49,6 +62,15 @@ public class TestPgViewYCQLStats extends BasePgSQLTest {
   protected void resetSettings() {
     super.resetSettings();
     startCqlProxy = true;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_yb_enable_ash", "true");
+    flagMap.put("ysql_yb_ash_sampling_interval_ms", "10");
+    flagMap.put("ysql_yb_ash_sample_size", "500");
+    return flagMap;
   }
 
   public Cluster.Builder getDefaultClusterBuilder() {
@@ -135,6 +157,326 @@ public class TestPgViewYCQLStats extends BasePgSQLTest {
 
     }
     session.execute("drop table table1").one();
+  }
+
+  @Test
+  public void testMixedBatchStatements() throws Exception {
+    setUpCqlClient();
+    session.execute("CREATE KEYSPACE IF NOT EXISTS kb1 WITH replication = " +
+        "{'class': 'SimpleStrategy', 'replication_factor': 1}");
+    session.execute("USE kb1");
+    session.execute("CREATE TABLE IF NOT EXISTS batch_mix " +
+        "(k INT PRIMARY KEY, v TEXT, v2 INT)");
+
+    for (int i = 0; i < 30; i++) {
+      session.execute("INSERT INTO batch_mix (k, v, v2) VALUES (" +
+          i + ", 'init', 0)");
+    }
+
+    PreparedStatement insertPs = session.prepare(
+        "INSERT INTO batch_mix (k, v, v2) VALUES (?, ?, ?)");
+    PreparedStatement updatePs = session.prepare(
+        "UPDATE batch_mix SET v = ? WHERE k = ?");
+    PreparedStatement deletePs = session.prepare(
+        "DELETE FROM batch_mix WHERE k = ?");
+
+    for (int i = 0; i < 10; i++) {
+      BatchStatement batch = new BatchStatement();
+      batch.add(insertPs.bind(100 + i, "batch", i)); // k, v, v2
+      batch.add(updatePs.bind("upd_" + i, i));  // v, k
+      batch.add(deletePs.bind(20 + i));  // k
+      session.execute(batch);
+    }
+
+    Thread.sleep(5000);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS yb_ycql_utils");
+
+      long entryCount = getSingleRow(stmt,
+          "SELECT COUNT(*) FROM ycql_stat_statements " +
+          "WHERE query LIKE '%INSERT INTO batch_mix%' " +
+          "AND query LIKE '%UPDATE batch_mix%' " +
+          "AND query LIKE '%DELETE FROM batch_mix%'").getLong(0);
+      assertTrue("Expected batch entries in ycql_stat_statements, got " +
+          entryCount, entryCount > 0);
+
+      Row metricsRow = getSingleRow(stmt,
+          "SELECT SUM(calls)::bigint, SUM(total_time), MAX(max_time) " +
+          "FROM ycql_stat_statements " +
+          "WHERE query LIKE '%INSERT INTO batch_mix%' " +
+          "AND query LIKE '%UPDATE batch_mix%' " +
+          "AND query LIKE '%DELETE FROM batch_mix%'");
+      long totalCalls = metricsRow.getLong(0);
+      double totalTime = metricsRow.getDouble(1);
+      double maxTime = metricsRow.getDouble(2);
+      // One ycql_stat_statements row per mixed-batch fingerprint; calls += 1 per BATCH execution
+      // (10 iterations), not per child (not 30).
+      assertLocalCallsPositiveAndAtMost(totalCalls, 10, "mixed batch (INSERT+UPDATE+DELETE)");
+      assertTrue("Expected total_time > 0, got " + totalTime, totalTime > 0);
+      assertTrue("Expected max_time > 0, got " + maxTime, maxTime > 0);
+    }
+
+    session.execute("DROP TABLE batch_mix");
+  }
+
+  @Test
+  public void testSingleQueryBatchMatchesNonBatch() throws Exception {
+    setUpCqlClient();
+    session.execute("CREATE KEYSPACE IF NOT EXISTS kb2 WITH replication = " +
+        "{'class': 'SimpleStrategy', 'replication_factor': 1}");
+    session.execute("USE kb2");
+    session.execute("CREATE TABLE IF NOT EXISTS sq_test " +
+        "(k INT PRIMARY KEY, v TEXT)");
+
+    for (int i = 0; i < 50; i++) {
+      session.execute("INSERT INTO sq_test (k, v) VALUES (" + i + ", 'init')");
+    }
+
+    PreparedStatement insertPs = session.prepare(
+        "INSERT INTO sq_test (k, v) VALUES (?, ?)");
+    PreparedStatement updatePs = session.prepare(
+        "UPDATE sq_test SET v = ? WHERE k = ?");
+    PreparedStatement deletePs = session.prepare(
+        "DELETE FROM sq_test WHERE k = ?");
+
+    for (int i = 0; i < 5; i++) {
+      session.execute(insertPs.bind(100 + i, "prep_val"));
+      BatchStatement batch = new BatchStatement();
+      batch.add(insertPs.bind(200 + i, "batch_val"));
+      session.execute(batch);
+    }
+
+    for (int i = 0; i < 5; i++) {
+      session.execute(updatePs.bind("prep_upd_" + i, i));
+      BatchStatement batch = new BatchStatement();
+      batch.add(updatePs.bind("batch_upd_" + i, 10 + i));
+      session.execute(batch);
+    }
+
+    for (int i = 0; i < 5; i++) {
+      session.execute(deletePs.bind(20 + i));
+      BatchStatement batch = new BatchStatement();
+      batch.add(deletePs.bind(30 + i));
+      session.execute(batch);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS yb_ycql_utils");
+
+      // INSERT: single-query batch queryid should match prepared queryid.
+      long insertDistinctIds = getSingleRow(stmt,
+          "SELECT COUNT(DISTINCT queryid) FROM ycql_stat_statements " +
+          "WHERE query LIKE '%INSERT INTO sq_test (k, v) VALUES (?, ?)%'")
+          .getLong(0);
+      assertEquals("INSERT: all entries should share one queryid",
+          1L, insertDistinctIds);
+
+      Row insertMetrics = getSingleRow(stmt,
+          "SELECT SUM(calls)::bigint, SUM(total_time), " +
+          "MAX(max_time), MIN(min_time) " +
+          "FROM ycql_stat_statements " +
+          "WHERE query LIKE '%INSERT INTO sq_test (k, v) VALUES (?, ?)%'");
+      assertLocalCallsPositiveAndAtMost(insertMetrics.getLong(0).longValue(), 10,
+          "INSERT prepared + single-query batch");
+      assertTrue("INSERT total_time > 0", insertMetrics.getDouble(1) > 0);
+      assertTrue("INSERT max_time > 0", insertMetrics.getDouble(2) > 0);
+      assertTrue("INSERT min_time > 0", insertMetrics.getDouble(3) > 0);
+
+      // UPDATE: single-query batch queryid should match prepared queryid.
+      long updateDistinctIds = getSingleRow(stmt,
+          "SELECT COUNT(DISTINCT queryid) FROM ycql_stat_statements " +
+          "WHERE query LIKE '%UPDATE sq_test SET v = ? WHERE k = ?%'")
+          .getLong(0);
+      assertEquals("UPDATE: all entries should share one queryid",
+          1L, updateDistinctIds);
+
+      Row updateMetrics = getSingleRow(stmt,
+          "SELECT SUM(calls)::bigint, SUM(total_time), " +
+          "MAX(max_time), MIN(min_time) " +
+          "FROM ycql_stat_statements " +
+          "WHERE query LIKE '%UPDATE sq_test SET v = ? WHERE k = ?%'");
+      assertLocalCallsPositiveAndAtMost(updateMetrics.getLong(0).longValue(), 10,
+          "UPDATE prepared + single-query batch");
+      assertTrue("UPDATE total_time > 0", updateMetrics.getDouble(1) > 0);
+      assertTrue("UPDATE max_time > 0", updateMetrics.getDouble(2) > 0);
+      assertTrue("UPDATE min_time > 0", updateMetrics.getDouble(3) > 0);
+
+      // DELETE: single-query batch queryid should match prepared queryid.
+      long deleteDistinctIds = getSingleRow(stmt,
+          "SELECT COUNT(DISTINCT queryid) FROM ycql_stat_statements " +
+          "WHERE query LIKE '%DELETE FROM sq_test WHERE k = ?%'")
+          .getLong(0);
+      assertEquals("DELETE: all entries should share one queryid",
+          1L, deleteDistinctIds);
+
+      Row deleteMetrics = getSingleRow(stmt,
+          "SELECT SUM(calls)::bigint, SUM(total_time), " +
+          "MAX(max_time), MIN(min_time) " +
+          "FROM ycql_stat_statements " +
+          "WHERE query LIKE '%DELETE FROM sq_test WHERE k = ?%'");
+      assertLocalCallsPositiveAndAtMost(deleteMetrics.getLong(0).longValue(), 10,
+          "DELETE prepared + single-query batch");
+      assertTrue("DELETE total_time > 0", deleteMetrics.getDouble(1) > 0);
+      assertTrue("DELETE max_time > 0", deleteMetrics.getDouble(2) > 0);
+      assertTrue("DELETE min_time > 0", deleteMetrics.getDouble(3) > 0);
+    }
+
+    session.execute("DROP TABLE sq_test");
+  }
+
+  @Test
+  public void testBatchIsPreparedFlag() throws Exception {
+    setUpCqlClient();
+    session.execute("CREATE KEYSPACE IF NOT EXISTS kb3 WITH replication = " +
+        "{'class': 'SimpleStrategy', 'replication_factor': 1}");
+    session.execute("USE kb3");
+
+    // All-prepared batch: every child is a bound prepared statement.
+    session.execute("CREATE TABLE IF NOT EXISTS batch_allprep " +
+        "(k INT PRIMARY KEY, v TEXT)");
+    for (int i = 0; i < 10; i++) {
+      session.execute("INSERT INTO batch_allprep (k, v) VALUES (" +
+          i + ", 'init')");
+    }
+
+    PreparedStatement psInsertAP = session.prepare(
+        "INSERT INTO batch_allprep (k, v) VALUES (?, ?)");
+    PreparedStatement psDeleteAP = session.prepare(
+        "DELETE FROM batch_allprep WHERE k = ?");
+    for (int i = 0; i < 5; i++) {
+      BatchStatement allPrepBatch = new BatchStatement();
+      allPrepBatch.add(psInsertAP.bind(100 + i, "allprep"));
+      allPrepBatch.add(psDeleteAP.bind(i));
+      session.execute(allPrepBatch);
+    }
+
+    // Mixed batch: one prepared child, one unprepared (SimpleStatement) child.
+    session.execute("CREATE TABLE IF NOT EXISTS batch_mixprep " +
+        "(k INT PRIMARY KEY, v TEXT)");
+    for (int i = 0; i < 10; i++) {
+      session.execute("INSERT INTO batch_mixprep (k, v) VALUES (" +
+          i + ", 'init')");
+    }
+
+    PreparedStatement psInsertMP = session.prepare(
+        "INSERT INTO batch_mixprep (k, v) VALUES (?, ?)");
+    for (int i = 0; i < 5; i++) {
+      BatchStatement mixedBatch = new BatchStatement();
+      mixedBatch.add(psInsertMP.bind(100 + i, "mixed"));
+      mixedBatch.add(new SimpleStatement(
+          "DELETE FROM batch_mixprep WHERE k = ?", i));
+      session.execute(mixedBatch);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS yb_ycql_utils");
+
+      long allPrepTrue = getSingleRow(stmt,
+          "SELECT COUNT(*) FROM ycql_stat_statements " +
+          "WHERE is_prepared = 't' " +
+          "AND query LIKE '%INSERT INTO batch_allprep%' " +
+          "AND query LIKE '%DELETE FROM batch_allprep%'").getLong(0);
+      assertTrue("All-prepared batch should have is_prepared=true entries, got " +
+          allPrepTrue, allPrepTrue > 0);
+
+      long allPrepFalse = getSingleRow(stmt,
+          "SELECT COUNT(*) FROM ycql_stat_statements " +
+          "WHERE is_prepared = 'f' " +
+          "AND query LIKE '%INSERT INTO batch_allprep%' " +
+          "AND query LIKE '%DELETE FROM batch_allprep%'").getLong(0);
+      assertEquals("All-prepared batch should have no is_prepared=false entries",
+          0L, allPrepFalse);
+
+      long mixedFalse = getSingleRow(stmt,
+          "SELECT COUNT(*) FROM ycql_stat_statements " +
+          "WHERE is_prepared = 'f' " +
+          "AND query LIKE '%INSERT INTO batch_mixprep%' " +
+          "AND query LIKE '%DELETE FROM batch_mixprep%'").getLong(0);
+      assertTrue("Mixed batch should have is_prepared=false entries, got " +
+          mixedFalse, mixedFalse > 0);
+
+      long mixedTrue = getSingleRow(stmt,
+          "SELECT COUNT(*) FROM ycql_stat_statements " +
+          "WHERE is_prepared = 't' " +
+          "AND query LIKE '%INSERT INTO batch_mixprep%' " +
+          "AND query LIKE '%DELETE FROM batch_mixprep%'").getLong(0);
+      assertEquals("Mixed batch should have no is_prepared=true entries",
+          0L, mixedTrue);
+
+      long allPrepCalls = getSingleRow(stmt,
+          "SELECT COALESCE(SUM(calls), 0)::bigint FROM ycql_stat_statements " +
+          "WHERE is_prepared = 't' " +
+          "AND query LIKE '%INSERT INTO batch_allprep%' " +
+          "AND query LIKE '%DELETE FROM batch_allprep%'").getLong(0);
+      assertLocalCallsPositiveAndAtMost(allPrepCalls, 5, "all-prepared batch");
+
+      long mixedPrepCalls = getSingleRow(stmt,
+          "SELECT COALESCE(SUM(calls), 0)::bigint FROM ycql_stat_statements " +
+          "WHERE is_prepared = 'f' " +
+          "AND query LIKE '%INSERT INTO batch_mixprep%' " +
+          "AND query LIKE '%DELETE FROM batch_mixprep%'").getLong(0);
+      assertLocalCallsPositiveAndAtMost(mixedPrepCalls, 5, "mixed-prepared batch");
+    }
+
+    session.execute("DROP TABLE batch_allprep");
+    session.execute("DROP TABLE batch_mixprep");
+  }
+
+  @Test
+  public void testAshJoinYcqlStatStatementsForBatch() throws Exception {
+    setUpCqlClient();
+    session.execute("CREATE KEYSPACE IF NOT EXISTS kb_ash WITH replication = " +
+        "{'class': 'SimpleStrategy', 'replication_factor': 1}");
+    session.execute("USE kb_ash");
+    session.execute("CREATE TABLE IF NOT EXISTS ash_batch " +
+        "(k INT PRIMARY KEY, v TEXT, v2 INT)");
+
+    for (int i = 0; i < 500; i++) {
+      session.execute("INSERT INTO ash_batch (k, v, v2) VALUES (" +
+          i + ", 'init', 0)");
+    }
+
+    PreparedStatement insertPs = session.prepare(
+        "INSERT INTO ash_batch (k, v, v2) VALUES (?, ?, ?)");
+    PreparedStatement updatePs = session.prepare(
+        "UPDATE ash_batch SET v = ? WHERE k = ?");
+    PreparedStatement deletePs = session.prepare(
+        "DELETE FROM ash_batch WHERE k = ?");
+
+    // Execute many batches so that total CQL processing time far exceeds the
+    // ASH sampling interval (10ms). Each batch triggers multiple write RPCs
+    // with YB_STRONG consistency, keeping the CQL thread active long enough
+    // for ASH to reliably capture samples.
+    for (int i = 0; i < 500; i++) {
+      BatchStatement batch = new BatchStatement();
+      batch.add(insertPs.bind(1000 + i, "batch", i)); // k, v, v2
+      batch.add(updatePs.bind("upd_" + i, i % 500)); // v, k
+      batch.add(deletePs.bind(500 + i)); // k
+      session.execute(batch);
+    }
+
+    Thread.sleep(5000);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS yb_ycql_utils");
+
+      long queryid = getSingleRow(stmt,
+          "SELECT DISTINCT queryid FROM ycql_stat_statements " +
+          "WHERE query LIKE '%INSERT INTO ash_batch%' " +
+          "AND query LIKE '%UPDATE ash_batch%' " +
+          "AND query LIKE '%DELETE FROM ash_batch%'").getLong(0);
+
+      long joinCount = getSingleRow(stmt,
+          "SELECT COUNT(*) FROM yb_active_session_history ash " +
+          "JOIN ycql_stat_statements css ON ash.query_id = css.queryid " +
+          "WHERE css.queryid = " + queryid).getLong(0);
+      assertTrue("Expected ASH entries joinable with ycql_stat_statements " +
+          "for batch queryid " + queryid + ", got " + joinCount,
+          joinCount > 0);
+    }
+
+    session.execute("DROP TABLE ash_batch");
   }
 
   public void cleanUpAfter() throws Exception {

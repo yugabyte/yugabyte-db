@@ -583,7 +583,7 @@ Status CDCStateTable::WriteEntriesAsync(
   std::vector<client::YBOperationPtr> ops;
   ops.reserve(entries.size() * 2);
   for (const auto& entry : entries) {
-    const auto op = cdc_table->NewWriteOp(statement_type);
+    const auto op = cdc_table->NewWriteOp(session->arena(), statement_type);
     auto* const req = op->mutable_request();
 
     SerializeEntry(entry, cdc_table.get(), req, replace_full_map);
@@ -599,7 +599,7 @@ Status CDCStateTable::WriteEntriesAsync(
   if (!replace_full_map && !keys_to_delete.empty()) {
     if constexpr (std::is_same<CDCEntry, CDCStateTableEntry>::value) {
       for (const auto& entry : entries) {
-        const auto op = cdc_table->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+        const auto op = cdc_table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
         auto* const req = op->mutable_request();
 
         SerializeEntry(entry.key, cdc_table.get(), req);
@@ -711,7 +711,7 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
   auto cdc_table = VERIFY_RESULT(GetTable());
   auto session = MakeSession();
 
-  const auto read_op = cdc_table->NewReadOp();
+  const auto read_op = cdc_table->NewReadOp(session->arena());
   auto* const req_read = read_op->mutable_request();
   QLAddStringHashValue(req_read, key.tablet_id);
   QLSetStringCondition(

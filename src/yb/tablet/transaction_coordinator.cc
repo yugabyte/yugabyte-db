@@ -1761,9 +1761,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       auto submit_status =
           context_.SubmitUpdateTransaction(update, actions->leader_term);
       if (!submit_status.ok()) {
-        LOG_WITH_PREFIX(DFATAL)
+        LOG_WITH_PREFIX_COND_SEVERITY(
+            submit_status.IsShutdownInProgress(), WARNING, DFATAL)
             << "Could not submit transaction status update operation: "
             << "status: " << submit_status;
+        AbortedData data = {
+            .state = *update->request(),
+            .op_id = update->op_id(),
+        };
+        ProcessAborted(data);
       }
     }
   }

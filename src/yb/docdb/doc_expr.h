@@ -85,7 +85,7 @@ class DocExprExecutor : public qlexpr::QLExprExecutor {
   Status EvalParametricToJson(
       const PB& operand, const qlexpr::QLTableRow& table_row, const Schema *schema, Val* value);
 
-  std::vector<qlexpr::QLExprResult> aggr_result_;
+  std::vector<qlexpr::LWExprResult> aggr_result_;
 };
 
 } // namespace docdb

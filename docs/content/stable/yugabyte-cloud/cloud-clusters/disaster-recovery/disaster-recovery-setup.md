@@ -142,7 +142,7 @@ To check if the replication has been properly configured for a table, check the 
 
 The status will be _Not Reported_ momentarily after the replication configuration is created until metrics are available for the replication configuration. This should take about 10 seconds.
 
-If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from Source to Target, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for the databases those tables belong to. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#set-up-replication-lag-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
+If the replication lag has increased so much that resuming or continuing replication cannot be accomplished via WAL logs but instead requires making another full copy from Source to Target, the status is shown as _Missing op ID_, and you must [restart replication](#restart-replication) for the databases those tables belong to. If a lag alert is enabled on the replication, you are notified when the lag is behind the [replication lag alert](#disaster-recovery-alerts) threshold; if the replication stream is not yet broken and the lag is due to some other issues, the status is shown as _Warning_.
 
 If YugabyteDB Aeon is unable to obtain the status (for example, due to a heavy workload being run on the cluster), the status for that table will be _Unable To Fetch_. You may refresh the page to retry gathering information.
 
@@ -155,12 +155,12 @@ The table statuses are described in the following table.
 | Validated | The table passes pre-checks and is eligible to be added to replication. |
 | Operational | The table is being replicated. |
 
-The following statuses [trigger an alert](#set-up-replication-lag-alerts).
+The following statuses [trigger an alert](#disaster-recovery-alerts).
 
 | Status | Description |
 | :--- | :--- |
 | Failed | The table failed to be added to replication. |
-| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
+| Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#disaster-recovery-alerts), or the lag is not being reported. |
 | Dropped From Source | The table was in replication, but dropped from the Source without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). |
 | Dropped From Target | The table was in replication, but was dropped from the Target without first being [removed from replication](../disaster-recovery-tables/#remove-a-table-from-dr). |
 | Extra Table On Source | The table is newly created on the Source but is not in replication yet. |

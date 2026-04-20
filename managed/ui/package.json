@@ -54,7 +54,7 @@
       "react-dom": "17.0.2"
     },
     "@yugabytedb/perf-advisor-ui": {
-      "@yugabyte-ui-library/core": "2.0.26"
+      "@yugabyte-ui-library/core": "2.0.27"
     }
   },
   "prettier": {
@@ -86,6 +86,8 @@
     "eslint-plugin-storybook": "10.2.13",
     "events": "^3.3.0",
     "jsdom": "27.4.0",
+    "msw": "2.12.10",
+    "msw-storybook-addon": "2.0.6",
     "ncp": "2.0.0",
     "orval": "6.4.1",
     "prettier": "3.8.1",
@@ -207,5 +209,10 @@
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.55.1"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
   }
 }

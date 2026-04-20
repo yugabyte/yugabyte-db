@@ -1065,3 +1065,11 @@ DROP TYPE two_int;
 DROP TYPE two_text;
 DROP TABLE time_test;
 DROP TABLE other_sql_value_functions;
+
+-- Timezone expression pushdown, checks that this works when expression pushdown is on.
+CREATE TABLE tz_expr_pushdown(k int primary key, updated_at timestamptz);
+SET yb_enable_expression_pushdown=on;
+INSERT INTO tz_expr_pushdown VALUES (1, '2022-01-01 01:00:00+00');
+EXPLAIN (COSTS OFF) SELECT k FROM tz_expr_pushdown
+  WHERE EXTRACT(HOUR FROM updated_at AT TIME ZONE 'UTC') >= 1;
+DROP TABLE tz_expr_pushdown;

@@ -58,15 +58,15 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
 
   // app config
   private static final Map<String, Object> staticConfigMap =
-      ImmutableMap.of(
-          SettableRuntimeConfigFactory.RUNTIME_CONFIG_INCLUDED_OBJECTS,
-          ImmutableList.of("yb.external_script"),
-          YB_STATIC_ONLY_KEY,
-          Scope.STATIC.toString(),
-          YB_OVERRIDDEN_KEY,
-          Scope.STATIC.toString(),
-          YB_CLOUD_ENABLED_KEY,
-          Boolean.TRUE);
+      ImmutableMap.<String, Object>builder()
+          .put(
+              SettableRuntimeConfigFactory.RUNTIME_CONFIG_INCLUDED_OBJECTS,
+              ImmutableList.of("yb.external_script"))
+          .put(YB_STATIC_ONLY_KEY, Scope.STATIC.toString())
+          .put(YB_OVERRIDDEN_KEY, Scope.STATIC.toString())
+          .put(YB_CLOUD_ENABLED_KEY, Boolean.TRUE)
+          .put("runtime_config.cache_enabled", Boolean.FALSE)
+          .build();
 
   // overrides in global scope:
   private static final Set<String> globalConfigSet =

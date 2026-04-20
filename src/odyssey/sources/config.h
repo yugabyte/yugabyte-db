@@ -95,10 +95,11 @@ struct od_config {
 	int yb_enable_multi_route_pool;
 	int yb_optimized_session_parameters;
 	int yb_max_pools;
-	int yb_deallocate_if_invalid_prep_stmt;
+	int yb_enable_prep_stmt_close;
 	int TEST_yb_auth_delay_ms;
 	enum yb_od_alter_guc_adoption yb_alter_guc_adoption_strategy;
 	int yb_alter_guc_stale_backend_ttl_ms;
+	_Atomic int yb_max_prepared_statements;
 };
 
 void od_config_init(od_config_t *);

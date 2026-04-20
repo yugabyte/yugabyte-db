@@ -129,15 +129,17 @@ class CompositePushdownTest : public YBTabletTest {
 
   void ScanTablet(QLReadRequestPB* req, vector<string> *results) {
     ReadHybridTime read_time = ReadHybridTime::SingleTime(ASSERT_RESULT(tablet()->SafeTime()));
-    QLReadRequestResult result;
+    ThreadSafeArena arena;
+    QLReadRequestResult result(arena);
     TransactionMetadataPB transaction;
     QLAddColumns(schema_, {}, req);
     WriteBuffer rows_data(1024);
     EXPECT_OK(tablet()->HandleQLReadRequest(
-        docdb::ReadOperationData::FromReadTime(read_time), *req, transaction, &result, &rows_data));
+        docdb::ReadOperationData::FromReadTime(read_time), LWQLReadRequestPB(&arena, *req),
+        LWTransactionMetadataPB(&arena, transaction), &result, &rows_data));
 
-    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status())
-        << "Error: " << result.response.error_message();
+    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, result.response->status())
+        << "Error: " << result.response->error_message();
 
     auto row_block = qlexpr::CreateRowBlock(
         QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());

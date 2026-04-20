@@ -86,6 +86,7 @@ void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *d
 	int matched_count = 0;
 	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash,
 					      &matched_keys, &matched_count)) {
+		server->yb_prep_stmt_count -= matched_count;
 		if (matched_count > 1) {
 			od_error(&instance->logger, context, NULL, server,
 				 "Got a hashmap collision for %08x. Evicted %d entries:",
@@ -93,14 +94,13 @@ void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *d
 			for (int i = 0; i < matched_count; i++) {
 				od_error(&instance->logger, context, NULL, server,
 					 "  [%d] %s", i, matched_keys[i]);
+				free(matched_keys[i]);
 			}
+			free(matched_keys);
 		} else {
 			od_debug(&instance->logger, context, NULL, server,
 				 "Evicted %08x hashmap entry from server", keyhash);
 		}
-		for (int i = 0; i < matched_count; i++)
-			free(matched_keys[i]);
-		free(matched_keys);
 	}
 }
 

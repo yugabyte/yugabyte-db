@@ -187,7 +187,8 @@ uint64_t ReadAtomicInt(const std::atomic<uint64_t>* metric) {
 
 class ThreadCategoryTracker {
  public:
-  explicit ThreadCategoryTracker(const string& name) : name_(std::move(name)) {}
+  explicit ThreadCategoryTracker(const string& name, bool expose_as_counter = false)
+      : name_(name), expose_as_counter_(expose_as_counter) {}
 
   void IncrementCategory(const string& category);
   void DecrementCategory(const string& category);
@@ -205,6 +206,7 @@ class ThreadCategoryTracker {
   };
 
   std::string name_;
+  bool expose_as_counter_;
   std::map<std::string, Entry> entries_;
   std::vector<scoped_refptr<MetricEntity>> metric_entities_;
 };
@@ -238,7 +240,8 @@ std::atomic<uint64_t>& ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(
   auto description = id + " metric in ThreadCategoryTracker";
   std::unique_ptr<GaugePrototype<uint64>> gauge_proto =
     std::make_unique<OwningGaugePrototype<uint64>>( "server", id, description,
-    yb::MetricUnit::kThreads, description, yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
+      yb::MetricUnit::kThreads, description, yb::MetricLevel::kInfo,
+      expose_as_counter_ ? yb::EXPOSE_AS_COUNTER : 0);
 
   auto [inserted_it, inserted] = entries_.try_emplace(category);
   DCHECK(inserted) << category;
@@ -257,7 +260,8 @@ std::atomic<uint64_t>& ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(
 class ThreadMgr {
  public:
   ThreadMgr() {
-    started_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_started");
+    started_category_tracker_ = std::make_unique<ThreadCategoryTracker>(
+        "threads_started", /*expose_as_counter=*/true);
     running_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_running");
   }
 

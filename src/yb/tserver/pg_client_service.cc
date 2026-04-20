@@ -729,7 +729,8 @@ class SessionProvider {
 class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public rpc::ThreadPoolTask,
                      public PgTablesQueryListener {
  public:
-  using ContextHolder = rpc::TypedPBRpcContextHolder<PgPerformRequestMsg, PgPerformResponseMsg>;
+  using ContextHolder = rpc::TypedPBRpcContextHolder<
+      PgPerformRequestMsg, PgPerformResponseMsg, rpc::RpcCallLWParamsImpl>;
 
   PerformQuery(
       SessionProvider& provider, ContextHolder&& context)
@@ -2855,14 +2856,14 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     const client::YBTableName pg_auto_analyze_table =
         stateful_service::GetStatefulServiceTableName(StatefulServiceKind::PG_AUTO_ANALYZE);
     RETURN_NOT_OK(table->Open(pg_auto_analyze_table, &client()));
-    const client::YBqlReadOpPtr read_op = table->NewReadOp();
+    auto session = client().NewSession(client().default_rpc_timeout());
+    const client::YBqlReadOpPtr read_op = table->NewReadOp(session->arena());
     auto* const read_req = read_op->mutable_request();
 
     table->AddColumns(
         {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations,
          yb::master::kPgAutoAnalyzeLastAnalyzeInfo, yb::master::kPgAutoAnalyzeCurrentAnalyzeInfo},
         read_req);
-    auto session = client().NewSession(client().default_rpc_timeout());
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
     RETURN_NOT_OK_PREPEND(
         session->TEST_ApplyAndFlush(read_op), "Failed to read from auto analyze table");
@@ -2926,16 +2927,16 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
   Status method( \
-      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
-      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+      const YB_PG_CLIENT_METHOD_ARG(data, method, Request)& req, \
+      YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, \
       rpc::RpcContext* context) { \
     return VERIFY_RESULT(GetSession(req))->method(req, resp, context); \
   }
 
   #define PG_CLIENT_SESSION_ASYNC_METHOD_FORWARD(r, data, method) \
   void method( \
-      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
-      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+      const YB_PG_CLIENT_METHOD_ARG(data, method, Request)& req, \
+      YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, \
       rpc::RpcContext context) { \
     const auto session = GetSession(req); \
     if (!session.ok()) { \
@@ -2945,8 +2946,14 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     (*session)->method(req, resp, std::move(context)); \
   }
 
-  BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_METHOD_FORWARD, ~, PG_CLIENT_SESSION_METHODS);
-  BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_ASYNC_METHOD_FORWARD, ~, PG_CLIENT_SESSION_ASYNC_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(
+      PG_CLIENT_SESSION_METHOD_FORWARD, BOOST_PP_NIL, PG_CLIENT_SESSION_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(
+      PG_CLIENT_SESSION_METHOD_FORWARD, (LW), PG_CLIENT_SESSION_LW_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(
+      PG_CLIENT_SESSION_ASYNC_METHOD_FORWARD, BOOST_PP_NIL, PG_CLIENT_SESSION_ASYNC_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(
+      PG_CLIENT_SESSION_ASYNC_METHOD_FORWARD, (LW), PG_CLIENT_SESSION_ASYNC_LW_METHODS);
 
   size_t TEST_SessionsCount() {
     SharedLock lock(mutex_);
@@ -3232,16 +3239,16 @@ void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 
 #define YB_PG_CLIENT_METHOD_DEFINE(r, data, method) \
 void PgClientServiceImpl::method( \
-    const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
-    BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+    const YB_PG_CLIENT_METHOD_ARG(data, method, Request)* req, \
+    YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, \
     rpc::RpcContext context) { \
   Respond(impl_->method(*req, resp, &context), resp, &context); \
 }
 
 #define YB_PG_CLIENT_ASYNC_METHOD_DEFINE(r, data, method) \
 void PgClientServiceImpl::method( \
-    const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
-    BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+    const YB_PG_CLIENT_METHOD_ARG(data, method, Request)* req, \
+    YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, \
     rpc::RpcContext context) { \
   impl_->method(*req, resp, std::move(context)); \
 }
@@ -3253,8 +3260,10 @@ Result<BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)> PgClientServiceImpl::
   return impl_->method(req, deadline); \
 }
 
-BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, ~, YB_PG_CLIENT_METHODS);
-BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, ~, YB_PG_CLIENT_ASYNC_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, BOOST_PP_NIL, YB_PG_CLIENT_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, (LW), YB_PG_CLIENT_LW_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, BOOST_PP_NIL, YB_PG_CLIENT_ASYNC_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, (LW), YB_PG_CLIENT_ASYNC_LW_METHODS);
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_TRIVIAL_METHOD_DEFINE, ~, YB_PG_CLIENT_TRIVIAL_METHODS);
 
 PgClientServiceMockImpl::PgClientServiceMockImpl(
@@ -3303,8 +3312,8 @@ Result<bool> PgClientServiceMockImpl::DispatchMock(
 
 #define YB_PG_CLIENT_MOCK_METHOD_DEFINE(r, data, method) \
   void PgClientServiceMockImpl::method( \
-      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB) * req, \
-      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB) * resp, rpc::RpcContext context) { \
+      const YB_PG_CLIENT_METHOD_ARG(data, method, Request)* req, \
+      YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, rpc::RpcContext context) { \
     auto result = DispatchMock(BOOST_PP_STRINGIZE(method), req, resp, &context); \
     if (!result.ok() || *result) { \
       Respond(ResultToStatus(result), resp, &context); \
@@ -3324,12 +3333,17 @@ auto MakeSharedFunctor(const std::function<Status(const Req*, Resp*, rpc::RpcCon
 #define YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE(r, data, method) \
   PgClientServiceMockImpl::Handle BOOST_PP_CAT(PgClientServiceMockImpl::Mock, method)( \
       const std::function<Status( \
-          const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)*, \
-          BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)*, rpc::RpcContext*)>& mock) { \
+          const YB_PG_CLIENT_METHOD_ARG(data, method, Request)*, \
+          YB_PG_CLIENT_METHOD_ARG(data, method, Response)*, \
+          rpc::RpcContext*)>& mock) { \
     return SetMock(BOOST_PP_STRINGIZE(method), MakeSharedFunctor(mock)); \
   }
 
-BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_DEFINE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
-BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_DEFINE, BOOST_PP_NIL, YB_PG_CLIENT_MOCKABLE_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_DEFINE, (LW), YB_PG_CLIENT_MOCKABLE_LW_METHODS);
+BOOST_PP_SEQ_FOR_EACH(
+    YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE, BOOST_PP_NIL, YB_PG_CLIENT_MOCKABLE_METHODS);
+BOOST_PP_SEQ_FOR_EACH(
+    YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE, (LW), YB_PG_CLIENT_MOCKABLE_LW_METHODS);
 
 }  // namespace yb::tserver

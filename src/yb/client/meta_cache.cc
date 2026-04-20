@@ -184,6 +184,11 @@ RemoteTabletServer::RemoteTabletServer(const consensus::RaftPeerPB& raft_peer)
   UpdateFromRaftPeer(raft_peer);
 }
 
+RemoteTabletServer::RemoteTabletServer(const consensus::LWRaftPeerPB& raft_peer)
+    : uuid_(raft_peer.permanent_uuid()) {
+  UpdateFromRaftPeer(raft_peer);
+}
+
 RemoteTabletServer::RemoteTabletServer(const string& uuid,
                                        const shared_ptr<TabletServerServiceProxy>& proxy,
                                        const LocalTabletServer* local_tserver)
@@ -260,16 +265,23 @@ void RemoteTabletServer::Update(const master::TSInformationPB& pb) {
   cloud_info_pb_ = pb.registration().common().cloud_info();
 }
 
-void RemoteTabletServer::UpdateFromRaftPeer(const consensus::RaftPeerPB& raft_peer) {
+template <class PB>
+void RemoteTabletServer::UpdateFromRaftPeer(const PB& raft_peer) {
   if (raft_peer.permanent_uuid() != uuid_) {
     VLOG(1) << "RemoteTabletServer " << raft_peer.permanent_uuid()
             << " cannot be updated because the raft_peer has a wrong permanent_uuid";
     return;
   }
   std::lock_guard lock(mutex_);
-  private_rpc_hostports_ = raft_peer.last_known_private_addr();
-  public_rpc_hostports_ = raft_peer.last_known_broadcast_addr();
-  cloud_info_pb_ = raft_peer.cloud_info();
+  if constexpr (rpc::IsGoogleProtobuf<PB>) {
+    private_rpc_hostports_ = raft_peer.last_known_private_addr();
+    public_rpc_hostports_ = raft_peer.last_known_broadcast_addr();
+    cloud_info_pb_ = raft_peer.cloud_info();
+  } else {
+    raft_peer.last_known_private_addr().ToGoogleProtobuf(&private_rpc_hostports_);
+    raft_peer.last_known_broadcast_addr().ToGoogleProtobuf(&public_rpc_hostports_);
+    raft_peer.cloud_info().ToGoogleProtobuf(&cloud_info_pb_);
+  }
 }
 
 bool RemoteTabletServer::IsLocal() const {
@@ -1217,6 +1229,11 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
 
 Status MetaCache::RefreshTabletInfoWithConsensusInfo(
     const tserver::TabletConsensusInfoPB& tablet_consensus_info) {
+  return DoRefreshTabletInfoWithConsensusInfo(tablet_consensus_info);
+}
+
+Status MetaCache::RefreshTabletInfoWithConsensusInfo(
+    const tserver::LWTabletConsensusInfoPB& tablet_consensus_info) {
   return DoRefreshTabletInfoWithConsensusInfo(tablet_consensus_info);
 }
 

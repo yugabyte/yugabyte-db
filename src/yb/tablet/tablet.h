@@ -224,7 +224,8 @@ class Tablet : public AbstractTablet,
       const HybridTime read_time,
       const CoarseTimePoint deadline,
       const bool is_main_table,
-      std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* consistency_stats);
@@ -232,14 +233,16 @@ class Tablet : public AbstractTablet,
   Status FlushVerifyBatchIfRequired(
       const HybridTime read_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* index_consistency_states);
   Status FlushVerifyBatch(
       const HybridTime read_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+      const ThreadSafeArenaPtr& arena,
+      std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
       std::unordered_map<TableId, uint64>* index_consistency_states);
@@ -267,6 +270,7 @@ class Tablet : public AbstractTablet,
       const std::vector<qlexpr::IndexInfo>& indexes,
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -276,11 +280,13 @@ class Tablet : public AbstractTablet,
   Status FlushWriteIndexBatchIfRequired(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
   Status FlushWriteIndexBatch(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
+      const ThreadSafeArenaPtr& arena,
       docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -907,6 +913,11 @@ class Tablet : public AbstractTablet,
       bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
+      const LWTransactionMetadataPB& transaction_metadata,
+      bool is_ysql_catalog_table,
+      const LWSubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
+
   bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
 
   // Store the new AutoFlags config to disk and then applies it. Error Status is returned only for
@@ -1057,6 +1068,10 @@ class Tablet : public AbstractTablet,
       const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
+      const LWSubTransactionMetadataPB* subtransaction_metadata) const;
+
   // Pause new read/write operations that are blocking/not blocking start of RocksDB shutdown and
   // wait for all such pending read/write operations to finish.
   // If stop is false, ScopedRWOperation constructor will wait while ScopedRWOperationPause is
@@ -1128,7 +1143,18 @@ class Tablet : public AbstractTablet,
   Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;
 
   Status ProcessPgsqlGetTableKeyRangesRequest(
-      const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
+      const LWPgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
+
+  template <class TransactionMetadata, class SubTransactionMetadata>
+  Result<TransactionOperationContext> DoCreateTransactionOperationContext(
+      const TransactionMetadata& transaction_metadata,
+      bool is_ysql_catalog_table,
+      const SubTransactionMetadata* subtransaction_metadata) const;
+
+  template <class SubTransactionPB>
+  Result<TransactionOperationContext> DoCreateTransactionOperationContext(
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
+      const SubTransactionPB* subtransaction_metadata) const;
 
   template <class Out>
   void TEST_DocDBDumpToContainerImpl(

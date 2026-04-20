@@ -332,4 +332,9 @@ SampleOrder GetTCMallocDefaultSampleOrder() {
 #endif
 }
 
+std::string SampleInfo::ToString() const {
+  return YB_STRUCT_TO_STRING(
+      sampled_allocated_bytes, sampled_count, estimated_bytes, estimated_count);
+}
+
 } // namespace yb

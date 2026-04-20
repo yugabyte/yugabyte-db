@@ -125,18 +125,6 @@ class UsearchMetric : public YbHnswMetric {
   unum::usearch::metric_punned_t impl_;
 };
 
-class HnswlibMetric : public YbHnswMetric {
- public:
-  HnswlibMetric(hnswlib::DISTFUNC<HnswDistanceType> func, const void* arg)
-      : func_(func), dimensions_(*static_cast<const size_t*>(arg)) {}
-
-  HnswDistanceType Distance(const std::byte* lhs, const std::byte* rhs) override;
-
- private:
-  hnswlib::DISTFUNC<HnswDistanceType> func_;
-  size_t dimensions_;
-};
-
 class YbHnsw {
  public:
   using CoordinateType = float;
@@ -147,10 +135,6 @@ class YbHnsw {
 
   YbHnsw(const UsearchMetric::Impl& metric, BlockCachePtr block_cache)
       : YbHnsw(std::make_unique<UsearchMetric>(metric), block_cache) {
-  }
-
-  YbHnsw(hnswlib::DISTFUNC<HnswDistanceType> func, const void* arg, BlockCachePtr block_cache)
-      : YbHnsw(std::make_unique<HnswlibMetric>(func, arg), block_cache) {
   }
 
   YbHnsw(MetricPtr&& metric, BlockCachePtr block_cache);

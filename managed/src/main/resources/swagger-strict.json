@@ -967,7 +967,11 @@
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
-            "OTEL_METRIC_EXPORT_FAILURE"
+            "OTEL_METRIC_EXPORT_FAILURE",
+            "PA_COLLECTOR_DOWN",
+            "PA_UNIVERSE_COLLECTION_FAILURE",
+            "PA_UNIVERSE_COLLECTION_STALE",
+            "PA_EMBEDDED_COLLECTOR_ERROR"
           ],
           "type" : "string"
         },
@@ -1152,7 +1156,11 @@
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
-            "OTEL_METRIC_EXPORT_FAILURE"
+            "OTEL_METRIC_EXPORT_FAILURE",
+            "PA_COLLECTOR_DOWN",
+            "PA_UNIVERSE_COLLECTION_FAILURE",
+            "PA_UNIVERSE_COLLECTION_STALE",
+            "PA_EMBEDDED_COLLECTOR_ERROR"
           ],
           "type" : "string"
         },
@@ -1433,7 +1441,11 @@
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
-            "OTEL_METRIC_EXPORT_FAILURE"
+            "OTEL_METRIC_EXPORT_FAILURE",
+            "PA_COLLECTOR_DOWN",
+            "PA_UNIVERSE_COLLECTION_FAILURE",
+            "PA_UNIVERSE_COLLECTION_STALE",
+            "PA_EMBEDDED_COLLECTOR_ERROR"
           ],
           "type" : "string"
         },
@@ -7715,6 +7727,7 @@
             "Unconfigured for DR",
             "Bootstrapping",
             "Receiving data, Ready for reads",
+            "Replication paused",
             "Switching to DR primary",
             "Universe marked as DR failed"
           ],
@@ -7771,6 +7784,7 @@
             "Ready to replicate",
             "Waiting for DR",
             "Replicating data",
+            "Replication paused",
             "Preparing for switchover",
             "Switching to DR replica",
             "Universe marked as DR failed"
@@ -7793,6 +7807,7 @@
             "Replicating",
             "Switchover in Progress",
             "Failover in Progress",
+            "Paused",
             "Halted",
             "Updating",
             "Failed"
@@ -30784,6 +30799,7 @@
             "Ready to replicate",
             "Waiting for DR",
             "Replicating data",
+            "Replication paused",
             "Preparing for switchover",
             "Switching to DR replica",
             "Universe marked as DR failed"
@@ -30842,6 +30858,7 @@
             "Unconfigured for DR",
             "Bootstrapping",
             "Receiving data, Ready for reads",
+            "Replication paused",
             "Switching to DR primary",
             "Universe marked as DR failed"
           ],
@@ -31082,6 +31099,7 @@
             "Ready to replicate",
             "Waiting for DR",
             "Replicating data",
+            "Replication paused",
             "Preparing for switchover",
             "Switching to DR replica",
             "Universe marked as DR failed"
@@ -31140,6 +31158,7 @@
             "Unconfigured for DR",
             "Bootstrapping",
             "Receiving data, Ready for reads",
+            "Replication paused",
             "Switching to DR primary",
             "Universe marked as DR failed"
           ],

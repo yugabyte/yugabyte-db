@@ -50,7 +50,6 @@ import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeConfig;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
@@ -288,7 +287,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
 
   @Test
   public void testDownloadNodeAgent() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     Users newUser = ModelFactory.testUser(customer, "Fakeemail.com", Users.Role.ConnectOnly);
 
     ResourceDefinition rD =

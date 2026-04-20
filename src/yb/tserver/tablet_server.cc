@@ -101,6 +101,7 @@
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -2076,11 +2077,35 @@ void TabletServer::InvalidatePgTableCache(
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 
+#ifdef __linux__
+  builder->SetThreadPoolCgroupProvider([this](auto tag) { return PerDbCgroupProvider(tag); });
+#endif
+
   secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(
       options_.HostsString(), fs_manager_->GetDefaultRootDir(), builder));
 
   return Status::OK();
 }
+
+#ifdef __linux__
+Cgroup* TabletServer::PerDbCgroupProvider(rpc::ThreadPoolTag tag) {
+  if (!tag || !cgroup_manager_ || !FLAGS_enable_qos) {
+    return nullptr;
+  }
+  if (tag > std::numeric_limits<PgOid>::max()) {
+    LOG(DFATAL) << "pool tag out of range of pg oid; does not correspond to a database: "
+                << tag;
+    return nullptr;
+  }
+  auto cgroup_result = cgroup_manager_->CgroupForDb(static_cast<PgOid>(tag));
+  if (!cgroup_result.ok()) {
+    LOG(DFATAL) << "failed to get cgroup for database " << tag << ": "
+                << cgroup_result.status();
+    return nullptr;
+  }
+  return &*cgroup_result;
+}
+#endif
 
 XClusterConsumerIf* TabletServer::GetXClusterConsumer() const {
   std::lock_guard l(xcluster_consumer_mutex_);

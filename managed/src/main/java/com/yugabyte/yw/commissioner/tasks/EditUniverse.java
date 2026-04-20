@@ -65,7 +65,7 @@ public class EditUniverse extends EditUniverseTaskBase {
     addBasicPrecheckTasks();
     prevState = Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
     if (isFirstTry()) {
-      configureTaskParams(universe);
+      configureTaskParams(universe, false /* moveMastersFirst */);
     }
     createComprehensivePrecheckTasks(universe);
     if (universe.getUniverseDetails().getPrimaryCluster().isGeoPartitioned()
@@ -147,7 +147,8 @@ public class EditUniverse extends EditUniverseTaskBase {
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
-            cluster.userIntent.providerType == CloudType.onprem /* force destroy servers */);
+            cluster.userIntent.providerType == CloudType.onprem /* force destroy servers */,
+            false /* moveMastersFirst */);
         // Updating placement info and userIntent in DB
         createUpdateUniverseIntentTask(cluster);
       }

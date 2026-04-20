@@ -991,7 +991,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           }
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
 
-          taskUUID = addReadReplicaCluster(cust, universeDetails);
+          taskUUID = addReadReplicaCluster(cust, universeDetails, ybUniverse);
         } else if (operatorUtils.shouldUpdateReadReplica(
             universe, ybUniverse, incomingReadReplicaIntent)) {
           log.info("Updating Read Replica");
@@ -1015,7 +1015,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             return;
           }
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
-          taskUUID = universeCRUDHandler.clusterDelete(cust, universe, clusterUUID, true);
+          taskUUID =
+              universeCRUDHandler.clusterDelete(
+                  cust, universe, clusterUUID, true, k8ResourceDetails);
         } else {
           log.info("No update made");
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.READY);
@@ -1351,6 +1353,12 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         userIntent.deviceInfo = operatorUtils.mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
         userIntent.masterDeviceInfo =
             operatorUtils.mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
+      }
+      if (userIntent.deviceInfo == null) {
+        userIntent.deviceInfo = operatorUtils.defaultDeviceInfo();
+      }
+      if (userIntent.masterDeviceInfo == null) {
+        userIntent.masterDeviceInfo = operatorUtils.defaultMasterDeviceInfo();
       }
 
       userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
@@ -2046,7 +2054,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       readReplicaUserIntent.deviceInfo =
           operatorUtils.mapReadReplicaTserverVolume(
               ybUniverse.getSpec().getReadReplica().getTserverVolume());
-    } else {
+    } else if (ybUniverse.getSpec().getReadReplica().getDeviceInfo() != null) {
       readReplicaUserIntent.deviceInfo.volumeSize =
           ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue();
       readReplicaUserIntent.deviceInfo.numVolumes =
@@ -2097,6 +2105,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           null,
           false);
     }
+    existingUserIntent.tserverK8SNodeResourceSpec =
+        incomingReadReplicaIntent.tserverK8SNodeResourceSpec;
     if (ybUniverse.getSpec().getReadReplica().getPlacementInfo() != null) {
       existingReadReplicaCluster.placementInfo =
           createPlacementInfo(
@@ -2108,7 +2118,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
-  private UUID addReadReplicaCluster(Customer cust, UniverseDefinitionTaskParams universeDetails) {
+  private UUID addReadReplicaCluster(
+      Customer cust, UniverseDefinitionTaskParams universeDetails, YBUniverse ybUniverse) {
     // Converting details to configure task params using JSON
     ObjectMapper mapper =
         Json.mapper()
@@ -2125,6 +2136,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
     taskConfigParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     taskConfigParams.currentClusterType = ClusterType.ASYNC;
+    taskConfigParams.setKubernetesResourceDetails(
+        KubernetesResourceDetails.fromResource(ybUniverse));
     log.info("Adding read replica cluster to universe now");
     universeCRUDHandler.configure(cust, taskConfigParams);
     taskConfigParams.clusters.remove(

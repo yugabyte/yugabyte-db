@@ -38,6 +38,7 @@
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/compaction_job_stats.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/background_error.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/compaction_iterator.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -78,7 +79,7 @@ class CompactionJob {
                 std::atomic<bool>* shutting_down, LogBuffer* log_buffer,
                 Directory* db_directory, Directory* output_directory,
                 Statistics* stats, InstrumentedMutex* db_mutex,
-                Status* db_bg_error,
+                BackgroundError* db_bg_error,
                 std::vector<SequenceNumber> existing_snapshots,
                 SequenceNumber earliest_write_conflict_snapshot,
                 FileNumbersProvider* file_numbers_provider,
@@ -162,7 +163,7 @@ class CompactionJob {
   Directory* output_directory_;
   Statistics* stats_;
   InstrumentedMutex* db_mutex_;
-  Status* db_bg_error_;
+  BackgroundError* db_bg_error_;
   // If there were two snapshots with seq numbers s1 and
   // s2 and s1 < s2, and if we find two instances of a key k1 then lies
   // entirely within s1 and s2, then the earlier version of k1 can be safely

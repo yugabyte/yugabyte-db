@@ -712,6 +712,7 @@ pg_parse_query(const char *query_string)
 	List	   *raw_parsetree_list;
 
 	TRACE_POSTGRESQL_QUERY_PARSE_START(query_string);
+	YB_DIST_TRACE_START_SPAN("parse");
 
 	if (log_parser_stats)
 		ResetUsage();
@@ -740,6 +741,7 @@ pg_parse_query(const char *query_string)
 	 * here.
 	 */
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_PARSE_DONE(query_string);
 
 	return raw_parsetree_list;
@@ -786,6 +788,7 @@ pg_analyze_and_rewrite_fixedparams(RawStmt *parsetree,
 	List	   *querytree_list;
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
+	YB_DIST_TRACE_START_SPAN("rewrite");
 
 	/*
 	 * (1) Perform parse analysis.
@@ -804,6 +807,7 @@ pg_analyze_and_rewrite_fixedparams(RawStmt *parsetree,
 	 */
 	querytree_list = pg_rewrite_query(query);
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
 	return querytree_list;
@@ -825,6 +829,7 @@ pg_analyze_and_rewrite_varparams(RawStmt *parsetree,
 	List	   *querytree_list;
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
+	YB_DIST_TRACE_START_SPAN("rewrite");
 
 	/*
 	 * (1) Perform parse analysis.
@@ -857,6 +862,7 @@ pg_analyze_and_rewrite_varparams(RawStmt *parsetree,
 	 */
 	querytree_list = pg_rewrite_query(query);
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
 	return querytree_list;
@@ -879,6 +885,7 @@ pg_analyze_and_rewrite_withcb(RawStmt *parsetree,
 	List	   *querytree_list;
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
+	YB_DIST_TRACE_START_SPAN("rewrite");
 
 	/*
 	 * (1) Perform parse analysis.
@@ -897,6 +904,7 @@ pg_analyze_and_rewrite_withcb(RawStmt *parsetree,
 	 */
 	querytree_list = pg_rewrite_query(query);
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
 	return querytree_list;
@@ -1014,6 +1022,7 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 	Assert(ActiveSnapshotSet());
 
 	TRACE_POSTGRESQL_QUERY_PLAN_START();
+	YB_DIST_TRACE_START_SPAN("plan");
 
 	if (log_planner_stats)
 		ResetUsage();
@@ -1073,6 +1082,7 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 	if (Debug_print_plan)
 		elog_node_display(LOG, "plan", plan, Debug_pretty_print);
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_PLAN_DONE();
 
 	return plan;
@@ -1199,9 +1209,8 @@ YbShouldCollectCommitStats(CommandTag command_tag, bool is_implict_block,
 	return false;
 }
 
-
 static void
-YbDistTraceSetQueryId(YbcOtelScope scope, List *querytree_list)
+YbDistTraceSetQueryIdToRootSpan(List *querytree_list)
 {
 	ListCell *lc;
 	foreach(lc, querytree_list)
@@ -1209,7 +1218,7 @@ YbDistTraceSetQueryId(YbcOtelScope scope, List *querytree_list)
 		Query *q = lfirst_node(Query, lc);
 		if (q->queryId != UINT64CONST(0))
 		{
-			YBCDistTraceSetSpanAttributeUint64(scope, "query.id", q->queryId);
+			YBCDistTraceSetCurrSpanAttrUint64("query.id", q->queryId);
 			break;
 		}
 	}
@@ -1234,8 +1243,6 @@ exec_simple_query(const char *query_string)
 
 	const char *yb_redacted_query_string;
 	CommandTag	yb_command_tag;
-	/* TODO(#30672): Add distributed tracing support for extended query protocol */
-	YbcOtelScope yb_dist_trace_scope = NULL;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -1250,6 +1257,7 @@ exec_simple_query(const char *query_string)
 
 	TRACE_POSTGRESQL_QUERY_START(query_string);
 
+	/* TODO(#30672): Add distributed tracing support for extended query protocol */
 	if (YBCIsDistTraceEnabled())
 	{
 		char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
@@ -1281,15 +1289,13 @@ exec_simple_query(const char *query_string)
 		}
 
 		/*
-		 * YB: Start a root span. The scope is registered with the current YB
-		 * memory context (tied to CurrentMemoryContext) via PgMemctx::Register.
-		 * On error, the Postgres MemoryContext reset will destroy the associated
-		 * PgMemctx, automatically cleaning up this scope.
+		 * YB: Start a root span. The scope is owned by the otel_scope_stack
+		 * in ybc_dist_trace.cc. On error, YBCDistTraceClearStack (called at the top
+		 * of the main loop) cleans up any orphaned scopes.
 		 */
 		if (span_ctx)
 		{
-			yb_dist_trace_scope =
-				YBCDistTraceStartRootSpan(yb_redacted_query_string, span_ctx, MyDatabaseId, GetUserId());
+			YBCDistTraceStartRootSpan(yb_redacted_query_string, span_ctx, MyDatabaseId, GetUserId());
 
 			/*
 			 * YB: Destroy the span context if it came from the sql comment
@@ -1458,8 +1464,9 @@ exec_simple_query(const char *query_string)
 
 		querytree_list = pg_analyze_and_rewrite_fixedparams(parsetree, query_string,
 															NULL, 0, NULL);
-		if (yb_dist_trace_scope)
-			YbDistTraceSetQueryId(yb_dist_trace_scope, querytree_list);
+
+		if (YBCIsDistTraceEnabled() && YBCDistTraceIsRootSpan())
+			YbDistTraceSetQueryIdToRootSpan(querytree_list);
 
 		plantree_list = pg_plan_queries(querytree_list, query_string,
 										CURSOR_OPT_PARALLEL_OK, NULL);
@@ -1670,8 +1677,7 @@ exec_simple_query(const char *query_string)
 		ShowUsage("QUERY STATISTICS");
 
 	TRACE_POSTGRESQL_QUERY_DONE(query_string);
-	if (yb_dist_trace_scope)
-		YBCDistTraceEndSpan(yb_dist_trace_scope);
+	YB_DIST_TRACE_END_SPAN();
 
 	debug_query_string = NULL;
 }
@@ -6688,6 +6694,8 @@ PostgresMain(const char *dbname, const char *username)
 			yb_refresh_stats_before_exec = true;
 
 			YbToggleSessionStatsTimer(yb_enable_pg_stat_statements_rpc_stats);
+
+			YBCDistTraceClearStack();
 		}
 
 		/*
@@ -7205,7 +7213,7 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					int			close_type;
 					const char *close_target;
-					bool yb_report_prep_stmt_closed = false;
+					bool		yb_skip_close_complete = false;
 
 					forbidden_in_wal_sender(firstchar);
 
@@ -7217,17 +7225,7 @@ PostgresMain(const char *dbname, const char *username)
 					{
 						case 'S':
 							if (close_target[0] != '\0')
-							{
-								if (YbIsClientYsqlConnMgr())
-								{
-									yb_report_prep_stmt_closed =
-										YbDropPreparedStatement(close_target, false);
-								}
-								else
-								{
-									DropPreparedStatement(close_target, false);
-								}
-							} /* YB: CLOSE for named prepared statement is supported by conn mgr */
+								DropPreparedStatement(close_target, false, YbIsClientYsqlConnMgr());
 							else
 							{
 								/* special-case the unnamed statement */
@@ -7249,6 +7247,30 @@ PostgresMain(const char *dbname, const char *username)
 									break;	/* YB: No-op only return CloseComplete. */
 								yb_switch_fallthrough();
 							}
+						case 'F':
+							/* YB: ForceClose, used by ConnMgr only */
+							if (YbIsClientYsqlConnMgr())
+							{
+								if (close_target[0] == '\0')
+									ereport(ERROR,
+											(errcode(ERRCODE_PROTOCOL_VIOLATION),
+											 errmsg("ForceClose of unnamed prep statement is not supported")));
+
+								/*
+								 * Since this is force close, we disable
+								 * selective deallocation
+								 */
+								bool		yb_conn_mgr_selective_deallocate_saved;
+
+								yb_conn_mgr_selective_deallocate_saved = yb_conn_mgr_selective_deallocate;
+								yb_conn_mgr_selective_deallocate = false;
+								DropPreparedStatement(close_target, false, false);
+								yb_conn_mgr_selective_deallocate = yb_conn_mgr_selective_deallocate_saved;
+
+								yb_skip_close_complete = true;
+								break;
+							}
+							yb_switch_fallthrough();
 						default:
 							ereport(ERROR,
 									(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -7257,12 +7279,15 @@ PostgresMain(const char *dbname, const char *username)
 							break;
 					}
 
+					/*
+					 * YB: Close complete needs to be skipped for ForceClose
+					 * sent by ConnMgr
+					 */
+					if (yb_skip_close_complete)
+						break;
+
 					if (whereToSendOutput == DestRemote)
-					{
-						if (yb_report_prep_stmt_closed)
-							pq_puttextmessage('5', close_target);
 						pq_putemptymessage('3');	/* CloseComplete */
-					} /* YB: With Conn mgr, send name of deallocated prep stmt */
 				}
 				break;
 
@@ -7470,6 +7495,8 @@ PostgresMain(const char *dbname, const char *username)
 											   true /* ssl_done */ ,
 											   true /* gss_done */ );
 
+						YbLogAuthPassthroughConnReceived(MyProcPort);
+
 						/*
 						 * Set up a timeout in case a buggy or malicious client
 						 * fails to respond during authentication.  Since we're
@@ -7484,10 +7511,6 @@ PostgresMain(const char *dbname, const char *username)
 						/*
 						 * Done with authentication.  Disable the timeout, and
 						 * log if needed.
-						 * TODO (vikram.damle) (#29817):
-						 * Add connection logging (cf postinit.c:284) and update
-						 * YbGetAuthorizedConnections as done in
-						 * `PerformaAuthentication()`.
 						 */
 						disable_timeout(STATEMENT_TIMEOUT, false);
 
@@ -7500,6 +7523,8 @@ PostgresMain(const char *dbname, const char *username)
 						 */
 						if (!MyProcPort->yb_has_auth_passthrough_failed)
 						{
+							YbLogAuthPassthroughConnAuthenticated(MyProcPort);
+
 							if (YbCreateClientId() == 0)
 								YbAuthPassthroughSetupGUCAndReport();
 						}

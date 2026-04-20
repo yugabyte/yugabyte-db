@@ -112,6 +112,7 @@ class RemoteTabletServer {
   explicit RemoteTabletServer(const master::TSInfoPB& pb);
   explicit RemoteTabletServer(const master::TSInformationPB& pb);
   explicit RemoteTabletServer(const consensus::RaftPeerPB& raft_peer);
+  explicit RemoteTabletServer(const consensus::LWRaftPeerPB& raft_peer);
   ~RemoteTabletServer();
 
   // Initialize the RPC proxy to this tablet server, if it is not already set up.
@@ -129,7 +130,8 @@ class RemoteTabletServer {
   void Update(const master::TSInformationPB& pb);
 
   // Requires that the raft_peer's UUID matches this RemoteTabletServer
-  void UpdateFromRaftPeer(const consensus::RaftPeerPB& raft_peer);
+  template <class PB>
+  void UpdateFromRaftPeer(const PB& raft_peer);
 
   // Is this tablet server local?
   bool IsLocal() const;
@@ -635,6 +637,9 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Returns Status::OK() if and only if the meta-cache was updated.
   Status RefreshTabletInfoWithConsensusInfo(
       const tserver::TabletConsensusInfoPB& tablet_consensus_info);
+
+  Status RefreshTabletInfoWithConsensusInfo(
+      const tserver::LWTabletConsensusInfoPB& tablet_consensus_info);
 
   int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
 

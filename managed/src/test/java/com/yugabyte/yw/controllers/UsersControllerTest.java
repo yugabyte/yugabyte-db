@@ -6,12 +6,21 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.models.Users.Role;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
-import static play.mvc.Http.Status.*;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.MOVED_PERMANENTLY;
+import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
@@ -28,7 +37,6 @@ import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -352,7 +360,7 @@ public class UsersControllerTest extends FakeDBApplication {
   public void testResetPasswordWithNewRbac() {
     UUID fakeTaskUUID = buildTaskInfo(null, TaskType.SendUserNotification);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
     RoleBinding.create(user1, RoleBindingType.Custom, role, rG);
     String authTokenTest = user1.createAuthToken();
@@ -471,7 +479,7 @@ public class UsersControllerTest extends FakeDBApplication {
 
   @Test
   public void testUpdateUserProfileNullifyTimezone() throws IOException {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
     String testTimezone1 = "America/Toronto";
     testUser1.setTimezone(testTimezone1);

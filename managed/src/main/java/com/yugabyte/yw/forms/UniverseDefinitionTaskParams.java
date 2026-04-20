@@ -781,7 +781,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (other == null) {
         return;
       }
-      if (other.getDeviceInfo() != null) {
+      if (other.getDeviceInfo() != null && !other.getDeviceInfo().allNull()) {
         this.setDeviceInfo(other.getDeviceInfo());
       }
       if (other.getInstanceType() != null) {

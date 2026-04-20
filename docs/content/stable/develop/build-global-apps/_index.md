@@ -66,10 +66,10 @@ Use the following matrix to choose a [design pattern](#design-patterns), based o
 
 |         Pattern Type         |                                       Follow the Application                                       |                              Geo-Local Dataset                               |
 | ---------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| **Single Active**            | [Global database](./global-database)<br>[Active-active single-master](./active-active-single-master) | N/A                                                                       |
-| **Multi Active**             | [Global database](./global-database)<br>[Duplicate indexes](./duplicate-indexes)                   | [Active-active multi-master](./active-active-multi-master)                |
-| **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition)                            | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition) |
-| **Data Access Architecture** | [Consistent Reads](./global-database)<br>[Follower Reads](./follower-reads)<br>[Read Replicas](./read-replicas)         |                                                                       |
+| **Single Active**            | [Global database](./global-database/)<br>[Active-active single-master](./active-active-single-master/) | N/A                                                                       |
+| **Multi Active**             | [Global database](./global-database/)<br>[Duplicate indexes](./duplicate-indexes/)                   | [Active-active multi-master](./active-active-multi-master)                |
+| **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition/)                            | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition/) |
+| **Data Access Architecture** | [Consistent Reads](./global-database/)<br>[Follower Reads](./follower-reads/)<br>[Read Replicas](./read-replicas/)         |                                                                       |
 
 ## Design patterns
 
@@ -79,35 +79,35 @@ The following table summarizes the design patterns that you can use for your app
 
 | Pattern Name | Description |
 | ------- | ----------- |
-| [Global database](./global-database) |
+| [Global database](./global-database/) |
 {{<header Level="6">}} Single database spread across multiple regions {{</header>}}
 A database spread across multiple (3 or more) regions or zones. On failure, a replica in another region/zone will be promoted to leader in seconds, without any loss of data. Applications read from source of truth, possibly with higher latencies.|
 
-|[Duplicate indexes](./duplicate-indexes)|
+|[Duplicate indexes](./duplicate-indexes/)|
 {{<header Level="6">}} Consistent data everywhere {{</header>}}
 Set up covering indexes with schema the same as the table in multiple regions to read immediately consistent data locally.|
 
-|[Active&#8209;active single&#8209;master](./active-active-single-master)|
+|[Active&#8209;active single&#8209;master](./active-active-single-master/)|
 {{<header Level="6">}} Secondary database that can serve reads {{</header>}}
 Set up a second cluster that gets populated asynchronously and can start serving data in case the primary fails. Can also be used for [blue-green](https://en.wikipedia.org/wiki/Blue-green_deployment) deployment testing.|
 
-|[Active&#8209;active multi&#8209;master](./active-active-multi-master)|
+|[Active&#8209;active multi&#8209;master](./active-active-multi-master/)|
 {{<header Level="6">}} Two clusters serving data together {{</header>}}
 Two regions or more, manual failover, a few seconds of data loss (non-zero RPO), low read/write latencies, some caveats on transactional guarantees.|
 
-|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)|
+|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition/)|
 {{<header Level="6">}} Fast local access {{</header>}}
 Partition your data and place it such that the data belonging to nearby users can be accessed faster.|
 
-|[Locality&#8209;optimized geo&#8209;partitioning](./locality-optimized-geo-partition)|
+|[Locality&#8209;optimized geo&#8209;partitioning](./locality-optimized-geo-partition/)|
 {{<header Level="6">}} Local law compliance {{</header>}}
 Partition your data and place it such that the rows belonging to different users are located in their respective countries.|
 
-|[Follower Reads](./follower-reads) |
+|[Follower Reads](./follower-reads/) |
 {{<header Level="6">}} Fast, stale reads {{</header>}}
 Read from local followers instead of going to the leaders in a different region.|
 
-|[Read Replicas](./read-replicas) |
+|[Read Replicas](./read-replicas/) |
 {{<header Level="6">}} Fast reads from a read-only cluster {{</header>}}
 Set up a separate cluster of just followers to perform local reads instead of going to the leaders in a different region.|
 

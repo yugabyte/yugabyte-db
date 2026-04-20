@@ -69,7 +69,7 @@ class QLMapTest : public QLDmlTestBase<MiniCluster> {
   }
 
   std::unique_ptr<qlexpr::QLRowBlock> ReadRows(YBSession* session, int32_t hash_seed) {
-    auto op = table_.NewReadOp();
+    auto op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     AddHash(hash_seed, req);
     table_.AddColumns(table_.AllColumnNames(), req);
@@ -85,14 +85,14 @@ class QLMapTest : public QLDmlTestBase<MiniCluster> {
 TEST_F(QLMapTest, SingleKeyUpdate) {
   auto session = NewSession();
   // First insert a row
-  auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
   auto* req = op->mutable_request();
   AddHash(1, req);
   QLAddInt32RangeValue(req, 0);
   auto l1 = table_.PrepareColumn(req, "l1")->mutable_map_value();
   for (int i = 1; i <= 3; ++i) {
-    l1->add_keys()->set_string_value(std::to_string(i));
-    l1->add_values()->set_string_value(std::to_string(i * 10));
+    l1->add_keys()->dup_string_value(std::to_string(i));
+    l1->add_values()->dup_string_value(std::to_string(i * 10));
   }
   // Map is: 1 => 10, 2 => 20, 3 => 30
   ASSERT_OK(session->TEST_ApplyAndFlush(op));
@@ -110,7 +110,7 @@ TEST_F(QLMapTest, SingleKeyUpdate) {
   }
 
   // Now perform an update
-  op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+  op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
   req = op->mutable_request();
   AddHash(1, req);
   QLAddInt32RangeValue(req, 0);
@@ -138,14 +138,14 @@ TEST_F(QLMapTest, SingleKeyUpdate) {
 TEST_F(QLMapTest, TwoKeyUpdate) {
   auto session = NewSession();
   // First insert a row
-  auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
   auto* req = op->mutable_request();
   AddHash(1, req);
   QLAddInt32RangeValue(req, 0);
   auto l1 = table_.PrepareColumn(req, "l1")->mutable_map_value();
   for (int i = 1; i <= 3; ++i) {
-    l1->add_keys()->set_string_value(std::to_string(i));
-    l1->add_values()->set_string_value(std::to_string(i * 15));
+    l1->add_keys()->dup_string_value(std::to_string(i));
+    l1->add_values()->dup_string_value(std::to_string(i * 15));
   }
   // Map is: 1 => 15, 2 => 30, 3 => 45
   ASSERT_OK(session->TEST_ApplyAndFlush(op));
@@ -163,7 +163,7 @@ TEST_F(QLMapTest, TwoKeyUpdate) {
   }
 
   // Now perform an update
-  op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+  op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
   req = op->mutable_request();
   AddHash(1, req);
   QLAddInt32RangeValue(req, 0);
@@ -191,14 +191,14 @@ TEST_F(QLMapTest, TwoKeyUpdate) {
 TEST_F(QLMapTest, TwoKeyUpdateWithNewKeyInsert) {
   auto session = NewSession();
   // First insert a row
-  auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
   auto* req = op->mutable_request();
   AddHash(1, req);
   QLAddInt32RangeValue(req, 0);
   auto l1 = table_.PrepareColumn(req, "l1")->mutable_map_value();
   for (int i = 1; i <= 3; ++i) {
-    l1->add_keys()->set_string_value(std::to_string(i));
-    l1->add_values()->set_string_value(std::to_string(i * 15));
+    l1->add_keys()->dup_string_value(std::to_string(i));
+    l1->add_values()->dup_string_value(std::to_string(i * 15));
   }
   // Map is: 1 => 15, 2 => 30, 3 => 45
   ASSERT_OK(session->TEST_ApplyAndFlush(op));
@@ -216,7 +216,7 @@ TEST_F(QLMapTest, TwoKeyUpdateWithNewKeyInsert) {
   }
 
   // Now perform an update
-  op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+  op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
   req = op->mutable_request();
   AddHash(1, req);
   QLAddInt32RangeValue(req, 0);
@@ -248,14 +248,14 @@ TEST_F(QLMapTest, TwoKeyUpdateWithNewKeyInsert) {
 TEST_F(QLMapTest, SingleKeyDelete) {
   auto session = NewSession();
   // First insert a row
-  auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
   auto* req = op->mutable_request();
   AddHash(1, req);
   QLAddInt32RangeValue(req, 0);
   auto l1 = table_.PrepareColumn(req, "l1")->mutable_map_value();
   for (int i = 1; i <= 3; ++i) {
-    l1->add_keys()->set_string_value(std::to_string(i));
-    l1->add_values()->set_string_value(std::to_string(i * 10));
+    l1->add_keys()->dup_string_value(std::to_string(i));
+    l1->add_values()->dup_string_value(std::to_string(i * 10));
   }
   // Map is: 1 => 10, 2 => 20, 3 => 30
   ASSERT_OK(session->TEST_ApplyAndFlush(op));
@@ -273,7 +273,7 @@ TEST_F(QLMapTest, SingleKeyDelete) {
   }
 
   // Now perform a delete
-  op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+  op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
   req = op->mutable_request();
   AddHash(1, req);
   QLAddInt32RangeValue(req, 0);
@@ -300,14 +300,14 @@ TEST_F(QLMapTest, SingleKeyDelete) {
 TEST_F(QLMapTest, TwoKeyDelete) {
   auto session = NewSession();
   // First insert a row
-  auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
   auto* req = op->mutable_request();
   AddHash(1, req);
   QLAddInt32RangeValue(req, 0);
   auto l1 = table_.PrepareColumn(req, "l1")->mutable_map_value();
   for (int i = 1; i <= 3; ++i) {
-    l1->add_keys()->set_string_value(std::to_string(i));
-    l1->add_values()->set_string_value(std::to_string(i * 15));
+    l1->add_keys()->dup_string_value(std::to_string(i));
+    l1->add_values()->dup_string_value(std::to_string(i * 15));
   }
   // Map is: 1 => 15, 2 => 30, 3 => 45
   ASSERT_OK(session->TEST_ApplyAndFlush(op));
@@ -325,7 +325,7 @@ TEST_F(QLMapTest, TwoKeyDelete) {
   }
 
   // Now perform two deletes
-  op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+  op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
   req = op->mutable_request();
   AddHash(1, req);
   QLAddInt32RangeValue(req, 0);

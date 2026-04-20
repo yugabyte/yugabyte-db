@@ -2492,14 +2492,15 @@ lint_java_code() {
       run_with_pattern+='YBTestRunnerNonSanitizersOrMac|YBTestRunnerNonSanOrAArch64Mac|'
       run_with_pattern+='YBTestRunnerNonTsanOnly|YBTestRunnerNonTsanAsan|'
       run_with_pattern+='YBTestRunnerReleaseOnly|YBTestRunnerYsqlConnMgr|'
-      run_with_pattern+='YBTestRunnerNonMac|YBTestRunner)\.class\)'
+      run_with_pattern+='YBParameterizedTestRunnerYsqlConnMgr|YBTestRunnerNonMac|'
+      run_with_pattern+='YBTestRunner)\.class\)'
       if ! grep -Eq "$run_with_pattern" "$java_test_file"; then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
             "YBParameterizedTestRunnerNonTsanOnly, YBTestRunnerNonTsanOnly, " \
             " YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
-            "YBTestRunnerNonSanOrAArch64Mac, " \
-            "YBTestRunnerReleaseOnly, YBTestRunnerYsqlConnMgr, nor YBTestRunnerNonMac " \
-            " are being used in test"
+            "YBTestRunnerNonSanOrAArch64Mac, YBTestRunnerReleaseOnly, " \
+            "YBTestRunnerYsqlConnMgr, YBParameterizedTestRunnerYsqlConnMgr " \
+            "nor YBTestRunnerNonMac are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||
