@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import sys
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -135,6 +136,7 @@ def _normalize_path(path: str) -> str:
 def run_text(linter: Linter, files: list[str]) -> list[Message]:
     """Built-in text linter: line length, trailing whitespace, EOF newline, tab characters."""
     max_len = int(linter.config.get("text.max-line-length", 80))
+    # severity keys are the arclint integer levels: 0=disabled, 1=advice, 2=warning, 3=error.
     severity = linter.config.get("severity", {})
     msgs: list[Message] = []
     for path in files:
@@ -350,6 +352,7 @@ def main() -> int:
             all_msgs.extend(runner(linter, matched))
         except Exception as exc:  # pylint: disable=broad-exception-caught
             print(f"[lint] {linter.name} failed: {exc}", file=sys.stderr)
+            traceback.print_exc()
 
     for m in all_msgs:
         print(m.format())
