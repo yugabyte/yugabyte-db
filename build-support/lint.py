@@ -116,7 +116,6 @@ def _changed_files(base: str | None = None) -> list[str]:
 
 
 def _load_config() -> dict:
-    # This comment is intentionally much much longer than the project's configured line length to trigger the line-too-long text lint rule.
     with open(REPO_ROOT / ".lint", encoding="utf-8") as f:
         return json.load(f)
 
