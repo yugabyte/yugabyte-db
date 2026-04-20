@@ -299,15 +299,16 @@ Status MiniTabletServer::CleanTabletLogs() {
   return ForAllTablets(this, [](TabletPeer* tablet_peer) { return tablet_peer->RunLogGC(); });
 }
 
-Status MiniTabletServer::Restart() {
+Status MiniTabletServer::Restart(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   CHECK(started_);
   Shutdown();
-  return Start(WaitTabletsBootstrapped::kFalse);
+  return Start(wait_tablets_bootstrapped);
 }
 
-Status MiniTabletServer::RestartStoppedServer() {
+Status MiniTabletServer::RestartStoppedServer(
+    WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   Shutdown();
-  return Start(WaitTabletsBootstrapped::kFalse);
+  return Start(wait_tablets_bootstrapped);
 }
 
 RaftConfigPB MiniTabletServer::CreateLocalConfig() const {

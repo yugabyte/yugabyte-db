@@ -455,7 +455,6 @@ RaftConsensus::RaftConsensus(
       step_down_check_tracker_(
           "step_down_check_tracker", &peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
-      shutdown_(false),
       deprecated_follower_memory_pressure_rejections_(
           tablet_metric_entity->FindOrCreateMetric<Counter>(
               &METRIC_follower_memory_pressure_rejections)),
@@ -2974,14 +2973,14 @@ std::vector<FollowerCommunicationTime> RaftConsensus::GetFollowerCommunicationTi
   return queue_->GetFollowerCommunicationTimes();
 }
 
-void RaftConsensus::Shutdown() {
-  LOG_WITH_PREFIX(INFO) << "Shutdown.";
+void RaftConsensus::StartShutdown() {
+  auto expected = ShutdownState::kNotStarted;
+  if (!shutdown_state_.compare_exchange_strong(expected, ShutdownState::kStarted,
+                                               std::memory_order_acq_rel)) {
+    return;
+  }
 
-  // Avoid taking locks if already shut down so we don't violate
-  // ThreadRestrictions assertions in the case where the RaftConsensus
-  // destructor runs on the reactor thread due to an election callback being
-  // the last outstanding reference.
-  if (shutdown_.Load(kMemOrderAcquire)) return;
+  LOG_WITH_PREFIX(INFO) << "StartShutdown";
 
   CHECK_OK(ExecuteHook(PRE_SHUTDOWN));
 
@@ -2991,7 +2990,6 @@ void RaftConsensus::Shutdown() {
     CHECK_OK(state_->LockForShutdown(&lock));
     step_down_check_tracker_.StartShutdown();
   }
-  step_down_check_tracker_.CompleteShutdown();
 
   // Close the peer manager.
   peer_manager_->Close();
@@ -3000,6 +2998,17 @@ void RaftConsensus::Shutdown() {
   queue_->Close();
 
   CHECK_OK(state_->CancelPendingOperations());
+}
+
+void RaftConsensus::CompleteShutdown() {
+  auto state = shutdown_state_.load(std::memory_order_acquire);
+  if (state != ShutdownState::kStarted) {
+    LOG_IF_WITH_PREFIX_AND_FUNC(DFATAL, state != ShutdownState::kCompleted)
+        << "Wrong shutdown state: " << state;
+    return;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "CompleteShutdown";
 
   {
     ReplicaState::UniqueLock lock;
@@ -3008,6 +3017,8 @@ void RaftConsensus::Shutdown() {
     CHECK_OK(state_->ShutdownUnlocked());
     LOG_WITH_PREFIX(INFO) << "Raft consensus is shut down!";
   }
+
+  step_down_check_tracker_.CompleteShutdown();
 
   // Shut down things that might acquire locks during destruction.
   raft_pool_concurrent_token_->Shutdown();
@@ -3018,7 +3029,12 @@ void RaftConsensus::Shutdown() {
 
   CHECK_OK(ExecuteHook(POST_SHUTDOWN));
 
-  shutdown_.Store(true, kMemOrderRelease);
+  shutdown_state_.store(ShutdownState::kCompleted, std::memory_order_release);
+}
+
+void RaftConsensus::Shutdown() {
+  StartShutdown();
+  CompleteShutdown();
 }
 
 PeerRole RaftConsensus::GetActiveRole() const {
