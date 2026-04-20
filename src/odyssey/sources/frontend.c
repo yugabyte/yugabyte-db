@@ -1013,8 +1013,29 @@ static inline od_retcode_t od_frontend_log_bind(od_instance_t *instance,
 	return OK_RESPONSE;
 }
 
-// 8 hex
-#define OD_HASH_LEN 9
+static inline void yb_lru_on_new_insert(od_server_t *server,
+					od_hash_t yb_stmt_hash,
+					od_hashmap_elt_t *server_key_desc)
+{
+	od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
+		server->prep_stmts, yb_stmt_hash, server_key_desc);
+	if (item) {
+		od_list_append(&server->yb_prep_stmt_lru, &item->yb_lru_link);
+		server->yb_prep_stmt_count++;
+	}
+}
+
+static inline void yb_lru_on_cache_hit(od_server_t *server,
+				       od_hash_t yb_stmt_hash,
+				       od_hashmap_elt_t *server_key_desc)
+{
+	od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
+		server->prep_stmts, yb_stmt_hash, server_key_desc);
+	if (item) {
+		od_list_unlink(&item->yb_lru_link);
+		od_list_append(&server->yb_prep_stmt_lru, &item->yb_lru_link);
+	}
+}
 
 static inline machine_msg_t *od_frontend_rewrite_msg(char *data, int size,
 						     int opname_start_offset,
@@ -1245,6 +1266,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			// send parse msg if needed
 			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
 					      &server_key_desc, &value_ptr) == 0) {
+				yb_lru_on_new_insert(server, yb_stmt_hash,
+						     &server_key_desc);
 				od_debug(
 					&instance->logger,
 					"rewrite parse before describe", client,
@@ -1282,6 +1305,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					return OD_EOOM;
 				}
 			} else {
+				yb_lru_on_cache_hit(server, yb_stmt_hash,
+						    &server_key_desc);
 				int *refcnt;
 				refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
@@ -1481,6 +1506,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
 					      &server_key_desc, &value_ptr) == 0) {
+				yb_lru_on_new_insert(server, yb_stmt_hash,
+						     &server_key_desc);
 				od_debug(
 					&instance->logger,
 					"rewrite parse initial deploy", client,
@@ -1518,6 +1545,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					return OD_EOOM;
 				}
 			} else {
+				yb_lru_on_cache_hit(server, yb_stmt_hash,
+						    &server_key_desc);
 				int *refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
 				free(server_key_desc.data);
@@ -1683,6 +1712,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (od_hashmap_insert(server->prep_stmts, yb_stmt_hash,
 					      &server_key_desc, &value_ptr) == 0) {
+				yb_lru_on_new_insert(server, yb_stmt_hash,
+						     &server_key_desc);
 				od_debug(
 					&instance->logger,
 					"rewrite parse before bind", client,
@@ -1721,6 +1752,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					return OD_EOOM;
 				}
 			} else {
+				yb_lru_on_cache_hit(server, yb_stmt_hash,
+						    &server_key_desc);
 				int *refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
 				free(server_key_desc.data);

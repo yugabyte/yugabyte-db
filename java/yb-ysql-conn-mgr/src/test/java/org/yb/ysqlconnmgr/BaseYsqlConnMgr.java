@@ -25,7 +25,9 @@ import java.sql.Statement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
@@ -668,5 +670,26 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         TestUtils.findBinary("yb-ts-cli"), "--server_address", server.toString(),
         "set_flag", flag, value);
     ProcessUtil.runProcess(args, 60 /* timeoutSeconds */);
+  }
+
+  protected static long getRssForPid(int pid) throws Exception {
+    Process process = Runtime.getRuntime().exec(
+        String.format("ps -p %d -o rss=", pid));
+    try (Scanner scanner = new Scanner(process.getInputStream())) {
+      return scanner.nextLong();
+    }
+  }
+
+  protected static int getOdysseyPid() throws Exception {
+    Process p = Runtime.getRuntime().exec(
+        new String[]{"/bin/sh", "-c", "pgrep -f odyssey | head -1"});
+    try (BufferedReader reader =
+             new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+      String line = reader.readLine();
+      if (line == null || line.trim().isEmpty()) {
+        throw new RuntimeException("Could not find Odyssey process via pgrep");
+      }
+      return Integer.parseInt(line.trim());
+    }
   }
 }
