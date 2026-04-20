@@ -31,6 +31,17 @@
 
 namespace yb::tablet {
 
+namespace {
+
+// For historical reasons, the name of the tablet bootstrap state file is retryable_requests
+// (it used to be solely for retryable requests, but was extended to contain other state like
+// hybrid time filter for transaction loader, and the file name was left the same for backwards
+// compatibility).
+constexpr auto kTabletBootstrapStateFileName = "retryable_requests";
+constexpr auto kTabletBootstrapStateNewFileName = "retryable_requests.NEW";
+
+} // namespace
+
 TabletBootstrapState::TabletBootstrapState(const TabletBootstrapState& rhs)
     : min_replay_txn_first_write_ht_(rhs.min_replay_txn_first_write_ht_.load()) {}
 
@@ -179,6 +190,14 @@ Status TabletBootstrapStateManager::DoInit() {
   }
   has_file_on_disk_ = has_new || has_current;
   return env->SyncDir(dir_);
+}
+
+std::string_view TabletBootstrapStateManager::FileName() {
+  return kTabletBootstrapStateFileName;
+}
+
+std::string_view TabletBootstrapStateManager::NewFileName() {
+  return kTabletBootstrapStateNewFileName;
 }
 
 } // namespace yb::tablet

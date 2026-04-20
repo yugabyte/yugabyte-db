@@ -33,17 +33,6 @@ dependencies:
     tags: yb-prebuilt-ami
 
   - role: install_backup_util
-    when: ansible_architecture != "aarch64"
-    util:
-      name: "azcopy"
-    tags: yb-prebuilt-ami
-
-  - role: install_backup_util
-    util:
-      name: "gsutil"
-    tags: yb-prebuilt-ami
-
-  - role: install_backup_util
     util:
       name: "s3cmd"
     tags: yb-prebuilt-ami

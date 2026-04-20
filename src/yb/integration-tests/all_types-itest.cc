@@ -311,7 +311,7 @@ class AllTypesItest : public YBTest {
   }
 
   Status GenerateRow(YBSession* session, int split_idx, int row_idx) {
-    auto insert = table_.NewInsertOp();
+    auto insert = table_.NewInsertOp(session->arena());
     setup_.GenerateRowKey(insert.get(), split_idx, row_idx);
     int int_val = (split_idx * setup_.GetRowsPerTablet()) + row_idx;
     auto req = insert->mutable_request();

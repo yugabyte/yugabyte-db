@@ -90,6 +90,7 @@ class Env;
 
 namespace yb {
 
+class Cgroup;
 class Env;
 class MaintenanceManager;
 class ObjectLockTracker;
@@ -185,6 +186,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   TServerCgroupManager* cgroup_manager() const override {
     return cgroup_manager_.get();
   }
+
+  Cgroup* PerDbCgroupProvider(rpc::ThreadPoolTag tag);
 #endif
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }

@@ -175,6 +175,10 @@ void Batcher::SetDeadline(CoarseTimePoint deadline) {
   deadline_ = deadline;
 }
 
+void Batcher::SetPoolTag(rpc::ThreadPoolTag pool_tag) {
+  pool_tag_ = pool_tag;
+}
+
 bool Batcher::HasPendingOperations() const {
   return !ops_.empty();
 }
@@ -673,12 +677,13 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   // levels the read algorithm would differ.
 
   AsyncRpcData data{
-      .batcher = self,
-      .tablet = tablet,
-      .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
-      .need_consistent_read = need_consistent_read,
-      .ops = InFlightOps(group.begin, group.end),
-      .need_metadata = group.need_metadata
+    .batcher = self,
+    .tablet = tablet,
+    .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
+    .need_consistent_read = need_consistent_read,
+    .arena = arena_,
+    .ops = InFlightOps(group.begin, group.end),
+    .need_metadata = group.need_metadata
   };
 
   const auto& first_op = group.begin->yb_op;
@@ -698,15 +703,15 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
     case OpGroup::kUnlock: {
       data.use_async_write = UseAsyncWrites(
           first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
-      return std::make_shared<WriteRpc>(data);
+      return std::make_shared<WriteRpc>(data, pool_tag_);
     }
     case OpGroup::kLeaderRead: {
       data.use_async_write = UseAsyncWrites(
           first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
-      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG);
+      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG, pool_tag_);
     }
     case OpGroup::kConsistentPrefixRead:
-      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::CONSISTENT_PREFIX);
+      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::CONSISTENT_PREFIX, pool_tag_);
   }
   FATAL_INVALID_ENUM_VALUE(OpGroup, op_group);
 }
@@ -883,7 +888,7 @@ void Batcher::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& 
 }
 
 void Batcher::HandleAsyncWriteResponse(
-    const OpIdPB& async_write_op_id, const RemoteTablet& tablet,
+    const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
     std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy) {
   // We have a async write. Record the OpId, and send a async RPC to track its completion.
   // At time of final commit, we will wait for all these async writes to complete.

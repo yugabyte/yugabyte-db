@@ -186,7 +186,8 @@ Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
   std::vector<client::YBOperationPtr> ops;
   for (const auto& [table_id, mutation_count] : table_id_to_mutations_maps) {
     // Add count if entry already exists
-    const auto add_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    const auto add_op = table->NewWriteOp(
+        session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const update_req = add_op->mutable_request();
     QLAddStringHashValue(update_req, table_id);
     update_req->mutable_column_refs()->add_ids(mutations_col_id);
@@ -203,7 +204,7 @@ Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
     ops.push_back(std::move(add_op));
 
     // Insert the count if entry does not exist
-    const auto insert_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const auto insert_op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const insert_req = insert_op->mutable_request();
     QLAddStringHashValue(insert_req, table_id);
     table->AddInt64ColumnValue(insert_req, master::kPgAutoAnalyzeMutations, mutation_count);
@@ -323,7 +324,7 @@ Result<AutoAnalyzeInfoMap> PgAutoAnalyzeService::ReadTableMutations() {
       GetYBSession(FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms));
   auto* table = VERIFY_RESULT(GetServiceTable());
 
-  const client::YBqlReadOpPtr read_op = table->NewReadOp();
+  const client::YBqlReadOpPtr read_op = table->NewReadOp(session->arena());
   auto* const read_req = read_op->mutable_request();
   table->AddColumns(
       {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations,
@@ -720,7 +721,7 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
 
   std::vector<client::YBOperationPtr> ops;
   for (auto& table_id : tables) {
-    const auto update_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    const auto update_op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const update_req = update_op->mutable_request();
     QLAddStringHashValue(update_req, table_id);
     update_req->mutable_column_refs()->add_ids(mutations_col_id);
@@ -785,19 +786,19 @@ Status PgAutoAnalyzeService::CleanUpDeletedTablesFromServiceTable(
   auto* table = VERIFY_RESULT(GetServiceTable());
   std::vector<client::YBOperationPtr> ops;
   for (auto& table_id : deleted_tables) {
-    const auto delete_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const auto delete_op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const delete_req = delete_op->mutable_request();
     QLAddStringHashValue(delete_req, table_id);
     ops.push_back(delete_op);
   }
   for (auto& table_id : tables_of_deleted_databases) {
-    const auto delete_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const auto delete_op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const delete_req = delete_op->mutable_request();
     QLAddStringHashValue(delete_req, table_id);
     ops.push_back(delete_op);
   }
   for (auto& table_id : tables_absent_in_name_cache) {
-    const auto delete_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const auto delete_op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const delete_req = delete_op->mutable_request();
     QLAddStringHashValue(delete_req, table_id);
     ops.push_back(delete_op);
@@ -994,7 +995,7 @@ Status PgAutoAnalyzeService::FlushAnalyzeHistory(
     }
 
     // 4. Build UPDATE ... WHERE table_id = ? IF EXISTS;
-    auto update_op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    auto update_op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
     auto* req = update_op->mutable_request();
 
     QLAddStringHashValue(req, table_id);  // PK
@@ -1002,7 +1003,7 @@ Status PgAutoAnalyzeService::FlushAnalyzeHistory(
 
     auto* col = req->add_column_values();
     col->set_column_id(history_column_id);
-    col->mutable_expr()->mutable_value()->set_jsonb_value(jsonb.MoveSerializedJsonb());
+    col->mutable_expr()->mutable_value()->dup_jsonb_value(jsonb.MoveSerializedJsonb());
 
     req->mutable_if_expr()->mutable_condition()->set_op(QL_OP_EXISTS);
 

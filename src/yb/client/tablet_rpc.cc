@@ -557,6 +557,11 @@ bool TabletInvoker::RefreshTabletInfoWithConsensusInfo(
     return client_->RefreshTabletInfoWithConsensusInfo(tablet_consensus_info);
 }
 
+bool TabletInvoker::RefreshTabletInfoWithConsensusInfo(
+    const tserver::LWTabletConsensusInfoPB& tablet_consensus_info) {
+    return client_->RefreshTabletInfoWithConsensusInfo(tablet_consensus_info);
+}
+
 std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const {
   return current_ts_->proxy();
 }

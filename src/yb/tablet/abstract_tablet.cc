@@ -13,7 +13,7 @@
 
 #include "yb/tablet/abstract_tablet.h"
 
-#include "yb/qlexpr/ql_resultset.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -23,6 +23,7 @@
 #include "yb/docdb/pgsql_operation.h"
 
 #include "yb/qlexpr/index.h"
+#include "yb/qlexpr/ql_resultset.h"
 
 #include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -46,7 +47,7 @@ Status AbstractTablet::HandleQLReadRequest(
     QLReadRequestResult* result,
     WriteBuffer* rows_data) {
   // TODO(Robert): verify that all key column values are provided
-  docdb::QLReadOperation doc_op(ql_read_request, txn_op_context);
+  docdb::QLReadOperation doc_op(ql_read_request, txn_op_context, result->response);
 
   // Form a schema of columns that are referenced by this query.
   const auto doc_read_context = GetDocReadContext();
@@ -61,19 +62,18 @@ Status AbstractTablet::HandleQLReadRequest(
   TRACE("Done Execute");
   if (!s.ok()) {
     if (s.IsQLError()) {
-      result->response.set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
+      result->response->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
     } else {
-      result->response.set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
+      result->response->set_status(QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
     }
-    result->response.set_error_message(s.message().cdata(), s.message().size());
+    result->response->dup_error_message(s.message());
     return Status::OK();
   }
-  result->response.Swap(&doc_op.response());
 
   RETURN_NOT_OK(CreatePagingStateForRead(
-      ql_read_request, resultset.rsrow_count(), &result->response));
+      ql_read_request, resultset.rsrow_count(), result->response));
 
-  result->response.set_status(QLResponsePB::YQL_STATUS_OK);
+  result->response->set_status(QLResponsePB::YQL_STATUS_OK);
   return Status::OK();
 }
 
@@ -83,33 +83,33 @@ Status AbstractTablet::ProcessPgsqlReadRequest(
   const auto& pgsql_read_request = op_data.request;
   // Form a schema of columns that are referenced by this query.
 
-  docdb::PgsqlReadOperation doc_op(op_data, result->rows_data, &result->read_restart_data);
+  docdb::PgsqlReadOperation doc_op(
+      op_data, *result->response, result->rows_data, &result->read_restart_data);
 
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute();
   TRACE("Done Execute");
   if (!fetched_rows.ok()) {
-    result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
+    result->response->set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
     const auto& s = fetched_rows.status();
 
     // TODO(14814, 18387): At the moment only one error status is supported.
-    result->response.mutable_error_status()->Clear();
-    StatusToPB(s, result->response.add_error_status());
+    result->response->mutable_error_status()->Clear();
+    StatusToPB(s, result->response->add_error_status());
     // For backward compatibility set also deprecated error message
-    result->response.set_error_message(s.message().cdata(), s.message().size());
+    result->response->dup_error_message(s.message());
     return Status::OK();
   }
-  result->response.Swap(&doc_op.response());
 
   result->num_rows_read = *fetched_rows;
 
   RETURN_NOT_OK(CreatePagingStateForRead(
-      pgsql_read_request, *fetched_rows, &result->response));
+      pgsql_read_request, *fetched_rows, result->response));
 
   // TODO(neil) The clients' request should indicate what encoding method should be used. When
   // multi-shard is used to process more complicated queries, proxy-server might prefer a different
   // encoding. For now, we'll call PgsqlSerialize() without checking encoding method.
-  result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+  result->response->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
 
   // Serializing data for PgGate API.
   CHECK(!pgsql_read_request.has_rsrow_desc()) << "Row description is not needed";

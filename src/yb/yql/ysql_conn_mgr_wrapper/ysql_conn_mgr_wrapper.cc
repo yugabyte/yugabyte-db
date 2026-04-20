@@ -82,6 +82,12 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
     "is reached, the connection is automatically closed, regardless of activity, ensuring that "
     "fresh backend connections are regularly maintained.");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, max_prepared_statements, 500,
+    "Soft limit on prepared statements per server connection. When the limit is exceeded, the"
+    "least recently used statements are closed on the backend. This is enforced periodically at "
+    "connection detach points, so the actual count may temporarily exceed this value. Set to 0 "
+    "to disable LRU eviction.");
+
 DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
     "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "

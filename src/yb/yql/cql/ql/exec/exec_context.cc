@@ -300,11 +300,9 @@ void TnodeContext::InitializePartition(QLReadRequestMsg *req, bool continue_user
   // hash_values_options_ vector starts from the first column with an 'IN' restriction.
   // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6":
   // hashed_column_values() will be [1] and hash_values_options_ will be [[2,3],[4,5],[6]].
-  int set_cols_size = req->hashed_column_values().size();
   auto unset_cols_size = hash_values_options_->size();
 
   // Initialize the missing columns with default values (e.g. h2, h3, h4 in example above).
-  req->mutable_hashed_column_values()->Reserve(narrow_cast<int>(set_cols_size + unset_cols_size));
   for (size_t i = 0; i < unset_cols_size; i++) {
     req->add_hashed_column_values();
   }
@@ -315,11 +313,13 @@ void TnodeContext::InitializePartition(QLReadRequestMsg *req, bool continue_user
   //    h4 = 6 since pos is "0 % 1 = 0", (start_position becomes 0 / 1 = 0).
   //    h3 = 4 since pos is "0 % 2 = 0", (start_position becomes 0 / 2 = 0).
   //    h2 = 2 since pos is "0 % 2 = 0", (start_position becomes 0 / 2 = 0).
+  auto it = req->mutable_hashed_column_values()->end();
   for (auto i = unset_cols_size; i > 0;) {
     --i;
+    --it;
     const auto& options = (*hash_values_options_)[i];
     auto pos = start_partition % options.size();
-    *req->mutable_hashed_column_values(narrow_cast<int>(i + set_cols_size)) = options[pos];
+    *it = *options[pos];
     start_partition /= options.size();
   }
 }
@@ -344,11 +344,13 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestMsg *req) {
   //    h4 = 6 since pos is "3 % 1 = 0", new partition counter is "3 / 1 = 3".
   //    h3 = 5 since pos is "3 % 2 = 1", pos is non-zero which guarantees previous cols don't need
   //    to be changed (i.e. are the same as for previous partition index) so we break.
+  auto it = req->mutable_hashed_column_values()->end();
   for (size_t i = hash_key_size; i > fixed_cols_size;) {
     --i;
+    --it;
     const auto& options = (*hash_values_options_)[i - fixed_cols_size];
     auto pos = partition_counter % options.size();
-    *req->mutable_hashed_column_values(narrow_cast<int>(i)) = options[pos];
+    *it = *options[pos];
     if (pos != 0) break; // The previous position hash values must be unchanged.
     partition_counter /= options.size();
   }

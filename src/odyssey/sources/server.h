@@ -56,6 +56,9 @@ struct od_server {
 
 	/* allocated prepared statements ids */
 	od_hashmap_t *prep_stmts;
+	/* YB: LRU list and count of prep stmts */
+	od_list_t yb_prep_stmt_lru;
+	int yb_prep_stmt_count;
 
 	od_global_t *global;
 	int offline;
@@ -156,6 +159,9 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	memset(&server->id, 0, sizeof(server->id));
 	memset(&server->yb_unnamed_prep_stmt_client_id, 0,
 	       sizeof(server->yb_unnamed_prep_stmt_client_id));
+
+	od_list_init(&server->yb_prep_stmt_lru);
+	server->yb_prep_stmt_count = 0;
 
 	if (reserve_prep_stmts) {
 		server->prep_stmts =

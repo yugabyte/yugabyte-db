@@ -99,6 +99,9 @@ DEFINE_test_flag(double, outbound_call_skip_callback_probability, 0.0,
     "Test flag for skipping an OutboundCall callback, to simulate a bug with a stuck "
     "OutboundCall.");
 
+DEFINE_RUNTIME_AUTO_bool(enable_rpc_pool_tags, kLocalVolatile, false, true,
+    "Enable support for tagging RPCs for specific servicer thread pools.");
+
 namespace yb {
 namespace rpc {
 
@@ -323,6 +326,7 @@ Status OutboundCall::SetRequestParam(
   sidecars_ = std::move(sidecars);
   auto sidecars_size = sidecars_ ? sidecars_->size() : 0;
   size_t message_size = SerializedMessageSize(req_size, sidecars_size);
+  auto pool_tag = FLAGS_enable_rpc_pool_tags ? controller_->pool_tag() : 0;
 
   using Output = google::protobuf::io::CodedOutputStream;
   using google::protobuf::internal::WireFormatLite;
@@ -343,8 +347,11 @@ Status OutboundCall::SetRequestParam(
                          serialized_remote_method.size() + // RemoteMethodPB remote_method = 2
                          1 + timeout_ms_size + // uint32 timeout_millis = 3
                          metadata_size; // AshMetadataPB metadata = 5
+  if (pool_tag) {
+    header_pb_len += 1 + Output::VarintSize64(pool_tag); // uint64 pool_tag = 7
+  }
   if (use_crc) {
-    header_pb_len += 1 + sizeof(uint32_t); // fixed32 crc = 6;
+    header_pb_len += 1 + sizeof(uint32_t); // fixed32 crc = 15
   }
   const google::protobuf::RepeatedField<uint32_t>* sidecar_offsets = nullptr;
   size_t encoded_sidecars_len = 0;
@@ -387,6 +394,11 @@ Status OutboundCall::SetRequestParam(
         (RequestHeader::kMetadataFieldNumber << 3) | WireFormatLite::WIRETYPE_LENGTH_DELIMITED,
         dst);
     dst = metadata_serializer_->SerializeToArray(dst);
+  }
+
+  if (pool_tag) {
+    dst = CodedOutputStream::WriteTagToArray(RequestHeader::kPoolTagFieldNumber << 3, dst);
+    dst = Output::WriteVarint64ToArray(pool_tag, dst);
   }
 
   // CRC should be at the end of header, otherwise adjust CRC filling logic below.

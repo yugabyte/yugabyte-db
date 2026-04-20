@@ -73,7 +73,7 @@ service PgClientService {
   rpc GetTablePartitionList(PgGetTablePartitionListRequestPB)
       returns (PgGetTablePartitionListResponsePB);
   rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB) {
-    option (yb.rpc.lightweight_method).sides = PROXY;
+    option (yb.rpc.lightweight_method).sides = BOTH;
   };
   rpc PollVectorIndexReady(PgPollVectorIndexReadyRequestPB)
       returns (PgPollVectorIndexReadyResponsePB) {
@@ -92,12 +92,33 @@ service PgClientService {
   rpc WaitForBackendsCatalogVersion(PgWaitForBackendsCatalogVersionRequestPB)
       returns (PgWaitForBackendsCatalogVersionResponsePB);
 
-  rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB) returns (PgInsertSequenceTupleResponsePB);
-  rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB) returns (PgUpdateSequenceTupleResponsePB);
-  rpc FetchSequenceTuple(PgFetchSequenceTupleRequestPB) returns (PgFetchSequenceTupleResponsePB);
-  rpc ReadSequenceTuple(PgReadSequenceTupleRequestPB) returns (PgReadSequenceTupleResponsePB);
-  rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
-  rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
+  rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB)
+      returns (PgInsertSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB)
+      returns (PgUpdateSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc FetchSequenceTuple(PgFetchSequenceTupleRequestPB) returns (PgFetchSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc ReadSequenceTuple(PgReadSequenceTupleRequestPB) returns (PgReadSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB)
+      returns (PgDeleteSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
   rpc IsObjectPartOfXRepl(PgIsObjectPartOfXReplRequestPB)
       returns (PgIsObjectPartOfXReplResponsePB);
@@ -111,7 +132,9 @@ service PgClientService {
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
 
-  rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB);
+  rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
 
   rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
       returns (PgGetNewObjectIdResponsePB);
@@ -147,7 +170,7 @@ service PgClientService {
 
   rpc AcquireObjectLock(PgAcquireObjectLockRequestPB)
       returns (PgAcquireObjectLockResponsePB) {
-    option (yb.rpc.lightweight_method).sides = PROXY;
+    option (yb.rpc.lightweight_method).sides = BOTH;
   }
   rpc ReleaseSessionObjectLock(PgReleaseSessionObjectLockRequestPB)
       returns (PgReleaseSessionObjectLockResponsePB);

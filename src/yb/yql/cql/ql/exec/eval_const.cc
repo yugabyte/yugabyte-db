@@ -80,7 +80,7 @@ Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
       return PTUMinusToPB(static_cast<const PTOperator1*>(expr.get()), const_pb);
 
     case ExprOperator::kBindVar: {
-      QLExpressionPB expr_pb;
+      LWQLExpressionPB expr_pb(&const_pb->arena());
       RETURN_NOT_OK(PTExprToPB(static_cast<const PTBindVar*>(expr.get()), &expr_pb));
       *const_pb = std::move(*expr_pb.mutable_value());
       return Status::OK();
@@ -209,7 +209,8 @@ Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValueMsg *const_pb,
       break;
     }
     case InternalType::kDecimalValue: {
-      return const_pt->ToDecimal(const_pb->mutable_decimal_value(), negate);
+      const_pb->ref_decimal_value(VERIFY_RESULT(const_pt->ToDecimal(const_pb->arena(), negate)));
+      return Status::OK();
     }
     case InternalType::kTimestampValue: {
       int64_t value;
@@ -242,7 +243,8 @@ Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValueMsg *const_pb,
       break;
     }
     case InternalType::kVarintValue: {
-      return const_pt->ToVarInt(const_pb->mutable_varint_value(), negate);
+      const_pb->ref_varint_value(VERIFY_RESULT(const_pt->ToVarInt(const_pb->arena(), negate)));
+      return Status::OK();
     }
 
     default:
@@ -257,7 +259,8 @@ Status Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValueMsg *const_pb
                             bool negate) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kDecimalValue: {
-      return const_pt->ToDecimal(const_pb->mutable_decimal_value(), negate);
+      const_pb->ref_decimal_value(VERIFY_RESULT(const_pt->ToDecimal(const_pb->arena(), negate)));
+      return Status::OK();
     }
     case InternalType::kFloatValue: {
       long double value;
@@ -343,7 +346,8 @@ Status Executor::PTExprToPB(const PTConstDouble *const_pt, QLValueMsg *const_pb,
 Status Executor::PTExprToPB(const PTConstText *const_pt, QLValueMsg *const_pb) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kStringValue:
-      return const_pt->ToString(const_pb->mutable_string_value());
+      const_pb->ref_string_value(const_pt->ToString(const_pb->arena()));
+      break;
     case InternalType::kTimestampValue: {
       int64_t value = 0;
       RETURN_NOT_OK(const_pt->ToTimestamp(&value, ql_metrics_));
@@ -413,9 +417,9 @@ Status Executor::PTExprToPB(const PTConstBinary *const_pt, QLValueMsg *const_pb)
         return STATUS(RuntimeError, "Invalid binary input, expected even number of hex digits");
       }
 
-      string bytes;
-      a2b_hex(value->c_str(), &bytes, input_size / 2);
-      const_pb->set_binary_value(bytes);
+      auto out = static_cast<char*>(const_pb->arena().AllocateBytes(input_size / 2));
+      a2b_hex(value->c_str(), out, input_size / 2);
+      const_pb->ref_binary_value(Slice(out, input_size / 2));
       break;
     }
     default:
@@ -526,34 +530,39 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValueMsg *const_
 
       switch (const_pt->ql_type()->param_type(0)->main()) {
         case DataType::MAP: {
-          std::map<QLValuePB, QLValuePB> map_values;
+          std::vector<std::pair<LWQLValuePB*, LWQLValuePB*>> map_values;
           auto keys_it = const_pt->keys().begin();
           auto values_it = const_pt->values().begin();
           while (keys_it != const_pt->keys().end() && values_it != const_pt->values().end()) {
-            QLValuePB key_pb;
-            RETURN_NOT_OK(PTConstToPB(*keys_it, &key_pb));
-            RETURN_NOT_OK(PTConstToPB(*values_it, &map_values[key_pb]));
+            auto& back = map_values.emplace_back(
+                const_pb->arena().NewArenaObject<LWQLValuePB>(),
+                const_pb->arena().NewArenaObject<LWQLValuePB>());
+            RETURN_NOT_OK(PTConstToPB(*keys_it, back.first));
+            RETURN_NOT_OK(PTConstToPB(*values_it, back.second));
             keys_it++;
             values_it++;
           }
 
+          CleanupDuplicates(map_values, [](const auto& p) { return p.first; });
+
           for (auto &pair : map_values) {
-            *frozen_value->add_elems() = std::move(pair.first);
-            *frozen_value->add_elems() = std::move(pair.second);
+            frozen_value->mutable_elems()->push_back_ref(pair.first);
+            frozen_value->mutable_elems()->push_back_ref(pair.second);
           }
           break;
         }
 
         case DataType::SET: {
-          std::set<QLValuePB> set_values;
+          std::vector<LWQLValuePB*> set_values;
           for (const auto &elem : const_pt->values()) {
-            QLValuePB elem_pb;
-            RETURN_NOT_OK(PTConstToPB(elem, &elem_pb));
-            set_values.insert(std::move(elem_pb));
+            RETURN_NOT_OK(PTConstToPB(
+                elem, set_values.emplace_back(const_pb->arena().ArenaObjectFactory())));
           }
 
-          for (auto &elem : set_values) {
-            *frozen_value->add_elems() = std::move(elem);
+          CleanupDuplicates(set_values, std::identity());
+
+          for (auto* elem : set_values) {
+            frozen_value->mutable_elems()->push_back_ref(elem);
           }
           break;
         }

@@ -126,6 +126,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   void SetDeadline(CoarseTimePoint deadline);
 
+  void SetPoolTag(rpc::ThreadPoolTag tag);
+
   // TODO: add "doAs" ability here for proxy servers to be able to act on behalf of
   // other users, assuming access rights.
 
@@ -289,6 +291,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // current time + session timeout.
   CoarseTimePoint deadline_;
   MonoDelta timeout_;
+
+  rpc::ThreadPoolTag pool_tag_ = 0;
 
   internal::AsyncRpcMetricsPtr async_rpc_metrics_;
 

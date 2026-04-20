@@ -138,14 +138,14 @@ auto SetupRequest(const T& op, const YBSchema& schema) {
 
 std::shared_ptr<YBqlWriteOp> TableHandle::NewWriteOp(
     const ThreadSafeArenaPtr& arena, QLWriteRequestPB::QLStmtType type) const {
-  auto op = std::make_shared<YBqlWriteOp>(table_);
+  auto op = std::make_shared<YBqlWriteOp>(table_, arena, /* request= */ nullptr);
   auto* req = SetupRequest(op, table_->schema());
   req->set_type(type);
   return op;
 }
 
 std::shared_ptr<YBqlReadOp> TableHandle::NewReadOp(const ThreadSafeArenaPtr& arena) const {
-  std::shared_ptr<YBqlReadOp> op(table_->NewQLRead());
+  std::shared_ptr<YBqlReadOp> op(table_->NewQLRead(arena));
   SetupRequest(op, table_->schema());
   return op;
 }
@@ -227,15 +227,16 @@ void TableHandle::AddCondition(LWQLConditionPB* const condition, const QLOperato
   condition->add_operands()->mutable_condition()->set_op(op);
 }
 
-void TableHandle::AddColumns(const std::vector<std::string>& columns, QLReadRequestPB* req) const {
-  QLRSRowDescPB* rsrow_desc = req->mutable_rsrow_desc();
+void TableHandle::AddColumns(
+    const std::vector<std::string>& columns, LWQLReadRequestPB* req) const {
+  auto* rsrow_desc = req->mutable_rsrow_desc();
   for (const auto& column : columns) {
     auto id = ColumnId(column);
     req->add_selected_exprs()->set_column_id(id);
     req->mutable_column_refs()->add_ids(id);
 
-    QLRSColDescPB* rscol_desc = rsrow_desc->add_rscol_descs();
-    rscol_desc->set_name(column);
+    auto* rscol_desc = rsrow_desc->add_rscol_descs();
+    rscol_desc->dup_name(column);
     ColumnType(column)->ToQLTypePB(rscol_desc->mutable_ql_type());
   }
 }
@@ -276,7 +277,7 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
     if (!options.tablet.empty() && options.tablet != tablet.tablet_id()) {
       continue;
     }
-    auto op = table->NewReadOp();
+    auto op = table->NewReadOp(session_->arena());
     auto req = op->mutable_request();
     op->set_yb_consistency_level(options.consistency);
 
@@ -411,7 +412,7 @@ void TableIterator::HandleError(const Status& status) {
 
 template <>
 void FilterBetweenImpl<int32_t>::operator()(
-    const TableHandle& table, QLConditionPB* condition) const {
+    const TableHandle& table, LWQLConditionPB* condition) const {
   condition->set_op(QL_OP_AND);
   table.AddInt32Condition(
       condition, column_, lower_inclusive_ ? QL_OP_GREATER_THAN_EQUAL : QL_OP_GREATER_THAN,
@@ -422,7 +423,7 @@ void FilterBetweenImpl<int32_t>::operator()(
 
 template <>
 void FilterBetweenImpl<std::string>::operator()(
-    const TableHandle& table, QLConditionPB* condition) const {
+    const TableHandle& table, LWQLConditionPB* condition) const {
   condition->set_op(QL_OP_AND);
   table.AddStringCondition(
       condition, column_, lower_inclusive_ ? QL_OP_GREATER_THAN_EQUAL : QL_OP_GREATER_THAN,
@@ -431,49 +432,70 @@ void FilterBetweenImpl<std::string>::operator()(
       condition, column_, upper_inclusive_ ? QL_OP_LESS_THAN_EQUAL : QL_OP_LESS_THAN, upper_bound_);
 }
 
-void FilterGreater::operator()(const TableHandle& table, QLConditionPB* condition) const {
+void FilterGreater::operator()(const TableHandle& table, LWQLConditionPB* condition) const {
   table.SetInt32Condition(
       condition, column_, inclusive_ ? QL_OP_GREATER_THAN_EQUAL : QL_OP_GREATER_THAN, bound_);
 }
 
-void FilterLess::operator()(const TableHandle& table, QLConditionPB* condition) const {
+void FilterLess::operator()(const TableHandle& table, LWQLConditionPB* condition) const {
   table.SetInt32Condition(
       condition, column_, inclusive_ ? QL_OP_LESS_THAN_EQUAL : QL_OP_LESS_THAN, bound_);
 }
 
 template <>
 void FilterEqualImpl<std::string>::operator()(
-    const TableHandle& table, QLConditionPB* condition) const {
+    const TableHandle& table, LWQLConditionPB* condition) const {
   table.SetBinaryCondition(condition, column_, QL_OP_EQUAL, t_);
 }
+
+namespace {
+
+template <class ReqPB>
+void DoUpdateMapRemoveKey(
+    ReqPB* req, const int32_t column_id, std::string_view entry_key) {
+  auto column_value = req->add_column_values();
+  column_value->set_column_id(column_id);
+  SetStringValue(*column_value->add_subscript_args()->mutable_value(), entry_key);
+}
+
+template <class ReqPB>
+void DoUpdateMapUpsertKeyValue(
+    ReqPB* req, int32_t column_id, std::string_view entry_key, std::string_view entry_value) {
+  auto* column_value = req->add_column_values();
+  column_value->set_column_id(column_id);
+  SetStringValue(*column_value->mutable_expr()->mutable_value(), entry_value);
+  SetStringValue(*column_value->add_subscript_args()->mutable_value(), entry_key);
+}
+
+template <class MapPB>
+void DoAddMapEntryToColumn(
+    MapPB* map_value_pb, std::string_view entry_key, std::string_view entry_value) {
+  SetStringValue(*map_value_pb->add_keys(), entry_key);
+  SetStringValue(*map_value_pb->add_values(), entry_value);
+}
+
+} // namespace
 
 void UpdateMapUpsertKeyValue(
     QLWriteRequestPB* req, int32_t column_id, std::string_view entry_key,
     std::string_view entry_value) {
-  auto* column_value = req->add_column_values();
-  column_value->set_column_id(column_id);
-  column_value->mutable_expr()->mutable_value()->set_string_value(
-      entry_value.data(), entry_value.size());
-  column_value->add_subscript_args()->mutable_value()->set_string_value(
-      entry_key.data(), entry_key.size());
+  DoUpdateMapUpsertKeyValue(req, column_id, entry_key, entry_value);
 }
 
 void UpdateMapUpsertKeyValue(
     LWQLWriteRequestPB* req, int32_t column_id, std::string_view entry_key,
     std::string_view entry_value) {
-  auto* column_value = req->add_column_values();
-  column_value->set_column_id(column_id);
-  column_value->mutable_expr()->mutable_value()->dup_string_value(entry_value);
-  column_value->add_subscript_args()->mutable_value()->dup_string_value(entry_key);
+  DoUpdateMapUpsertKeyValue(req, column_id, entry_key, entry_value);
 }
 
 void UpdateMapRemoveKey(
     QLWriteRequestPB* req, const int32_t column_id, std::string_view entry_key) {
-  auto column_value = req->add_column_values();
-  column_value->set_column_id(column_id);
-  auto sub_arg = column_value->add_subscript_args();
-  auto* elem = sub_arg->mutable_value();
-  elem->set_string_value(entry_key.data(), entry_key.size());
+  DoUpdateMapRemoveKey(req, column_id, entry_key);
+}
+
+void UpdateMapRemoveKey(
+    LWQLWriteRequestPB* req, const int32_t column_id, std::string_view entry_key) {
+  DoUpdateMapRemoveKey(req, column_id, entry_key);
 }
 
 QLMapValuePB* AddMapColumn(QLWriteRequestPB* req, int32_t column_id) {
@@ -490,14 +512,12 @@ LWQLMapValuePB* AddMapColumn(LWQLWriteRequestPB* req, int32_t column_id) {
 
 void AddMapEntryToColumn(
     QLMapValuePB* map_value_pb, std::string_view entry_key, std::string_view entry_value) {
-  map_value_pb->add_keys()->set_string_value(entry_key.data(), entry_key.size());
-  map_value_pb->add_values()->set_string_value(entry_value.data(), entry_value.size());
+  DoAddMapEntryToColumn(map_value_pb, entry_key, entry_value);
 }
 
 void AddMapEntryToColumn(
     LWQLMapValuePB* map_value_pb, std::string_view entry_key, std::string_view entry_value) {
-  map_value_pb->add_keys()->dup_string_value(entry_key);
-  map_value_pb->add_values()->dup_string_value(entry_value);
+  DoAddMapEntryToColumn(map_value_pb, entry_key, entry_value);
 }
 
 } // namespace client

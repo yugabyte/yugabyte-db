@@ -281,7 +281,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
   auto session = CreateSession(txn1);
   for (bool retry : {false, true}) {
     for (size_t r = 0; r != kNumRows; ++r) {
-      const auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+      const auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
       auto* const req = op->mutable_request();
       auto key = KeyForTransactionAndIndex(0, r);
       auto old_value = ValueForTransactionAndIndex(0, r, WriteOpType::INSERT);
@@ -695,7 +695,7 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
         active_txn.transaction = CreateTransaction();
       }
       active_txn.session = CreateSession(active_txn.transaction);
-      const auto op = table_.NewInsertOp();
+      const auto op = table_.NewInsertOp(active_txn.session->arena());
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, key);
       const auto val = ++value;

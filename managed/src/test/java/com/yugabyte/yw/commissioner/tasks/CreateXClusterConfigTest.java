@@ -58,7 +58,6 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -81,6 +80,7 @@ import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.BootstrapUniverseResponse;
+import org.yb.client.CDCStreamInfo;
 import org.yb.client.CreateSnapshotScheduleResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetNamespaceInfoResponse;
@@ -193,13 +193,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
 
-    // Use reflection to access the package-private constructor.
-    Constructor<ListCDCStreamsResponse> constructor =
-        ListCDCStreamsResponse.class.getDeclaredConstructor(
-            long.class, String.class, MasterTypes.MasterErrorPB.class, List.class);
-    constructor.setAccessible(true);
-    ListCDCStreamsResponse listCDCStreamsResp = constructor.newInstance(0, "", null, List.of());
-    when(mockClient.listCDCStreams(null, null, null)).thenReturn(listCDCStreamsResp);
+    initSourceUniverseActiveXClusterStreams();
 
     GetTableSchemaResponse mockTableSchemaResponseTable1 =
         new GetTableSchemaResponse(
@@ -305,6 +299,35 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
   }
 
+  private void initEmptyTargetUniverseClusterConfig() throws Exception {
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder fakeClusterConfigBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder()
+            .setConsumerRegistry(CdcConsumer.ConsumerRegistryPB.newBuilder().build());
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(0, "", fakeClusterConfigBuilder.build(), null);
+    when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+  }
+
+  private void initSourceUniverseActiveXClusterStreams() throws Exception {
+    Map<String, String> options = new HashMap<>();
+    options.put("record_format", "WAL");
+    options.put("source_type", "XCLUSTER");
+    options.put("state", "ACTIVE");
+
+    CDCStreamInfo streamInfo1 = mock(CDCStreamInfo.class);
+    when(streamInfo1.getStreamId()).thenReturn(exampleStreamID1);
+    when(streamInfo1.getOptions()).thenReturn(options);
+
+    CDCStreamInfo streamInfo2 = mock(CDCStreamInfo.class);
+    when(streamInfo2.getStreamId()).thenReturn(exampleStreamID2);
+    when(streamInfo2.getOptions()).thenReturn(options);
+
+    ListCDCStreamsResponse listCDCStreamsResp = mock(ListCDCStreamsResponse.class);
+    when(listCDCStreamsResp.hasError()).thenReturn(false);
+    when(listCDCStreamsResp.getStreams()).thenReturn(List.of(streamInfo1, streamInfo2));
+    when(mockClient.listCDCStreams(null, null, null)).thenReturn(listCDCStreamsResp);
+  }
+
   private void initClientGetTablesList() throws Exception {
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
@@ -344,6 +367,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initClientGetTablesList();
+    initEmptyTargetUniverseClusterConfig();
+    initSourceUniverseActiveXClusterStreams();
 
     BootstrapUniverseResponse mockBootstrapUniverseResponse =
         new BootstrapUniverseResponse(0, "", null, List.of(exampleStreamID2, exampleStreamID1));
@@ -594,6 +619,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initClientGetTablesList();
+    initEmptyTargetUniverseClusterConfig();
+    initSourceUniverseActiveXClusterStreams();
     HighAvailabilityConfig.create("test-cluster-key");
 
     BootstrapUniverseResponse mockBootstrapUniverseResponse =
@@ -643,6 +670,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initClientGetTablesList();
+    initEmptyTargetUniverseClusterConfig();
 
     String setupErrMsg = "failed to run setup rpc";
 
@@ -697,6 +725,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initClientGetTablesList();
+    initEmptyTargetUniverseClusterConfig();
 
     String isSetupDoneErrMsg = "failed to run setup rpc";
 

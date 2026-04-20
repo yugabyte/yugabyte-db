@@ -285,7 +285,8 @@ Status FindMemberForIndex(const QLColumnValueMsg& column_value,
         (*member_cache)[MemberCacheValueHash(document)] = std::move(members);
       }
     } else {
-      *memberit = document->FindMember(member.c_str());
+      rapidjson::Value member_value(rapidjson::StringRef(member.cdata(), member.size()));
+      *memberit = document->FindMember(member_value);
     }
 
     if (memberit->operator==(document->MemberEnd())) {
@@ -817,14 +818,19 @@ Status QLWriteOperation::ApplyForJsonOperators(
 
     if (update_missing) {
       // NOTE: lhs path cannot exceed by more than one hop
-      if (last_elem_object && i == column_value.json_args_size()) {
-        auto val = column_value.json_args(i - 1).operand().value().string_value();
+      if (last_elem_object && make_unsigned(i) == column_value.json_args().size()) {
+        auto prev_it = it;
+        --prev_it;
+        auto val = prev_it->operand().value().string_value();
         rapidjson::Value v(
-            val.c_str(), narrow_cast<rapidjson::SizeType>(val.size()), document.GetAllocator());
+            val.cdata(), narrow_cast<rapidjson::SizeType>(val.size()), document.GetAllocator());
         // Add the member and update the cache if enabled.
+        VLOG_WITH_FUNC(4)
+            << "add member: " << common::WriteRapidJsonToString(v) << " => "
+            << common::WriteRapidJsonToString(rhs_doc);
         node->AddMember(v, rhs_doc, document.GetAllocator());
         if (FLAGS_ycql_jsonb_use_member_cache) {
-          member_cache[MemberCacheValueHash(node)][val] = node->MemberCount() - 1;
+          member_cache[MemberCacheValueHash(node)][std::string(val)] = node->MemberCount() - 1;
         }
       } else {
         RETURN_NOT_OK(status);
@@ -846,7 +852,8 @@ Status QLWriteOperation::ApplyForJsonOperators(
   existing_row->AllocColumn(col_id).value = qlv.value();
 
   return InsertScalar(
-      context, column_schema, col_id, qlv.value(), bfql::TSOpcode::kScalarInsert);
+      context, column_schema, col_id, LWQLValuePB(&response_->arena(), qlv.value()),
+      bfql::TSOpcode::kScalarInsert);
 }
 
 Status QLWriteOperation::InsertScalar(
@@ -872,7 +879,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValueMsg& column_va
                                                const ApplyContext& context,
                                                const ColumnSchema& column,
                                                ColumnId column_id) {
-  QLExprResult expr_result;
+  qlexpr::LWExprResult expr_result(&column_value);
   RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
   ValueRef value(
       expr_result.Value(), column.sorting_type(),
@@ -884,12 +891,12 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValueMsg& column_va
   // Any other case should be rejected by the semantic analyser before getting here
   // Later when we support frozen or nested collections this code may need refactoring
   DCHECK_EQ(column_value.subscript_args().size(), 1);
-  DCHECK(column_value.subscript_args(0).has_value()) << "An index must be a constant";
+  DCHECK(column_value.subscript_args().front().has_value()) << "An index must be a constant";
   auto sub_path = MakeSubPath(column, column_id);
   switch (column.type()->main()) {
     case DataType::MAP: {
       sub_path.AddSubKey(KeyEntryValue::FromQLValuePB(
-          column_value.subscript_args(0).value(), SortingType::kNotSpecified));
+          column_value.subscript_args().front().value(), SortingType::kNotSpecified));
       RETURN_NOT_OK(context.data->doc_write_batch->InsertSubDocument(
           sub_path, value, context.data->read_operation_data,
           request_.query_id(), context.control_fields.ttl, context.control_fields.timestamp));
@@ -901,7 +908,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValueMsg& column_va
                 doc_read_context_->schema().table_properties().DefaultTimeToLive())
           : MonoDelta::kMax;
 
-      int target_cql_index = column_value.subscript_args(0).value().int32_value();
+      int target_cql_index = column_value.subscript_args().front().value().int32_value();
       RETURN_NOT_OK(context.data->doc_write_batch->ReplaceCqlInList(
           sub_path, target_cql_index, value, context.data->read_operation_data, request_.query_id(),
           default_ttl, context.control_fields.ttl));
@@ -923,7 +930,7 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValueMsg& column_v
   using bfql::TSOpcode;
 
   // Typical case, setting a columns value
-  QLExprResult expr_result;
+  qlexpr::LWExprResult expr_result(&column_value);
   RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
   auto write_instruction = qlexpr::GetTSWriteInstruction(column_value.expr());
   ValueRef value(expr_result.Value(), column.sorting_type(), write_instruction);
@@ -1244,7 +1251,8 @@ Status QLWriteOperation::ApplyDelete(
         doc_read_context_->schema(), hash_code, /* max_hash_code= */ hash_code, arena,
         hashed_components,
         QLConditionPBPtr(request_.has_where_expr() ? &request_.where_expr().condition() : nullptr),
-        nullptr, request_.query_id(), true /* is_forward_scan */, include_static_columns_in_scan);
+        nullptr, request_.query_id(), true /* is_forward_scan */,
+        include_static_columns_in_scan);
 
     // Create iterator.
     auto iterator = DocRowwiseIterator(
@@ -1289,12 +1297,13 @@ Status QLWriteOperation::DeleteSubscriptedColumnElement(
   // Currently we only support two cases here: `DELETE map['key'] ..` and `DELETE list[index] ..`)
   // Any other case should be rejected by the semantic analyser before getting here.
   LOG_IF(DFATAL, column_value.subscript_args().size() != 1) << "Expected only one subscripted arg";
-  LOG_IF(DFATAL, !column_value.subscript_args(0).has_value()) << "An index must be a constant";
+  LOG_IF(DFATAL, !column_value.subscript_args().front().has_value())
+      << "An index must be a constant";
   auto sub_path = MakeSubPath(column_schema, column_id);
   switch (column_schema.type()->main()) {
     case DataType::MAP: {
       sub_path.AddSubKey(KeyEntryValue::FromQLValuePB(
-          column_value.subscript_args(0).value(), SortingType::kNotSpecified));
+          column_value.subscript_args().front().value(), SortingType::kNotSpecified));
       RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(
           sub_path, data.read_operation_data, request_.query_id(), user_timestamp()));
       break;
@@ -1306,7 +1315,7 @@ Status QLWriteOperation::DeleteSubscriptedColumnElement(
                     doc_read_context_->schema().table_properties().DefaultTimeToLive())
               : MonoDelta::kMax;
 
-      const int target_cql_index = column_value.subscript_args(0).value().int32_value();
+      const int target_cql_index = column_value.subscript_args().front().value().int32_value();
       // Replace value at target_cql_index with a tombstone.
       RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
           sub_path, target_cql_index, ValueRef(dockv::ValueEntryType::kTombstone),
@@ -1443,10 +1452,11 @@ QLExpressionMsg* NewKeyColumn(
 
 QLWriteRequestMsg* NewIndexRequest(
     const qlexpr::IndexInfo& index,
+    ThreadSafeArena& arena,
     QLWriteRequestPB::QLStmtType type,
     IndexRequests* index_requests) {
-  index_requests->emplace_back(&index, QLWriteRequestMsg());
-  auto* request = &index_requests->back().second;
+  index_requests->emplace_back(&index, arena.ArenaObjectFactory());
+  auto* request = index_requests->back().second;
   request->set_type(type);
   return request;
 }
@@ -1483,7 +1493,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
       index_key_changed = true;
     } else {
       VERIFY_RESULT(CreateAndSetupIndexInsertRequest(
-          this, index->HasWritePermission(), existing_row, new_row, index,
+          this, index->HasWritePermission(), existing_row, new_row, index, *index_arena_,
           &index_requests_, &index_key_changed, &index_pred_new_row, index_pred_existing_row));
     }
 
@@ -1514,8 +1524,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         continue;
       }
 
-      auto* const index_request =
-          NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
+      auto* const index_request = NewIndexRequest(
+          *index, *index_arena_, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
       VLOG(3) << "Issue index entry delete of existing row for index_id=" << index->table_id() <<
         " since predicate was satisfied earlier AND (isn't satisfied now (OR) the key has changed)";
 
@@ -1525,10 +1535,13 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
 
         // For old message expr_case() == NOT SET.
         // For new message expr_case == kColumnId when indexing expression is a column-ref.
-        if (index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::EXPR_NOT_SET &&
-            index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::kColumnId) {
-          QLExprResult result;
-          RETURN_NOT_OK(EvalExpr(index_column.colexpr, existing_row, result.Writer()));
+        if (index_column.colexpr->expr_case() != QLExpressionPB::ExprCase::EXPR_NOT_SET &&
+            index_column.colexpr->expr_case() != QLExpressionPB::ExprCase::kColumnId) {
+          qlexpr::LWExprResult result(index_arena_.get());
+          auto old_pos = index_column.colexpr->arena().AllocateBytes(0);
+          RETURN_NOT_OK(EvalExpr(*index_column.colexpr, existing_row, result.Writer()));
+          auto new_pos = index_column.colexpr->arena().AllocateBytes(0);
+          DCHECK_EQ(old_pos, new_pos);
           result.MoveTo(key_column->mutable_value());
         } else {
           auto result = existing_row.GetValue(index_column.indexed_column_id);
@@ -1549,13 +1562,14 @@ Result<QLWriteRequestMsg*> CreateAndSetupIndexInsertRequest(
     const QLTableRow& existing_row,
     const QLTableRow& new_row,
     const qlexpr::IndexInfo* index,
+    ThreadSafeArena& arena,
     IndexRequests* index_requests,
     bool* has_index_key_changed,
     bool* index_pred_new_row,
     bool index_pred_existing_row) {
   bool index_key_changed = false;
   bool update_this_index = false;
-  unordered_map<size_t, QLValuePB> values;
+  std::vector<LWQLValuePB*> values(index->columns().size(), nullptr);
 
   // Prepare the new index key.
   for (size_t idx = 0; idx < index->key_column_count(); idx++) {
@@ -1566,8 +1580,8 @@ Result<QLWriteRequestMsg*> CreateAndSetupIndexInsertRequest(
     // to avoid executing colexpr as it is less efficient).
     // - Old PROTO messages (expr_case() == NOT SET).
     // - When indexing expression is just a column-ref (expr_case == kColumnId)
-    if (index_column.colexpr.expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET ||
-        index_column.colexpr.expr_case() == QLExpressionPB::ExprCase::kColumnId) {
+    if (index_column.colexpr->expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET ||
+        index_column.colexpr->expr_case() == QLExpressionPB::ExprCase::kColumnId) {
       auto result = new_row.GetValue(index_column.indexed_column_id);
       if (!existing_row.IsEmpty()) {
         // For each column in the index key, if there is a new value, see if the value is
@@ -1586,22 +1600,22 @@ Result<QLWriteRequestMsg*> CreateAndSetupIndexInsertRequest(
         }
       }
       if (result) {
-        values[idx] = std::move(*result);
+        values[idx] = arena.NewArenaObject<LWQLValuePB>(*result);
       }
     } else {
-      QLExprResult result;
+      qlexpr::LWExprResult result(&arena);
       if (existing_row.IsEmpty()) {
-        RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, result.Writer()));
+        RETURN_NOT_OK(expr_executor->EvalExpr(*index_column.colexpr, new_row, result.Writer()));
       } else {
         // For each column in the index key, if there is a new value, see if the value is
         // specified in the new value. Otherwise, use the current value.
         if (new_row.IsColumnSpecified(index_column.indexed_column_id)) {
-          RETURN_NOT_OK(expr_executor->EvalExpr(index_column.colexpr, new_row, result.Writer()));
+          RETURN_NOT_OK(expr_executor->EvalExpr(*index_column.colexpr, new_row, result.Writer()));
           // Compare new and existing results of the expression, if the results are equal
           // that means the key is NOT changed in fact even if the column value is changed.
-          QLExprResult existing_result;
+          qlexpr::LWExprResult existing_result(&arena);
           RETURN_NOT_OK(expr_executor->EvalExpr(
-              index_column.colexpr, existing_row, existing_result.Writer()));
+              *index_column.colexpr, existing_row, existing_result.Writer()));
           if (result.Value() == existing_result.Value()) {
             column_changed = false;
           } else {
@@ -1610,11 +1624,11 @@ Result<QLWriteRequestMsg*> CreateAndSetupIndexInsertRequest(
         } else {
           // TODO(Piyush): This else is possibly dead code.
           RETURN_NOT_OK(expr_executor->EvalExpr(
-              index_column.colexpr, existing_row, result.Writer()));
+              *index_column.colexpr, existing_row, result.Writer()));
         }
       }
 
-      result.MoveTo(&values[idx]);
+      values[idx] = const_cast<LWQLValuePB*>(&result.Value());
     }
 
     if (column_changed) {
@@ -1640,7 +1654,7 @@ Result<QLWriteRequestMsg*> CreateAndSetupIndexInsertRequest(
       column_changed = false;
     }
     if (result) {
-      values[idx] = std::move(*result);
+      values[idx] = arena.NewArenaObject<LWQLValuePB>(*result);
     }
 
     if (column_changed) {
@@ -1685,25 +1699,23 @@ Result<QLWriteRequestMsg*> CreateAndSetupIndexInsertRequest(
     }
 
     auto* const index_request =
-        NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_INSERT, index_requests);
+        NewIndexRequest(*index, arena, QLWriteRequestPB::QL_STMT_INSERT, index_requests);
 
     // Setup the key columns.
     for (size_t idx = 0; idx < index->key_column_count(); idx++) {
       auto* const key_column = NewKeyColumn(index_request, *index, idx);
-      auto it = values.find(idx);
-      if (it != values.end()) {
-        *key_column->mutable_value() = std::move(it->second);
+      if (values[idx]) {
+        key_column->ref_value(values[idx]);
       }
     }
 
     // Setup the covering columns.
     for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
-      auto it = values.find(idx);
-      if (it != values.end()) {
+      if (values[idx]) {
         const auto& index_column = index->column(idx);
         auto* const covering_column = index_request->add_column_values();
         covering_column->set_column_id(index_column.column_id);
-        *covering_column->mutable_expr()->mutable_value() = std::move(it->second);
+        covering_column->mutable_expr()->ref_value(values[idx]);
       }
     }
 
@@ -1898,26 +1910,26 @@ Status QLReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
     // reading from this tablet.
     if (request_.return_paging_state()) {
       if (!next_row_key.doc_key().empty()) {
-        QLPagingStatePB* paging_state = response_.mutable_paging_state();
-        paging_state->set_next_partition_key(
+        auto* paging_state = response_->mutable_paging_state();
+        paging_state->dup_next_partition_key(
             dockv::PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
-        paging_state->set_next_row_key(next_row_key.Encode().ToStringBuffer());
+        paging_state->dup_next_row_key(next_row_key.Encode().ToStringBuffer());
         paging_state->set_total_rows_skipped(request_.paging_state().total_rows_skipped() +
             num_rows_skipped);
       } else if (request_.has_offset()) {
-        QLPagingStatePB* paging_state = response_.mutable_paging_state();
+        auto* paging_state = response_->mutable_paging_state();
         paging_state->set_total_rows_skipped(request_.paging_state().total_rows_skipped() +
             num_rows_skipped);
       }
     }
-    if (response_.has_paging_state()) {
+    if (response_->has_paging_state()) {
       if (FLAGS_ycql_consistent_transactional_paging) {
-        read_time.AddToPB(response_.mutable_paging_state());
+        read_time.AddToPB(response_->mutable_paging_state());
       } else {
         // Using SingleTime will help avoid read restarts on second page and later but will
         // potentially produce stale results on those pages.
         auto per_row_consistent_read_time = ReadHybridTime::SingleTime(read_time.read);
-        per_row_consistent_read_time.AddToPB(response_.mutable_paging_state());
+        per_row_consistent_read_time.AddToPB(response_->mutable_paging_state());
       }
     }
   }
@@ -1951,8 +1963,8 @@ Status QLReadOperation::PopulateResultSet(const std::unique_ptr<qlexpr::QLScanSp
                                           QLResultSet *resultset) {
   resultset->AllocateRow();
   int rscol_index = 0;
-  for (const QLExpressionPB& expr : request_.selected_exprs()) {
-    QLExprResult value;
+  for (const auto& expr : request_.selected_exprs()) {
+    qlexpr::LWExprResult value(&request_.arena());
     RETURN_NOT_OK(EvalExpr(expr, table_row, value.Writer(), &spec->schema()));
     resultset->AppendColumn(rscol_index, value.Value());
     rscol_index++;
@@ -1963,12 +1975,13 @@ Status QLReadOperation::PopulateResultSet(const std::unique_ptr<qlexpr::QLScanSp
 
 Status QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
   if (aggr_result_.empty()) {
-    int column_count = request_.selected_exprs().size();
-    aggr_result_.resize(column_count);
+    while (aggr_result_.size() < request_.selected_exprs().size()) {
+      aggr_result_.emplace_back(&request_.arena());
+    }
   }
 
   int aggr_index = 0;
-  for (const QLExpressionPB& expr : request_.selected_exprs()) {
+  for (const auto& expr : request_.selected_exprs()) {
     RETURN_NOT_OK(EvalExpr(expr, table_row, aggr_result_[aggr_index++].Writer()));
   }
   return Status::OK();
@@ -1976,8 +1989,7 @@ Status QLReadOperation::EvalAggregate(const QLTableRow& table_row) {
 
 Status QLReadOperation::PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset) {
   resultset->AllocateRow();
-  int column_count = request_.selected_exprs().size();
-  for (int rscol_index = 0; rscol_index < column_count; rscol_index++) {
+  for (auto rscol_index : Range(request_.selected_exprs().size())) {
     resultset->AppendColumn(rscol_index, aggr_result_[rscol_index].Value());
   }
   return Status::OK();

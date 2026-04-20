@@ -2035,9 +2035,8 @@ Status Tablet::HandleRedisReadRequest(const docdb::ReadOperationData& read_opera
   ScopedTabletMetricsLatencyTracker metrics_tracker(
       metrics_.get(), TabletEventStats::kQlReadLatency);
 
-  docdb::RedisReadOperation doc_op(redis_read_request, doc_db(), read_operation_data);
+  docdb::RedisReadOperation doc_op(redis_read_request, *response, doc_db(), read_operation_data);
   RETURN_NOT_OK(doc_op.Execute());
-  *response = std::move(doc_op.response());
   return Status::OK();
 }
 
@@ -2097,9 +2096,9 @@ Status Tablet::HandleQLReadRequest(
 
   if (!schema_version_compatible) {
     DVLOG(1) << "Setting status for read as YQL_STATUS_SCHEMA_VERSION_MISMATCH";
-    result->response.Clear();
-    result->response.set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
-    result->response.set_error_message(Format(
+    result->response = result->response->arena().NewArenaObject<LWQLResponsePB>();
+    result->response->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
+    result->response->dup_error_message(Format(
         "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
         metadata()->table_id(),
         metadata()->primary_table_schema_version(),
@@ -2141,7 +2140,7 @@ Status Tablet::CreatePagingStateForRead(const QLReadRequestMsg& ql_read_request,
         // Check we did not reach the max partition key.
         if (!ql_read_request.has_max_hash_code() ||
             next_hash_code <= ql_read_request.max_hash_code()) {
-          response->mutable_paging_state()->set_next_partition_key(next_partition_key);
+          response->mutable_paging_state()->dup_next_partition_key(next_partition_key);
         }
       }
     }
@@ -2173,7 +2172,7 @@ Status Tablet::HandlePgsqlReadRequest(
 
   YSQLMetricsScope metrics_scope(
       *metrics_, *regulardb_statistics_, *intentsdb_statistics_,
-      pgsql_read_request.metrics_capture(), result->response);
+      pgsql_read_request.metrics_capture(), *result->response);
 
   return DoHandlePgsqlReadRequest(
       &scoped_read_operation, metrics_scope.metrics(),
@@ -2196,8 +2195,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
 
   docdb::QLRocksDBStorage storage{LogPrefix(), doc_db(metrics), encoded_partition_bounds_};
 
-  const auto table_info =
-      VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
+  const auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
 
 #ifndef NDEBUG
   if (pgsql_read_request.is_aggregate()) {
@@ -2249,9 +2247,9 @@ Status Tablet::DoHandlePgsqlReadRequest(
   // Assert the table is a Postgres table.
   DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);
   if (table_info->schema_version != pgsql_read_request.schema_version()) {
-    result->response.Clear();
-    result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
-    result->response.set_error_message(
+    result->response->Clear();
+    result->response->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
+    result->response->dup_error_message(
         Format("schema version mismatch for table $0: expected $1, got $2",
                table_info->table_id,
                table_info->schema_version,
@@ -2369,7 +2367,8 @@ void SetBackfillSpecForYsqlBackfill(
     // Hint postgres to stop scanning now. And set up the
     // next_row_key based on the paging state.
     if (response->has_paging_state()) {
-      out_spec.set_next_row_key(response->paging_state().next_row_key());
+      const auto& next_row_key = response->paging_state().next_row_key();
+      out_spec.set_next_row_key(next_row_key.data(), next_row_key.size());
     }
     response->set_is_backfill_batch_done(true);
   }
@@ -2379,7 +2378,7 @@ void SetBackfillSpecForYsqlBackfill(
           << " } batch_done=" << response->is_backfill_batch_done();
   string serialized_pb;
   out_spec.SerializeToString(&serialized_pb);
-  response->set_backfill_spec(b2a_hex(serialized_pb));
+  response->dup_backfill_spec(b2a_hex(serialized_pb));
 }
 
 }  // namespace
@@ -2396,9 +2395,9 @@ Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestMsg& pgsql_read_re
     if (next_partition_key) {
       if (!response->has_paging_state()) {
         // DocDB has done with the current tablet, time to switch to the next one
-        response->mutable_paging_state()->set_next_partition_key(*next_partition_key);
+        response->mutable_paging_state()->dup_next_partition_key(*next_partition_key);
       }
-      response->mutable_paging_state()->set_next_tablet_bound(*next_partition_key);
+      response->mutable_paging_state()->dup_next_tablet_bound(*next_partition_key);
     }
   }
 
@@ -3395,6 +3394,7 @@ Status Tablet::BackfillIndexes(
   int TEST_number_rows_corrupted = 0;
   int TEST_number_rows_dropped = 0;
 
+  auto arena = SharedThreadSafeArena();
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     if (index_requests.empty()) {
       *backfilled_until = iter->GetTupleId().ToBuffer();
@@ -3424,7 +3424,7 @@ Status Tablet::BackfillIndexes(
 
     DVLOG(2) << "Building index for fetched row: " << row.ToString();
     RETURN_NOT_OK(UpdateIndexInBatches(
-        row, indexes, read_time, backfill_params.deadline, &index_requests,
+        row, indexes, read_time, backfill_params.deadline, arena, &index_requests,
         failed_indexes));
 
     if (++(*number_of_rows_processed) % kProgressInterval == 0) {
@@ -3447,7 +3447,7 @@ Status Tablet::BackfillIndexes(
 
   VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
   RETURN_NOT_OK(FlushWriteIndexBatch(
-      read_time, backfill_params.deadline, &index_requests, failed_indexes));
+      read_time, backfill_params.deadline, arena, &index_requests, failed_indexes));
   MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
   *backfilled_until = resume_backfill_from;
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for " << AsString(index_ids)
@@ -3461,6 +3461,7 @@ Status Tablet::UpdateIndexInBatches(
     const std::vector<IndexInfo>& indexes,
     const HybridTime write_time,
     const CoarseTimePoint deadline,
+    ThreadSafeArenaPtr& arena,
     docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
@@ -3470,14 +3471,15 @@ Status Tablet::UpdateIndexInBatches(
     auto* const index_request = VERIFY_RESULT(
         docdb::CreateAndSetupIndexInsertRequest(
             &expr_executor, /* index_has_write_permission */ true,
-            kEmptyRow, row, &index, index_requests));
+            kEmptyRow, row, &index, *arena, index_requests));
     if (index_request) {
       index_request->set_is_backfill(true);
     }
   }
 
   // Update the index write op.
-  return FlushWriteIndexBatchIfRequired(write_time, deadline, index_requests, failed_indexes);
+  return FlushWriteIndexBatchIfRequired(
+      write_time, deadline, arena, index_requests, failed_indexes);
 }
 
 Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill(
@@ -3493,17 +3495,21 @@ Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill(
 Status Tablet::FlushWriteIndexBatchIfRequired(
     const HybridTime write_time,
     const CoarseTimePoint deadline,
+    ThreadSafeArenaPtr& arena,
     docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   if (index_requests->size() < FLAGS_backfill_index_write_batch_size) {
     return Status::OK();
   }
-  return FlushWriteIndexBatch(write_time, deadline, index_requests, failed_indexes);
+  RETURN_NOT_OK(FlushWriteIndexBatch(write_time, deadline, arena, index_requests, failed_indexes));
+  arena = SharedThreadSafeArena();
+  return Status::OK();
 }
 
 Status Tablet::FlushWriteIndexBatch(
     const HybridTime write_time,
     const CoarseTimePoint deadline,
+    const ThreadSafeArenaPtr& arena,
     docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   if (!client_future_.valid()) {
@@ -3521,12 +3527,11 @@ Status Tablet::FlushWriteIndexBatch(
   auto metadata_cache = YBMetaDataCache();
   SCHECK(metadata_cache, IllegalState, "Table metadata cache is not present for index update");
 
-  for (auto& pair : *index_requests) {
-    auto index_table = VERIFY_RESULT(metadata_cache->GetTable(pair.first->table_id()));
+  for (const auto& [index_info, request] : *index_requests) {
+    auto index_table = VERIFY_RESULT(metadata_cache->GetTable(index_info->table_id()));
 
-    shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
+    shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite(arena, request));
     index_op->set_write_time_for_backfill(write_time);
-    index_op->mutable_request()->Swap(&pair.second);
     if (index_table->IsUniqueIndex()) {
       if (ops_by_primary_key.count(index_op) > 0) {
         VLOG(2) << "Splitting the batch of writes because " << index_op->ToString()
@@ -3559,7 +3564,7 @@ Status Tablet::FlushWithRetries(
     std::unordered_set<TableId>* failed_indexes) {
   auto retries_left = num_retries;
   std::vector<std::shared_ptr<SomeYBqlOp>> pending_ops = index_ops;
-  std::unordered_map<string, int32_t> error_msg_cnts;
+  UnorderedStringMap<std::string, int32_t> error_msg_cnts;
   do {
     std::vector<std::shared_ptr<SomeYBqlOp>> failed_ops;
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
@@ -3574,8 +3579,8 @@ Status Tablet::FlushWithRetries(
               << AsString(index_op->request());
       if (index_op->response().status() != QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR) {
         failed_indexes->insert(index_op->table()->id());
-        const string& error_message = index_op->response().error_message();
-        error_msg_cnts[error_message]++;
+        std::string_view error_message = index_op->response().error_message();
+        error_msg_cnts[std::string(error_message)]++;
         VLOG_WITH_PREFIX(3) << "Failing index " << index_op->table()->id()
                             << " due to non-retryable errors " << error_message;
         continue;
@@ -3597,8 +3602,7 @@ Status Tablet::FlushWithRetries(
   if (!pending_ops.empty()) {
     for (auto index_op : pending_ops) {
       failed_indexes->insert(index_op->table()->id());
-      const string& error_message = index_op->response().error_message();
-      error_msg_cnts[error_message]++;
+      error_msg_cnts[std::string(index_op->response().error_message())]++;
     }
     VLOG_WITH_PREFIX(1) << "Failed indexes including retryable and non-retryable errors are "
                         << AsString(*failed_indexes);
@@ -3667,18 +3671,19 @@ Status Tablet::VerifyTableConsistencyForCQL(
   CoarseTimePoint last_flushed_at;
 
   QLTableRow row;
-  std::vector<std::pair<const TableId, QLReadRequestMsg>> requests;
+  std::vector<std::pair<const TableId, QLReadRequestMsg*>> requests;
   std::unordered_set<TableId> failed_indexes;
   std::string resume_verified_from;
 
   int rows_verified = 0;
+  auto arena = SharedThreadSafeArena();
   while (VERIFY_RESULT(iter->FetchNext(&row)) && rows_verified < num_rows &&
          CoarseMonoClock::Now() < deadline) {
     resume_verified_from = iter->GetTupleId().ToBuffer();
     VLOG(1) << "Verifying index for main table row: " << row.ToString();
 
     RETURN_NOT_OK(VerifyTableInBatches(
-        row, table_ids, read_time, deadline, is_main_table, &requests, &last_flushed_at,
+        row, table_ids, read_time, deadline, is_main_table, arena, &requests, &last_flushed_at,
         &failed_indexes, consistency_stats));
     if (++rows_verified % kProgressInterval == 0) {
       VLOG(1) << "Verified " << rows_verified << " rows";
@@ -3689,7 +3694,7 @@ Status Tablet::VerifyTableConsistencyForCQL(
   // clean-up old transactions.
   scope = RequestScope();
   return FlushVerifyBatch(
-      read_time, deadline, &requests, &last_flushed_at, &failed_indexes, consistency_stats);
+      read_time, deadline, arena, &requests, &last_flushed_at, &failed_indexes, consistency_stats);
 }
 
 namespace {
@@ -3713,7 +3718,7 @@ void SetSelectedExprToTrue(QLReadRequestMsg* req) {
   req->add_selected_exprs()->mutable_value()->set_bool_value(true);
   auto* rsrow_desc = req->mutable_rsrow_desc();
   auto* rscol_desc = rsrow_desc->add_rscol_descs();
-  rscol_desc->set_name("1");
+  rscol_desc->ref_name("1");
   rscol_desc->mutable_ql_type()->set_main(PersistentDataType::BOOL);
 }
 
@@ -3785,7 +3790,8 @@ Status Tablet::VerifyTableInBatches(
     const HybridTime read_time,
     const CoarseTimePoint deadline,
     const bool is_main_table,
-    std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+    const ThreadSafeArenaPtr& arena,
+    std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
     CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes,
     std::unordered_map<TableId, uint64>* consistency_stats) {
@@ -3794,7 +3800,7 @@ Status Tablet::VerifyTableInBatches(
   for (const TableId& table_id : table_ids) {
     std::shared_ptr<client::YBTable> table;
     RETURN_NOT_OK(client->OpenTable(table_id, &table));
-    std::shared_ptr<client::YBqlReadOp> read_op(table->NewQLSelect());
+    std::shared_ptr<client::YBqlReadOp> read_op(table->NewQLSelect(arena));
 
     auto* req = read_op->mutable_request();
     if (is_main_table) {
@@ -3803,17 +3809,18 @@ Status Tablet::VerifyTableInBatches(
       RETURN_NOT_OK(WhereIndexToPB(row, table->index_info(), table->InternalSchema(), req));
     }
 
-    requests->emplace_back(table_id, *req);
+    requests->emplace_back(table_id, req);
   }
 
   return FlushVerifyBatchIfRequired(
-      read_time, deadline, requests, last_flushed_at, failed_indexes, consistency_stats);
+      read_time, deadline, arena, requests, last_flushed_at, failed_indexes, consistency_stats);
 }
 
 Status Tablet::FlushVerifyBatchIfRequired(
     const HybridTime read_time,
     const CoarseTimePoint deadline,
-    std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+    const ThreadSafeArenaPtr& arena,
+    std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
     CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes,
     std::unordered_map<TableId, uint64>* consistency_stats) {
@@ -3821,13 +3828,14 @@ Status Tablet::FlushVerifyBatchIfRequired(
     return Status::OK();
   }
   return FlushVerifyBatch(
-      read_time, deadline, requests, last_flushed_at, failed_indexes, consistency_stats);
+      read_time, deadline, arena, requests, last_flushed_at, failed_indexes, consistency_stats);
 }
 
 Status Tablet::FlushVerifyBatch(
     const HybridTime read_time,
     const CoarseTimePoint deadline,
-    std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
+    const ThreadSafeArenaPtr& arena,
+    std::vector<std::pair<const TableId, QLReadRequestMsg*>>* requests,
     CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes,
     std::unordered_map<TableId, uint64>* consistency_stats) {
@@ -3835,12 +3843,11 @@ Status Tablet::FlushVerifyBatch(
   std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill(deadline));
 
   auto client = client_future_.get();
-  for (auto& pair : *requests) {
+  for (const auto& [table_id, request] : *requests) {
     client::YBTablePtr table;
-    RETURN_NOT_OK(client->OpenTable(pair.first, &table));
+    RETURN_NOT_OK(client->OpenTable(table_id, &table));
 
-    client::YBqlReadOpPtr read_op(table->NewQLRead());
-    read_op->mutable_request()->Swap(&pair.second);
+    client::YBqlReadOpPtr read_op(table->NewQLRead(arena, request));
     read_op->SetReadTime(ReadHybridTime::SingleTime(read_time));
 
     session->Apply(read_op);
@@ -4489,10 +4496,11 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
 
 // ------------------------------------------------------------------------------------------------
 
-Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
-    const TransactionMetadataPB& transaction_metadata,
+template <class TransactionMetadata, class SubTransactionMetadata>
+Result<TransactionOperationContext> Tablet::DoCreateTransactionOperationContext(
+    const TransactionMetadata& transaction_metadata,
     bool is_ysql_catalog_table,
-    const SubTransactionMetadataPB* subtransaction_metadata) const {
+    const SubTransactionMetadata* subtransaction_metadata) const {
   if (!txns_enabled_) {
     return TransactionOperationContext();
   }
@@ -4509,8 +4517,39 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
 }
 
 Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
+    const TransactionMetadataPB& transaction_metadata,
+    bool is_ysql_catalog_table,
+    const SubTransactionMetadataPB* subtransaction_metadata) const {
+  return DoCreateTransactionOperationContext(
+      transaction_metadata, is_ysql_catalog_table, subtransaction_metadata);
+}
+
+Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
+    const LWTransactionMetadataPB& transaction_metadata,
+    bool is_ysql_catalog_table,
+    const LWSubTransactionMetadataPB* subtransaction_metadata) const {
+  return DoCreateTransactionOperationContext(
+      transaction_metadata, is_ysql_catalog_table, subtransaction_metadata);
+}
+
+Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
     const SubTransactionMetadataPB* subtransaction_metadata) const {
+  return DoCreateTransactionOperationContext(
+      transaction_id, is_ysql_catalog_table, subtransaction_metadata);
+}
+
+Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
+    const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
+    const LWSubTransactionMetadataPB* subtransaction_metadata) const {
+  return DoCreateTransactionOperationContext(
+      transaction_id, is_ysql_catalog_table, subtransaction_metadata);
+}
+
+template <class SubTransactionPB>
+Result<TransactionOperationContext> Tablet::DoCreateTransactionOperationContext(
+    const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
+    const SubTransactionPB* subtransaction_metadata) const {
   if (!txns_enabled_) {
     return TransactionOperationContext();
   }
@@ -5494,14 +5533,14 @@ Status Tablet::ProcessPgsqlGetTableKeyRangesRequest(
     status = key_error;
   }
   if (!status.ok()) {
-    result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
-    StatusToPB(status, result->response.add_error_status());
+    result->response->set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
+    StatusToPB(status, result->response->add_error_status());
     return Status::OK();
   }
 
   if ((!req.has_limit() || result->num_rows_read < req.limit()) && !has_reached_end) {
-    auto* paging_state = result->response.mutable_paging_state();
-    paging_state->set_next_partition_key(
+    auto* paging_state = result->response->mutable_paging_state();
+    paging_state->dup_next_partition_key(
         req.is_forward_scan() ? metadata_->partition()->partition_key_end()
                               : metadata_->partition()->partition_key_start());
     if (req.has_paging_state()) {
@@ -5510,7 +5549,7 @@ Status Tablet::ProcessPgsqlGetTableKeyRangesRequest(
     }
   }
 
-  result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+  result->response->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
 

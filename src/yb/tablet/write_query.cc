@@ -46,7 +46,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query_context.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
@@ -142,10 +142,12 @@ bool CheckSchemaVersion(
           << table_info->schema_version << " vs req's : " << schema_version
           << " is req compatible with prev version: "
           << yb::ToString(compatible_with_previous_version);
-  while (index >= resp_batch->size()) {
+  while (make_unsigned(index) >= resp_batch->size()) {
     resp_batch->Add();
   }
-  auto resp = resp_batch->Mutable(index);
+  auto it = resp_batch->begin();
+  std::advance(it, index);
+  auto resp = &*it;
   resp->Clear();
   resp->set_status(code);
 
@@ -153,7 +155,7 @@ bool CheckSchemaVersion(
   if (compatible_with_previous_version.has_value()) {
     compat_str = Format(" (compt with prev: $0)", compat);
   }
-  resp->set_error_message(Format(
+  resp->dup_error_message(Format(
       "schema version mismatch for table $0: expected $1, got $2$3",
       table_info->table_id, table_info->schema_version, schema_version,
       compat_str));
@@ -194,9 +196,10 @@ Status CqlPopulateDocOps(
       /* is_ysql_catalog_table */ false,
       &client_request->write_batch().subtransaction()));
   auto table_info = tablet->metadata()->primary_table_info();
-  for (int i = 0; i < ql_write_batch.size(); i++) {
+  int i = 0;
+  for (const auto& write_pb : ql_write_batch) {
     auto write_op = std::make_unique<docdb::QLWriteOperation>(
-        ql_write_batch[i], table_info->schema_version, table_info->doc_read_context,
+        write_pb, table_info->schema_version, table_info->doc_read_context,
         table_info->index_map, table_info->unique_index_key_projection, txn_op_ctx);
     if (reset_ops) {
       auto* old_write_op = down_cast<docdb::QLWriteOperation*>((*doc_ops)[i].get());
@@ -206,6 +209,7 @@ Status CqlPopulateDocOps(
       RETURN_NOT_OK(write_op->Init(resp->add_ql_response_batch()));
       doc_ops->emplace_back(std::move(write_op));
     }
+    ++i;
   }
   return Status::OK();
 }
@@ -292,7 +296,7 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     }
     restart_time->set_deprecated_max_of_read_time_and_local_limit_ht(local_limit->ToUint64());
     restart_time->set_local_limit_ht(local_limit->ToUint64());
-    response()->set_restart_read_key(read_restart_data_.key);
+    response()->dup_restart_read_key(read_restart_data_.key);
     // Global limit is ignored by caller, so we don't set it.
     Cancel(Status::OK());
     return;
@@ -535,7 +539,8 @@ Result<bool> WriteQuery::RedisPrepareExecute() {
 
   doc_ops_.reserve(redis_write_batch.size());
   for (const auto& redis_request : redis_write_batch) {
-    doc_ops_.emplace_back(new docdb::RedisWriteOperation(redis_request));
+    doc_ops_.emplace_back(new docdb::RedisWriteOperation(
+        redis_request, *response_->add_redis_response_batch()));
   }
 
   return true;
@@ -1201,10 +1206,6 @@ void WriteQuery::RedisExecuteDone(const Status& status) {
     StartSynchronization(std::move(self_), status);
     return;
   }
-  for (auto& doc_op : doc_ops_) {
-    auto* redis_write_operation = down_cast<docdb::RedisWriteOperation*>(doc_op.get());
-    response_->add_redis_response_batch()->Swap(&redis_write_operation->response());
-  }
 
   StartSynchronization(std::move(self_), Status::OK());
 }
@@ -1265,15 +1266,16 @@ void WriteQuery::CqlExecuteDone(const Status& status) {
 }
 
 template <class Code, class Resp>
-void WriteQuery::SchemaVersionMismatch(Code code, int size, Resp* resp) {
-  for (int i = 0; i != size; ++i) {
-    auto* entry = resp->size() > i ? resp->Mutable(i) : resp->Add();
-    if (entry->status() == code) {
-      continue;
+void WriteQuery::SchemaVersionMismatch(Code code, size_t size, Resp* resp) {
+  auto it = resp->begin();
+  for (size_t i = 0; i != size; ++i) {
+    auto* entry = it != resp->end() ? &*it : resp->Add();
+    if (entry->status() != code) {
+      entry->Clear();
+      entry->set_status(code);
+      entry->ref_error_message("Other request entry schema version mismatch");
     }
-    entry->Clear();
-    entry->set_status(code);
-    entry->set_error_message("Other request entry schema version mismatch");
+    ++it;
   }
   Cancel(Status::OK());
 }
@@ -1329,7 +1331,7 @@ void WriteQuery::CompleteQLWriteBatch(const Status& status) {
       // to the one we're trying to insert here.
       VLOG(1) << "Could not apply operation to remote index " << AsString(ql_write_op->request())
                << " due to " << AsString(ql_write_op->response());
-      ql_write_op->response()->set_error_message(
+      ql_write_op->response()->dup_error_message(
           Format("Duplicate value disallowed by unique index $0",
           tablet->metadata()->table_name()));
       ql_write_op->response()->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
@@ -1399,9 +1401,10 @@ struct UpdateQLIndexesTask {
       std::lock_guard lock(mutex);
       counter += write_op->index_requests().size();
     }
-    for (auto& [index_info, index_request] : write_op->index_requests()) {
-      auto callback = [self, &index_request = index_request, write_op](const auto& index_table) {
-        self->TableResolved(&index_request, write_op, index_table);
+
+    for ([[maybe_unused]] auto& [index_info, index_request] : write_op->index_requests()) {
+      auto callback = [self, index_request = index_request, write_op](const auto& index_table) {
+        self->TableResolved(index_request, write_op, index_table);
       };
       metadata_cache->GetTableAsync(index_info->table_id(), callback);
     }
@@ -1419,9 +1422,8 @@ struct UpdateQLIndexesTask {
       return;
     }
 
-    std::shared_ptr<client::YBqlWriteOp> index_op(index_table->table->NewQLWrite());
-    index_op->mutable_request()->Swap(index_request);
-    index_op->mutable_request()->MergeFrom(*index_request);
+    std::shared_ptr<client::YBqlWriteOp> index_op(
+        index_table->table->NewQLWrite(write_op->index_arena(), index_request));
 
     std::lock_guard lock(mutex);
     session->Apply(index_op);
@@ -1520,13 +1522,13 @@ void WriteQuery::UpdateQLIndexesFlushed(
     std::shared_ptr<client::YBqlWriteOp> index_op = pair.first;
     auto* response = pair.second->response();
     DCHECK_ONLY_NOTNULL(response);
-    auto* index_response = index_op->mutable_response();
+    auto* index_response = &index_op->response();
 
     if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
       VLOG(1) << "Got response " << index_response->ShortDebugString()
               << " for " << AsString(index_op);
       response->set_status(index_response->status());
-      response->set_error_message(std::move(*index_response->mutable_error_message()));
+      response->dup_error_message(std::move(*index_response->mutable_error_message()));
     }
     if (txn) {
       *response->mutable_child_transaction_result() = child_result;

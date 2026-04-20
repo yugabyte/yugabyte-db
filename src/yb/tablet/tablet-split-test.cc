@@ -72,13 +72,14 @@ class TabletSplitTest : public YBTabletTest {
     ReadHybridTime read_time = ReadHybridTime::SingleTime(VERIFY_RESULT(tablet->SafeTime()));
     QLReadRequestPB req;
     QLAddColumns(schema_, {}, &req);
-    QLReadRequestResult result;
+    ThreadSafeArena arena;
+    QLReadRequestResult result(arena);
     WriteBuffer rows_data(1024);
     EXPECT_OK(tablet->HandleQLReadRequest(
-        docdb::ReadOperationData::FromReadTime(read_time), req, TransactionMetadataPB(), &result,
-        &rows_data));
+        docdb::ReadOperationData::FromReadTime(read_time), LWQLReadRequestPB(&arena, req),
+        LWTransactionMetadataPB(&arena), &result, &rows_data));
 
-    EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
+    EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response->status());
 
     return qlexpr::CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer())->rows();
   }

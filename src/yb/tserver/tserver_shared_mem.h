@@ -233,6 +233,7 @@ class SharedExchange {
   Result<Slice> FetchResponse(CoarseTimePoint deadline);
   bool ResponseReady();
   bool ReadyToSend();
+  void ResetBusy();
   void Respond(size_t size);
   Result<size_t> Poll();
   void SignalStop();

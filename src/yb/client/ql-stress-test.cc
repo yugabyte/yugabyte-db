@@ -154,7 +154,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
                            const TableHandle& table,
                            int32_t key,
                            const std::string& value) {
-    auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    auto op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
     table.AddStringColumnValue(req, kValueColumn, value);
@@ -177,7 +177,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   YBqlReadOpPtr SelectRow(const YBSessionPtr& session, const TableHandle& table, int32_t key) {
-    auto op = table.NewReadOp();
+    auto op = table.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
     table.AddColumns({kValueColumn}, req);
@@ -495,7 +495,7 @@ TEST_F_EX(QLStressTest, Increment, QLStressTestIntValue) {
 
   auto session = NewSession();
   {
-    auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     table_.AddInt64ColumnValue(req, kValueColumn, 0);
@@ -508,7 +508,7 @@ TEST_F_EX(QLStressTest, Increment, QLStressTestIntValue) {
 
   auto value_column_id = table_.ColumnId(kValueColumn);
   for (int i = 0; i != kIncrements; ++i) {
-    auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     req->mutable_column_refs()->add_ids(value_column_id);
@@ -1088,7 +1088,7 @@ TEST_F_EX(QLStressTest, DynamicCompactionPriority, QLStressDynamicCompactionPrio
       } else {
         --left_writes_to_current_table;
       }
-      const auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      const auto op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, key);
       table_.AddStringColumnValue(req, kValueColumn, value);

@@ -34,8 +34,10 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
 
+#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tserver/tserver_service.messages.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/logging.h"
@@ -132,7 +134,7 @@ void FillRequestIds(const RetryableRequestId request_id, InFlightOps* ops) {
 }
 
 void DoCheckResponseCount(
-    const char* op, const char* name, int found, int expected, Status* status) {
+    const char* op, const char* name, size_t found, size_t expected, Status* status) {
   if (found == expected) {
     return;
   }
@@ -217,6 +219,7 @@ std::shared_ptr<const YBTable> AsyncRpc::table() const {
 void AsyncRpc::Finished(const Status& status) {
   VLOG_WITH_FUNC(4) << "status: " << status << ", error: " << AsString(response_error());
   Status new_status = status;
+  RefCntBuffer data_holder;
   if (status.ok()) {
     if (PREDICT_FALSE(ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_asyncrpc_finished_set_timedout))) {
       new_status = STATUS(
@@ -224,20 +227,21 @@ void AsyncRpc::Finished(const Status& status) {
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
     }
+    data_holder = retrier().controller().data_holder();
   }
   if (tablet_invoker_.Done(&new_status)) {
-    HandleFinished(new_status);
+    HandleFinished(std::move(data_holder), new_status);
   }
 }
 
-void AsyncRpc::HandleFinished(const Status& status) {
+void AsyncRpc::HandleFinished(RefCntBuffer data_holder, const Status& status) {
   if (tablet().is_split() || ClientError(status) == ClientErrorCode::kTablePartitionListIsStale) {
     ops_[0].yb_op->MarkTablePartitionListAsStale();
   }
   if (async_rpc_metrics_ && status.ok() && tablet_invoker_.is_consistent_prefix()) {
     IncrementCounter(async_rpc_metrics_->consistent_prefix_successful_reads);
   }
-  ProcessResponseFromTserver(status);
+  ProcessResponseFromTserver(std::move(data_holder), status);
   batcher_->Flushed(ops_, status, MakeFlushExtraResult());
   retained_self_.reset();
 }
@@ -260,11 +264,11 @@ void AsyncRpc::Failed(const Status& status) {
     switch (yb_op->type()) {
       case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::REDIS_WRITE: {
-        RedisResponsePB* resp;
+        LWRedisResponsePB* resp;
         if (yb_op->type() == YBOperation::Type::REDIS_READ) {
-          resp = down_cast<YBRedisReadOp*>(yb_op)->mutable_response();
+          resp = &(down_cast<YBRedisReadOp*>(yb_op)->response());
         } else {
-          resp = down_cast<YBRedisWriteOp*>(yb_op)->mutable_response();
+          resp = &(down_cast<YBRedisWriteOp*>(yb_op)->response());
         }
         resp->Clear();
         // If the tserver replied it is not the leader, respond that the key has moved. We do not
@@ -272,37 +276,37 @@ void AsyncRpc::Failed(const Status& status) {
         // cluster map instead.
         if (status.IsIllegalState()) {
           resp->set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
-          resp->set_error_message(Format("MOVED $0 0.0.0.0:0",
+          resp->dup_error_message(Format("MOVED $0 0.0.0.0:0",
                                          down_cast<YBRedisOp*>(yb_op)->hash_code()));
         } else {
           resp->set_code(redis_error_code);
-          resp->set_error_message(error_message);
+          resp->dup_error_message(error_message);
         }
         break;
       }
       case YBOperation::Type::QL_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::QL_WRITE: {
-        QLResponsePB* resp = down_cast<YBqlOp*>(yb_op)->mutable_response();
-        resp->Clear();
-        resp->set_status(status.IsTryAgain() ? QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR
-                                             : QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
-        resp->set_error_message(error_message);
+        auto& resp = down_cast<YBqlOp*>(yb_op)->response();
+        resp.Clear();
+        resp.set_status(status.IsTryAgain() ? QLResponsePB::YQL_STATUS_RESTART_REQUIRED_ERROR
+                                            : QLResponsePB::YQL_STATUS_RUNTIME_ERROR);
+        resp.dup_error_message(error_message);
         break;
       }
       case YBOperation::Type::PGSQL_READ: FALLTHROUGH_INTENDED;
       case YBOperation::Type::PGSQL_WRITE: FALLTHROUGH_INTENDED;
       case YBOperation::Type::PGSQL_LOCK: {
-        PgsqlResponsePB* resp = down_cast<YBPgsqlOp*>(yb_op)->mutable_response();
-        resp->set_status(status.IsTryAgain() ? PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR
-                                             : PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
+        auto& resp = down_cast<YBPgsqlOp*>(yb_op)->response();
+        resp.set_status(status.IsTryAgain() ? PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR
+                                            : PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
         // TODO(14814, 18387): At the moment only one error status is supported.
-        resp->mutable_error_status()->Clear();
-        StatusToPB(status, resp->add_error_status());
+        resp.mutable_error_status()->Clear();
+        StatusToPB(status, resp.add_error_status());
         // For backward compatibility set also deprecated fields
-        resp->set_error_message(error_message);
-        resp->set_pg_error_code(static_cast<uint32_t>(
+        resp.dup_error_message(error_message);
+        resp.set_pg_error_code(static_cast<uint32_t>(
             PgsqlError::ValueFromStatus(status).value_or(YBPgErrorCode::YB_PG_INTERNAL_ERROR)));
-        resp->set_txn_error_code(static_cast<uint16_t>(
+        resp.set_txn_error_code(static_cast<uint16_t>(
             TransactionError::ValueFromStatus(status).value_or(TransactionErrorCode::kNone)));
         break;
       }
@@ -339,7 +343,7 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
 
 void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
                  bool need_full_metadata,
-                 tserver::WriteRequestPB* req) {
+                 tserver::LWWriteRequestPB* req) {
   SetMetadata(metadata, need_full_metadata, req->mutable_write_batch());
   if (metadata.background_transaction_meta) {
     // Indicates an attempt to acquire either a session-level or transaction-level advisory lock.
@@ -350,10 +354,9 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
     // - For transaction-level advisory lock requests: background_transaction_id points to
     //   the session-level transaction, if exists. Note that a session level transaction is only
     //   created on demand when we encounter a session advisory lock request.
-    req->mutable_write_batch()->set_background_transaction_id(
-        metadata.background_transaction_meta->transaction_id.data(),
-        metadata.background_transaction_meta->transaction_id.size());
-    req->mutable_write_batch()->set_background_txn_status_tablet(
+    req->mutable_write_batch()->dup_background_transaction_id(
+        metadata.background_transaction_meta->transaction_id.AsSlice());
+    req->mutable_write_batch()->dup_background_txn_status_tablet(
         metadata.background_transaction_meta->status_tablet);
   }
   if (metadata.pg_session_req_version) {
@@ -366,11 +369,11 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
 }
 
 void SetFastPathObjectLockingTxnMetadata(
-    const InFlightOpsTransactionMetadata& metadata, tserver::WriteRequestPB* req) {
+    const InFlightOpsTransactionMetadata& metadata, tserver::LWWriteRequestPB* req) {
   if (metadata.object_locking_txn_meta) {
     auto* txn_meta_pb = req->mutable_write_batch()->mutable_object_locking_txn_meta();
     metadata.object_locking_txn_meta->TransactionIdToPB(txn_meta_pb);
-    txn_meta_pb->set_status_tablet(metadata.object_locking_txn_meta->status_tablet);
+    txn_meta_pb->dup_status_tablet(metadata.object_locking_txn_meta->status_tablet);
     txn_meta_pb->set_pg_txn_start_us(MonoTime::Now().ToUint64());
   }
 }
@@ -384,7 +387,7 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
   auto callback = [this](const Status& status) {
     TRACE_TO(trace_, "AsyncRpc::SendRpcToTserver WaitForAsyncWrites completed");
     if (!status.ok()) {
-      HandleFinished(status);
+      HandleFinished({}, status);
       return;
     }
 
@@ -398,9 +401,11 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
 template <class Req, class Resp>
 AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     const AsyncRpcData& data, YBConsistencyLevel consistency_level)
-    : AsyncRpc(data, consistency_level) {
+    : AsyncRpc(data, consistency_level),
+      req_(*data.arena->NewArenaObject<Req>()),
+      resp_(*data.arena->NewArenaObject<Resp>()) {
   // TODO(#26139): this set_allocated_* call is not safe.
-  req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
+  req_.ref_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   if (data.leader_term != OpId::kUnknownTerm) {
     req_.set_leader_term(data.leader_term);
@@ -440,7 +445,6 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
 
 template <class Req, class Resp>
 AsyncRpcBase<Req, Resp>::~AsyncRpcBase() {
-  (void) req_.release_tablet_id();
 }
 
 template <class Req, class Resp>
@@ -457,7 +461,7 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
     return false;
   }
   if (resp_.has_error()) {
-    LOG(WARNING) << ToString() << " has error:" << resp_.error().DebugString()
+    LOG(WARNING) << ToString() << " has error:" << resp_.error().ShortDebugString()
                  << ". Requests not processed.";
     // If there is an error at the Rpc itself, there should be no individual responses.
     // All of them need to be marked as failed.
@@ -505,21 +509,28 @@ void AsyncRpcBase<Req, Resp>::SendRpcToTserver(int attempt_num) {
 }
 
 template <class Req, class Resp>
-void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
+void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(
+    RefCntBuffer data_holder, const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
     TRACE_TO(
-        trace_, "Received from server: \nBEGIN AsyncRpc\n$0END AsyncRpc", resp_.trace_buffer());
+        trace_, "Received from server: \nBEGIN AsyncRpc\n$0END AsyncRpc",
+        resp_.trace_buffer().ToBuffer());
   }
   NotifyBatcher(status);
   if (!CommonResponseCheck(status)) {
     VLOG_WITH_FUNC(4) << "CommonResponseCheck failed, status: " << status;
     return;
   }
-  auto swap_status = SwapResponses();
+  auto swap_status = SwapResponses(std::move(data_holder));
   if (!swap_status.ok()) {
     Failed(swap_status);
   }
+}
+
+template <class Req, class Resp>
+TabletServerErrorPtr AsyncRpcBase<Req, Resp>::response_error() const {
+  return TabletServerErrorPtr(resp_.has_error() ? &resp_.error() : nullptr);
 }
 
 template <class Req, class Resp>
@@ -546,18 +557,17 @@ FlushExtraResult AsyncRpcBase<Req, Resp>::MakeFlushExtraResult() {
                                      : ReadHybridTime()};
 }
 
-template <class Op, class Req>
-void HandleExtraFields(Op* op, Req* req) {
-}
+void HandleExtraFields(YBPgsqlLockOp* op, tserver::LWWriteRequestPB* req) {}
+void HandleExtraFields(YBRedisWriteOp* op, tserver::LWWriteRequestPB* req) {}
 
-void HandleExtraFields(YBqlWriteOp* op, tserver::WriteRequestPB* req) {
+void HandleExtraFields(YBqlWriteOp* op, tserver::LWWriteRequestPB* req) {
   if (op->write_time_for_backfill()) {
     req->set_external_hybrid_time(op->write_time_for_backfill().ToUint64());
     ReadHybridTime::SingleTime(op->write_time_for_backfill()).ToPB(req->mutable_read_time());
   }
 }
 
-void HandleExtraFields(YBPgsqlWriteOp* op, tserver::WriteRequestPB* req) {
+void HandleExtraFields(YBPgsqlWriteOp* op, tserver::LWWriteRequestPB* req) {
   if (op->write_time()) {
     req->set_external_hybrid_time(op->write_time().ToUint64());
     ReadHybridTime::SingleTime(op->write_time()).ToPB(req->mutable_read_time());
@@ -567,7 +577,10 @@ void HandleExtraFields(YBPgsqlWriteOp* op, tserver::WriteRequestPB* req) {
   }
 }
 
-void HandleExtraFields(YBqlReadOp* op, tserver::ReadRequestPB* req) {
+void HandleExtraFields(YBRedisReadOp* op, tserver::LWReadRequestPB* req) {}
+void HandleExtraFields(YBPgsqlReadOp* op, tserver::LWReadRequestPB* req) {}
+
+void HandleExtraFields(YBqlReadOp* op, tserver::LWReadRequestPB* req) {
   if (op->read_time()) {
     op->read_time().AddToPB(req);
   }
@@ -576,18 +589,19 @@ void HandleExtraFields(YBqlReadOp* op, tserver::ReadRequestPB* req) {
 template <class OpType, class Req, class Out>
 void FillOps(
     const InFlightOps& ops, YBOperation::Type expected_type, Req* req, Out* out) {
-  out->Reserve(narrow_cast<int>(ops.size()));
   size_t idx = 0;
   for (auto& op : ops) {
     CHECK_EQ(op.yb_op->type(), expected_type);
     auto* concrete_op = down_cast<OpType*>(op.yb_op.get());
-    out->AddAllocated(concrete_op->mutable_request());
+    concrete_op->ResetResponse();
+    out->push_back_ref(concrete_op->mutable_request());
     HandleExtraFields(concrete_op, req);
     VLOG(5) << ++idx << ") encoded row: " << op.yb_op->ToString();
   }
 }
 
-Status AsyncRpc::CheckResponseCount(const char* op, const char* name, int found, int expected) {
+Status AsyncRpc::CheckResponseCount(
+    const char* op, const char* name, size_t found, size_t expected) {
   if (found >= expected) {
     batcher_->AddOpCountMismatchError();
     return STATUS_FORMAT(
@@ -598,8 +612,8 @@ Status AsyncRpc::CheckResponseCount(const char* op, const char* name, int found,
 }
 
 Status AsyncRpc::CheckResponseCount(
-    const char* op, int redis_found, int redis_expected, int ql_found, int ql_expected,
-    int pgsql_found, int pgsql_expected) {
+    const char* op, size_t redis_expected, size_t redis_found, size_t ql_expected, size_t ql_found,
+    size_t pgsql_expected, size_t pgsql_found) {
   Status result;
   DoCheckResponseCount(op, kRedis, redis_found, redis_expected, &result);
   DoCheckResponseCount(op, kYCQL, ql_found, ql_expected, &result);
@@ -611,18 +625,7 @@ Status AsyncRpc::CheckResponseCount(
   return result;
 }
 
-template <class Repeated>
-void ReleaseOps(Repeated* repeated) {
-  auto size = repeated->size();
-  if (size) {
-    // ExtractSubrange with nullptr for last argument will hit debug assertion, probably due to
-    // unsafety with arenas. We don't use arenas here, so it's not an issue, and
-    // UnsafeArenaExtractSubrange provides the same behavior (but without DCHECK).
-    repeated->UnsafeArenaExtractSubrange(0, size, nullptr);
-  }
-}
-
-WriteRpc::WriteRpc(const AsyncRpcData& data)
+WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
     : AsyncRpcBase(data, YBConsistencyLevel::STRONG) {
   TRACE_TO(trace_, "WriteRpc initiated");
   VTRACE_TO(1, trace_, "Tablet $0 table $1", data.tablet->tablet_id(), table()->name().ToString());
@@ -691,6 +694,8 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
   if (batcher_->in_flight_ops().metadata.object_locking_txn_meta) {
     SetFastPathObjectLockingTxnMetadata(batcher_->in_flight_ops().metadata, &req_);
   }
+
+  mutable_retrier()->mutable_controller()->set_pool_tag(pool_tag);
 }
 
 WriteRpc::~WriteRpc() {
@@ -700,21 +705,21 @@ WriteRpc::~WriteRpc() {
                                                     async_rpc_metrics_->remote_write_rpc_time;
     write_rpc_time->Increment(ToMicroseconds(CoarseMonoClock::Now() - start_));
   }
-
-  ReleaseOps(req_.mutable_redis_write_batch());
-  ReleaseOps(req_.mutable_ql_write_batch());
-  ReleaseOps(req_.mutable_pgsql_write_batch());
-  ReleaseOps(req_.mutable_pgsql_lock_batch());
 }
 
 void WriteRpc::CallRemoteMethod() {
+  resp_.Clear();
   ts_proxy()->WriteAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
-Status WriteRpc::SwapResponses() {
-  int redis_idx = 0;
-  int ql_idx = 0;
-  int pgsql_idx = 0;
+Status WriteRpc::SwapResponses(RefCntBuffer data_holder) {
+  size_t redis_idx = 0;
+  size_t ql_idx = 0;
+  size_t pgsql_idx = 0;
+
+  auto pgsql_it = resp_.mutable_pgsql_response_batch()->begin();
+  auto ql_it = resp_.mutable_ql_response_batch()->begin();
+  auto redis_it = resp_.mutable_redis_response_batch()->begin();
 
   int64_t pgsql_upcall_sidecar_offset = -1;
 
@@ -729,7 +734,7 @@ Status WriteRpc::SwapResponses() {
         }
         // Restore Redis write request PB and extract response.
         auto* redis_op = down_cast<YBRedisWriteOp*>(yb_op);
-        redis_op->mutable_response()->Swap(resp_.mutable_redis_response_batch(redis_idx));
+        redis_op->set_response(data_holder, &*redis_it++);
         redis_idx++;
         break;
       }
@@ -740,7 +745,7 @@ Status WriteRpc::SwapResponses() {
         }
         // Restore QL write request PB and extract response.
         auto* ql_op = down_cast<YBqlWriteOp*>(yb_op);
-        ql_op->mutable_response()->Swap(resp_.mutable_ql_response_batch(ql_idx));
+        ql_op->set_response(data_holder, &*ql_it++);
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {
           // TODO avoid copying sidecar here.
@@ -757,7 +762,7 @@ Status WriteRpc::SwapResponses() {
         }
         // Restore QL write request PB and extract response.
         auto* pgsql_op = down_cast<YBPgsqlWriteOp*>(yb_op);
-        pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_response_batch(pgsql_idx));
+        pgsql_op->set_response(data_holder, &*pgsql_it++);
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
           if (pgsql_upcall_sidecar_offset == -1) {
@@ -780,7 +785,7 @@ Status WriteRpc::SwapResponses() {
         }
         // Restore pgsql lock request and extract response.
         auto* pgsql_op = down_cast<YBPgsqlLockOp*>(yb_op);
-        pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_response_batch(pgsql_idx));
+        pgsql_op->set_response(data_holder, &*pgsql_it++);
         ++pgsql_idx;
         break;
       }
@@ -801,12 +806,13 @@ void WriteRpc::NotifyBatcher(const Status& status) {
   batcher_->ProcessWriteResponse(*this, status);
 }
 
-ReadRpc::ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level)
+ReadRpc::ReadRpc(
+    const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level, rpc::ThreadPoolTag pool_tag)
     : AsyncRpcBase(data, yb_consistency_level) {
   TRACE_TO(trace_, "ReadRpc initiated");
   VTRACE_TO(1, trace_, "Tablet $0 table $1", data.tablet->tablet_id(), table()->name().ToString());
   req_.set_consistency_level(yb_consistency_level);
-  req_.set_proxy_uuid(data.batcher->proxy_uuid());
+  req_.dup_proxy_uuid(data.batcher->proxy_uuid());
   req_.set_use_async_write(data.use_async_write);
 
   switch (table()->table_type()) {
@@ -828,6 +834,7 @@ ReadRpc::ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_lev
       break;
   }
 
+  mutable_retrier()->mutable_controller()->set_pool_tag(pool_tag);
   VLOG(3) << "Created batch for " << data.tablet->tablet_id() << ":\n"
           << req_.ShortDebugString();
 }
@@ -841,22 +848,23 @@ ReadRpc::~ReadRpc() {
 
     read_rpc_time->Increment(ToMicroseconds(CoarseMonoClock::Now() - start_));
   }
-
-  ReleaseOps(req_.mutable_redis_batch());
-  ReleaseOps(req_.mutable_ql_batch());
-  ReleaseOps(req_.mutable_pgsql_batch());
 }
 
 void ReadRpc::CallRemoteMethod() {
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
+  resp_.Clear();
   ts_proxy()->ReadAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
-Status ReadRpc::SwapResponses() {
+Status ReadRpc::SwapResponses(RefCntBuffer data_holder) {
   int redis_idx = 0;
   int ql_idx = 0;
   int pgsql_idx = 0;
   bool used_read_time_set = false;
+
+  auto redis_it = resp_.mutable_redis_batch()->begin();
+  auto ql_it = resp_.mutable_ql_batch()->begin();
+  auto pgsql_it = resp_.mutable_pgsql_batch()->begin();
 
   int64_t pgsql_upcall_sidecar_offset = -1;
 
@@ -868,7 +876,7 @@ Status ReadRpc::SwapResponses() {
         RETURN_NOT_OK(CheckResponseCount(kRead, kRedis, redis_idx, resp_.redis_batch().size()));
         // Restore Redis read request PB and extract response.
         auto* redis_op = down_cast<YBRedisReadOp*>(yb_op);
-        redis_op->mutable_response()->Swap(resp_.mutable_redis_batch(redis_idx));
+        redis_op->set_response(data_holder, &*redis_it++);
         redis_idx++;
         break;
       }
@@ -876,7 +884,7 @@ Status ReadRpc::SwapResponses() {
         RETURN_NOT_OK(CheckResponseCount(kRead, kYCQL, ql_idx, resp_.ql_batch().size()));
         // Restore QL read request PB and extract response.
         auto* ql_op = down_cast<YBqlReadOp*>(yb_op);
-        ql_op->mutable_response()->Swap(resp_.mutable_ql_batch(ql_idx));
+        ql_op->set_response(data_holder, &*ql_it++);
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {
           // TODO avoid copying sidecar here.
@@ -896,7 +904,7 @@ Status ReadRpc::SwapResponses() {
           pgsql_op->SetUsedReadTime(
               ReadHybridTime::FromPB(resp_.used_read_time()), tablet().tablet_id());
         }
-        pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
+        pgsql_op->set_response(data_holder, &*pgsql_it++);
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
           if (pgsql_upcall_sidecar_offset == -1) {

@@ -58,7 +58,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
   const YBSessionPtr session(NewSession());
   {
     // insert into t (k, c1, c2) values (1, 1, "yuga-hello") using ttl 2;
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     table_.AddInt32ColumnValue(req, "c1", 1);
@@ -71,7 +71,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
 
   {
     // insert into t (k, c3, c4) values (1, 2, "yuga-hi") using ttl 4;
-    const YBqlWriteOpPtr op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+    const YBqlWriteOpPtr op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     table_.AddInt32ColumnValue(req, "c3", 2);
@@ -84,7 +84,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
 
   {
     // select * from t where k = 1;
-    const YBqlReadOpPtr op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     table_.AddColumns(kAllColumns, req);
@@ -108,7 +108,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
 
   {
     // select * from t where k = 1;
-    const YBqlReadOpPtr op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     table_.AddColumns(kAllColumns, req);
@@ -132,7 +132,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
 
   {
     // select * from t where k = 1;
-    const YBqlReadOpPtr op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, 1);
     table_.AddColumns(kAllColumns, req);

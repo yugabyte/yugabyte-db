@@ -18,7 +18,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
 
-DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
+DECLARE_bool(enable_qos);
 
 DEFINE_RUNTIME_double(qos_max_db_cpu_percent, 100.0,
     "Maximum per-database CPU percentage (100.0 = all cores, unbounded).");

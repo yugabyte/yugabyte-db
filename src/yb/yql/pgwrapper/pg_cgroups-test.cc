@@ -169,6 +169,39 @@ TEST_F_EX(PgCgroupsTest, TestQosParallelWorkers, PgQosCgroupsTest) {
   }, 5s, "Wait for parallel worker in database cgroup"));
 }
 
+TEST_F_EX(PgCgroupsTest, TestQosRead, PgQosCgroupsTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto& cgroup = ASSERT_RESULT_REF(db_cgroup(conn));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test (id INT NOT NULL)"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_pgsql_aggregate_read_ms) = 5'000;
+  std::thread t{[&conn] {
+    ASSERT_OK(conn.Fetch("SELECT COUNT(*) FROM test"));
+  }};
+  ScopeExit join([&t] { t.join(); });
+
+  ASSERT_OK(WaitFor([&] {
+    return CheckThreadIdsForThreadName(cgroup, "TabletServer_po").ok();
+  }, 5s, "Wait for RPC servicer thread in database cgroup"));
+}
+
+TEST_F_EX(PgCgroupsTest, TestQosWrite, PgQosCgroupsTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto& cgroup = ASSERT_RESULT_REF(db_cgroup(conn));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test (id INT NOT NULL)"));
+
+  std::thread t{[&conn] {
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 50000)"));
+  }};
+  ScopeExit join([&t] { t.join(); });
+
+  ASSERT_OK(WaitFor([&] {
+    return CheckThreadIdsForThreadName(cgroup, "TabletServer_po").ok();
+  }, 5s, "Wait for RPC servicer thread in database cgroup"));
+}
+
 } // namespace yb::pgwrapper
 
 #endif // __linux__

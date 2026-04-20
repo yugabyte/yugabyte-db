@@ -31,6 +31,8 @@
 //
 #pragma once
 
+#include "yb/common/pgsql_protocol.fwd.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/aggregate_stats.h"
@@ -146,7 +148,9 @@ class ScopedTabletMetrics final : public TabletMetrics {
   void AddAggregateStats(TabletEventStats event_stats, const AggregateStats& other) override;
 
   void CopyToPgsqlResponse(
-    PgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const;
+      PgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const;
+  void CopyToPgsqlResponse(
+      LWPgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const;
 
   // Returns number of metric changes dumped.
   size_t Dump(std::stringstream* out) const;
@@ -154,6 +158,9 @@ class ScopedTabletMetrics final : public TabletMetrics {
   void MergeAndClear(TabletMetrics* target);
 
  private:
+  template <class PB>
+  void DoCopyToPgsqlResponse(PB* response, PgsqlMetricsCaptureType metrics_capture) const;
+
   std::vector<uint64_t> counters_;
   std::vector<int64_t> gauges_;
   std::vector<AggregateStats> stats_;

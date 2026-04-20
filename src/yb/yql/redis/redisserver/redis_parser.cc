@@ -52,7 +52,7 @@ string to_lower_case(Slice slice) {
 }
 
 Status add_string_subkey(std::string_view subkey, RedisKeyValueMsg* kv_pb) {
-  kv_pb->add_subkey()->set_string_subkey(subkey.data(), subkey.size());
+  kv_pb->add_subkey()->dup_string_subkey(subkey);
   return Status::OK();
 }
 
@@ -102,8 +102,8 @@ Status ParseSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   op->mutable_request()->mutable_set_request(); // Allocates new RedisSetRequestPB().
   const auto& key = args[1];
   const auto& value = args[2];
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
+  op->mutable_request()->mutable_key_value()->add_dup_value(value);
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
   size_t idx = 3;
   while (idx < args.size()) {
@@ -151,8 +151,8 @@ Status ParseSetNX(YBRedisWriteOp *op, const RedisClientCommand& args) {
   const auto& value = args[2];
 
   auto key_value = op->mutable_request()->mutable_key_value();
-  key_value->set_key(key.cdata(), key.size());
-  key_value->add_value(value.cdata(), value.size());
+  key_value->dup_key(key);
+  key_value->add_dup_value(value);
   key_value->set_type(REDIS_TYPE_STRING);
 
   auto set_request = op->mutable_request()->mutable_set_request();
@@ -177,11 +177,10 @@ Status ParseHSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   const auto& value = args[3];
 
   op->mutable_request()->mutable_set_request(); // Allocates new RedisSetRequestPB().
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
-  op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(subkey.cdata(),
-                                                                              subkey.size());
-  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
+  op->mutable_request()->mutable_key_value()->add_subkey()->dup_string_subkey(subkey);
+  op->mutable_request()->mutable_key_value()->add_dup_value(value);
   return Status::OK();
 }
 
@@ -192,10 +191,9 @@ Status ParseHIncrBy(YBRedisWriteOp *op, const RedisClientCommand& args) {
   const auto& incr_by = ParseInt64(args[3], "INCR_BY");
   RETURN_NOT_OK(incr_by);
   op->mutable_request()->mutable_incr_request()->set_increment_int(*incr_by);
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_HASH);
-  op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(subkey.cdata(),
-                                                                              subkey.size());
+  op->mutable_request()->mutable_key_value()->add_subkey()->dup_string_subkey(subkey);
   return Status::OK();
 }
 
@@ -243,7 +241,7 @@ Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args
 
   op->mutable_request()->mutable_set_request(); // Allocates new RedisSetRequestPB().
   op->mutable_request()->mutable_key_value()->set_type(type);
-  op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
+  op->mutable_request()->mutable_key_value()->dup_key(args[1]);
 
   if (type == REDIS_TYPE_HASH) {
     op->mutable_request()->mutable_set_request()->set_expect_ok_response(true);
@@ -323,10 +321,10 @@ Status ParseHMSetLikeCommands(YBRedisWriteOp *op, const RedisClientCommand& args
     if (type == REDIS_TYPE_SORTEDSET) {
       // Since the mapping is values to scores, need to reverse when creating the request.
       RETURN_NOT_OK(add_sub_key(kv.second, req_kv));
-      req_kv->add_value(kv.first);
+      req_kv->add_dup_value(kv.first);
     } else {
       RETURN_NOT_OK(add_sub_key(kv.first, req_kv));
-      req_kv->add_value(kv.second);
+      req_kv->add_dup_value(kv.second);
     }
   }
   return Status::OK();
@@ -353,12 +351,12 @@ Status ParseZAdd(YBRedisWriteOp *op, const RedisClientCommand& args) {
 
 Status ParsePush(YBRedisWriteOp *op, const RedisClientCommand& args, RedisSide side) {
   op->mutable_request()->mutable_push_request()->set_side(side);
-  op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
+  op->mutable_request()->mutable_key_value()->dup_key(args[1]);
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_LIST);
 
   auto mutable_key = op->mutable_request()->mutable_key_value();
   for (size_t i = 2; i < args.size(); ++i) {
-    mutable_key->add_value(args[i].cdata(), args[i].size());
+    mutable_key->add_dup_value(args[i]);
   }
   return Status::OK();
 }
@@ -376,7 +374,7 @@ Status ParseCollection(
     YBRedisOp* op, const RedisClientCommand& args, std::optional<RedisDataType> type,
     AddSubKey add_sub_key, bool remove_duplicates = true) {
   const auto& key = args[1];
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   if (type) {
     op->mutable_request()->mutable_key_value()->set_type(*type);
   }
@@ -386,14 +384,10 @@ Status ParseCollection(
     for (size_t i = 2; i < args.size(); i++) {
       subkey_set.insert(string(args[i].cdata(), args[i].size()));
     }
-    op->mutable_request()->mutable_key_value()->mutable_subkey()->Reserve(
-        narrow_cast<int>(subkey_set.size()));
     for (const auto &val : subkey_set) {
       RETURN_NOT_OK(add_sub_key(val, op->mutable_request()->mutable_key_value()));
     }
   } else {
-    op->mutable_request()->mutable_key_value()->mutable_subkey()->Reserve(
-        narrow_cast<int>(args.size() - 2));
     for (size_t i = 2; i < args.size(); i++) {
       RETURN_NOT_OK(add_sub_key(string(args[i].cdata(), args[i].size()),
                                 op->mutable_request()->mutable_key_value()));
@@ -429,7 +423,7 @@ Status ParseSRem(YBRedisWriteOp *op, const RedisClientCommand& args) {
 
 Status ParsePop(YBRedisWriteOp *op, const RedisClientCommand& args, RedisSide side) {
   op->mutable_request()->mutable_pop_request()->set_side(side);
-  op->mutable_request()->mutable_key_value()->set_key(args[1].cdata(), args[1].size());
+  op->mutable_request()->mutable_key_value()->dup_key(args[1]);
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_LIST);
   return Status::OK();
 }
@@ -446,8 +440,8 @@ Status ParseGetSet(YBRedisWriteOp *op, const RedisClientCommand& args) {
   const auto& key = args[1];
   const auto& value = args[2];
   op->mutable_request()->mutable_getset_request(); // Allocates new RedisGetSetRequestPB().
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
+  op->mutable_request()->mutable_key_value()->add_dup_value(value);
   return Status::OK();
 }
 
@@ -455,8 +449,8 @@ Status ParseAppend(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   const auto& value = args[2];
   op->mutable_request()->mutable_append_request(); // Allocates new RedisAppendRequestPB().
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
+  op->mutable_request()->mutable_key_value()->add_dup_value(value);
   return Status::OK();
 }
 
@@ -464,7 +458,7 @@ Status ParseAppend(YBRedisWriteOp* op, const RedisClientCommand& args) {
 Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   op->mutable_request()->mutable_del_request(); // Allocates new RedisDelRequestPB().
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   // We should be able to delete all types of top level keys
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_NONE);
   return Status::OK();
@@ -473,8 +467,8 @@ Status ParseDel(YBRedisWriteOp* op, const RedisClientCommand& args) {
 Status ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   const auto& value = args[3];
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
+  op->mutable_request()->mutable_key_value()->add_dup_value(value);
 
   auto offset = ParseInt32(args[2], "offset");
   RETURN_NOT_OK(offset);
@@ -492,7 +486,7 @@ Status ParseSetRange(YBRedisWriteOp* op, const RedisClientCommand& args) {
 Status ParseIncr(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
   op->mutable_request()->mutable_incr_request()->set_increment_int(1);
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
   return Status::OK();
 }
@@ -502,7 +496,7 @@ Status ParseIncrBy(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& incr_by = ParseInt64(args[2], "INCR_BY");
   RETURN_NOT_OK(incr_by);
   op->mutable_request()->mutable_incr_request()->set_increment_int(*incr_by);
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
   return Status::OK();
 }
@@ -513,7 +507,7 @@ Status ParseGet(YBRedisReadOp* op, const RedisClientCommand& args) {
     return STATUS_SUBSTITUTE(InvalidCommand,
         "A GET request must have non empty key field");
   }
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   op->mutable_request()->mutable_get_request()->set_request_type(
       RedisGetRequestPB_GetRequestType_GET);
   return Status::OK();
@@ -620,7 +614,7 @@ Status ParseTsLastN(YBRedisReadOp* op, const RedisClientCommand& args) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "$0 field $1 is not within valid bounds", "limit", args[2].ToDebugString());
   }
-  op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   op->mutable_request()->set_range_request_limit(*limit);
   op->mutable_request()->mutable_subkey_range()->mutable_lower_bound()->set_infinity_type
       (RedisSubKeyBoundPB_InfinityType_NEGATIVE);
@@ -643,7 +637,7 @@ Status ParseTsRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) {
       op->mutable_request()->mutable_subkey_range()->mutable_upper_bound(),
       RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSRANGEBYTIME));
 
-  op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   return Status::OK();
 }
 
@@ -661,7 +655,7 @@ Status ParseTsRevRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) 
       op->mutable_request()->mutable_subkey_range()->mutable_upper_bound(),
       RedisCollectionGetRangeRequestPB_GetRangeRequestType_TSREVRANGEBYTIME));
 
-  op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
 
   if (args.size() > 4) {
     if (args.size() != 6) {
@@ -731,7 +725,7 @@ Status ParseZRangeByScore(YBRedisReadOp* op, const RedisClientCommand& args) {
   args[3],
   op->mutable_request()->mutable_subkey_range()->mutable_upper_bound(),
   RedisCollectionGetRangeRequestPB_GetRangeRequestType_ZRANGEBYSCORE));
-  op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
 
   return ParseRangeByScoreOptions(op, args);
 }
@@ -750,7 +744,7 @@ Status ParseIndexBasedQuery(
     RETURN_NOT_OK(ParseIndexBound(
     args[3],
     op->mutable_request()->mutable_index_range()->mutable_upper_bound()));
-    op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
+    op->mutable_request()->mutable_key_value()->dup_key(key);
     if (args.size() == 5) {
       RETURN_NOT_OK(ParseWithScores(
           args[4], op->mutable_request()->mutable_get_collection_range_request()));
@@ -776,7 +770,7 @@ Status ParseTsGet(YBRedisReadOp* op, const RedisClientCommand& args) {
       RedisGetRequestPB_GetRequestType_TSGET);
 
   const auto& key = args[1];
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   auto timestamp = CheckedStoll(args[2]);
   RETURN_NOT_OK(timestamp);
   op->mutable_request()->mutable_key_value()->add_subkey()->set_timestamp_subkey(*timestamp);
@@ -789,9 +783,8 @@ Status ParseZScore(YBRedisReadOp* op, const RedisClientCommand& args) {
       RedisGetRequestPB_GetRequestType_ZSCORE);
 
   const auto& key = args[1];
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  auto member = args[2].ToBuffer();
-  op->mutable_request()->mutable_key_value()->add_subkey()->set_string_subkey(member);
+  op->mutable_request()->mutable_key_value()->dup_key(key);
+  op->mutable_request()->mutable_key_value()->add_subkey()->dup_string_subkey(args[2]);
 
   return Status::OK();
 }
@@ -847,7 +840,7 @@ Status ParseZCard(YBRedisReadOp* op, const RedisClientCommand& args) {
 Status ParseStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->mutable_strlen_request(); // Allocates new RedisStrLenRequestPB().
   const auto& key = args[1];
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   return Status::OK();
 }
 
@@ -855,13 +848,13 @@ Status ParseStrLen(YBRedisReadOp* op, const RedisClientCommand& args) {
 Status ParseExists(YBRedisReadOp* op, const RedisClientCommand& args) {
   op->mutable_request()->mutable_exists_request(); // Allocates new RedisExistsRequestPB().
   const auto& key = args[1];
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   return Status::OK();
 }
 
 Status ParseGetRange(YBRedisReadOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
 
   auto start = ParseInt32(args[2], "Start");
   RETURN_NOT_OK(start);
@@ -883,7 +876,7 @@ Status ParseExpire(YBRedisWriteOp* op,
   // If the TTL is not positive, we immediately delete.
   if (*ttl <= 0) {
       op->mutable_request()->mutable_del_request(); // Allocates new RedisDelRequestPB().
-      op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+      op->mutable_request()->mutable_key_value()->dup_key(key);
       op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_NONE);
       return Status::OK();
   }
@@ -892,7 +885,7 @@ Status ParseExpire(YBRedisWriteOp* op,
     return STATUS_FORMAT(InvalidCommand,
         "TTL field $0 is not within valid bounds", args[2]);
   }
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   op->mutable_request()->mutable_set_ttl_request()->set_ttl(*ttl);
   return Status::OK();
 }
@@ -907,7 +900,7 @@ Status ParsePExpire(YBRedisWriteOp* op, const RedisClientCommand& args) {
 
 Status ParsePersist(YBRedisWriteOp* op, const RedisClientCommand& args) {
   const auto& key = args[1];
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   op->mutable_request()->mutable_set_ttl_request()->set_ttl(-1);
   return Status::OK();
 }
@@ -920,12 +913,12 @@ Status ParseExpireAt(YBRedisWriteOp* op,
   // If the TTL is not positive, we immediately delete.
   if (expiration <= 0) {
       op->mutable_request()->mutable_del_request(); // Allocates new RedisDelRequestPB().
-      op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+      op->mutable_request()->mutable_key_value()->dup_key(key);
       op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_NONE);
       return Status::OK();
   }
   expiration *= using_millis ? 1 : MonoTime::kMillisecondsPerSecond;
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   op->mutable_request()->mutable_set_ttl_request()->set_absolute_time(expiration);
   return Status::OK();
 }
@@ -953,8 +946,8 @@ Status ParseSetEx(YBRedisWriteOp* op,
     return STATUS_FORMAT(InvalidCommand,
         "TTL field $0 is not within valid bounds", args[3]);
   }
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
-  op->mutable_request()->mutable_key_value()->add_value(value.cdata(), value.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
+  op->mutable_request()->mutable_key_value()->add_dup_value(value);
   op->mutable_request()->mutable_key_value()->set_type(REDIS_TYPE_STRING);
   op->mutable_request()->mutable_set_request()->set_ttl(ttl);
   return Status::OK();
@@ -972,7 +965,7 @@ Status ParseTtl(YBRedisReadOp* op,
                 const RedisClientCommand& args,
                 const bool return_seconds) {
   const auto& key = args[1];
-  op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
+  op->mutable_request()->mutable_key_value()->dup_key(key);
   op->mutable_request()->mutable_get_ttl_request()->set_return_seconds(return_seconds);
   return Status::OK();
 }

@@ -187,28 +187,30 @@ PartitionListVersion YBTable::GetPartitionListVersion() const {
 
 //--------------------------------------------------------------------------------------------------
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLWrite(const ThreadSafeArenaPtr& arena) {
-  return std::unique_ptr<YBqlWriteOp>(new YBqlWriteOp(shared_from_this()));
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLWrite(
+    ThreadSafeArenaPtr arena, LWQLWriteRequestPB* request) {
+  return std::unique_ptr<YBqlWriteOp>(new YBqlWriteOp(shared_from_this(), arena, request));
 }
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLInsert(const ThreadSafeArenaPtr& arena) {
-  return YBqlWriteOp::NewInsert(shared_from_this());
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLInsert(ThreadSafeArenaPtr arena) {
+  return YBqlWriteOp::NewInsert(shared_from_this(), std::move(arena));
 }
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLUpdate(const ThreadSafeArenaPtr& arena) {
-  return YBqlWriteOp::NewUpdate(shared_from_this());
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLUpdate(ThreadSafeArenaPtr arena) {
+  return YBqlWriteOp::NewUpdate(shared_from_this(), std::move(arena));
 }
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLDelete(const ThreadSafeArenaPtr& arena) {
-  return YBqlWriteOp::NewDelete(shared_from_this());
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLDelete(ThreadSafeArenaPtr arena) {
+  return YBqlWriteOp::NewDelete(shared_from_this(), std::move(arena));
 }
 
-std::unique_ptr<YBqlReadOp> YBTable::NewQLSelect(const ThreadSafeArenaPtr& arena) {
-  return YBqlReadOp::NewSelect(shared_from_this());
+std::unique_ptr<YBqlReadOp> YBTable::NewQLSelect(ThreadSafeArenaPtr arena) {
+  return YBqlReadOp::NewSelect(shared_from_this(), std::move(arena));
 }
 
-std::unique_ptr<YBqlReadOp> YBTable::NewQLRead(const ThreadSafeArenaPtr& arena) {
-  return std::unique_ptr<YBqlReadOp>(new YBqlReadOp(shared_from_this()));
+std::unique_ptr<YBqlReadOp> YBTable::NewQLRead(
+    ThreadSafeArenaPtr arena, LWQLReadRequestPB* request) {
+  return std::unique_ptr<YBqlReadOp>(new YBqlReadOp(shared_from_this(), std::move(arena), request));
 }
 
 size_t YBTable::FindPartitionStartIndex(const PartitionKey& partition_key, size_t group_by) const {

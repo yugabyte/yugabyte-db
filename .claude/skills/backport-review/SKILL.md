@@ -34,7 +34,7 @@ This skill requires the Phorge MCP server. If the `user-phorge` MCP server is no
    }
    ```
 
-3. **Restart Cursor** to pick up the new MCP server configuration.
+3. **Restart AI agent** to pick up the new MCP server configuration.
 
 ## Workflow
 

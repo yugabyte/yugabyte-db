@@ -37,6 +37,8 @@ struct SampleInfo {
 
   // The expected value of how many times we allocated from this call stack.
   std::optional<int64_t> estimated_count;
+
+  std::string ToString() const;
 };
 
 using SampleStack = std::string;

@@ -148,6 +148,7 @@ class RowsResult : public ExecutedResult {
 
   void SetPagingState(client::YBqlOp *op);
   void SetPagingState(const QLPagingStatePB& paging_state);
+  void SetPagingState(const LWQLPagingStatePB& paging_state);
   void SetPagingState(RowsResult&& other);
   // Override the schema version in the paging state. This is needed to support sending the schema
   // version of the main table in the response while keeping the rest of the state from the index.
