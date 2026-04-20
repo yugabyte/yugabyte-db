@@ -101,15 +101,28 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "Software version is already: " + ybSoftwareVersion);
     }
 
+    SoftwareUpgradeState softwareUpgradeState = universe.getUniverseDetails().softwareUpgradeState;
     Set<SoftwareUpgradeState> allowedStates = ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET;
     if (canaryUpgradeConfig != null) {
+      if (softwareUpgradeState == SoftwareUpgradeState.Paused) {
+        UUID previousTaskUUID = getPreviousTaskUUID();
+        UUID updatingTaskUUID = universe.getUniverseDetails().updatingTaskUUID;
+        if (previousTaskUUID == null
+            || updatingTaskUUID == null
+            || !previousTaskUUID.equals(updatingTaskUUID)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Universe has a paused canary software upgrade. Submit a resume or rollback instead"
+                  + " of a new upgrade.");
+        }
+      }
       allowedStates =
           ImmutableSet.of(
               SoftwareUpgradeState.Ready,
               SoftwareUpgradeState.UpgradeFailed,
               SoftwareUpgradeState.Paused);
     }
-    if (!allowedStates.contains(universe.getUniverseDetails().softwareUpgradeState)) {
+    if (!allowedStates.contains(softwareUpgradeState)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Software upgrade cannot be preformed on universe in state "

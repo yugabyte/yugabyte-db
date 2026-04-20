@@ -133,12 +133,14 @@ public class SoftwareUpgradeParamsCanaryTest extends FakeDBApplication {
 
   @Test
   public void testVerifyParamsCanaryConfigAllowsPausedState() {
+    UUID pausedTaskUuid = UUID.randomUUID();
     universeWithPlacement =
         Universe.saveDetails(
             universeWithPlacement.getUniverseUUID(),
             u -> {
               u.getUniverseDetails().softwareUpgradeState =
                   UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              u.getUniverseDetails().updatingTaskUUID = pausedTaskUuid;
               u.setUniverseDetails(u.getUniverseDetails());
             });
 
@@ -151,10 +153,71 @@ public class SoftwareUpgradeParamsCanaryTest extends FakeDBApplication {
     step.azUUID = validPrimaryAzUuid;
     step.pauseAfterTserverUpgrade = false;
     params.canaryUpgradeConfig.primaryClusterAZSteps = Collections.singletonList(step);
+    params.setPreviousTaskUUID(pausedTaskUuid);
 
     Universe universe = Universe.getOrBadRequest(universeWithPlacement.getUniverseUUID());
     params.verifyParams(universe, true);
-    // no exception - canary config allows Paused state for resume
+    // no exception - canary config allows Paused state when previousTaskUUID matches resume
+  }
+
+  @Test
+  public void testVerifyParamsCanaryConfigRejectsPausedStateWithoutResumeLinkage() {
+    UUID pausedTaskUuid = UUID.randomUUID();
+    universeWithPlacement =
+        Universe.saveDetails(
+            universeWithPlacement.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              u.getUniverseDetails().updatingTaskUUID = pausedTaskUuid;
+              u.setUniverseDetails(u.getUniverseDetails());
+            });
+
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.ybSoftwareVersion = UPGRADE_VERSION;
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+    AZUpgradeStep step = new AZUpgradeStep();
+    step.azUUID = validPrimaryAzUuid;
+    step.pauseAfterTserverUpgrade = false;
+    params.canaryUpgradeConfig.primaryClusterAZSteps = Collections.singletonList(step);
+    // No setPreviousTaskUUID, not a resume of the paused task
+
+    Universe universe = Universe.getOrBadRequest(universeWithPlacement.getUniverseUUID());
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> params.verifyParams(universe, true));
+    assertTrue(ex.getMessage().contains("paused canary"));
+  }
+
+  @Test
+  public void testVerifyParamsCanaryConfigRejectsPausedStateWhenPreviousTaskMismatch() {
+    UUID pausedTaskUuid = UUID.randomUUID();
+    universeWithPlacement =
+        Universe.saveDetails(
+            universeWithPlacement.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              u.getUniverseDetails().updatingTaskUUID = pausedTaskUuid;
+              u.setUniverseDetails(u.getUniverseDetails());
+            });
+
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.ybSoftwareVersion = UPGRADE_VERSION;
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+    AZUpgradeStep step = new AZUpgradeStep();
+    step.azUUID = validPrimaryAzUuid;
+    step.pauseAfterTserverUpgrade = false;
+    params.canaryUpgradeConfig.primaryClusterAZSteps = Collections.singletonList(step);
+    params.setPreviousTaskUUID(UUID.randomUUID());
+
+    Universe universe = Universe.getOrBadRequest(universeWithPlacement.getUniverseUUID());
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> params.verifyParams(universe, true));
+    assertTrue(ex.getMessage().contains("paused canary"));
   }
 
   @Test

@@ -1381,6 +1381,46 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpgradeDBVersionCanaryRejectedWhenUniversePausedWithoutResume() {
+    when(runtimeConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.enableYbcForUniverse)))
+        .thenReturn(false);
+    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcCompatibleDbVersion)))
+        .thenReturn("2.17.0.0-b1");
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    final UUID universeUuid = u.getUniverseUUID();
+    UUID pausedTaskUuid = UUID.randomUUID();
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+              "2.20.2.0-b1";
+          universe.getUniverseDetails().softwareUpgradeState =
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+          universe.getUniverseDetails().updatingTaskUUID = pausedTaskUuid;
+          universe.setUniverseDetails(universe.getUniverseDetails());
+        });
+
+    Universe fresh = Universe.getOrBadRequest(universeUuid);
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.setUniverseUUID(universeUuid);
+    params.ybSoftwareVersion = "2.22.0.0-b1";
+    params.clusters.add(fresh.getUniverseDetails().getPrimaryCluster());
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.upgradeDBVersion(params, c, Universe.getOrBadRequest(universeUuid)));
+    assertEquals(400, ex.getHttpStatus());
+    assertTrue(ex.getMessage().contains("paused canary"));
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
   public void testResumeCanarySoftwareUpgradeRejectsWhenFlagDisabled() {
     Customer c = ModelFactory.testCustomer();
     Universe u = ModelFactory.createUniverse(c.getId());
