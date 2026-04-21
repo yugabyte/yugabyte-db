@@ -104,7 +104,6 @@ public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
       mongoClient.close();
       mongoClient = null;
     }
-    gatewayInitialized = false;
   }
 
   /** Builds a MongoDB connection string with TLS and SCRAM-SHA-256 auth. */
