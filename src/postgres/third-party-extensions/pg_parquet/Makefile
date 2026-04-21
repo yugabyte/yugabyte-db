@@ -44,11 +44,6 @@ else
 	LIBCLANG_PATH := $(if $(YB_LLVM_TOOLCHAIN_DIR),$(YB_LLVM_TOOLCHAIN_DIR)/lib)
 endif
 
-# YB: Stamp file for incremental build optimization.
-# The stamp file tracks when the last successful install happened so we can skip
-# the expensive cargo-pgrx install when no source files have changed.
-PG_PARQUET_STAMP := $(YB_BUILD_ROOT)/.pg_parquet_install.stamp
-
 all:
 
 cargo-exists:
@@ -85,16 +80,7 @@ pg_parquet: cargo-pgrx-exists
 	   cargo build --release --features pg17
 
 install: cargo-pgrx-exists
-	   # YB: Skip pg_parquet install if no source files changed since last install.
-	   if [ -f "$(PG_PARQUET_STAMP)" ]; then \
-		   NEWEST_SRC=$$(find src ../pgrx Cargo.toml Cargo.lock Makefile -newer "$(PG_PARQUET_STAMP)" \
-			   \( -name '*.rs' -o -name '*.toml' -o -name '*.sql' -o -name 'Cargo.lock' -o -name 'Makefile' \) \
-			   -print -quit 2>/dev/null); \
-		   if [ -z "$$NEWEST_SRC" ]; then \
-			   echo "pg_parquet: no source changes detected, skipping install."; \
-			   exit 0; \
-		   fi; \
-	   fi && \
+	   # YB: Using local cargo-pgrx binary to install pg_parquet extension.
 	   export PATH="$(CARGO_DIR):$$PATH" && \
 	   env -u CXXFLAGS -u LDFLAGS -u LDFLAGS_EX -u CPPFLAGS -u PKG_CONFIG_PATH \
 		   $(if $(CC),CC=$(CC),) \
@@ -106,8 +92,7 @@ install: cargo-pgrx-exists
 		   PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
 		   CARGO_INCREMENTAL=1 \
 		   ../pgrx/target/release/cargo-pgrx pgrx install --release -F pg15 -c $(PG_CONFIG) && \
-	   touch "$(PG_PARQUET_STAMP)" && \
-	   ( [ "$$YB_PG_PARQUET_DEBUG_CLEAN" = "1" ] && rm -rf target/debug || true )
+	   [ "$$YB_PG_PARQUET_DEBUG_CLEAN" = "1" ] && rm -rf target/debug || true
 
 clean: cargo-exists
 	   # YB: cleaning pgrx and pg_parquet.
@@ -115,7 +100,6 @@ clean: cargo-exists
 	   $(CARGO_BIN) clean && \
 	   cd ../pg_parquet && \
 	   $(CARGO_BIN) clean
-	   rm -f "$(PG_PARQUET_STAMP)"
 
 check: cargo-pgrx-exists
 	   # YB: Using local cargo-pgrx binary to run pg_parquet tests.
