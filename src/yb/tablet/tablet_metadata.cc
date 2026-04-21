@@ -1997,11 +1997,15 @@ Status RaftGroupMetadata::OldSchemaGC(
             << "Unknown table during " << __func__ << ": " << table_id.ToString();
         continue;
       }
-      if (!it->second->doc_read_context->schema_packing_storage.HasVersionBelow(schema_version)) {
+      const auto& schema_packing_storage = it->second->doc_read_context->schema_packing_storage;
+      const auto min_active = schema_packing_storage.registry().MinActiveVersion();
+      const auto new_min_schema_version =
+          min_active.has_value() && min_active.value() < schema_version ? min_active.value()
+                                                                        : schema_version;
+      if (!schema_packing_storage.HasVersionBelow(new_min_schema_version)) {
         continue;
       }
-      auto new_value = std::make_shared<TableInfo>(
-          *it->second, schema_version);
+      auto new_value = std::make_shared<TableInfo>(*it->second, new_min_schema_version);
       RETURN_NOT_OK(SetTableInfoUnlocked(it, std::move(new_value)));
       VLOG_WITH_PREFIX(1)
           << Format("After old schema GC, latest schema version of table $0($1) is $2",
