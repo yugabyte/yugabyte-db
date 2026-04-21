@@ -962,23 +962,14 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YbcStatus s,
 			*msg_nargs = 1;
 			*msg_args = (const char **) palloc(sizeof(const char *));
 			(*msg_args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(s));
-
 			/*
-			 * Include the original DocDB status message as DETAIL for
-			 * PG compatibility. PostgreSQL emits "Key (col)=(val) already
-			 * exists." in the DETAIL field for unique violations.
-			 *
-			 * Use "%s" as the format string rather than passing status_msg
-			 * directly, since it may contain '%' characters (e.g., in
-			 * column names) that would be misinterpreted as format specifiers.
+			 * Note: PostgreSQL also emits a DETAIL field here with
+			 * "Key (col)=(val) already exists.", but DocDB does not
+			 * propagate the conflicting key/value through the error
+			 * path (the status_msg at this point is just the SQLSTATE
+			 * code "23505").  Adding DETAIL requires DocDB to send the
+			 * conflicting key information — tracked separately.
 			 */
-			if (status_msg && status_msg[0] != '\0')
-			{
-				*detail_buf = "%s";
-				*detail_nargs = 1;
-				*detail_args = (const char **) palloc(sizeof(const char *));
-				(*detail_args)[0] = status_msg;
-			}
 			break;
 		case ERRCODE_YB_TXN_ABORTED:
 			*msg_buf = "current transaction is expired or aborted";
