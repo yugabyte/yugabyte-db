@@ -1,0 +1,10 @@
+title: UniversePagedResp
+description: Paged list response for universes.
+type: object
+allOf:
+  - $ref: "./PaginationResp.yaml"
+properties:
+  entities:
+    type: array
+    items:
+      $ref: "./Universe.yaml"

@@ -4,7 +4,11 @@ package com.yugabyte.yw.api.v2;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -15,6 +19,9 @@ import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseDeleteSpec;
+import com.yugabyte.yba.v2.client.models.UniverseListApiFilter;
+import com.yugabyte.yba.v2.client.models.UniversePagedQuerySpec;
+import com.yugabyte.yba.v2.client.models.UniversePagedResp;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
@@ -42,6 +49,141 @@ import org.mockito.ArgumentCaptor;
 /** Tests for Create/Get/Delete of Universe using v2.UniverseApiControllerImp */
 @RunWith(JUnitParamsRunner.class)
 public class UniverseApiControllerTest extends UniverseTestBase {
+
+  private void stubGFlagsForPageList() throws IOException {
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
+  }
+
+  private UniverseApi universeApi() {
+    return new UniverseApi();
+  }
+
+  /** Three universes with distinct names for case-insensitive sort checks (A, M, Z). */
+  private void createZamNamedUniverses() {
+    createUniverse("Z-Universe", customer.getId());
+    createUniverse("A-Universe", customer.getId());
+    createUniverse("M-Universe", customer.getId());
+  }
+
+  private static UniverseListApiFilter nameFilter(String name) {
+    UniverseListApiFilter filter = new UniverseListApiFilter();
+    filter.setName(name);
+    return filter;
+  }
+
+  private void assertPageListBadRequest(UniversePagedQuerySpec query) {
+    ApiException e =
+        assertThrows(
+            ApiException.class, () -> universeApi().pageListUniverses(customer.getUuid(), query));
+    assertEquals(400, e.getCode());
+  }
+
+  @Test
+  public void testPageListUniversesV2() throws ApiException, IOException {
+    stubGFlagsForPageList();
+    createZamNamedUniverses();
+
+    UniversePagedQuerySpec query = new UniversePagedQuerySpec();
+    query.setOffset(1);
+    query.setLimit(2);
+    query.setDirection(UniversePagedQuerySpec.DirectionEnum.ASC);
+    UniversePagedResp resp = universeApi().pageListUniverses(customer.getUuid(), query);
+    assertThat(resp.getTotalCount(), is(3));
+    assertThat(resp.getHasPrev(), is(true));
+    assertThat(resp.getHasNext(), is(false));
+    assertThat(resp.getEntities(), hasSize(2));
+    assertThat(resp.getEntities().get(0).getSpec().getName(), is("M-Universe"));
+    assertThat(resp.getEntities().get(1).getSpec().getName(), is("Z-Universe"));
+
+    query = new UniversePagedQuerySpec();
+    query.setFilter(nameFilter("A-Universe"));
+    query.setLimit(10);
+    resp = universeApi().pageListUniverses(customer.getUuid(), query);
+    assertThat(resp.getTotalCount(), is(1));
+    assertThat(resp.getEntities(), hasSize(1));
+    assertThat(resp.getEntities().get(0).getSpec().getName(), is("A-Universe"));
+  }
+
+  @Test
+  public void testPageListUniversesV2_descAndDefaultsAndHasNext() throws ApiException, IOException {
+    stubGFlagsForPageList();
+    createZamNamedUniverses();
+
+    UniversePagedQuerySpec descAll = new UniversePagedQuerySpec();
+    descAll.setDirection(UniversePagedQuerySpec.DirectionEnum.DESC);
+    UniversePagedResp resp = universeApi().pageListUniverses(customer.getUuid(), descAll);
+    assertThat(resp.getTotalCount(), is(3));
+    assertThat(resp.getEntities(), hasSize(3));
+    assertThat(resp.getEntities().get(0).getSpec().getName(), is("Z-Universe"));
+    assertThat(resp.getEntities().get(2).getSpec().getName(), is("A-Universe"));
+
+    UniversePagedQuerySpec defaults = new UniversePagedQuerySpec();
+    resp = universeApi().pageListUniverses(customer.getUuid(), defaults);
+    assertThat(resp.getTotalCount(), is(3));
+    assertThat(resp.getEntities(), hasSize(3));
+    assertThat(resp.getHasPrev(), is(false));
+    assertThat(resp.getHasNext(), is(false));
+
+    UniversePagedQuerySpec firstOfMany = new UniversePagedQuerySpec();
+    firstOfMany.setLimit(1);
+    resp = universeApi().pageListUniverses(customer.getUuid(), firstOfMany);
+    assertThat(resp.getTotalCount(), is(3));
+    assertThat(resp.getEntities(), hasSize(1));
+    assertThat(resp.getEntities().get(0).getSpec().getName(), is("A-Universe"));
+    assertThat(resp.getHasNext(), is(true));
+  }
+
+  @Test
+  public void testPageListUniversesV2_filterNoMatchAndWhitespace()
+      throws ApiException, IOException {
+    stubGFlagsForPageList();
+    createZamNamedUniverses();
+
+    UniversePagedQuerySpec noMatch = new UniversePagedQuerySpec();
+    noMatch.setFilter(nameFilter("does-not-exist"));
+    noMatch.setLimit(10);
+    UniversePagedResp resp = universeApi().pageListUniverses(customer.getUuid(), noMatch);
+    assertThat(resp.getTotalCount(), is(0));
+    assertThat(resp.getEntities(), empty());
+
+    UniversePagedQuerySpec blankName = new UniversePagedQuerySpec();
+    blankName.setFilter(nameFilter("   "));
+    blankName.setLimit(10);
+    resp = universeApi().pageListUniverses(customer.getUuid(), blankName);
+    assertThat(resp.getTotalCount(), is(3));
+    assertThat(resp.getEntities(), hasSize(3));
+  }
+
+  @Test
+  public void testPageListUniversesV2_filterOffsetPastMatch() throws ApiException, IOException {
+    stubGFlagsForPageList();
+    createZamNamedUniverses();
+
+    UniversePagedQuerySpec query = new UniversePagedQuerySpec();
+    query.setFilter(nameFilter("A-Universe"));
+    query.setOffset(1);
+    query.setLimit(10);
+    UniversePagedResp resp = universeApi().pageListUniverses(customer.getUuid(), query);
+    assertThat(resp.getTotalCount(), is(1));
+    assertThat(resp.getEntities(), empty());
+  }
+
+  @Test
+  public void testPageListUniversesV2_invalidPagination() throws ApiException {
+    UniversePagedQuerySpec negOffset = new UniversePagedQuerySpec();
+    negOffset.setOffset(-1);
+    negOffset.setLimit(10);
+    assertPageListBadRequest(negOffset);
+
+    UniversePagedQuerySpec zeroLimit = new UniversePagedQuerySpec();
+    zeroLimit.setLimit(0);
+    assertPageListBadRequest(zeroLimit);
+
+    UniversePagedQuerySpec limitTooLarge = new UniversePagedQuerySpec();
+    limitTooLarge.setLimit(501);
+    assertPageListBadRequest(limitTooLarge);
+  }
 
   @Test
   public void testGetUniverseV2() throws ApiException, IOException {

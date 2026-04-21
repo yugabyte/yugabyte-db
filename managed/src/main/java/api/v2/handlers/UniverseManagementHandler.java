@@ -32,6 +32,8 @@ import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseOperatorImportReq;
+import api.v2.models.UniversePagedQuerySpec;
+import api.v2.models.UniversePagedResp;
 import api.v2.models.UniverseSpec;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
@@ -61,6 +63,9 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.RunQueryFormData;
@@ -68,6 +73,7 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
 import com.yugabyte.yw.models.Audit;
@@ -85,6 +91,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -93,6 +100,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import io.ebean.PagedList;
 import io.ebean.annotation.Transactional;
 import java.io.File;
 import java.io.IOException;
@@ -103,6 +111,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -125,6 +134,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private NodeFileCollector nodeFileCollector;
   @Inject private FileCollectionDownloader fileCollectionDownloader;
   @Inject private LocalhostAccessChecker localhostChecker;
+  @Inject private RoleBindingUtil roleBindingUtil;
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
@@ -132,6 +142,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   private static final long DEFAULT_MAX_SCRIPT_FILE_SIZE_BYTES = 1024 * 1024;
 
   private static final int DEFAULT_MAX_PARALLEL_NODES = 50;
+
+  private static final int DEFAULT_UNIVERSE_PAGE_LIMIT = 10;
+  private static final int MAX_UNIVERSE_PAGE_LIMIT = 500;
 
   public api.v2.models.Universe getUniverse(UUID cUUID, UUID uniUUID)
       throws JsonProcessingException {
@@ -147,6 +160,70 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       log.trace("Got Universe {}", prettyPrint(v2Response));
     }
     return v2Response;
+  }
+
+  public UniversePagedResp pageListUniverses(UUID cUUID, UniversePagedQuerySpec spec)
+      throws Exception {
+    Users user = CommonUtils.getUserFromContext();
+    int offset = spec.getOffset() != null ? spec.getOffset() : 0;
+    int limit = spec.getLimit() != null ? spec.getLimit() : DEFAULT_UNIVERSE_PAGE_LIMIT;
+
+    if (offset < 0) {
+      throw new PlatformServiceException(BAD_REQUEST, "offset must be >= 0");
+    }
+
+    if (limit < 1 || limit > MAX_UNIVERSE_PAGE_LIMIT) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "limit must be between 1 and " + MAX_UNIVERSE_PAGE_LIMIT);
+    }
+
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
+
+    if (resourceUUIDs.isEmpty()) {
+      return new UniversePagedResp()
+          .totalCount(0)
+          .hasNext(false)
+          .hasPrev(false)
+          .entities(new ArrayList<>());
+    }
+
+    String nameFilter =
+        spec.getFilter() != null ? StringUtils.trimToNull(spec.getFilter().getName()) : null;
+
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    var expr =
+        CommonUtils.appendInClause(
+            Universe.find.query().where().eq("customer_id", customer.getId()),
+            "universeUUID",
+            resourceUUIDs);
+    if (nameFilter != null) {
+      expr = expr.eq("name", nameFilter);
+    }
+
+    String order = spec.getDirection().toString();
+    // sort: case-insensitive name, then UUID; null names sort like empty.
+    String orderBy = String.format("coalesce(lower(name), '') %s, universe_uuid %s", order, order);
+    expr = expr.orderBy(orderBy);
+
+    PagedList<Universe> pagedList = expr.setFirstRow(offset).setMaxRows(limit).findPagedList();
+    Universe.loadUniverseDetails(pagedList.getList());
+    List<UniverseResp> page = UniverseResp.create(customer, pagedList.getList(), confGetter);
+    UniversePagedResp resp =
+        new UniversePagedResp()
+            .totalCount(pagedList.getTotalCount())
+            .hasPrev(pagedList.hasPrev())
+            .hasNext(pagedList.hasNext());
+
+    List<api.v2.models.Universe> v2Universes = new ArrayList<>(page.size());
+    for (int i = 0; i < page.size(); i++) {
+      UniverseResp r = page.get(i);
+      Universe u = pagedList.getList().get(i);
+      v2Universes.add(UniverseRespMapper.INSTANCE.toV2Universe(r, u));
+    }
+
+    resp.setEntities(v2Universes);
+    return resp;
   }
 
   public YBATask createUniverse(Request request, UUID cUUID, UniverseCreateSpec universeSpec) {

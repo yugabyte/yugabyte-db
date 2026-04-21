@@ -284,7 +284,7 @@ libraryDependencies ++= Seq(
   "io.grpc" % "grpc-inprocess" % "1.67.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.0.0" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.0.1" % Test,
 )
 
 // Clear default resolvers.
@@ -713,7 +713,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.0.0",
+    version := "1.0.1",
     target := file("client/java/target/v2"),
   )
 

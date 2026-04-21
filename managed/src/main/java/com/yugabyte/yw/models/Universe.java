@@ -1300,6 +1300,17 @@ public class Universe extends Model {
     return universe.getUniverseDetails().universePaused;
   }
 
+  public static void loadUniverseDetails(Iterable<Universe> universes) {
+    if (universes == null) {
+      return;
+    }
+    for (Universe universe : universes) {
+      if (universe != null) {
+        fillUniverseDetails(universe);
+      }
+    }
+  }
+
   private static Universe fillUniverseDetails(Universe universe) {
     JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
     universe.universeDetails = Json.fromJson(detailsJson, UniverseDefinitionTaskParams.class);
