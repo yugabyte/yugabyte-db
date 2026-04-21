@@ -91,9 +91,10 @@ def _git(*args: str) -> str:
 def _changed_files(base: str | None = None) -> list[str]:
     """Files modified in the working copy plus files changed on this branch vs its base.
 
-    If ``base`` is provided, it is used directly as the diff base. Otherwise base resolution
-    tries @{upstream}, then origin/master, then falls back to HEAD (so only uncommitted changes
-    are considered).
+    If ``base`` is provided, it is used directly as the diff base. Otherwise ``@{upstream}`` is
+    used. If the current branch has no ``@{upstream}`` configured, the caller must pass
+    ``--rev`` explicitly — we do not fall back to ``origin/master`` because on stable release
+    branches that would include a huge unrelated fileset.
     """
     if base is not None:
         try:
@@ -101,15 +102,15 @@ def _changed_files(base: str | None = None) -> list[str]:
         except subprocess.CalledProcessError:
             sys.exit(f"[lint] --rev: unknown git ref {base!r}")
     else:
-        for candidate in ("@{upstream}", "origin/master"):
-            try:
-                _git("rev-parse", "--verify", "--quiet", candidate)
-                base = candidate
-                break
-            except subprocess.CalledProcessError:
-                continue
-    ref = base or "HEAD"
-    committed = set(_git("diff", "--name-only", "--diff-filter=d", ref).splitlines())
+        try:
+            _git("rev-parse", "--verify", "--quiet", "@{upstream}")
+            base = "@{upstream}"
+        except subprocess.CalledProcessError:
+            sys.exit("[lint] no @{upstream} configured for current branch; "
+                     "pass --rev <base> explicitly")
+    resolved = _git("rev-parse", "--symbolic-full-name", base)
+    print(f"[lint] comparing against {base} ({resolved})", file=sys.stderr)
+    committed = set(_git("diff", "--name-only", "--diff-filter=d", base).splitlines())
     uncommitted = set(_git("diff", "--name-only", "--diff-filter=d", "HEAD").splitlines())
     untracked = set(_git("ls-files", "--others", "--exclude-standard").splitlines())
     return sorted(p for p in (committed | uncommitted | untracked) if p)
@@ -316,7 +317,7 @@ def main() -> int:
                     help="Lint all tracked files (ignores paths).")
     ap.add_argument("--rev", default=None,
                     help="Git ref to diff against when selecting changed files "
-                         "(default: @{upstream} or origin/master).")
+                         "(default: @{upstream}; required if @{upstream} is not set).")
     ap.add_argument("--only", action="append", default=[],
                     help="Only run linters whose name matches (repeatable).")
     ap.add_argument("--list-linters", action="store_true",
