@@ -2061,5 +2061,85 @@ TEST_F(PgDdlAtomicityTest, TestPollTransactionFuilure) {
   ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN id3 INT"));
 }
 
+// Regression test for GHI #30895.
+// When a DDL transaction's commit response is lost (e.g. due to a leader change), the client
+// retries the UpdateTransaction(COMMITTED) RPC. If by that time the transaction has been fully
+// applied and cleaned up from the coordinator, the retry used to fail with "Transaction expired
+// or aborted by a conflict", causing the DDL to be incorrectly considered failed.
+// This test verifies that the DDL succeeds despite a simulated lost commit response.
+TEST_F(PgDdlAtomicityTest, DdlCommitWithLostResponse) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Inject a simulated commit response loss on all tservers.
+  // The flag auto-clears after the first COMMITTED replication, so only one DDL is affected.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_drop_commit_response", "true"));
+
+  // This DDL's transaction commit will be Raft-replicated successfully, but the RPC response
+  // will be dropped. The client retries, and with the fix, the retry is acknowledged as a
+  // successful commit via the recently_committed_txn_ids_ cache.
+  ASSERT_OK(conn.Execute("CREATE TABLE test_lost_commit_response (id INT PRIMARY KEY, v TEXT)"));
+
+  // Verify the table is usable.
+  ASSERT_OK(conn.Execute("INSERT INTO test_lost_commit_response VALUES (1, 'hello')"));
+  auto val = ASSERT_RESULT(
+      conn.FetchRow<std::string>("SELECT v FROM test_lost_commit_response WHERE id = 1"));
+  ASSERT_EQ(val, "hello");
+}
+
+// Regression test for GHI #30895, leader-change variant.
+// Same as DdlCommitWithLostResponse, but additionally forces a leadership change on the
+// transaction status tablet after the commit is Raft-replicated. The new leader replays the
+// COMMITTED entry from the Raft log, creating the transaction in managed_transactions_.
+// The client's retry arrives at the new leader and eventually succeeds through the normal
+// lifecycle: IllegalState retries -> transaction applies -> cleanup -> recently_committed cache.
+TEST_F(PgDdlAtomicityTest, DdlCommitWithLostResponseAndLeaderChange) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_drop_commit_response", "true"));
+
+  // Run the DDL in a background thread so we can step down leaders while it's in progress.
+  TestThreadHolder thread_holder;
+  std::atomic<bool> ddl_done{false};
+  thread_holder.AddThreadFunctor([this, &ddl_done] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE test_leader_change (id INT PRIMARY KEY, v TEXT)"));
+    ddl_done.store(true);
+  });
+
+  // Wait for the commit to be Raft-replicated. The flag auto-clears after the first hit,
+  // so by the time we get here the commit is replicated but the response was dropped.
+  SleepFor(2s * kTimeMultiplier);
+
+  // Step down transaction status tablet leaders to force retries to reach a new leader.
+  // Some step-downs may fail transiently (e.g. a peer still in PRE_VOTER state during
+  // bootstrap), which is fine: we just need at least one leadership change.
+  int stepped_down = 0;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    auto tablets = ASSERT_RESULT(cluster_->GetTablets(cluster_->tablet_server(i)));
+    for (const auto& tablet : tablets) {
+      if (tablet.table_name().find("transactions") != std::string::npos && tablet.is_leader()) {
+        LOG(INFO) << "Stepping down leader for transaction status tablet " << tablet.tablet_id()
+                  << " on tserver " << i;
+        auto s = cluster_->MoveTabletLeader(tablet.tablet_id());
+        if (s.ok()) {
+          ++stepped_down;
+        } else {
+          LOG(WARNING) << "Failed to step down leader for " << tablet.tablet_id() << ": " << s;
+        }
+      }
+    }
+  }
+  LOG(INFO) << "Stepped down " << stepped_down << " transaction status tablet leader(s)";
+
+  thread_holder.WaitAndStop(60s * kTimeMultiplier);
+  ASSERT_TRUE(ddl_done.load()) << "DDL did not complete";
+
+  // Verify the table is usable.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("INSERT INTO test_leader_change VALUES (1, 'hello')"));
+  auto val = ASSERT_RESULT(
+      conn.FetchRow<std::string>("SELECT v FROM test_leader_change WHERE id = 1"));
+  ASSERT_EQ(val, "hello");
+}
+
 } // namespace pgwrapper
 } // namespace yb
