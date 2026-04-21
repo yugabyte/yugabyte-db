@@ -91,6 +91,7 @@ using yb::cqlserver::CQLServerOptions;
 
 using yb::pgwrapper::PgProcessConf;
 using yb::pgwrapper::PgSupervisor;
+using yb::pgwrapper::PgWrapper;
 
 using namespace yb::size_literals;  // NOLINT
 using namespace std::chrono_literals;
@@ -291,7 +292,7 @@ int TabletServerMain(int argc, char** argv) {
         FLAGS_pgsql_proxy_bind_address,
         tablet_server_options->fs_opts.data_paths.front() + "/pg_data");
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit());
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit(PgWrapper::GetPostgresExecutablePath()));
     auto& pg_process_conf = *pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options->master_addresses_flag;
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(

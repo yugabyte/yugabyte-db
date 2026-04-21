@@ -820,7 +820,7 @@ PgWrapper::PgWrapper(PgProcessConf conf)
 }
 
 Status PgWrapper::PreflightCheck() {
-  RETURN_NOT_OK(CheckExecutableValid(GetPostgresExecutablePath()));
+  RETURN_NOT_OK(CheckExecutableValid(PgWrapper::GetPostgresExecutablePath()));
   RETURN_NOT_OK(CheckExecutableValid(GetInitDbExecutablePath()));
   return Status::OK();
 }
@@ -828,7 +828,7 @@ Status PgWrapper::PreflightCheck() {
 Status PgWrapper::Start() {
   RETURN_NOT_OK(CleanupPreviousPostgres());
 
-  auto postgres_executable = GetPostgresExecutablePath();
+  auto postgres_executable = PgWrapper::GetPostgresExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(postgres_executable));
 
   bool log_to_file = !FLAGS_logtostderr && !FLAGS_log_dir.empty() && !conf_.force_disable_log_file;

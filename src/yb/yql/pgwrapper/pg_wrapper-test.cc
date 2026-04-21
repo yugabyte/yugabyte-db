@@ -34,6 +34,7 @@
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
 
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -72,6 +73,15 @@ class PgWrapperTestHelper: public PgCommandTestBase {
 
 } // namespace
 
+
+TEST(PgWrapperPathTest, PostgresExecutablePath) {
+  const auto install_root = GetPostgresInstallRoot();
+  const auto executable_path = PgWrapper::GetPostgresExecutablePath();
+
+  ASSERT_EQ(executable_path, JoinPathSegments(install_root, "bin", "postgres"));
+  ASSERT_EQ(DirName(executable_path), JoinPathSegments(install_root, "bin"));
+  ASSERT_EQ(BaseName(executable_path), "postgres");
+}
 
 YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kFlushRegularOnly)(kCompaction));
 
