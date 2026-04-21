@@ -231,6 +231,15 @@ When the limit on the number of entries is reached, the oldest entry is dropped 
 
 If the hint or plan text does not fit into the fixed size memory slot (4096 bytes for plan text, 2048 bytes for hint text), the text is compressed. If the hint or plan text does not fit after compression, then the text payload is truncated. Truncated hints can not be used to pin the plan.
 
+Use the `yb_pg_stat_plans_reset(dbid OID, userid OID, queryid BIGINT, planid BIGINT)` function to manually remove entries from the table.
+
+- If dbid is NULL, the function uses the current database.
+- If userid is NULL, the function uses the current user.
+- If queryid is NULL, the function removes all entries matching planid, or all entries if planid is also NULL.
+- If planid is NULL, removes all entries matching queryid, or all entries if queryid is also NULL.
+
+The function returns the number of entries removed.
+
 ### yb_pg_stat_plans_insights
 
 This view identifies the plan with the lowest execution time for each query ID (`plan_min_exec_time` column displays `Yes`; otherwise `No`).
