@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -715,13 +714,7 @@ public class MetricQueryHelper {
   }
 
   private Map<String, String> getAuthHeaders() {
-    Boolean authEnabled = confGetter.getGlobalConf(GlobalConfKeys.metricsAuth);
-    if (!authEnabled) {
-      return Collections.emptyMap();
-    }
-    String username = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthUsername);
-    String password = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthPassword);
-    return AuthUtil.getBasicAuthHeader(username, password);
+    return metricUrlProvider.getAuthHeaders();
   }
 
   /*

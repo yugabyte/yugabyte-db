@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.metrics.tsdb.ByteBufferBitInput;
 import com.yugabyte.yw.common.metrics.tsdb.ChunkDecompressor;
+import com.yugabyte.yw.metrics.MetricUrlProvider;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.prometheus.metrics.core.metrics.Summary;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
@@ -69,10 +70,13 @@ public class RemoteReadClient {
   private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
   private final WSClientRefresher wsClientRefresher;
+  private final MetricUrlProvider metricUrlProvider;
 
   @Inject
-  public RemoteReadClient(WSClientRefresher wsClientRefresher) {
+  public RemoteReadClient(
+      WSClientRefresher wsClientRefresher, MetricUrlProvider metricUrlProvider) {
     this.wsClientRefresher = wsClientRefresher;
+    this.metricUrlProvider = metricUrlProvider;
   }
 
   protected ApiHelper getApiHelper() {
@@ -150,10 +154,11 @@ public class RemoteReadClient {
     }
   }
 
-  private static Map<String, String> buildRequestHeaders() {
+  private Map<String, String> buildRequestHeaders() {
     Map<String, String> headers = new java.util.HashMap<>();
     headers.put("Content-Encoding", "snappy");
     headers.put("User-Agent", "yugabyte-anywhere");
+    headers.putAll(metricUrlProvider.getAuthHeaders());
     return headers;
   }
 

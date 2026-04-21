@@ -5,7 +5,6 @@ package com.yugabyte.yw.models.helpers;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.ITask;
-import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
@@ -730,6 +729,16 @@ public enum TaskType {
   OperatorImportUniverse(
       com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse.class,
       CustomerTask.TaskType.OperatorImport,
+      CustomerTask.TargetType.Universe),
+
+  RegisterUniverseWithPACollector(
+      com.yugabyte.yw.commissioner.tasks.RegisterUniverseWithPACollector.class,
+      CustomerTask.TaskType.RegisterWithPACollector,
+      CustomerTask.TargetType.Universe),
+
+  UnregisterUniverseFromPACollector(
+      com.yugabyte.yw.commissioner.tasks.UnregisterUniverseFromPACollector.class,
+      CustomerTask.TaskType.UnregisterFromPACollector,
       CustomerTask.TargetType.Universe),
 
   /* Subtasks start here */

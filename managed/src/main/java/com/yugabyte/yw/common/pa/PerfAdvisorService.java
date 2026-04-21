@@ -19,17 +19,25 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.PACollectorExt;
+import com.yugabyte.yw.forms.PaUniverseInfo;
+import com.yugabyte.yw.forms.PaUniverseInfo.SortBy;
+import com.yugabyte.yw.forms.paging.PaUniverseApiFilter;
+import com.yugabyte.yw.forms.paging.PaUniversePagedApiQuery;
+import com.yugabyte.yw.forms.paging.PaUniversePagedApiResponse;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.ExpressionList;
 import io.ebean.annotation.Transactional;
 import java.util.*;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -150,6 +158,66 @@ public class PerfAdvisorService {
   public PerfAdvisorClient.UniverseMetadata getUniverseMetadata(
       PACollector paCollector, Universe universe) {
     return client.getUniverseMetadata(paCollector, universe.getUniverseUUID());
+  }
+
+  public List<PerfAdvisorClient.UniverseMetadata> listRegisteredUniverses(PACollector collector) {
+    return client.listUniverseMetadata(collector);
+  }
+
+  public PaUniversePagedApiResponse pagedListRegisteredUniverses(
+      PACollector collector, PaUniversePagedApiQuery apiQuery) {
+    List<PerfAdvisorClient.UniverseMetadata> allMetadata = listRegisteredUniverses(collector);
+
+    Stream<PaUniverseInfo> infoStream =
+        allMetadata.stream()
+            .map(
+                meta -> {
+                  PaUniverseInfo info = new PaUniverseInfo();
+                  info.setUniverseUuid(meta.getId());
+                  Optional<Universe> universe = Universe.maybeGet(meta.getId());
+                  info.setUniverseName(universe.map(Universe::getName).orElse(null));
+                  info.setDataMountPoints(meta.getDataMountPoints());
+                  info.setOtherMountPoints(meta.getOtherMountPoints());
+                  info.setAdvancedObservability(meta.isMetricsExportToPrometheusEnabled());
+                  return info;
+                });
+
+    PaUniverseApiFilter filter = apiQuery.getFilter();
+    if (filter != null && StringUtils.isNotEmpty(filter.getUniverseName())) {
+      String nameFilter = filter.getUniverseName().toLowerCase();
+      infoStream =
+          infoStream.filter(
+              i ->
+                  i.getUniverseName() != null
+                      && i.getUniverseName().toLowerCase().contains(nameFilter));
+    }
+
+    Comparator<PaUniverseInfo> comparator =
+        Comparator.comparing(
+            i -> {
+              if (apiQuery.getSortBy() == SortBy.universeUuid) {
+                return i.getUniverseUuid().toString();
+              }
+              return i.getUniverseName();
+            });
+    if (apiQuery.getDirection() == SortDirection.DESC) {
+      comparator = comparator.reversed();
+    }
+
+    List<PaUniverseInfo> sorted = infoStream.sorted(comparator).toList();
+
+    int totalCount = sorted.size();
+    int offset = apiQuery.getOffset();
+    int limit = apiQuery.getLimit();
+    int fromIndex = Math.min(offset, totalCount);
+    int toIndex = Math.min(offset + limit, totalCount);
+
+    PaUniversePagedApiResponse response = new PaUniversePagedApiResponse();
+    response.setEntities(sorted.subList(fromIndex, toIndex));
+    response.setHasPrev(offset > 0);
+    response.setHasNext(toIndex < totalCount);
+    response.setTotalCount(totalCount);
+    return response;
   }
 
   public void putUniverse(

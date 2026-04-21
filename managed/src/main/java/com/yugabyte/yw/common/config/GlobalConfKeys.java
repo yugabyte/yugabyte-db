@@ -1650,6 +1650,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " minutes)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleDefaultPaDumpRange =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.default_pa_dump_range",
+          ScopeType.GLOBAL,
+          "Support bundle perf advisor dump range",
+          "The start-end duration to collect the perf advisor dump inside the support bundle (in"
+              + " minutes)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> supportBundlePromDumpBatchDurationInMins =
       new ConfKeyInfo<>(
           "yb.support_bundle.batch_duration_prom_dump_mins",

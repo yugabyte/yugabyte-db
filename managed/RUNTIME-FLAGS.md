@@ -173,6 +173,7 @@
 | "Enable Per Process Metrics" | "yb.ui.feature_flags.enable_per_process_metrics" | "GLOBAL" | "Enable Per Process Metrics" | "Boolean" |
 | "Node Agent Enabler Run Installer" | "yb.node_agent.enabler.run_installer" | "GLOBAL" | "Enable or disable the background installer in node agent enabler" | "Boolean" |
 | "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |
+| "Support bundle perf advisor dump range" | "yb.support_bundle.default_pa_dump_range" | "GLOBAL" | "The start-end duration to collect the perf advisor dump inside the support bundle (in minutes)" | "Integer" |
 | "Number of cloud YBA backups to retain" | "yb.auto_yba_backups.num_cloud_retention" | "GLOBAL" | "When continuous backups feature is enabled only the most recent n backups will be retained in the storage bucket" | "Integer" |
 | "Standby Prometheus scrape interval" | "yb.metrics.scrape_interval_standby" | "GLOBAL" | "Need to increase it in case federation metrics request takes more time  than main Prometheus scrape period to complete" | "String" |
 | "Enable viewing metrics in timezone selected at the metrics page" | "yb.ui.metrics.enable_timezone" | "GLOBAL" | "Enable viewing metrics in timezone selected at the metrics page and will be preserved at session level" | "Boolean" |

@@ -442,7 +442,13 @@ public class CustomerTask extends Model {
     KubernetesToggleImmutableYbc,
 
     @EnumValue("OperatorImport")
-    OperatorImport;
+    OperatorImport,
+
+    @EnumValue("RegisterWithPACollector")
+    RegisterWithPACollector,
+
+    @EnumValue("UnregisterFromPACollector")
+    UnregisterFromPACollector;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -657,6 +663,12 @@ public class CustomerTask extends Model {
           return completed ? "Set Immutable Ybc on K8s" : "Setting Immutable Ybc on K8s";
         case OperatorImport:
           return completed ? "Imported universe to Operator" : "Importing universe to Operator";
+        case RegisterWithPACollector:
+          return completed
+              ? "Updated PA Collector registration for"
+              : "Updating PA Collector registration for";
+        case UnregisterFromPACollector:
+          return completed ? "Disabled PA Collector for" : "Disabling PA Collector for";
         default:
           return null;
       }

@@ -501,18 +501,14 @@
       "paUniverseStatus": {
         "enableTitle": "Enable Performance Monitoring",
         "disableTitle": "Disable Performance Monitoring",
-        "enablePaUniverseSuccess": "Successfully enabled  Performance Monitoring to the universe",
-        "enablePaUniverseFailure": "Failed to  Performance Monitoring to the universe",
-        "disablePaUniverseSuccess": "Successfully disabled Performance Monitoring for the universe",
-        "disablePaUniverseFailure": "Failed to disable Performance Monitoring to the universe",
+        "enablePaUniverseFailure": "Failed to enable Performance Monitoring for the universe",
+        "disablePaUniverseFailure": "Failed to disable Performance Monitoring for the universe",
         "subText": "Are you sure you want to {{action}} Performance Monitoring for the universe <strong>{{universeName}}</strong>?",
         "enableAdvancedObservability": "Enable Advanced Observability",
         "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This will enable additional metrics export to Prometheus.",
-        "enableAdvancedObservabilitySuccess": "Successfully enabled Advanced Observability for the universe",
         "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
         "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
         "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This will disable additional metrics export to Prometheus.",
-        "disableAdvancedObservabilitySuccess": "Successfully disabled Advanced Observability for the universe",
         "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe"
       },
       "pgCompatibility": {

@@ -97,6 +97,7 @@ public class SupportBundleController extends AuthenticatedController {
     }
 
     sbHandler.bundleDataValidation(bundleData, universe);
+    bundleData.resolveDefaultDates(confGetter);
 
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe, confGetter);
     SupportBundleTaskParams taskParams =
@@ -286,6 +287,7 @@ public class SupportBundleController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     sbHandler.bundleDataValidation(bundleData, universe);
+    bundleData.resolveDefaultDates(confGetter);
 
     return PlatformResults.withData(sbHandler.estimateBundleSize(customer, bundleData, universe));
   }

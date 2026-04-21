@@ -2687,6 +2687,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -5542,6 +5544,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -8651,6 +8655,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9465,6 +9471,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -10989,6 +10997,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -11720,6 +11730,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -14353,6 +14365,38 @@
       ],
       "type" : "object"
     },
+    "PA Collector registered universe info" : {
+      "properties" : {
+        "advancedObservability" : {
+          "description" : "Whether advanced observability (metrics export) is enabled",
+          "type" : "boolean"
+        },
+        "dataMountPoints" : {
+          "description" : "Data mount points",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "otherMountPoints" : {
+          "description" : "Other mount points",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "universeName" : {
+          "description" : "Universe name (from YBA, or null if universe was deleted)",
+          "type" : "string"
+        },
+        "universeUuid" : {
+          "description" : "Universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "PA Collector universe registration status" : {
       "properties" : {
         "advancedObservability" : {
@@ -14423,6 +14467,85 @@
         "paUrl",
         "uuid",
         "ybaUrl"
+      ],
+      "type" : "object"
+    },
+    "PaUniverseApiFilter" : {
+      "properties" : {
+        "universeName" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "universeName"
+      ],
+      "type" : "object"
+    },
+    "PaUniversePagedApiQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [
+            "ASC",
+            "DESC"
+          ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/PaUniverseApiFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [
+            "universeName",
+            "universeUuid"
+          ],
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "direction",
+        "filter",
+        "limit",
+        "needTotalCount",
+        "offset",
+        "sortBy"
+      ],
+      "type" : "object"
+    },
+    "PaUniversePagedApiResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/PA Collector registered universe info"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "entities",
+        "hasNext",
+        "hasPrev",
+        "totalCount"
       ],
       "type" : "object"
     },
@@ -16191,6 +16314,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -16876,6 +17001,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17917,6 +18044,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18758,6 +18887,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -20297,6 +20428,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -20963,6 +21096,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -21384,6 +21519,8 @@
               "MigrateUniverse",
               "KubernetesToggleImmutableYbc",
               "OperatorImportUniverse",
+              "RegisterUniverseWithPACollector",
+              "UnregisterUniverseFromPACollector",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -21954,6 +22091,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22731,6 +22870,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23888,6 +24029,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24676,7 +24819,9 @@
               "ImportUniverse",
               "MigrateUniverse",
               "KubernetesToggleImmutableYbc",
-              "OperatorImport"
+              "OperatorImport",
+              "RegisterWithPACollector",
+              "UnregisterFromPACollector"
             ],
             "type" : "string"
           },
@@ -25217,6 +25362,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -25901,6 +26048,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26723,6 +26872,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -27371,6 +27522,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -28019,6 +28172,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -29177,6 +29332,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -30312,6 +30469,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
