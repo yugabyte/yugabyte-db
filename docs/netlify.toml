@@ -790,6 +790,11 @@
   to = "https://docs-archive.yugabyte.com/v2.18/"
   force = true
 
+[[redirects]]
+  from = "/v2024.1/*"
+  to = "https://docs-archive.yugabyte.com/v2024.1/"
+  force = true
+
 # Build an app for orms
 
 [[redirects]]
