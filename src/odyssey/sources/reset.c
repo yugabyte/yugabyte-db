@@ -9,6 +9,71 @@
 #include <machinarium.h>
 #include <odyssey.h>
 
+int yb_od_server_cleanup_resources(od_server_t *server)
+{
+	od_instance_t *instance = server->global->instance;
+	int max = instance->config.yb_max_prepared_statements;
+	if (max <= 0 || server->yb_prep_stmt_count <= max)
+		return 0;
+
+	int excess = server->yb_prep_stmt_count - max;
+	int sent = 0;
+	od_list_t *it;
+	od_list_foreach(&server->yb_prep_stmt_lru, it) {
+		if (sent >= excess)
+			break;
+		od_hashmap_list_item_t *item = od_container_of(
+			it, od_hashmap_list_item_t, yb_lru_link);
+		od_hash_t keyhash = od_murmur_hash(item->key.data, item->key.len);
+		char buf[OD_HASH_LEN];
+		od_snprintf(buf, OD_HASH_LEN, "%08x", keyhash);
+
+		machine_msg_t *msg = kiwi_fe_write_close(
+			NULL, YB_KIWI_FE_CLOSE_FORCE, buf, OD_HASH_LEN);
+		if (msg == NULL) {
+			od_error(&instance->logger, "lru cleanup", NULL,
+				 server, "failed to create close packet");
+			break;
+		}
+		int rc = od_write(&server->io, &msg);
+		if (rc == -1) {
+			od_error(&instance->logger, "lru cleanup", NULL, server,
+				 "write error: %s", od_io_error(&server->io));
+			return -1;
+		}
+		sent++;
+	}
+
+	if (sent == 0)
+		return 0;
+
+	machine_msg_t *sync_msg = kiwi_fe_write_sync(NULL);
+	if (sync_msg == NULL) {
+		od_error(&instance->logger, "lru cleanup", NULL, server,
+			 "failed to create sync packet");
+		return -1;
+	}
+	int rc = od_write(&server->io, &sync_msg);
+	if (rc == -1) {
+		od_error(&instance->logger, "lru cleanup", NULL, server,
+			 "sync write error: %s", od_io_error(&server->io));
+		return -1;
+	}
+	od_server_sync_request(server, 1);
+
+	rc = od_backend_ready_wait(server, "lru-cleanup", 1, yb_wait_timeout);
+	if (rc < 0) {
+		od_error(&instance->logger, "lru cleanup", NULL, server,
+			 "failed waiting for force-close responses");
+		return -1;
+	}
+
+	od_debug(&instance->logger, "lru cleanup", NULL, server,
+		 "evicted %d prepared statements, count now %d",
+		 sent, server->yb_prep_stmt_count);
+	return 0;
+}
+
 /*
  * Send 'g' packet to reset GUC defaults to original values.
  * Returns 0 on success, -1 on error and -2 on timeout.
@@ -164,6 +229,10 @@ int od_reset(od_server_t *server)
 	}
 	od_debug(&instance->logger, "reset", server->client, server,
 		 "synchronized");
+
+	rc = yb_od_server_cleanup_resources(server);
+	if (rc < 0)
+		goto error;
 
 	/* send rollback in case server has an active
 	 * transaction running */

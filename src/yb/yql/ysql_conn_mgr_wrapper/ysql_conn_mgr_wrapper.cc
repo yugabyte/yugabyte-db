@@ -82,6 +82,12 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
     "is reached, the connection is automatically closed, regardless of activity, ensuring that "
     "fresh backend connections are regularly maintained.");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, max_prepared_statements, 500,
+    "Soft limit on prepared statements per server connection. When the limit is exceeded, the"
+    "least recently used statements are closed on the backend. This is enforced periodically at "
+    "connection detach points, so the actual count may temporarily exceed this value. Set to 0 "
+    "to disable LRU eviction.");
+
 DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
     "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
@@ -137,12 +143,14 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
     "Enable optimized extended query protocol in Ysql Connection Manager. "
     "If set to false, extended query protocol handling is fully correct but unoptimized.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_deallocate_if_invalid_prep_stmt, true,
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_prep_stmt_close, true,
     "When enabled, the YSQL Connection Manager deallocates a prepared statement "
     "upon receiving a Close message if the statement exists on the backend "
     "but is marked invalid. If flag is disabled then receiving CLOSE packet is a no-operation "
     "from connection manager and can cause errors. ysql_conn_mgr_optimized_extended_query_protocol "
     "needs to be enabled to enable this flag.");
+
+DEPRECATE_FLAG(bool, ysql_conn_mgr_deallocate_if_invalid_prep_stmt, "04_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, true,
     "Enable the use of the dynamic multi-route pooling. "
@@ -211,7 +219,7 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 
-DEFINE_validator(ysql_conn_mgr_deallocate_if_invalid_prep_stmt,
+DEFINE_validator(ysql_conn_mgr_enable_prep_stmt_close,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
 
 namespace yb {

@@ -7088,7 +7088,8 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					int			close_type;
 					const char *close_target;
-					bool yb_report_prep_stmt_closed = false;
+					bool		yb_report_prep_stmt_closed = false;
+					bool		yb_skip_close_complete = false;
 
 					forbidden_in_wal_sender(firstchar);
 
@@ -7132,6 +7133,21 @@ PostgresMain(const char *dbname, const char *username)
 									break;	/* YB: No-op only return CloseComplete. */
 								yb_switch_fallthrough();
 							}
+						case 'F':
+							/* YB: ForceClose, used by ConnMgr only */
+							if (YbIsClientYsqlConnMgr())
+							{
+								if (close_target[0] == '\0')
+									ereport(ERROR,
+											(errcode(ERRCODE_PROTOCOL_VIOLATION),
+											 errmsg("ForceClose of unnamed prep statement is not supported")));
+
+								DropPreparedStatement(close_target, false);
+								yb_report_prep_stmt_closed = true;
+								yb_skip_close_complete = true;
+								break;
+							}
+							yb_switch_fallthrough();
 						default:
 							ereport(ERROR,
 									(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -7142,10 +7158,16 @@ PostgresMain(const char *dbname, const char *username)
 
 					if (whereToSendOutput == DestRemote)
 					{
+						/*
+						 * YB: With Conn mgr, send name of deallocate prep
+						 * stmt if needed. We also skip CloseComplete for a
+						 * ForceClose
+						 */
 						if (yb_report_prep_stmt_closed)
 							pq_puttextmessage('5', close_target);
-						pq_putemptymessage('3');	/* CloseComplete */
-					} /* YB: With Conn mgr, send name of deallocated prep stmt */
+						if (!yb_skip_close_complete)
+							pq_putemptymessage('3');	/* CloseComplete */
+					}
 				}
 				break;
 

@@ -25,7 +25,9 @@ import java.sql.Statement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
@@ -60,7 +62,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
   private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
-  private static boolean ysql_conn_mgr_deallocate_if_invalid_prep_stmt = true;
+  private static boolean ysql_conn_mgr_enable_prep_stmt_close = true;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -82,8 +84,8 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
     builder.addCommonTServerFlag("ysql_conn_mgr_optimized_extended_query_protocol",
       Boolean.toString(ysql_conn_mgr_optimized_extended_query_protocol));
-    builder.addCommonTServerFlag("ysql_conn_mgr_deallocate_if_invalid_prep_stmt",
-      Boolean.toString(ysql_conn_mgr_deallocate_if_invalid_prep_stmt));
+    builder.addCommonTServerFlag("ysql_conn_mgr_enable_prep_stmt_close",
+      Boolean.toString(ysql_conn_mgr_enable_prep_stmt_close));
   }
 
   @Override
@@ -122,14 +124,12 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void restartClusterWithAdditionalFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
-    Map<String, String> tserverFlags = getTServerFlags();
-    Map<String, String> masterFlags = getMasterFlags();
-    tserverFlags.putAll(additionalTserverFlags);
-    masterFlags.putAll(additionalMasterFlags);
-
     destroyMiniCluster();
     waitForProperShutdown();
-    createMiniCluster(masterFlags, tserverFlags);
+    createMiniCluster(-1, -1, builder -> {
+      builder.addMasterFlags(additionalMasterFlags);
+      builder.addCommonTServerFlags(additionalTserverFlags);
+    });
     waitForDatabaseToStart();
   }
 
@@ -182,7 +182,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     ysql_conn_mgr_optimized_extended_query_protocol = optimized_extended_query_protocol;
     // ysql_conn_mgr_deallocate_prepared_statements can only be enabled if
     // optimized_extended_query_protocol is enabled.
-    ysql_conn_mgr_deallocate_if_invalid_prep_stmt = optimized_extended_query_protocol;
+    ysql_conn_mgr_enable_prep_stmt_close = optimized_extended_query_protocol;
     restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 
@@ -669,5 +669,26 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         TestUtils.findBinary("yb-ts-cli"), "--server_address", server.toString(),
         "set_flag", flag, value);
     ProcessUtil.runProcess(args, 60 /* timeoutSeconds */);
+  }
+
+  protected static long getRssForPid(int pid) throws Exception {
+    Process process = Runtime.getRuntime().exec(
+        String.format("ps -p %d -o rss=", pid));
+    try (Scanner scanner = new Scanner(process.getInputStream())) {
+      return scanner.nextLong();
+    }
+  }
+
+  protected static int getOdysseyPid() throws Exception {
+    Process p = Runtime.getRuntime().exec(
+        new String[]{"/bin/sh", "-c", "pgrep -f odyssey | head -1"});
+    try (BufferedReader reader =
+             new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+      String line = reader.readLine();
+      if (line == null || line.trim().isEmpty()) {
+        throw new RuntimeException("Could not find Odyssey process via pgrep");
+      }
+      return Integer.parseInt(line.trim());
+    }
   }
 }

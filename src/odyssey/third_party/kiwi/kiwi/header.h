@@ -42,6 +42,8 @@ typedef enum {
 	/* YB */
 	/* Perform no-op on server, instructing server to return CloseComplete */
 	YB_KIWI_FE_CLOSE_ONLY_CLOSE_COMPLETE = 's',
+	/* YB: Unconditionally drop prepared statement (LRU eviction) */
+	YB_KIWI_FE_CLOSE_FORCE = 'F',
 } kiwi_fe_close_type_t;
 
 typedef enum {

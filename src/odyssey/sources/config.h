@@ -91,6 +91,7 @@ struct od_config {
 	int yb_max_pools;
 	int yb_deallocate_if_invalid_prep_stmt;
 	int TEST_yb_auth_delay_ms;
+	_Atomic int yb_max_prepared_statements;
 };
 
 void od_config_init(od_config_t *);
