@@ -88,7 +88,7 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
     index_(index + 1) {
 
   // Start RPC server on loopback.
-  FLAGS_rpc_server_allow_ephemeral_ports = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_server_allow_ephemeral_ports) = true;
   const std::string rpc_host = server::TEST_RpcAddress(index_, server::Private::kTrue);
   opts_.rpc_opts.rpc_bind_addresses = HostPortToString(rpc_host, rpc_port);
   // A.B.C.D.xip.io resolves to A.B.C.D so it is very useful for testing.
