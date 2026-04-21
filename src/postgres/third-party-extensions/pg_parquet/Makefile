@@ -85,7 +85,7 @@ pg_parquet: cargo-pgrx-exists
 	   cargo build --release --features pg17
 
 install: cargo-pgrx-exists
-	   # YB: Skip pg_parquet install if stamp file is newer than all source files.
+	   # YB: Skip pg_parquet install if no source files changed since last install.
 	   if [ -f "$(PG_PARQUET_STAMP)" ]; then \
 		   NEWEST_SRC=$$(find src ../pgrx Cargo.toml Cargo.lock Makefile -newer "$(PG_PARQUET_STAMP)" \
 			   \( -name '*.rs' -o -name '*.toml' -o -name '*.sql' -o -name 'Cargo.lock' -o -name 'Makefile' \) \
