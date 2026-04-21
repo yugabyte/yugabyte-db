@@ -726,7 +726,7 @@ class AtomicGauge : public Gauge {
       : Gauge(std::move(proto)), value_(initial_value) {}
 
   T value() const {
-    return static_cast<T>(value_.Load(kMemOrderRelease));
+    return static_cast<T>(value_.Load(kMemOrderNoBarrier));
   }
   virtual void set_value(const T& value) {
     value_.Store(static_cast<int64_t>(value), kMemOrderNoBarrier);
