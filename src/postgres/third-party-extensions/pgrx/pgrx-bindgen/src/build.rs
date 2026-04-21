@@ -472,7 +472,7 @@ fn extract_oids(code: &syn::File) -> BTreeMap<syn::Ident, Box<syn::Expr>> {
 }
 
 fn is_builtin_oid(name: &str) -> bool {
-    name.ends_with("OID") && name != "HEAP_HASOID" && name != "YB_LAST_USED_OID"
+    name.ends_with("OID") && !matches!(name, "HEAP_HASOID" | "YB_LAST_USED_OID")
         || name.ends_with("RelationId")
         || name == "TemplateDbOid"
 }
