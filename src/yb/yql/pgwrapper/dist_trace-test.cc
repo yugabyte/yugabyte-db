@@ -313,6 +313,24 @@ class OtlpHttpCollector {
     return Status::OK();
   }
 
+  // Waits until the trace contains at least expected_count spans with the given op name.
+  Status VerifySpanCountInTrace(
+      std::string_view trace_id, std::string_view span_op_name, size_t expected_count) const
+      EXCLUDES(mutex_) {
+    return WaitFor(
+        [this, trace_id, span_op_name, expected_count]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          auto it = traces_.find(std::string(trace_id));
+          if (it == traces_.end()) return false;
+          auto count = std::count_if(
+              it->second.spans.begin(), it->second.spans.end(),
+              [span_op_name](const Span& s) { return s.op_name == span_op_name; });
+          return static_cast<size_t>(count) >= expected_count;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 30ms,
+        Format("$0 '$1' span(s) in trace '$2'", expected_count, span_op_name, trace_id));
+  }
+
  private:
   void HandleTraceRequest(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
     if (req.request_method != "POST") {
@@ -585,6 +603,10 @@ class DistTraceTest : public LibPqTestBase {
 
     RETURN_NOT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
     return Status::OK();
+  }
+
+  Status VerifySpiSpanCount(const std::string& trace_id, size_t expected_count) {
+    return collector_.VerifySpanCountInTrace(trace_id, "spi.query", expected_count);
   }
 
   std::vector<std::string>& CaptureWarnings() {
@@ -1105,6 +1127,78 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolGuc) {
            {SpanType::kExtSync, 1},
            {SpanType::kCommit, 1}}),
   }));
+}
+
+// --- SPI tracing tests ---
+// Verifies that SQL executed via the Server Programming Interface (SPI) - the
+// internal API used by PL/pgSQL functions and triggers - produces "spi.query"
+// child spans when distributed tracing is active.
+
+// Basic check: a PL/pgSQL function with a single SPI query produces one
+// "spi.query" span under the root trace.
+TEST_F(DistTraceTest, TestSpiTracingBasic) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trace_basic() RETURNS integer AS $$"
+      " DECLARE v integer;"
+      " BEGIN"
+      "   SELECT 1 INTO v;"
+      "   RETURN v;"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT yb_spi_trace_basic()"));
+
+  ASSERT_OK(collector_.VerifyTraceContainsOpName(tp.trace_id, "spi.query"));
+}
+
+// Verifies that a function making N SPI calls produces at least N "spi.query" spans.
+TEST_F(DistTraceTest, TestSpiTracingMultipleQueriesProduceMultipleSpans) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trace_multi() RETURNS void AS $$"
+      " DECLARE v integer;"
+      " BEGIN"
+      "   SELECT 1 INTO v;"
+      "   SELECT 2 INTO v;"
+      "   SELECT 3 INTO v;"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT yb_spi_trace_multi()"));
+
+  ASSERT_OK(VerifySpiSpanCount(tp.trace_id, 3));
+}
+
+// Verifies that nested PL/pgSQL functions each produce "spi.query" spans,
+// all under the same root trace.
+TEST_F(DistTraceTest, TestSpiTracingNestedFunctions) {
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trace_inner() RETURNS integer AS $$"
+      " DECLARE v integer;"
+      " BEGIN"
+      "   SELECT 42 INTO v;"
+      "   RETURN v;"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+  ASSERT_OK(conn_->Execute(
+      "CREATE OR REPLACE FUNCTION yb_spi_trace_outer() RETURNS integer AS $$"
+      " DECLARE v integer;"
+      " BEGIN"
+      "   SELECT yb_spi_trace_inner() INTO v;"
+      "   RETURN v;"
+      " END;"
+      " $$ LANGUAGE plpgsql"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT yb_spi_trace_outer()"));
+
+  // Outer function: 1 spi.query for "SELECT yb_spi_trace_inner() INTO v"
+  // Inner function: 1 spi.query for "SELECT 42 INTO v"
+  ASSERT_OK(VerifySpiSpanCount(tp.trace_id, 2));
 }
 
 }  // namespace yb::pgwrapper

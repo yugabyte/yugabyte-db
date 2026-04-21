@@ -37,6 +37,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_dist_trace.h"
 
 
 /*
@@ -2255,7 +2256,9 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 	/*
 	 * Parse the request string into a list of raw parse trees.
 	 */
+	YB_DIST_TRACE_START_SPAN("parse");
 	raw_parsetree_list = raw_parser(src, plan->parse_mode);
+	YB_DIST_TRACE_END_SPAN();
 
 	/*
 	 * Do parse analysis and rule rewrite for each raw parsetree, storing the
@@ -2363,7 +2366,9 @@ _SPI_prepare_oneshot_plan(const char *src, SPIPlanPtr plan)
 	/*
 	 * Parse the request string into a list of raw parse trees.
 	 */
+	YB_DIST_TRACE_START_SPAN("parse");
 	raw_parsetree_list = raw_parser(src, plan->parse_mode);
+	YB_DIST_TRACE_END_SPAN();
 
 	/*
 	 * Construct plancache entries, but don't do parse analysis yet.
@@ -2446,6 +2451,8 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 	spierrcontext.arg = &spicallbackarg;
 	spierrcontext.previous = error_context_stack;
 	error_context_stack = &spierrcontext;
+
+	YB_DIST_TRACE_START_SPAN("spi.query");
 
 	/*
 	 * We support four distinct snapshot management behaviors:
@@ -2599,8 +2606,10 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 		 * Replan if needed, and increment plan refcount.  If it's a saved
 		 * plan, the refcount must be backed by the plan_owner.
 		 */
+		YB_DIST_TRACE_START_SPAN("plan");
 		cplan = GetCachedPlan(plansource, options->params,
 							  plan_owner, _SPI_current->queryEnv);
+		YB_DIST_TRACE_END_SPAN();
 
 		stmt_list = cplan->stmt_list;
 
@@ -2848,6 +2857,9 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 
 fail:
 
+	/* end of the spi.query span */
+	YB_DIST_TRACE_END_SPAN();
+
 	/* Pop the snapshot off the stack if we pushed one */
 	if (pushed_active_snap)
 		PopActiveSnapshot();
@@ -2961,6 +2973,8 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 	else
 		eflags = EXEC_FLAG_SKIP_TRIGGERS;
 
+	YB_DIST_TRACE_START_SPAN("execute");
+
 	ExecutorStart(queryDesc, eflags);
 
 	ExecutorRun(queryDesc, ForwardScanDirection, tcount, true);
@@ -2976,6 +2990,9 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 
 	ExecutorFinish(queryDesc);
 	ExecutorEnd(queryDesc);
+
+	/* end of the execute span */
+	YB_DIST_TRACE_END_SPAN();
 	/* FreeQueryDesc is done by the caller */
 
 #ifdef SPI_EXECUTOR_STATS
