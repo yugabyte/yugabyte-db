@@ -14,27 +14,27 @@ type: docs
 
 Enterprises need stable and consistent performance during various system changes on YugabyteDB databases. One of the major causes of response time variability is query plan instability. Various factors can unexpectedly change the execution plan of queries. For example:
 
-- Change in optimizer statistics (manually or automatically)
-- Changes to the query planner configuration parameters
-- Changes to the schema, such as adding a new index
-- Changes to the bind variables used in the query
+- Change in optimizer statistics (manually or automatically).
+- Changes to the query planner configuration parameters.
+- Changes to the schema, such as adding a new index.
+- Changes to the bind variables used in the query.
 - Minor version or major version upgrades to the database version. 
 
 The query plan manager (QPM) serves two main objectives:
 
-- Plan Stability. QPM prevents plan regression and improves plan stability when changes occur in the system.
-- Plan Adaptability. QPM automatically detects new minimum-cost plans and controls when new plans may be used and adapts to the changes.
+- Plan stability. QPM prevents plan regression and improves plan stability when changes occur in the system.
+- Plan adaptability. QPM automatically detects new minimum-cost plans and controls when new plans may be used and adapts to the changes.
 
-Because plans can change over time (you turn on the cost-based optimizer, for example), there is a chance a new plan for a query degrades performance. The yb_pg_stat_plans view captures all unique plans for a query so that you can look back and see when a plan changed. The entry for the old plan will have a set of hints that can generate that plan. You can then insert those hints into the hint plan table and get the old better-performing plan back.
+Because plans can change over time (you turn on the cost-based optimizer, for example), there is a chance a new plan for a query degrades performance. QPM provides views that capture all unique plans for a query so that you can look back and see when a plan changed. The entry for the old plan will have a set of hints that can generate the same plan. You can then insert those hints into the hint plan table and get the old better-performing plan back.
 
 ## Using QPM
 
-QPM is enabled by default, and you view QPM results using two views:
+QPM is enabled by default, and you view QPM data using two views:
 
 - [yb_pg_stat_plans](#yb-pg-stat-plans)
 - [yb_pg_stat_plans_insights](#yb-pg-stat-plans-insights)
 
-If you notice a query is performing poorly, you can run [EXPLAIN](../../../../api/ysql/the-sql-language/statements/perf_explain/) to get its current query ID and/or plan ID, and then use this ID to check the yb_pg_stat_plans view to see if this is a new plan or if its execution time has recently increased, helping you detect plan regressions. For example:
+If you notice a query is performing poorly, you can run [EXPLAIN](../../../../api/ysql/the-sql-language/statements/perf_explain/) to get its current query ID and/or plan ID, and then use this ID to look up the query in the yb_pg_stat_plans view to see if this is a new plan, or if its execution time has recently increased. To have EXPLAIN include the query and plan IDs, use the QUEYID and PLANID options. For example:
 
 ```sql
 EXPLAIN (queryid on, planid on) SELECT count(*) FROM t0, t1 WHERE a0=a1;
@@ -143,7 +143,9 @@ yugabyte=# explain (queryid on, planid on) select count(*) from t1, t0 where a1=
 
 ### yb_pg_stat_plans
 
-The yb_pg_stat_plans view serves as the primary method for accessing QPM data. This view essentially wraps the `yb_pg_stat_plans_get_all_entries()` function. To illustrate, retrieving all QPM data can be achieved with the following query:
+The yb_pg_stat_plans view serves as the primary method for accessing QPM data.
+
+You can retrieve all QPM data using the following query:
 
 ```sql
 SELECT * FROM yb_pg_stat_plans;
@@ -205,14 +207,14 @@ The columns of the yb_pg_stat_plans view are described in the following table.
 | hints | These hints, if applied during query planning, would lead to the same plan being used. |
 | plan | Text representation of the plan. |
 
-`yb_pg_stat_plans` does not track query text. You can retrieve query text by joining with pg_stat_statements on queryid. For example:
+yb_pg_stat_plans does not store query text. You can retrieve query text by joining with pg_stat_statements on `queryid`. For example:
 
 ```sql
 SELECT CASE WHEN ss.query IS NOT NULL THEN ss.query ELSE '<NULL>' END as query_string, hints, … 
 FROM yb_pg_stat_plans qpm LEFT JOIN pg_stat_statements ss ON qpm.queryid=ss.queryid;
 ```
 
-yb_pg_stat_plans is pre-configured, and enabled by default. The following YSQL configuration parameters control yb_pg_stat_plans:
+yb_pg_stat_plans is pre-configured, and enabled by default. The following [YSQL configuration parameters](../../../../reference/configuration/yb-tserver/#ysql-configuration-parameters) control yb_pg_stat_plans:
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |
