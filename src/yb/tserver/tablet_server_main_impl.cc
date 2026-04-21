@@ -314,7 +314,8 @@ int TabletServerMain(int argc, char** argv) {
         tablet_server_options->fs_opts.data_paths.front() + "/pg_data",
         server->GetSharedMemoryFd());
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit());
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(
+        docdb::DocPgInit(yb::pgwrapper::PgWrapper::GetPostgresExecutablePath()));
     auto& pg_process_conf = *pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options->master_addresses_flag;
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetSslConf(server, &pg_process_conf));

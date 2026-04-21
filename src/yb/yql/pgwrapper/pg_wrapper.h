@@ -86,6 +86,9 @@ class PgWrapper : public ProcessWrapper {
       const std::string& master_addresses, const std::string& tmp_dir_base, int tserver_shm_fd);
 
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
+
+  static std::string GetPostgresExecutablePath();
+
  private:
   // Calls PostgreSQL's initdb program for initial database initialization.
   // versioned_data_dir - if set, just do local initdb to initialize a PostgreSQL data directory.
@@ -96,7 +99,6 @@ class PgWrapper : public ProcessWrapper {
   // Creates a directory name "<conf_.data_dir>_<version>".
   std::string MakeVersionedDataDir(int32_t version);
 
-  static std::string GetPostgresExecutablePath();
   static std::string GetPostgresSuppressionsPath();
   static std::string GetPostgresLibPath();
   static std::string GetPostgresThirdPartyLibPath();

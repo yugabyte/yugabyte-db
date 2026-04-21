@@ -49,9 +49,15 @@
 #include "funcapi.h"
 #include "pg_yb_utils.h"
 
-YbgStatus YbgInit()
+YbgStatus
+YbgInit(const char *postgres_executable_path)
 {
 	PG_SETUP_ERROR_REPORTING();
+
+	if (postgres_executable_path && postgres_executable_path[0] != '\0')
+	{
+		strlcpy(my_exec_path, postgres_executable_path, MAXPGPATH);
+	}
 
 	SetDatabaseEncoding(PG_UTF8);
 

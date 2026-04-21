@@ -71,7 +71,7 @@ YbgStatus YbgResetMemoryContext();
 
 YbgStatus YbgDeleteMemoryContext();
 
-YbgStatus YbgInit();
+YbgStatus YbgInit(const char *postgres_executable_path);
 
 //-----------------------------------------------------------------------------
 // Types
