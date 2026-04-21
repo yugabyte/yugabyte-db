@@ -5,10 +5,11 @@
 # cargo and pgrx build tools trigger false positive leak reports from Rust's
 # allocator and build-time codegen that block the build in ASAN-enabled environments.
 #
-# NOTE: CFLAGS is explicitly overridden with YB_GW_HOST_CFLAGS to prevent the
-# postgres build CFLAGS (which contain -Werror and nonexistent include paths like
-# PCRE_INCLUDE_ROOT_DIR-NOTFOUND) from leaking into Rust crate C compilation
-# (e.g. the ring crate) and causing build failures.
+# NOTE: Inherited env vars (CFLAGS, CXXFLAGS, LDFLAGS, etc.) from the parent postgres
+# build are unset via env -u before cargo invocations. These vars contain -Werror,
+# nonexistent include paths (PCRE_INCLUDE_ROOT_DIR-NOTFOUND), and other flags that
+# break Rust *-sys crate compilation (e.g. ring) and cause unnecessary cargo cache
+# invalidation on incremental builds.
 
 .PHONY: all install clean cargo-pgrx-exists
 
@@ -76,7 +77,7 @@ cargo-pgrx-exists:
 	# Creating empty data directory `data-15` to skip running 'initdb'
 	export PATH="$(CARGO_DIR):$$PATH" && \
 	cd $(PGRX_DIR) && \
-	env \
+	env -u CFLAGS -u CXXFLAGS -u LDFLAGS -u LDFLAGS_EX -u CPPFLAGS -u PKG_CONFIG_PATH \
 		$(if $(CC),CC=$(CC),) \
 		$(if $(CXX),CXX=$(CXX),) \
 		$(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
@@ -96,7 +97,7 @@ cargo-pgrx-exists:
 install: cargo-pgrx-exists
 	# Using local cargo-pgrx binary to install pg_documentdb_gw_host extension.
 	export PATH="$(CARGO_DIR):$$PATH" && \
-	env \
+	env -u CFLAGS -u CXXFLAGS -u LDFLAGS -u LDFLAGS_EX -u CPPFLAGS -u PKG_CONFIG_PATH \
 		$(if $(CC),CC=$(CC),) \
 		$(if $(CXX),CXX=$(CXX),) \
 		$(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
