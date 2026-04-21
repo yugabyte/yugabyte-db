@@ -862,6 +862,10 @@ macro(configure_macos_sdk)
   # If the build type is e.g. "clang15", we consider this not to be Apple Clang but custom-built
   # LLVM on macOS.
   if(APPLE AND NOT IS_APPLE_CLANG)
+    if (NOT CMAKE_OSX_SYSROOT)
+      execute_process(COMMAND xcrun --sdk macosx --show-sdk-path OUTPUT_VARIABLE CMAKE_OSX_SYSROOT
+                      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    endif()
     ADD_LINKER_FLAGS("-L${CMAKE_OSX_SYSROOT}/usr/lib")
   endif()
 endmacro()
