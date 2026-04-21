@@ -261,6 +261,13 @@ TAG_FLAG(catalog_manager_inject_latency_in_delete_table_ms, hidden);
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
+DECLARE_bool(enable_qos);
+DEFINE_RUNTIME_int32(qos_max_db_count, 0,
+    "Maximum number of YSQL databases allowed per cluster when QoS is enabled "
+    "(enable_qos=true). CREATE DATABASE is rejected when the non-template database "
+    "count would exceed this limit. Template databases (template0, template1) are "
+    "excluded from the count. Set to 0 to disable the limit.");
+
 DEFINE_RUNTIME_int32(replication_factor, 3,
     "Default number of replicas for tables that do not have the num_replicas set. "
     "Note: Changing this at runtime will only affect newly created tables.");
@@ -9209,6 +9216,34 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // case of concurrent CREATE DATABASE requests in different sessions.
     ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
     RETURN_NOT_OK(check_ns_errors(ns, false /* by_id */));
+
+    // Enforce the QoS database count limit for YSQL databases.
+    if (FLAGS_enable_qos && FLAGS_qos_max_db_count > 0 &&
+        db_type == YQL_DATABASE_PGSQL && !is_ysql_major_upgrade_in_progress) {
+      int non_template_count = 0;
+      for (const auto& [name, ns_info] : namespace_names_mapper_[YQL_DATABASE_PGSQL]) {
+        if (name == "template0" || name == "template1") {
+          continue;
+        }
+        if (ns_info->id() == kPgSequencesDataNamespaceId) {
+          continue;
+        }
+        auto state = ns_info->state();
+        if (state != SysNamespaceEntryPB::DELETED &&
+            state != SysNamespaceEntryPB::FAILED) {
+          ++non_template_count;
+        }
+      }
+      if (non_template_count >= FLAGS_qos_max_db_count) {
+        Status s = STATUS_FORMAT(
+            InvalidArgument,
+            "Too many databases: $0 non-template databases already exist, "
+            "limit is $1 (qos_max_db_count). Drop unused databases or "
+            "increase the limit.",
+            non_template_count, FLAGS_qos_max_db_count);
+        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+      }
+    }
 
     // Add the new namespace.
 
