@@ -151,7 +151,7 @@ Client connection behavior and server-side policy are handled separately as foll
 
 ### Encryption in transit
 
-YSQL Connection Manager can be configured for universes with or without encryption in transit enabled. The mode is determined by the settings in the Connection Manager configuration file (which the Connection Manager process reads at startup). You can review the default settings in the [template configuration file](https://github.com/yugabyte/yugabyte-db/blob/2025.2.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf).
+YSQL Connection Manager can be enabled universes with or without encryption in transit enabled. Connection Manager automatically determines which mode is required and updates the configuration file depending on whether or not encryption is enabled in the cluster. You can review the default settings in the [template configuration file](https://github.com/yugabyte/yugabyte-db/blob/2025.1.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf).
 
 To enable encrypted connections (TLS/SSL) between your client application and YugabyteDB via YSQL Connection Manager, enable client-to-server encryption in transit on your universe by configuring the following [yb-tserver](../../../reference/configuration/yb-tserver/) flags:
 
