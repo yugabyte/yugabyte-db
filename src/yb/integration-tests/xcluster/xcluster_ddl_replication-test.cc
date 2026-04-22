@@ -4729,9 +4729,62 @@ TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
   ASSERT_TRUE(found_ddl_queue_poller) << "ddl_queue poller not found in TServer xCluster stats";
 }
 
-TEST_F(XClusterDDLReplicationTest, VectorIndex) {
+TEST_F(XClusterDDLReplicationTest, VectorIndexCreatedBeforeDrSetup) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
-  ASSERT_OK(SetUpClusters());
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.is_colocated = true;
+  params.start_yb_controller_servers = true;
+  ASSERT_OK(SetUpClusters(params));
+
+  ASSERT_OK(producer_conn_->Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_predr (id serial PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_predr (embedding) VALUES "
+      "('[1.0, 2.0, 3.0]'), ('[4.0, 5.0, 6.0]'), ('[7.0, 8.0, 9.0]')"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_predr_idx ON vec_predr USING ybhnsw (embedding vector_l2_ops)"));
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto c_explain = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF) SELECT id FROM vec_predr "
+      "ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 3"));
+  ASSERT_STR_CONTAINS(c_explain, "vec_predr_idx");
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_predr (embedding) VALUES ('[0.1, 0.2, 0.3]')"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_predr")), 4);
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_predr")), 4);
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_predr ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 3"));
+  auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_predr ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 3"));
+  ASSERT_EQ(p_search, c_search);
+}
+
+class XClusterDDLReplicationVectorIndexParamTest : public XClusterDDLReplicationTest,
+                                                 public ::testing::WithParamInterface<bool> {};
+
+INSTANTIATE_TEST_SUITE_P(
+    ColocationMode, XClusterDDLReplicationVectorIndexParamTest, ::testing::Values(false, true));
+
+TEST_P(XClusterDDLReplicationVectorIndexParamTest, VectorIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  const bool use_colocated_db = GetParam();
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.is_colocated = use_colocated_db;
+  ASSERT_OK(SetUpClusters(params));
   ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));

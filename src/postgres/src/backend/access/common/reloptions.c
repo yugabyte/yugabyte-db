@@ -1014,6 +1014,26 @@ allocate_reloption(bits32 kinds, int type, const char *name, const char *desc,
 }
 
 /*
+ * YB: register "colocation_id" on a custom AM's relopt_kind so that
+ * ysql_dump output like WITH (colocation_id=...) parses on restore.
+ */
+void
+YbAddColocationIdReloption(bits32 kinds)
+{
+	yb_relopt_oid *newoption;
+
+	newoption = (yb_relopt_oid *) allocate_reloption(kinds, RELOPT_TYPE_OID,
+													 "colocation_id",
+													 "Colocation ID to distinguish a table within a colocation group. Used during backup/restore.",
+													 AccessExclusiveLock);
+	newoption->default_val = InvalidOid;
+	newoption->min = FirstNormalObjectId;
+	newoption->max = OID_MAX;
+
+	add_reloption((relopt_gen *) newoption);
+}
+
+/*
  * init_bool_reloption
  *		Allocate and initialize a new boolean reloption
  */

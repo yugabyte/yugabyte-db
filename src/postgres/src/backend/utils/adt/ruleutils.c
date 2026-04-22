@@ -1614,9 +1614,30 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			appendStringInfo(&buf, " NULLS NOT DISTINCT");
 
 		if (includeYbMetadata && IsYBRelation(indexrel) &&
-			!idxrec->indisprimary && !amroutine->yb_amiscopartitioned)
+			!idxrec->indisprimary)
 		{
-			YbAppendIndexReloptions(&buf, indexrelid, YbGetTableProperties(indexrel));
+			YbcTableProperties props = YbGetTableProperties(indexrel);
+
+			/*
+			 * Copartitioned AMs (e.g. ybhnsw) always have is_colocated=true
+			 * on the index even when the base table isn't colocated via DB
+			 * or tablegroup. In that case, restore would reject
+			 * WITH (colocation_id=...) because DefineIndex gates it on the
+			 * base table's colocation. Suppress colocation_id here to match.
+			 */
+			if (amroutine->yb_amiscopartitioned)
+			{
+				Relation	baserel = table_open(indrelid, AccessShareLock);
+				bool		base_colocated =
+					IsYBRelation(baserel) &&
+					YbGetTableProperties(baserel)->is_colocated;
+
+				table_close(baserel, AccessShareLock);
+				if (!base_colocated)
+					props = NULL;
+			}
+
+			YbAppendIndexReloptions(&buf, indexrelid, props);
 		}
 
 		if (!IsYBRelation(indexrel))
@@ -1672,9 +1693,9 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 				appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS",
 								 indexrel->yb_table_properties->num_tablets);
 			}
-			else
+			else if (!amroutine->yb_amiscopartitioned)
 			{
-				/* For range-partitioned tables */
+				/* Skip range SPLIT for copartitioned AMs (e.g. ybhnsw); not valid on vector index. */
 				if (indexrel->yb_table_properties->num_tablets > 1)
 				{
 					const char *range_split_clause;
