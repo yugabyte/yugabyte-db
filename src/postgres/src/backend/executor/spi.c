@@ -2606,7 +2606,7 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 		 * Replan if needed, and increment plan refcount.  If it's a saved
 		 * plan, the refcount must be backed by the plan_owner.
 		 */
-		YB_DIST_TRACE_START_SPAN("plan");
+		YB_DIST_TRACE_START_SPAN("get_cached_plan");
 		cplan = GetCachedPlan(plansource, options->params,
 							  plan_owner, _SPI_current->queryEnv);
 		YB_DIST_TRACE_END_SPAN();
@@ -2857,7 +2857,7 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 
 fail:
 
-	/* end of the spi.query span */
+	/* YB: end of the spi.query span */
 	YB_DIST_TRACE_END_SPAN();
 
 	/* Pop the snapshot off the stack if we pushed one */
@@ -2991,7 +2991,7 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 	ExecutorFinish(queryDesc);
 	ExecutorEnd(queryDesc);
 
-	/* end of the execute span */
+	/* YB: end of the execute span */
 	YB_DIST_TRACE_END_SPAN();
 	/* FreeQueryDesc is done by the caller */
 
