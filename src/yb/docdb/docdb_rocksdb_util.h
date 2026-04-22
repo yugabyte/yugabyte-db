@@ -113,7 +113,8 @@ BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
     const KeyBounds* docdb_key_bounds,
     const Slice* iterate_upper_bound,
     rocksdb::CacheRestartBlockKeys cache_restart_block_keys,
-    rocksdb::Statistics* statistics = nullptr);
+    rocksdb::Statistics* statistics = nullptr,
+    bool use_ht_file_filter = true);
 
 std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> CreateRocksDBPriorityThreadPoolMetrics(
     scoped_refptr<yb::MetricEntity> entity);

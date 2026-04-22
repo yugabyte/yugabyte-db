@@ -27,6 +27,7 @@ struct ReadOperationData {
   CoarseTimePoint deadline = CoarseTimePoint::max();
   ReadHybridTime read_time = ReadHybridTime::Max();
   DocDBStatistics* statistics = nullptr;
+  bool use_ht_file_filter = true;
 
   // Write id to use when encoding the read time for MVCC filtering.
   // Defaults to kMaxWriteId, which means "see all writes at this HybridTime".
