@@ -936,7 +936,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
         *output
             << "<h4 style=\"color:" << kYBOrange
             << "\"><i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>Cluster Load "
-               "is not Idle</h4>\n";
+               "Balancer is not Idle</h4>\n";
       }
     }
   }
