@@ -2993,6 +2993,7 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount)
 
 	/* YB: end of the execute span */
 	YB_DIST_TRACE_END_SPAN();
+
 	/* FreeQueryDesc is done by the caller */
 
 #ifdef SPI_EXECUTOR_STATS
