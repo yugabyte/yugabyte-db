@@ -193,13 +193,11 @@ def _cpplint_filter_arg(severity_rules: dict) -> str:
     # Keys in .lint are regex patterns matched against cpplint rule names (e.g.
     # "(^build/c[+][+]11$)"); strip the regex wrapping and unescape single-char classes so we
     # can pass bare rule names (e.g. "build/c++11") to cpplint's --filter flag.
-    disabled = []
-    for rule, sev in severity_rules.items():
-        if sev != "disabled":
-            continue
-        name = rule.strip("()^$")
-        name = re.sub(r"\[(.)\]", r"\1", name)
-        disabled.append(name)
+    disabled = [
+        re.sub(r"\[(.)\]", r"\1", rule.strip("()^$"))
+        for rule, sev in severity_rules.items()
+        if sev == "disabled"
+    ]
     return ",".join(f"-{d}" for d in disabled) if disabled else ""
 
 
