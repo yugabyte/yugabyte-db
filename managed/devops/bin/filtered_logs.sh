@@ -53,28 +53,32 @@ find "$log_dir" -type f -print0 | xargs -0 ls -t | grep $log_base_name | while r
 
   CAT="cat"
   if [[ $file_path == *.gz ]]; then
-    CAT="zcat"
+    if command -v pigz > /dev/null 2>&1; then
+      CAT="pigz -dc"
+    else
+      CAT="zcat"
+    fi
   fi
   $CAT "$file_path" | \
-      awk -v min_time=$min_time -v max_time=$max_time -v regex="$grep_regex" 'BEGIN{IGNORECASE=1}
+  grep -E "$grep_regex" | grep -Eiv "$script_name_regex" | \
+      awk -v min_time=$min_time -v max_time=$max_time 'BEGIN{IGNORECASE=1}
             /^YW [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T/{
-              if(matches && valid_time)
+              if(valid_time)
                 print buf
-              buf=matches=valid_time=null;
-              time=substr($2,0,19);
+              buf=""
+              valid_time=0
+              time=substr($2,1,19);
               if(time >= min_time && time <= max_time){
                 valid_time=1;
               }
             }
             valid_time{
-              if ($0 ~ regex){matches=1}
               buf = buf ? buf ORS $0 : $0
             }
             END {
-              if (matches && valid_time)
+              if (valid_time)
                 print buf;
             }' | \
-      grep -Eiv "$script_name_regex" | \
       tail -n "$lines_remaining" > "$grep_regex_file"
   cat "$grep_regex_file" "$output_file" > "$temp_file"
   mv "$temp_file" "$output_file"
