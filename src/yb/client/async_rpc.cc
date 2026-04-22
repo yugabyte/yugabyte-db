@@ -797,9 +797,15 @@ Status WriteRpc::SwapResponses(RefCntBuffer data_holder) {
     }
   }
 
-  return CheckResponseCount(
+  auto status = CheckResponseCount(
       kWrite, redis_idx, resp_.redis_response_batch().size(), ql_idx,
       resp_.ql_response_batch().size(), pgsql_idx, resp_.pgsql_response_batch().size());
+  if (!status.ok()) {
+    LOG_WITH_FUNC(DFATAL)
+        << "Response count mismatch, ops: " << AsString(ops_) << ", resp: " << AsString(resp_);
+  }
+
+  return status;
 }
 
 void WriteRpc::NotifyBatcher(const Status& status) {
