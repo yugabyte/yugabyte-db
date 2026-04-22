@@ -37,7 +37,7 @@
 #include <iomanip>
 #include <map>
 #include <memory>
-#include <regex>
+#include <regex>  // NOLINT(build/c++11)
 #include <sstream>
 #include <unordered_set>
 
