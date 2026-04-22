@@ -31,6 +31,8 @@
 //
 #pragma once
 
+#include <functional>
+
 #include "yb/tserver/remote_client_base.h"
 
 namespace yb {
@@ -91,9 +93,14 @@ class RemoteBootstrapClient : public RemoteClientBase {
   Status Finish() override;
 
   // Verify that the remote bootstrap was completed successfully by verifying that the ChangeConfig
-  // request was propagated.
+  // request was propagated. `is_cancelled`, if set, is polled each iteration; when it returns true
+  // the verification is abandoned and a `ShutdownInProgress` status is returned so the RBS flow
+  // can exit promptly (e.g. during tserver shutdown, where the leader may never promote this
+  // peer to VOTER because the peer is on its way down). Callers should treat
+  // `IsShutdownInProgress()` as an expected outcome distinct from a real timeout.
   Status VerifyChangeRoleSucceeded(
-      const std::shared_ptr<consensus::Consensus>& shared_consensus);
+      const std::shared_ptr<consensus::Consensus>& shared_consensus,
+      const std::function<bool()>& is_cancelled = {});
 
  private:
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestBeginEndSession);
