@@ -191,6 +191,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Completes shutdown process and waits for it's completeness.
   void CompleteShutdown();
 
+  rpc::ThreadPoolTag PoolTagForTablet(const tablet::TabletPtr& tablet);
+
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   rpc::ThreadPool* raft_notifications_pool() const {

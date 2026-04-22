@@ -24,6 +24,8 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.azure.core.http.rest.PagedIterable;
@@ -298,11 +300,12 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     S3Client client = mock(S3Client.class);
     doCallRealMethod()
         .when(mockAWSUtil)
-        .validateOnBucket(client, bucket, "", ImmutableList.of(ExtraPermissionToValidate.NULL));
+        .validateOnBucket(
+            client, bucket, "", ImmutableList.of(ExtraPermissionToValidate.NULL), false);
     assertThat(
         () ->
             mockAWSUtil.validateOnBucket(
-                client, bucket, "", ImmutableList.of(ExtraPermissionToValidate.NULL)),
+                client, bucket, "", ImmutableList.of(ExtraPermissionToValidate.NULL), false),
         thrown(
             PlatformServiceException.class,
             "Unsupported permission "
@@ -323,7 +326,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             client,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     UUID myUUID = UUID.randomUUID();
     String fileName = myUUID.toString() + ".txt";
@@ -387,7 +391,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             client,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     UUID myUUID = UUID.randomUUID();
     String fileName = myUUID.toString() + ".txt";
@@ -419,7 +424,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             client,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     S3Object object = mock(S3Object.class);
     ResponseInputStream<GetObjectResponse> inputStream = mock(ResponseInputStream.class);
@@ -473,7 +479,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             client,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     S3Object object = mock(S3Object.class);
     ResponseInputStream<GetObjectResponse> inputStream = mock(ResponseInputStream.class);
@@ -529,7 +536,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             client,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     S3Object object = mock(S3Object.class);
     ResponseInputStream<GetObjectResponse> inputStream = mock(ResponseInputStream.class);
@@ -664,7 +672,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             storage,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
   }
 
   private CustomerConfig createGcsConfig(String bucketName) {
@@ -719,7 +728,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             storage,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     Page<Blob> mockBlobPage = mock(Page.class);
     Iterable<Blob> mockIterable = mock(Iterable.class);
@@ -760,7 +770,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             storage,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     assertThat(
         () -> customerConfigValidator.validateConfig(config),
@@ -789,7 +800,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             storage,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     assertCloudConfigValidationReadFailure(incorrectData, fileName, config);
   }
@@ -812,7 +824,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             storage,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     Page<Blob> mockBlobPage = mock(Page.class);
     Iterable<Blob> mockIterable = mock(Iterable.class);
@@ -849,7 +862,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             storage,
             bucketName,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     Page<Blob> mockBlobPage = mock(Page.class);
     Iterable<Blob> mockIterable = mock(Iterable.class);
@@ -942,7 +956,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .validateOnBlobContainerClient(
             blobContainerClient,
             "",
-            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            false);
 
     when(blobClient.openInputStream()).thenReturn(blobIs);
 
@@ -1012,11 +1027,12 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     BlobContainerClient bcc = mock(BlobContainerClient.class);
     doCallRealMethod()
         .when(mockAZUtil)
-        .validateOnBlobContainerClient(bcc, "", ImmutableList.of(ExtraPermissionToValidate.NULL));
+        .validateOnBlobContainerClient(
+            bcc, "", ImmutableList.of(ExtraPermissionToValidate.NULL), false);
     assertThat(
         () ->
             mockAZUtil.validateOnBlobContainerClient(
-                bcc, "", ImmutableList.of(ExtraPermissionToValidate.NULL)),
+                bcc, "", ImmutableList.of(ExtraPermissionToValidate.NULL), false),
         thrown(
             PlatformServiceException.class,
             "Unsupported permission "
@@ -1117,6 +1133,151 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     } else {
       customerConfigValidator.validateConfig(config);
     }
+  }
+
+  @Test
+  public void
+      testValidateDataContent_Storage_S3PreflightCheckValidator_SkipDeleteForImmutableStorage()
+          throws IOException {
+    String bucketName = "test";
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "s3://" + bucketName);
+    data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
+    data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    data.put("IMMUTABLE STORAGE", true);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_S3, data);
+
+    S3Client client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
+
+    doCallRealMethod()
+        .when(mockAWSUtil)
+        .validateOnBucket(
+            client,
+            bucketName,
+            "",
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            true);
+
+    UUID myUUID = UUID.randomUUID();
+    String fileName = myUUID.toString() + ".txt";
+    when(mockAWSUtil.getRandomUUID()).thenReturn(myUUID);
+
+    S3Object objSummary = mock(S3Object.class);
+    when(objSummary.key()).thenReturn(fileName);
+    List<S3Object> objSummaryList = new ArrayList<>();
+    objSummaryList.add(objSummary);
+
+    ListObjectsV2Response mockObjectListing = mock(ListObjectsV2Response.class);
+    when(mockObjectListing.contents()).thenReturn(objSummaryList);
+    when(client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(mockObjectListing);
+
+    ResponseBytes<GetObjectResponse> mockResponseBytes = mock(ResponseBytes.class);
+    when(mockResponseBytes.asUtf8String()).thenReturn("dummy-text");
+    when(client.getObjectAsBytes(any(GetObjectRequest.class))).thenReturn(mockResponseBytes);
+
+    customerConfigValidator.validateConfig(config);
+
+    verify(client, times(0)).deleteObject(any(DeleteObjectRequest.class));
+  }
+
+  @Test
+  public void
+      testValidateDataContent_Storage_GCSPreflightCheckValidator_SkipDeleteForImmutableStorage() {
+    UUID myUUID = UUID.randomUUID();
+    String fileName = myUUID.toString() + ".txt";
+    when(mockGCPUtil.getRandomUUID()).thenReturn(myUUID);
+    String bucketName = "test";
+
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://" + bucketName);
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("IMMUTABLE STORAGE", true);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
+
+    Storage storage = ((StubbedCustomerConfigValidator) customerConfigValidator).gcpStorage;
+
+    when(storage.readAllBytes(bucketName, fileName)).thenReturn(CloudUtil.DUMMY_DATA.getBytes());
+    doCallRealMethod()
+        .when(mockGCPUtil)
+        .validateOnBucket(
+            storage,
+            bucketName,
+            "",
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            true);
+
+    Page<Blob> mockBlobPage = mock(Page.class);
+    Iterable<Blob> mockIterable = mock(Iterable.class);
+    List<Blob> blobList = new ArrayList<Blob>();
+    when(mockIterable.spliterator()).thenAnswer(invocation -> blobList.spliterator());
+    when(mockBlobPage.iterateAll()).thenReturn(mockIterable);
+    when(storage.list(eq(bucketName), any())).thenReturn(mockBlobPage);
+
+    Blob mockBlob = mock(Blob.class);
+    when(mockBlob.getName()).thenReturn(fileName);
+    blobList.add(mockBlob);
+
+    customerConfigValidator.validateConfig(config);
+
+    verify(storage, times(0)).delete(any(BlobId.class));
+  }
+
+  @Test
+  public void
+      testValidateDataContent_Storage_AZPreflightCheckValidator_SkipDeleteForImmutableStorage()
+          throws IOException {
+    UUID myUUID = UUID.randomUUID();
+    String fileName = myUUID.toString() + ".txt";
+    when(mockAZUtil.getRandomUUID()).thenReturn(myUUID);
+
+    String containerUrl = "https://storagetestazure.windows.net/container";
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, containerUrl);
+    data.put(AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME, "fakeToken");
+    data.put("IMMUTABLE STORAGE", true);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_AZURE, data);
+
+    BlobContainerClient blobContainerClient =
+        ((StubbedCustomerConfigValidator) customerConfigValidator).blobContainerClient;
+    BlobClient blobClient = mock(BlobClient.class);
+    BlobInputStream blobIs = mock(BlobInputStream.class);
+
+    when(blobContainerClient.getBlobClient(any())).thenReturn(blobClient);
+    doCallRealMethod()
+        .when(mockAZUtil)
+        .validateOnBlobContainerClient(
+            blobContainerClient,
+            "",
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST),
+            true);
+
+    when(blobClient.openInputStream()).thenReturn(blobIs);
+
+    doAnswer(
+            new Answer() {
+              @Override
+              public Object answer(InvocationOnMock invocation) {
+                Object[] args = invocation.getArguments();
+                byte[] data = (byte[]) args[0];
+                byte[] content = CloudUtil.DUMMY_DATA.getBytes();
+                System.arraycopy(content, 0, data, 0, content.length);
+                return null;
+              }
+            })
+        .when(blobIs)
+        .read(any());
+
+    PagedIterable<BlobItem> mockIterable = mock(PagedIterable.class);
+    when(blobContainerClient.listBlobs()).thenReturn(mockIterable);
+    ArrayList<BlobItem> listBlobItems = new ArrayList<BlobItem>();
+    BlobItem mockBlobItem = mock(BlobItem.class);
+    when(mockBlobItem.getName()).thenReturn(fileName);
+    when(mockIterable.spliterator()).thenAnswer(invocation -> listBlobItems.spliterator());
+    listBlobItems.add(mockBlobItem);
+
+    customerConfigValidator.validateConfig(config);
+
+    verify(blobClient, times(0)).delete();
   }
 
   @Parameters(method = "testValidateAlertsPreferencesEmailsParams")

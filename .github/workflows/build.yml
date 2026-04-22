@@ -99,20 +99,19 @@ jobs:
                 chown -R yugabyteci .
                 sudo -H -u yugabyteci bash -c "
                   set -euo pipefail
-                  export PATH=/usr/local/bin:\$HOME/arcanist/bin:\$HOME/yb-cpplint/cpplint:\$PATH
+                  export PATH=/usr/local/bin:\$HOME/yb-cpplint/cpplint:\$PATH
                   echo PATH: \$PATH
                   ( set +e; set -x
                     ls -l /usr/local/bin
                     which ninja
-                    which cmake
-                    which arc )
+                    which cmake )
                   df -H /
-                  echo ::group::Arc Lint
+                  echo ::group::Lint
                   # Base reference should not be set for non-PR actions.
                   if [[ -n \"${{ github.base_ref }}\" ]]; then
                     echo Base reference: ${{ github.base_ref }}
                     git fetch origin ${{ github.base_ref }}
-                    arc lint --never-apply-patches --rev origin/${{ github.base_ref }}
+                    ./build-support/lint.py --rev origin/${{ github.base_ref }}
                   else
                     echo No base reference: Skipping Lint Step
                   fi

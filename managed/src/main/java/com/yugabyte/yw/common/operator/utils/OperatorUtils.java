@@ -57,6 +57,8 @@ import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.ReleaseArtifact;
@@ -237,6 +239,16 @@ public class OperatorUtils {
   public String getCustomerUUID() throws Exception {
     Customer cust = getOperatorCustomer();
     return cust.getUuid().toString();
+  }
+
+  /**
+   * Returns the UUID of the local PlatformInstance when HA is configured, or empty if HA is not set
+   * up. Used to track which YBA instances have applied a resource to their K8s cluster.
+   */
+  public Optional<UUID> getLocalPlatformInstanceUuid() {
+    return HighAvailabilityConfig.get()
+        .flatMap(HighAvailabilityConfig::getLocal)
+        .map(PlatformInstance::getUuid);
   }
 
   public Universe getUniverseFromNameAndNamespace(
@@ -1020,13 +1032,14 @@ public class OperatorUtils {
       @Nullable String namespace,
       String key,
       ResourceTracker resourceTracker,
-      KubernetesResourceDetails owner) {
+      KubernetesResourceDetails owner,
+      UUID localInstanceUuid) {
     Secret secret = getSecret(name, namespace);
     if (secret == null) {
       log.warn("Secret {} not found", name);
       return null;
     }
-    resourceTracker.trackDependency(owner, secret);
+    resourceTracker.trackDependency(owner, secret, localInstanceUuid);
     log.trace("Tracking secret {} as dependency of {}", secret.getMetadata().getName(), owner);
     return parseSecretForKey(secret, key);
   }

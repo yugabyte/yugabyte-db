@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -73,6 +74,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
+    taskParams().azUuid = currentNode.azUuid;
     if (currentNode.isTserver) {
       createNodePrecheckTasks(
           currentNode,
@@ -87,6 +89,11 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
                   Collections.singletonList(currentNode), Collections.emptyList())),
           null,
           false);
+    }
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)
+        && instanceExists(taskParams())) {
+      createCheckNodeCommandExecutionTasks(Collections.singletonList(currentNode))
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
     }
     addBasicPrecheckTasks();
     // Pick new only on first try.

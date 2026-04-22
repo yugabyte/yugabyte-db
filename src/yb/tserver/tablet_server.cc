@@ -1937,13 +1937,13 @@ Status TabletServer::CheckYsqlLaggingCatalogVersions() {
   for (const auto& [datid, local_catalog_version] : rows) {
     db_local_catalog_versions_map[datid].push_back(local_catalog_version);
   }
-  LOG(INFO) << "db_local_catalog_versions_map: " << yb::ToString(db_local_catalog_versions_map);
+  VLOG(1) << "db_local_catalog_versions_map: " << yb::ToString(db_local_catalog_versions_map);
   std::map<uint32_t, std::vector<uint64_t>> garbage_collected_db_versions;
   std::map<uint32_t, uint64_t> db_cutoff_catalog_versions;
   DoGarbageCollectionOfInvalidationMessages(
       db_local_catalog_versions_map, &garbage_collected_db_versions, &db_cutoff_catalog_versions);
-  LOG(INFO) << "garbage_collected_db_versions: " << yb::ToString(garbage_collected_db_versions);
-  LOG(INFO) << "db_cutoff_catalog_versions: " << yb::ToString(db_cutoff_catalog_versions);
+  VLOG(1) << "garbage_collected_db_versions: " << yb::ToString(garbage_collected_db_versions);
+  VLOG(1) << "db_cutoff_catalog_versions: " << yb::ToString(db_cutoff_catalog_versions);
   return Status::OK();
 }
 

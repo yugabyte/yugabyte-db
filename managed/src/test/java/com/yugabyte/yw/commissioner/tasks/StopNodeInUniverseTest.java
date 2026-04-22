@@ -9,11 +9,14 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -31,6 +34,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -43,6 +47,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -121,6 +126,11 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
             });
     when(mockNodeUniverseManager.runCommand(any(), any(), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true"));
+    lenient()
+        .when(
+            mockNodeUniverseManager.runCommand(
+                any(), any(), eq(Arrays.asList("echo", "command-execution-test")), any()))
+        .thenReturn(ShellResponse.create(0, "Command output:\ncommand-execution-test"));
     try {
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
     } catch (Exception e) {
@@ -157,6 +167,12 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     setCheckNodesAreSafeToTakeDown(mockClient);
     setMockLiveTabletServers(mockClient, defaultUniverse);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
+
+    // Comprehensive prechecks add CheckNodeCommandExecution + an extra instance-exists List call;
+    // this test class asserts exact task sequences and nodeCommand counts from the legacy flow.
+    factory
+        .globalRuntimeConf()
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
   }
 
   private void mockListMastersForChangeConfig() {
@@ -539,6 +555,22 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       assertJsonEqual("Params check failed for " + taskType, expectedResults, taskDetails.get(0));
       position++;
     }
+  }
+
+  @Test
+  public void testStopNodeRunsCheckNodeCommandExecutionWhenComprehensivePrechecksEnabled() {
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "true");
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams, "host-n4");
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
   }
 
   @Test
