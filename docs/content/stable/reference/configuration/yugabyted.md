@@ -1,5 +1,5 @@
 ---
-title: yugabyted reference
+title: yugabyted
 headerTitle: yugabyted
 linkTitle: yugabyted
 description: Use yugabyted to deploy YugabyteDB universes.
@@ -13,6 +13,7 @@ menu:
     weight: 100
 type: docs
 rightNav:
+  hideH3: true
   hideH4: true
 ---
 
@@ -28,9 +29,9 @@ You can use yugabyted for production deployments. You can also administer [YB-TS
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-For information on installing YugabyteDB, see [Use a local cluster](/stable/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+For information on installing YugabyteDB, see [Use a local cluster](/stable/quick-start/linux/).
 
-After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
+After installing YugabyteDB, if you want to use [backup](../yugabyted-reference/#backup) and [restore](../yugabyted-reference/#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
 For example, if you installed v{{< yb-version version="stable"  format="short">}}, extract the `ybc-2.2.0.3-b17-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
 
@@ -39,7 +40,7 @@ cd yugabyte-{{< yb-version version="stable" >}}
 mkdir -p ybc && tar -xvf share/ybc-2.2.0.3-b17-linux-x86_64.tar.gz -C ybc --strip-components=1
 ```
 
-To use the service, when creating nodes run the [yugabyted start](#start) command with `--backup_daemon=true`:
+To use the service, when creating nodes run the [yugabyted start](../yugabyted-reference/#start) command with `--backup_daemon=true`:
 
 ```sh
 ./bin/yugabyted start --backup_daemon=true
@@ -52,9 +53,13 @@ Running YugabyteDB on macOS requires additional settings. For more information, 
 Note that YB Controller is not supported on macOS.
 {{% /note %}}
 
-### Online help
+## Using yugabyted
 
-You can access command-line help for yugabyted by running one of the following examples from the YugabyteDB home:
+Run yugabyted commands from your installation `bin` directory.
+
+For a reference to all yugabyted commands, refer to [yugabyted command reference](../yugabyted-reference/)
+
+You can access command-line help for yugabyted by running one of the following from the YugabyteDB home:
 
 ```sh
 $ ./bin/yugabyted -h
@@ -64,13 +69,13 @@ $ ./bin/yugabyted -h
 $ ./bin/yugabyted --help
 ```
 
-For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
+For help with specific [yugabyted commands](../yugabyted-reference/), run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
 
 ```sh
 $ ./bin/yugabyted start -h
 ```
 
-## Base directory
+### Base directory
 
 By default, yugabyted uses the `$HOME/var` directory to store data, configurations, and logs.
 
@@ -90,8 +95,132 @@ For example, you can override the base directory when starting the yugabyted nod
 
 When simulating running a multi-node universe on your desktop machine (for testing and development, and running examples), you must specify a different base directory for each node (see [Create a local multi-node universe](#create-a-local-multi-node-universe) for an example). When running subsequent commands on local multi-node universes, you must also specify the `--base-dir` flag.
 
+## Create a local cluster
 
-## Deploy secure universes
+For convenient testing and development, or simply to explore YugabyteDB, you can use yugabyted to create clusters locally on your own machine.
+
+Note that if a local universe is already running, you must [destroy it](#destroy-a-local-universe) before create a new one.
+
+{{<note title="Production deployments">}}
+You can use yugabyted for production deployments. You can also administer [YB-TServer](../yb-tserver/) and [YB-Master](../yb-master/) servers directly (refer to [Deploy YugabyteDB](../../../deploy/)).
+{{</note>}}
+
+##### Running on macOS
+
+When running local clusters on macOS, keep in mind the following caveats:
+
+- YB Controller (and by extension, backup and restore commands) is not supported on macOS.
+
+- Port conflicts
+
+    macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](../yugabyted-reference/#advanced-flags) when you start the universe to change the default port number, as follows:
+
+    ```sh
+    ./bin/yugabyted start --master_webserver_port=9999
+    ```
+
+    Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+
+- Loopback addresses
+
+    On macOS, every additional node after the first needs a loopback address configured to simulate the use of multiple hosts or nodes. For example, for a three-node universe, you add two additional addresses as follows:
+
+    ```sh
+    sudo ifconfig lo0 alias 127.0.0.2
+    sudo ifconfig lo0 alias 127.0.0.3
+    ```
+
+    The loopback addresses do not persist upon rebooting your computer.
+
+### Create a single-node universe
+
+Create a single-node universe with a given [base directory](#base-directory). You need to provide a fully-qualified directory path for the `base_dir` parameter.
+
+```sh
+./bin/yugabyted start --advertise_address=127.0.0.1 \
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
+```
+
+Alternatively, you can provide an IPv6 address. For example:
+
+```sh
+./bin/yugabyted start --advertise_address=::1 \
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
+```
+
+To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
+
+```sh
+# Using IPv4
+./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
+```
+
+When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started using the `--secure` flag, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
+
+### Create a local multi-node universe
+
+A local multi-node universe provides a quick way to simulate a multi-node YugabyteDB universe on a single computer so that you can explore YugabteDB's distributed capabilities.
+
+To create a universe with multiple nodes, you first create a single node and then create additional nodes using the `--join` flag, providing the address of any already running node to connect them to the universe. If a node is restarted, you would also use the `--join` flag to rejoin the universe.
+
+To create a _secure_ local multi-node universe, ensure you have [generated and copied the certificates](#create-certificates-for-a-secure-local-multi-node-universe) for each node. To create a universe without encryption and authentication, simply omit the `--secure` flag.
+
+To create the universe, do the following:
+
+1. Start the first node by running the following command:
+
+    ```sh
+    ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1 \
+        --cloud_location=aws.us-east-1.us-east-1a
+    ```
+
+1. On macOS, configure loopback addresses for the additional nodes as follows:
+
+    ```sh
+    sudo ifconfig lo0 alias 127.0.0.2
+    sudo ifconfig lo0 alias 127.0.0.3
+    ```
+
+1. Add two more nodes to the universe using the `--join` flag, as follows:
+
+    ```sh
+    ./bin/yugabyted start --secure --advertise_address=127.0.0.2 \
+        --join=127.0.0.1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2 \
+        --cloud_location=aws.us-east-1.us-east-1b
+    ./bin/yugabyted start --secure --advertise_address=127.0.0.3 \
+        --join=127.0.0.1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3 \
+        --cloud_location=aws.us-east-1.us-east-1c
+    ```
+
+When you use the `--secure` flag, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
+
+### Destroy a local universe
+
+If you are running YugabyteDB on your local computer, you can't run more than one universe at a time. To set up a new local YugabyteDB universe using yugabyted, first destroy the currently running universe.
+
+To destroy a local single-node universe, use the [destroy](../yugabyted-reference/#destroy-1) command as follows:
+
+```sh
+./bin/yugabyted destroy
+```
+
+To destroy a local multi-node universe, use the `destroy` command with the `--base_dir` flag set to the [base directory](#base-directory) path of each of the nodes. For example, for a three node universe, you would execute commands similar to the following:
+
+{{%cluster/cmd op="destroy" nodes="1,2,3"%}}
+
+```sh
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3
+```
+
+If the universe has more than three nodes, execute a `destroy --base_dir=<path to directory>` command for each additional node until all nodes are destroyed.
+
+## Manage certificates and authentication
 
 To deploy secure universes using yugabyted, use the `start` command with the `--secure` flag. This enables [encryption in transit](#create-certificates-for-a-secure-local-multi-node-universe) and [authentication](../../../secure/enable-authentication/authentication-ysql/) for the node.
 
@@ -155,235 +284,7 @@ To disable encryption at rest in a multi-zone or multi-region universe with this
 ./bin/yugabyted configure encrypt_at_rest --disable
 ```
 
-## Pass additional flags to YB-Master and YB-TServer
-
-You can set additional configuration options for the YB-Master and YB-TServer processes using the `--master_flags` and `--tserver_flags` flags.
-
-For example, to create a single-node universe and set additional flags for the YB-TServer process, run the following:
-
-```sh
-./bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
-```
-
-When setting CSV value flags, such as [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv), you need to enclose the values inside curly braces `{}`; if a setting includes double quotes (`"`), precede the double quotes with a backslash (`\`) to make it an escape sequence. For example:
-
-```sh
-./bin/yugabyted start --tserver_flags="ysql_hba_conf_csv={host all all 127.0.0.1/0 password,\"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=\"\"*****\"\"\"}"
-```
-
-For more information on additional server configuration options, see [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/).
-
-## Set up xCluster replication between universes
-
-Follow the instructions in [xCluster setup](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
-
-## Upgrade a YugabyteDB universe
-
-{{< warning title="Upgrading to PostgreSQL 15" >}}
-For information on upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
-
-Upgrading to PostgreSQL 15 versions is only supported from v2024.2.2 or later.
-{{< /warning >}}
-
-To use the latest features of the database and apply the latest security fixes, upgrade your YugabyteDB universe to the [latest release](https://download.yugabyte.com/#/).
-
-Upgrading an existing YugabyteDB universe that was deployed using yugabyted includes the following steps:
-
-1. Verify the version compatibility before upgrading the universe.
-
-    ```sh
-    ./bin/yugabyted upgrade check_version_compatibility
-    ```
-
-1. Stop one of the running nodes using the `yugabyted stop` command with the `--upgrade` flag.
-
-    ```sh
-    ./bin/yugabyted stop --upgrade true --base_dir <path_to_base_dir>
-    ```
-
-1. Wait for 60 seconds.
-
-1. Start the new yugabyted process (from the new downloaded release) by executing the `yugabyted start` command. Use the previously configured `--base_dir` when restarting the instance.
-
-    ```sh
-    ./bin/yugabyted start --base_dir <path_to_base_dir>
-    ```
-
-1. Repeat steps 2-4 for all the nodes. Wait 60 seconds before repeating the steps on each node.
-
-1. After restarting all the nodes, upgrade the [YSQL catalog](../../../architecture/system-catalog/) of the universe. This command can be run from any node.
-
-    ```sh
-    ./bin/yugabyted upgrade ysql_catalog --base_dir <path_to_base_dir>
-    ```
-
-1. After successful YSQL catalog upgrade, restart all the nodes for a second time.
-
-    Repeat steps 2-3 for all the nodes. Wait 60 seconds before repeating the steps on each node.
-
-1. After restarting all the nodes, finalize the upgrade by running the `yugabyted finalize_new_version` command. This command can be run from any node.
-
-    ```sh
-    ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir>
-    ```
-
-    Use the `timeout` flag to specify a custom timeout for the operation. Default value is 60000 ms.
-
-    ```sh
-    ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir> --timeout 80000
-    ```
-
-## Scale a universe from single to multi zone
-
-The following steps assume that you have a running YugabyteDB universe deployed using yugabyted:
-
-1. Stop the first node by using `yugabyted stop` command:
-
-    ```sh
-    ./bin/yugabyted stop
-    ```
-
-1. Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information as follows:
-
-    ```sh
-    ./bin/yugabyted start --advertise_address=<host-ip> \
-      --cloud_location=aws.us-east-1.us-east-1a \
-      --fault_tolerance=zone
-    ```
-
-1. Repeat the previous step on all the nodes of the universe, one node at a time. If you are deploying the universe on your local computer, specify the [base directory](#base-directory) for each node using the `--base-dir` flag.
-
-1. After starting all nodes, specify the data placement constraint on the universe using the following command:
-
-    ```sh
-    ./bin/yugabyted configure data_placement --fault_tolerance=zone
-    ```
-
-    To manually specify the data placement constraint, use the following command:
-
-    ```sh
-    ./bin/yugabyted configure data_placement \
-      --fault_tolerance=zone \
-      --constraint_value=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c \
-      --rf=3
-    ```
-
-## Destroy a local universe
-
-If you are running YugabyteDB on your local computer, you can't run more than one universe at a time. To set up a new local YugabyteDB universe using yugabyted, first destroy the currently running universe.
-
-To destroy a local single-node universe, use the [destroy](#destroy-1) command as follows:
-
-```sh
-./bin/yugabyted destroy
-```
-
-To destroy a local multi-node universe, use the `destroy` command with the `--base_dir` flag set to the [base directory](#base-directory) path of each of the nodes. For example, for a three node universe, you would execute commands similar to the following:
-
-{{%cluster/cmd op="destroy" nodes="1,2,3"%}}
-
-```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3
-```
-
-If the universe has more than three nodes, execute a `destroy --base_dir=<path to directory>` command for each additional node until all nodes are destroyed.
-
-## Examples
-
-To deploy any type of secure universe (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
-
-### Running on macOS
-
-YB Controller (and by extension, backup and restore commands) is not supported on macOS.
-
-#### Port conflicts
-
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the universe to change the default port number, as follows:
-
-```sh
-./bin/yugabyted start --master_webserver_port=9999
-```
-
-Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
-
-#### Loopback addresses
-
-On macOS, every additional node after the first needs a loopback address configured to simulate the use of multiple hosts or nodes. For example, for a three-node universe, you add two additional addresses as follows:
-
-```sh
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
-```
-
-The loopback addresses do not persist upon rebooting your computer.
-
-### Create a single-node universe
-
-Create a single-node universe with a given [base directory](#base-directory). You need to provide a fully-qualified directory path for the `base_dir` parameter.
-
-```sh
-./bin/yugabyted start --advertise_address=127.0.0.1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
-```
-
-Alternatively, you can provide an IPv6 address. For example:
-
-```sh
-./bin/yugabyted start --advertise_address=::1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
-```
-
-To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
-
-```sh
-# Using IPv4
-./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
-```
-
-When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started using the `--secure` flag, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
-
-### Create a local multi-node universe
-
-To create a universe with multiple nodes, you first create a single node and then create additional nodes using the `--join` flag, providing the address of any already running node to connect them to the universe. If a node is restarted, you would also use the `--join` flag to rejoin the universe.
-
-To create a secure multi-node universe, ensure you have [generated and copied the certificates](#create-certificates-for-a-secure-local-multi-node-universe) for each node.
-
-To create a universe without encryption and authentication, omit the `--secure` flag.
-
-To create the universe, do the following:
-
-1. Start the first node by running the following command:
-
-    ```sh
-    ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1 \
-        --cloud_location=aws.us-east-1.us-east-1a
-    ```
-
-1. On macOS, configure loopback addresses for the additional nodes as follows:
-
-    ```sh
-    sudo ifconfig lo0 alias 127.0.0.2
-    sudo ifconfig lo0 alias 127.0.0.3
-    ```
-
-1. Add two more nodes to the universe using the `--join` flag, as follows:
-
-    ```sh
-    ./bin/yugabyted start --secure --advertise_address=127.0.0.2 \
-        --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2 \
-        --cloud_location=aws.us-east-1.us-east-1b
-    ./bin/yugabyted start --secure --advertise_address=127.0.0.3 \
-        --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3 \
-        --cloud_location=aws.us-east-1.us-east-1c
-    ```
-
-When you use the `--secure` flag, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the location of the credentials for the default users.
+## Primary clusters
 
 ### Create a multi-zone universe
 
@@ -671,7 +572,7 @@ docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net yb-netwo
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
-## Create and manage read replica clusters
+## Read replicas
 
 To create a read replica cluster, you first need an existing YugabyteDB universe; this example assumes a 3-node universe is deployed. Refer to [Create a local multi-node universe](#create-a-local-multi-node-universe).
 
@@ -893,3 +794,98 @@ After destroying the nodes, run the `configure_read_replica delete` command to d
 ```sh
 ./bin/yugabyted configure_read_replica delete --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
 ```
+
+## xCluster
+
+Follow the instructions in [xCluster setup](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
+
+## Upgrade a universe
+
+{{< warning title="Upgrading to PostgreSQL 15" >}}
+For information on upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
+
+Upgrading to PostgreSQL 15 versions is only supported from v2024.2.2 or later.
+{{< /warning >}}
+
+To use the latest features of the database and apply the latest security fixes, upgrade your YugabyteDB universe to the [latest release](https://download.yugabyte.com/#/).
+
+Upgrading an existing YugabyteDB universe that was deployed using yugabyted includes the following steps:
+
+1. Verify the version compatibility before upgrading the universe.
+
+    ```sh
+    ./bin/yugabyted upgrade check_version_compatibility
+    ```
+
+1. Stop one of the running nodes using the `yugabyted stop` command with the `--upgrade` flag.
+
+    ```sh
+    ./bin/yugabyted stop --upgrade true --base_dir <path_to_base_dir>
+    ```
+
+1. Wait for 60 seconds.
+
+1. Start the new yugabyted process (from the new downloaded release) by executing the `yugabyted start` command. Use the previously configured `--base_dir` when restarting the instance.
+
+    ```sh
+    ./bin/yugabyted start --base_dir <path_to_base_dir>
+    ```
+
+1. Repeat steps 2-4 for all the nodes. Wait 60 seconds before repeating the steps on each node.
+
+1. After restarting all the nodes, upgrade the [YSQL catalog](../../../architecture/system-catalog/) of the universe. This command can be run from any node.
+
+    ```sh
+    ./bin/yugabyted upgrade ysql_catalog --base_dir <path_to_base_dir>
+    ```
+
+1. After successful YSQL catalog upgrade, restart all the nodes for a second time.
+
+    Repeat steps 2-3 for all the nodes. Wait 60 seconds before repeating the steps on each node.
+
+1. After restarting all the nodes, finalize the upgrade by running the `yugabyted finalize_new_version` command. This command can be run from any node.
+
+    ```sh
+    ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir>
+    ```
+
+    Use the `timeout` flag to specify a custom timeout for the operation. Default value is 60000 ms.
+
+    ```sh
+    ./bin/yugabyted upgrade finalize_new_version --base_dir <path_to_base_dir> --timeout 80000
+    ```
+
+## Scale a universe from single to multi zone
+
+The following steps assume that you have a running YugabyteDB universe deployed using yugabyted:
+
+1. Stop the first node by using `yugabyted stop` command:
+
+    ```sh
+    ./bin/yugabyted stop
+    ```
+
+1. Start the YugabyteDB node by using `yugabyted start` command by providing the necessary cloud information as follows:
+
+    ```sh
+    ./bin/yugabyted start --advertise_address=<host-ip> \
+      --cloud_location=aws.us-east-1.us-east-1a \
+      --fault_tolerance=zone
+    ```
+
+1. Repeat the previous step on all the nodes of the universe, one node at a time. If you are deploying the universe on your local computer, specify the [base directory](#base-directory) for each node using the `--base-dir` flag.
+
+1. After starting all nodes, specify the data placement constraint on the universe using the following command:
+
+    ```sh
+    ./bin/yugabyted configure data_placement --fault_tolerance=zone
+    ```
+
+    To manually specify the data placement constraint, use the following command:
+
+    ```sh
+    ./bin/yugabyted configure data_placement \
+      --fault_tolerance=zone \
+      --constraint_value=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c \
+      --rf=3
+    ```

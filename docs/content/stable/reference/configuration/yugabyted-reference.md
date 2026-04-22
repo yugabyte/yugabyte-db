@@ -14,15 +14,9 @@ rightNav:
   hideH4: true
 ---
 
-Use yugabyted to launch and manage YugabyteDB universes locally on your laptop, or on VMs for production deployments.
+For instructions on installing yugabyted, see [Installation](../yugabyted/#installation).
 
-{{< youtube id="ah_fPDpZjnc" title="How to Start YugabyteDB on Your Laptop" >}}
-
-For examples of using yugabyted to deploy single- and multi-node universes, see [Examples](#examples).
-
-{{<note title="Production deployments">}}
-You can use yugabyted for production deployments. You can also administer [YB-TServer](../yb-tserver/) and [YB-Master](../yb-master/) servers directly (refer to [Deploy YugabyteDB](../../../deploy/)).
-{{</note>}}
+For instructions on using yugabyted to deploy single- and multi-node universes, see [Using yugabyted](../yugabyted/#using-yugabyted).
 
 ## Syntax
 
@@ -56,6 +50,24 @@ For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For e
 ```sh
 $ ./bin/yugabyted start -h
 ```
+
+### Pass additional flags to YB-Master and YB-TServer
+
+You can set additional configuration options for the YB-Master and YB-TServer processes using the `--master_flags` and `--tserver_flags` flags.
+
+For example, to create a single-node universe and set additional flags for the YB-TServer process, run the following:
+
+```sh
+./bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
+```
+
+When setting CSV value flags, such as [--ysql_hba_conf_csv](../yb-tserver/#ysql-hba-conf-csv), you need to enclose the values inside curly braces `{}`; if a setting includes double quotes (`"`), precede the double quotes with a backslash (`\`) to make it an escape sequence. For example:
+
+```sh
+./bin/yugabyted start --tserver_flags="ysql_hba_conf_csv={host all all 127.0.0.1/0 password,\"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=\"\"*****\"\"\"}"
+```
+
+For more information on additional server configuration options, see [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/).
 
 ## Commands
 
@@ -120,7 +132,7 @@ Determine the status of a backup task:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --cloud_storage_uri *cloud_storage_location*
 : Cloud location to store the backup data files.
@@ -171,7 +183,7 @@ For example, to create node server certificates for hostnames 127.0.0.1, 127.0.0
 : Hostnames of the nodes to be added in the universe. Mandatory flag.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) for the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) for the yugabyted server.
 
 -----
 
@@ -194,7 +206,7 @@ Usage: yugabyted collect_logs [flags]
 : Redirect the `logs.tar.gz` file's content to stdout. For example, `docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz`
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server whose logs are desired.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server whose logs are desired.
 
 -----
 
@@ -247,7 +259,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 : Specify the replication factor for the universe. This is an optional flag which takes a value of `3` or `5`.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 #### encrypt_at_rest
 
@@ -279,7 +291,7 @@ To disable encryption at rest for a YugabyteDB universe which has encryption at 
 : Enable encryption at rest for the universe. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB universe.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 #### point_in_time_recovery
 
@@ -329,7 +341,7 @@ Display point-in-time schedules configured on the universe:
 : Display point-in-time recovery status for a YugabyteDB universe.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 #### admin_operation
 
@@ -347,7 +359,7 @@ For example, get the YugabyteDB universe configuration:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --command *yb-admin-command*
 : Specify the yb-admin command to be executed on the YugabyteDB universe.
@@ -393,7 +405,7 @@ For example, to create a new read replica cluster, execute the following command
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --rf *read-replica-replication-factor*
 : Replication factor for the read replica cluster.
@@ -427,7 +439,7 @@ Change the replication factor and also specify the placement constraint:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --rf *read-replica-replication-factor*
 : Replication factor for the read replica cluster.
@@ -451,7 +463,7 @@ For example, delete a read replica cluster using the following command:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 -----
 
@@ -491,7 +503,7 @@ Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysql
 : Name of the YSQL database to connect to.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server to connect to.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server to connect to.
 
 #### ycql
 
@@ -512,7 +524,7 @@ Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycql
 : Name of the YCQL keyspace to connect to.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server to connect to.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server to connect to.
 
 -----
 
@@ -547,7 +559,7 @@ Use the `yugabyted demo destroy` sub-command to shut down the yugabyted single-n
 : Print the help message and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server to connect to or destroy.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server to connect to or destroy.
 
 -----
 
@@ -561,7 +573,7 @@ Use the `yugabyted destroy` command to delete a universe.
 Usage: yugabyted destroy [flags]
 ```
 
-For examples, see [Destroy a local universe](#destroy-a-local-universe).
+For examples, see [Destroy a local universe](../yugabyted/#destroy-a-local-universe).
 
 #### Flags
 
@@ -569,7 +581,7 @@ For examples, see [Destroy a local universe](#destroy-a-local-universe).
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server that needs to be destroyed.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server that needs to be destroyed.
 
 -----
 
@@ -601,7 +613,7 @@ Note that `finalize_upgrade` is a cluster-level operation; you don't need to run
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --upgrade_ysql_timeout *upgrade_timeout_in_ms*
 : Custom timeout for the YSQL upgrade in milliseconds. Default timeout is 60 seconds.
@@ -656,7 +668,7 @@ Determine the status of a restore task:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --cloud_storage_uri *cloud_storage_location*
 : Cloud location to store the backup data files.
@@ -681,7 +693,7 @@ Use the `yugabyted start` command to start a one-node YugabyteDB universe for ru
 
 To use encryption in transit, OpenSSL must be installed on the nodes.
 
-If you want to use backup and restore, start the node with `--backup_daemon=true` to initialize the backup and restore agent YB Controller. (YB Controller must be installed; refer to [Installation](#installation).)
+If you want to use backup and restore, start the node with `--backup_daemon=true` to initialize the backup and restore agent YB Controller. (YB Controller must be installed; refer to [Installation](../yugabyted/#installation).)
 
 #### Syntax
 
@@ -721,7 +733,7 @@ Create a single-node locally and set advanced flags using a configuration file:
 ./bin/yugabyted start --config /path/to/configuration-file
 ```
 
-For more advanced examples, see [Examples](#examples).
+For more advanced examples, see the [yugabyted](../yugabyted/) guide.
 
 #### Flags
 
@@ -738,7 +750,7 @@ For more advanced examples, see [Examples](#examples).
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
 
 --base_dir *base-directory*
-: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default [base directory](#base-directory) is `$HOME/var`.
+: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default [base directory](../yugabyted/#base-directory) is `$HOME/var`.
 
 --background *bool*
 : Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`
@@ -762,14 +774,14 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : - When starting a local single-node universe, a certificate is automatically generated for the universe.
 : - When deploying a node in a multi-node universe, you need to generate the certificate for the node using the `--cert generate_server_certs` command and copy it to the node *before* you start the node using the `--secure` flag, or the node creation will fail.
 : When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a universe is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
-: For more information on creating secure clusters, refer to [Secure universes](#secure-universes).
+: For more information on creating secure clusters, refer to [Manage certificates and authentication](../yugabyted/#manage-certificates-and-authentication).
 
 --read_replica *read_replica_node*
 : Use this flag to start a read replica node.
 
 --backup_daemon *backup-daemon-process*
 : Enable or disable the backup daemon with yugabyted start. Default: `false`
-: Using the `--backup_daemon` flag requires YB Controller; see [Installation](#installation).
+: Using the `--backup_daemon` flag requires YB Controller; see [Installation](../yugabyted/#installation).
 
 #### Advanced flags
 
@@ -809,11 +821,11 @@ The advanced flags supported by the `start` command are as follows:
 : The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `<base_dir>/certs`.
 
 --master_flags *master_flags*
-: Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
+: Specify extra [master flags](../yb-master/#all-flags) as a set of key value pairs. Format (key=value,key=value).
 : To specify any CSV value flags, enclose the values inside curly braces `{}`. Refer to [Pass additional flags to YB-Master and YB-TServer](#pass-additional-flags-to-yb-master-and-yb-tserver).
 
 --tserver_flags *tserver_flags*
-: Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
+: Specify extra [tserver flags](../yb-tserver/#all-flags) as a set of key value pairs. Format (key=value,key=value).
 : To specify any CSV value flags, enclose the values inside curly braces `{}`. Refer to [Pass additional flags to YB-Master and YB-TServer](#pass-additional-flags-to-yb-master-and-yb-tserver).
 
 --ysql_enable_auth *bool*
@@ -860,7 +872,7 @@ You can set advanced flags using a configuration file, specified using the `--co
 #### Deprecated flags
 
 --daemon *bool*
-: Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Use [--background](#flags) instead. Default: `true`.
+: Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Use [--background](#start) instead. Default: `true`.
 
 --listen *bind-ip*
 : The IP address or localhost name to which yugabyted will listen.
@@ -883,7 +895,7 @@ Usage: yugabyted status [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server that you want to get the status of.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server that you want to get the status of.
 
 -----
 
@@ -903,7 +915,7 @@ Usage: yugabyted stop [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server that needs to be stopped.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server that needs to be stopped.
 
 --upgrade *bool*
 :  Stop the node for version upgrade. Default: `false`.
@@ -943,7 +955,7 @@ For example, to upgrade the YSQL catalog of a universe, you would execute the fo
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --timeout *timeout*
 : Custom timeout for the YSQL catalog upgrade in milliseconds.
@@ -965,7 +977,7 @@ For example, to finalize an upgrade to a universe, you would execute the followi
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --timeout *timeout*
 : Custom timeout for the upgrade finalize operation in milliseconds.
@@ -986,7 +998,7 @@ For example, to verify the compatibility of a universe with a new version, you w
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --timeout *timeout*
 : Custom timeout for the version check in milliseconds.
@@ -1009,7 +1021,7 @@ Usage: yugabyted version [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server that you want to get the status of.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server that you want to get the status of.
 
 ### xcluster
 
@@ -1059,7 +1071,7 @@ outputs directions for bootstrapping the relevant databases.
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --databases *xcluster-databases*
 : Comma-separated list of databases to be added to the replication.
@@ -1093,7 +1105,7 @@ outputs directions for bootstrapping the relevant databases.
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --databases *xcluster-databases*
 : Comma separated list of databases to be added to existing replication.
@@ -1120,7 +1132,7 @@ For example, to set up xCluster replication between two universes, run the follo
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target universe.
@@ -1152,7 +1164,7 @@ For example, to add new databases to an existing xCluster replication between tw
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target universe.
@@ -1189,7 +1201,7 @@ To display the status of a specific xCluster replication, run the following comm
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --replication_id *xcluster-replication-id*
 : The replication ID of the xCluster replication whose status you want to output.
@@ -1219,7 +1231,7 @@ If you are using automatic mode and your workload is running while you perform t
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target universe.
@@ -1253,7 +1265,7 @@ If you are using automatic mode and your workload is running while you perform t
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The [base directory](#base-directory) of the yugabyted server.
+: The [base directory](../yugabyted/#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target universe.
