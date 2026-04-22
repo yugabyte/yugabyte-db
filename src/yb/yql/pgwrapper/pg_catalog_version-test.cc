@@ -485,7 +485,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     // Create a number of databases.
     auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
     const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
-    const int num_databases = IsTsan() ? 5 : 10;
+    const int num_databases = (IsTsan() || IsAsan()) ? 5 : 10;
     for (int i = 0; i < num_databases; ++i) {
       ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE test_db$0", i));
     }
@@ -530,7 +530,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
                               "WHERE datid != 1 ORDER BY datid ASC, local_catalog_version ASC";
     auto result = ASSERT_RESULT((conn_yugabyte.FetchAllAsString(query)));
     const string expected =
-        IsTsan()
+        (IsTsan() || IsAsan())
             ? Format(
                   "$0, 21; 16384, 6; 16385, 6; 16385, 7; 16386, 7; 16386, 8; 16386, 9; 16387, 9; "
                   "16387, 10; 16387, 11; 16387, 12; 16388, 12; 16388, 13; 16388, 14; 16388, 15; "
