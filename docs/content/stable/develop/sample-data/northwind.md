@@ -4,10 +4,12 @@ headerTitle: Northwind sample database
 linkTitle: Northwind
 description: Use the Northwind sample database to explore and learn YugabyteDB.
 menu:
-  v2024.2:
+  stable_develop:
     identifier: northwind
     parent: sample-data
     weight: 200
+aliases:
+  - /sample-data/northwind/
 type: docs
 ---
 
@@ -48,7 +50,7 @@ Follow the steps here to install the Northwind sample database.
 
 ### Open the YSQL shell
 
-If you are using a local installation of YugabyteDB, run the `ysqlsh` command from the `yugabyte` root directory.
+If you are using a local installation of YugabyteDB, run the ysqlsh command from the `yugabyte` root directory.
 
 ```sh
 $ ./bin/ysqlsh

@@ -4,10 +4,12 @@ headerTitle: PgExercises
 linkTitle: PgExercises
 description: Use the PgExercises sample database on YugabyteDB to learn SQL or test your knowledge.
 menu:
-  v2024.1:
+  stable_develop:
     identifier: pgexercises
     parent: sample-data
     weight: 300
+aliases:
+  - /sample-data/pgexercises/
 type: docs
 ---
 
@@ -43,7 +45,7 @@ Follow the steps here to install the PgExercises sample database.
 
 ### Open the YSQL shell
 
-If you are using a local installation of YugabyteDB, run the `ysqlsh` command from the `yugabyte` root directory.
+If you are using a local installation of YugabyteDB, run the ysqlsh command from the `yugabyte` root directory.
 
 ```sh
 $ ./bin/ysqlsh

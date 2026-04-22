@@ -4,10 +4,12 @@ headerTitle: Chinook sample database
 linkTitle: Chinook
 description: Use the Chinook sample database for a media store to explore and learn YugabyteDB.
 menu:
-  v2024.2:
+  stable_develop:
     identifier: chinook
     parent: sample-data
     weight: 100
+aliases:
+  - /sample-data/chinook/
 type: docs
 ---
 
@@ -50,7 +52,7 @@ Follow the steps here to install the Chinook sample database.
 
 ### Open the YSQL shell
 
-If you are using a local installation of YugabyteDB, run the `ysqlsh` command from the `yugabyte` root directory.
+If you are using a local installation of YugabyteDB, run the ysqlsh command from the `yugabyte` root directory.
 
 ```sh
 $ ./bin/ysqlsh

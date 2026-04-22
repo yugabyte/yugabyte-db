@@ -5,8 +5,9 @@ linkTitle: Retail Analytics
 description: Explore this retail analytics sample database on YugabyteDB using YSQL.
 aliases:
   - /develop/realworld-apps/retail-analytics/
+  - /sample-data/retail-analytics/
 menu:
-  stable:
+  stable_develop:
     identifier: retail-analytics
     parent: sample-data
     weight: 500
