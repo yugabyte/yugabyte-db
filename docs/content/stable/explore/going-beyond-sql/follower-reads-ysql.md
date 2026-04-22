@@ -37,7 +37,7 @@ The following YSQL configuration parameters control the behavior of follower rea
 
 - `yb_read_from_followers` controls whether or not reading from followers is enabled. The default value is false.
 
-- `yb_follower_read_staleness_ms` sets the maximum allowable staleness. The default value is 30000 (30 seconds).
+- `yb_follower_read_staleness_ms` sets the exact staleness. The default value is 30000 (30 seconds). Reads are always performed at `now - yb_follower_read_staleness_ms`. Unlike YCQL follower reads which support a [looser consistency model](../follower-reads-ycql/#consistency-level), YSQL follower reads do not return fresher data than this value, even if available at a local replica, to ensure consistency.
 
   Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the [raft_heartbeat_interval_ms](../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (which by default is 500 ms).
 
