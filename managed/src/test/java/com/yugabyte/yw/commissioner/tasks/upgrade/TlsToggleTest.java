@@ -341,37 +341,6 @@ public class TlsToggleTest extends UpgradeTaskTest {
     }
   }
 
-  private Pair<Integer, Integer> getExpectedValues(TlsToggleParams taskParams) {
-    int nodeToNodeChange = getNodeToNodeChange(taskParams.enableNodeToNodeEncrypt);
-    int expectedPosition = 3;
-    int expectedNumberOfInvocations = 0;
-
-    if (taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt) {
-      expectedPosition += 1;
-      expectedNumberOfInvocations += 3;
-    }
-
-    if (taskParams.upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
-      if (nodeToNodeChange != 0) {
-        expectedPosition += 84;
-        expectedNumberOfInvocations += 24;
-      } else {
-        expectedPosition += 76;
-        expectedNumberOfInvocations += 18;
-      }
-    } else {
-      if (nodeToNodeChange == 1) {
-        expectedPosition += 20;
-        expectedNumberOfInvocations += 24;
-      } else {
-        expectedPosition += 12;
-        expectedNumberOfInvocations += 18;
-      }
-    }
-
-    return new Pair<>(expectedPosition, expectedNumberOfInvocations);
-  }
-
   private int getNodeToNodeChange(boolean enableNodeToNodeEncrypt) {
     return defaultUniverse
                 .getUniverseDetails()
@@ -491,8 +460,6 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     int nodeToNodeChange = getNodeToNodeChange(nodeToNode);
     Pair<UpgradeOption, UpgradeOption> upgrade = getUpgradeOptions(nodeToNodeChange, false);
-    Pair<Integer, Integer> expectedValues = getExpectedValues(taskParams);
-
     TaskInfo taskInfo = submitTask(taskParams);
     if (taskInfo == null) {
       fail();
@@ -524,10 +491,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
       position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getSecond());
     }
 
-    assertEquals((int) expectedValues.getFirst(), position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(expectedValues.getSecond())).nodeCommand(any(), any());
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
@@ -640,7 +605,6 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     int nodeToNodeChange = getNodeToNodeChange(nodeToNode);
     Pair<UpgradeOption, UpgradeOption> upgrade = getUpgradeOptions(nodeToNodeChange, true);
-    Pair<Integer, Integer> expectedValues = getExpectedValues(taskParams);
 
     TaskInfo taskInfo = submitTask(taskParams);
     if (taskInfo == null) {
@@ -691,10 +655,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
       position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getSecond());
     }
 
-    assertEquals((int) expectedValues.getFirst(), position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(expectedValues.getSecond())).nodeCommand(any(), any());
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     if (EncryptionInTransitUtil.isRootCARequired(

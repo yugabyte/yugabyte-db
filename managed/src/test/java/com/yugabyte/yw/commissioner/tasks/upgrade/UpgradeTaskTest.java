@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
@@ -47,7 +48,6 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
@@ -181,9 +181,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.providerType = Common.CloudType.valueOf(defaultProvider.getCode());
     userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.volumeSize = 100;
-    userIntent.deviceInfo.numVolumes = 2;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     userIntent.useSystemd = true;
 
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId(), certUUID);
@@ -193,7 +191,6 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
         placementInfo.cloudList.get(0).regionList.get(0).azList.stream()
             .mapToInt(p -> p.numNodesInAZ)
             .sum();
-
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
@@ -450,7 +447,9 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.enableYSQL = enableYSQL;
     userIntent.provider = defaultProvider.getUuid().toString();
-
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
     PlacementInfo pi = new PlacementInfo();
     List<UUID> azUUIDs = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
     int idx = 0;

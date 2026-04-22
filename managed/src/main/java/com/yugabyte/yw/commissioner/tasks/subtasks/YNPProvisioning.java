@@ -28,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 public class YNPProvisioning extends NodeTaskBase {
   private final YNPConfigGenerator ynpConfigGenerator;
   private ShellProcessContext shellContext =
-      ShellProcessContext.builder().logCmdOutput(true).build();
+      ShellProcessContext.builder().useSshConnectionOnly(true).logCmdOutput(true).build();
 
   @Inject
   protected YNPProvisioning(

@@ -33,10 +33,7 @@ public class UpdateOOMServiceState extends UniverseDefinitionTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     Set<String> nodesWithoutNA =
         universe.getUniverseDetails().nodeDetailsSet.stream()
-            .map(
-                n ->
-                    new Pair<>(
-                        n, nodeUniverseManager.maybeUpgradeAndGetNodeAgent(universe, n, true)))
+            .map(n -> new Pair<>(n, nodeUniverseManager.maybeUpgradeAndGetNodeAgent(universe, n)))
             .filter(p -> p.getSecond().isEmpty())
             .map(p -> p.getFirst().nodeName)
             .collect(Collectors.toSet());

@@ -76,6 +76,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -135,7 +136,8 @@ public class NodeAgentRpcPayload {
           .map(String::trim)
           .filter(s -> !s.isEmpty())
           .collect(Collectors.toList());
-    } else if (params.deviceInfo.numVolumes != null
+    }
+    if (params.deviceInfo.numVolumes != null
         && params.getProvider().getCloudCode() != Common.CloudType.onprem) {
       List<String> mountPoints = new ArrayList<>();
       for (int i = 0; i < params.deviceInfo.numVolumes; i++) {
@@ -147,15 +149,14 @@ public class NodeAgentRpcPayload {
   }
 
   private String getYbPackage(ReleaseContainer release, Architecture arch, Region region) {
+    Objects.requireNonNull(release, "Release container cannot be null");
     String ybServerPackage = null;
-    if (release != null) {
-      if (arch != null) {
-        ybServerPackage = release.getFilePath(arch);
-      } else {
-        ybServerPackage = release.getFilePath(region);
-      }
+    if (arch != null) {
+      ybServerPackage = release.getFilePath(arch);
+    } else {
+      ybServerPackage =
+          release.getFilePath(Objects.requireNonNull(region, "Region cannot be null"));
     }
-
     return ybServerPackage;
   }
 
@@ -699,6 +700,9 @@ public class NodeAgentRpcPayload {
     AnsibleConfigureServers.Params taskParams = null;
     if (nodeTaskParams instanceof AnsibleConfigureServers.Params) {
       taskParams = (AnsibleConfigureServers.Params) nodeTaskParams;
+    } else {
+      throw new RuntimeException(
+          "Expected AnsibleConfigureServers.Params, but found " + nodeTaskParams.getClass());
     }
     String taskSubType = taskParams.getProperty("taskSubType");
     UserIntent userIntent = nodeManager.getUserIntentFromParams(universe, taskParams);

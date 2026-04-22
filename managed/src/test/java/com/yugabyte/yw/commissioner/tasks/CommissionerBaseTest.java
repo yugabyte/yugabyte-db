@@ -247,6 +247,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Commissioner commissioner;
   protected CustomerTaskManager customerTaskManager;
   protected ReleaseManager.ReleaseMetadata releaseMetadata;
+  protected ReleaseManager.ReleaseMetadata ybcReleaseMetadata;
   protected ReleaseContainer releaseContainer;
   protected ImageBundleUtil imageBundleUtil;
   protected AZUClientFactory azuClientFactory = mock(AZUClientFactory.class);
@@ -355,10 +356,16 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
     when(mockBaseTaskDependencies.getAutoFlagUtil()).thenReturn(mockAutoFlagUtil);
-    releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
+    releaseMetadata =
+        ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1").withFilePath("/fakedb-x86_64.tar.gz");
+    ybcReleaseMetadata =
+        ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1").withFilePath("fakeybc-x86_64.tar.gz");
     releaseContainer =
         new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
+    lenient()
+        .when(mockReleaseManager.getYbcReleaseByVersion(any(), any(), any()))
+        .thenReturn(ybcReleaseMetadata);
     ShellResponse response = ShellResponse.create(0, "Command output: Linux x86_64");
     lenient()
         .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
@@ -377,6 +384,24 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
         .thenReturn(Paths.get("/opt/yugabyte"));
+    lenient().when(mockNodeUniverseManager.getYbHomeDir(any(), any())).thenReturn("/home/yugabyte");
+    lenient()
+        .doAnswer(
+            inv -> {
+              Universe universe = (Universe) inv.getArgument(0);
+              NodeTaskParams nodeTaskParam = (NodeTaskParams) inv.getArgument(1);
+              Cluster cluster = null;
+              if (nodeTaskParam.placementUuid != null) {
+                cluster =
+                    universe.getUniverseDetails().getClusterByUuid(nodeTaskParam.placementUuid);
+              }
+              if (cluster == null) {
+                cluster = universe.getUniverseDetails().getPrimaryCluster();
+              }
+              return cluster.userIntent;
+            })
+        .when(mockNodeManager)
+        .getUserIntentFromParams(any(Universe.class), any(NodeTaskParams.class));
     lenient()
         .doAnswer(
             inv -> {

@@ -50,8 +50,7 @@ public class ConfigureOOMServiceOnNode extends NodeTaskBase {
     if (node == null) {
       throw new IllegalStateException("Failed to find node with name " + nodeName);
     }
-    Optional<NodeAgent> nodeAgent =
-        nodeUniverseManager.maybeUpgradeAndGetNodeAgent(universe, node, true);
+    Optional<NodeAgent> nodeAgent = nodeUniverseManager.maybeUpgradeAndGetNodeAgent(universe, node);
     if (nodeAgent.isEmpty()) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, "Cannot upgrade " + nodeName + ": node agent is not available");

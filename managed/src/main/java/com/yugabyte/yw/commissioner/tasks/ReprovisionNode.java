@@ -8,9 +8,7 @@ import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collections;
@@ -83,8 +81,6 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
 
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      Customer customer = Customer.get(universe.getCustomerId());
-
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
 
@@ -95,26 +91,21 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
 
       Set<NodeDetails> nodeCollection = Collections.singleton(currentNode);
-      boolean useAnsibleProvisioning =
-          confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)
-              || !userIntent.useSystemd;
 
       // Need to reinstall node agent.
       createRemoveNodeAgentTasks(universe, nodeCollection, true /*forceRemove*/);
       if (!userIntent.getAllCloudTypes().contains(CloudType.local)) {
         createSetupYNPTask(universe, nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        if (!useAnsibleProvisioning) {
-          createYNPProvisioningTask(universe, nodeCollection, false /*isYBPrebuiltImage*/)
-              .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-        }
+        createYNPProvisioningTask(universe, nodeCollection, false /*isYBPrebuiltImage*/)
+            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
       createInstallNodeAgentTasks(universe, nodeCollection)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeCollection)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
 
-      if (useAnsibleProvisioning || userIntent.getAllCloudTypes().contains(CloudType.local)) {
+      if (userIntent.getAllCloudTypes().contains(CloudType.local)) {
         createSetupServerTasks(nodeCollection, params -> {})
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
       }

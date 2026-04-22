@@ -12,11 +12,10 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
@@ -106,19 +105,21 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     }
     boolean cleanupFailed = true;
     try {
-      Optional<NodeAgent> optional =
-          (userIntent.providerType != CloudType.onprem
-                  || confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer))
-              ? Optional.empty()
-              : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
-                  getUniverse(), nodeDetails, true /*check feature flag*/);
-      if (optional.isPresent()) {
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(provider.getCloudCode());
+      if (isNodeAgentSupported) {
+        NodeAgent nodeAgent =
+            nodeAgentClient.getAndUpgradeOrThrow(nodeDetails.cloudInfo.private_ip);
+        log.info(
+            "Running destroy server for node {} with IP {} and node agent {}",
+            taskParams().nodeName,
+            nodeDetails.cloudInfo.private_ip,
+            nodeAgent);
         DestroyServerInput.Builder builder = DestroyServerInput.newBuilder();
         builder.setIsProvisioningCleanup(!provider.getDetails().skipProvisioning);
         builder.setYbHomeDir(provider.getYbHome());
         nodeAgentClient.runDestroyServer(
-            optional.get(), builder.build(), NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+            nodeAgent, builder.build(), NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       } else {
         getNodeManager()
             .nodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())

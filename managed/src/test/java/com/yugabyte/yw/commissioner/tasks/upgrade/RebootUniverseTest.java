@@ -79,7 +79,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
   public void testRollingReboot() {
     UpgradeTaskParams taskParams = new UpgradeTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockNodeManager, times(27)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(15)).nodeCommand(any(), any());
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -107,7 +107,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
         false);
     UpgradeTaskParams taskParams = new UpgradeTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockNodeManager, times(27)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(15)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =

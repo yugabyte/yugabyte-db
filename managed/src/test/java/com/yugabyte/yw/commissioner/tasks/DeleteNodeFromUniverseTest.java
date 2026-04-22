@@ -184,7 +184,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
     assertNull(nodeDetails);
 
     // Instance existence check + delete instance + delete volume.
-    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(2)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

@@ -17,10 +17,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
@@ -40,7 +40,6 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
@@ -157,25 +156,23 @@ public class AnsibleConfigureServers extends NodeTaskBase {
                 universe, nodeDetails, false, nodeDetails.cloudInfo.private_ip);
       }
     }
-
     log.debug(
         "Reset master state is now {} for universe {}. It was {}",
         resetMasterState,
         universe.getUniverseUUID(),
         taskParams().resetMasterState);
+    boolean isNodeAgentSupported =
+        NodeAgentClient.isCloudTypeSupported(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType);
     taskParams().resetMasterState = resetMasterState;
-    Optional<NodeAgent> optional =
-        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
-            ? Optional.empty()
-            : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
-                getUniverse(), nodeDetails, true /*check feature flag*/);
-    taskParams().skipDownloadSoftware = optional.isPresent();
-    if (optional.isPresent()
+    taskParams().skipDownloadSoftware = isNodeAgentSupported;
+    if (isNodeAgentSupported
         && (taskParams().type == UpgradeTaskType.GFlags
             || taskParams().type == UpgradeTaskType.YbcGFlags)) {
-      log.info("Updating gflags using node agent {}", optional.get());
+      NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(nodeDetails.cloudInfo.private_ip);
+      log.info("Updating gflags using node agent {}", nodeAgent);
       nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
-          optional.get(), universe, nodeDetails, taskParams());
+          nodeAgent, universe, nodeDetails, taskParams());
       return;
     }
     // Execute the ansible command.
@@ -184,80 +181,83 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             .nodeCommand(NodeManager.NodeCommandType.Configure, taskParams())
             .processErrors();
     String taskSubType = taskParams().getProperty("taskSubType");
-    if (optional.isPresent()
+    if (isNodeAgentSupported
         && (taskParams().type == UpgradeTaskType.Everything
             || taskParams().type == UpgradeTaskType.Software)) {
-      log.info("Installing software using node agent {}", optional.get());
+      NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(nodeDetails.cloudInfo.private_ip);
+      log.info("Installing software using node agent {}", nodeAgent);
       nodeAgentClient.runConfigureServer(
-          optional.get(),
+          nodeAgent,
           nodeAgentRpcPayload.setUpConfigureServerBits(
-              universe, nodeDetails, taskParams(), optional.get()),
+              universe, nodeDetails, taskParams(), nodeAgent),
           NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       if (taskParams().type == UpgradeTaskType.Software) {
         if (taskSubType == null) {
           throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
-        } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Download.toString())) {
+        }
+        if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Download.toString())) {
           nodeAgentClient.runDownloadSoftware(
-              optional.get(),
+              nodeAgent,
               nodeAgentRpcPayload.setupDownloadSoftwareBits(
-                  universe, nodeDetails, taskParams(), optional.get()),
+                  universe, nodeDetails, taskParams(), nodeAgent),
               NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
           nodeAgentClient.runInstallSoftware(
-              optional.get(),
+              nodeAgent,
               nodeAgentRpcPayload.setupInstallSoftwareBits(
-                  universe, nodeDetails, taskParams(), optional.get()),
+                  universe, nodeDetails, taskParams(), nodeAgent),
               NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         }
       } else if (shouldInstallDbSoftware(
           universe, taskParams().ignoreUseCustomImageConfig, taskParams().vmUpgradeTaskType)) {
         nodeAgentClient.runDownloadSoftware(
-            optional.get(),
+            nodeAgent,
             nodeAgentRpcPayload.setupDownloadSoftwareBits(
-                universe, nodeDetails, taskParams(), optional.get()),
+                universe, nodeDetails, taskParams(), nodeAgent),
             NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         nodeAgentClient.runInstallSoftware(
-            optional.get(),
+            nodeAgent,
             nodeAgentRpcPayload.setupInstallSoftwareBits(
-                universe, nodeDetails, taskParams(), optional.get()),
+                universe, nodeDetails, taskParams(), nodeAgent),
             NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
 
       if (taskParams().isEnableYbc()) {
-        log.info("Installing YBC using node agent {}", optional.get());
+        log.info("Installing YBC using node agent {}", nodeAgent);
         nodeAgentClient.runInstallYbcSoftware(
-            optional.get(),
+            nodeAgent,
             nodeAgentRpcPayload.setupInstallYbcSoftwareBits(
-                universe, nodeDetails, taskParams(), optional.get()),
+                universe, nodeDetails, taskParams(), nodeAgent),
             NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
-            optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString(), taskParams());
+            nodeAgent, universe, nodeDetails, ServerType.CONTROLLER.toString(), taskParams());
       }
       if (taskParams().otelCollectorEnabled) {
         nodeAgentClient.runInstallOtelCollector(
-            optional.get(),
+            nodeAgent,
             nodeAgentRpcPayload.setupInstallOtelCollectorBits(
-                universe, nodeDetails, taskParams(), optional.get()),
+                universe, nodeDetails, taskParams(), nodeAgent),
             NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
       if (taskParams().cgroupSize > 0) {
         nodeAgentClient.runSetupCGroupInput(
-            optional.get(),
+            nodeAgent,
             nodeAgentRpcPayload.setupSetupCGroupBits(
-                universe, nodeDetails, taskParams(), optional.get()),
+                universe, nodeDetails, taskParams(), nodeAgent),
             NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
     }
-    if (optional.isPresent() && taskParams().type == UpgradeTaskType.ToggleTls) {
+    if (isNodeAgentSupported && taskParams().type == UpgradeTaskType.ToggleTls) {
+      NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(nodeDetails.cloudInfo.private_ip);
       if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(taskSubType)
           || UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(taskSubType)
           || UpgradeTaskParams.UpgradeTaskSubType.YbcGflagsUpdate.name().equals(taskSubType)) {
         log.info(
             "Updating toggle TLS gflags using node agent {} for taskSubType {}",
-            optional.get(),
+            nodeAgent,
             taskSubType);
         nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
-            optional.get(), universe, nodeDetails, taskParams());
+            nodeAgent, universe, nodeDetails, taskParams());
         return;
       }
     }

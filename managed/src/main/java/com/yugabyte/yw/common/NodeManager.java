@@ -1628,17 +1628,13 @@ public class NodeManager extends DevopsBase {
 
     NodeInstanceData instanceData = nodeInstance.getDetails();
     if (StringUtils.isNotBlank(instanceData.ip)) {
-      getNodeAgentClient()
-          .maybeGetNodeAgent(instanceData.ip, provider, null /* universe */)
-          .ifPresent(
-              nodeAgent -> {
-                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
-                  nodeAgent.refresh();
-                }
-                commandArgs.add("--connection_type");
-                commandArgs.add("node_agent_rpc");
-                nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
-              });
+      if (provider.isManualOnprem()) {
+        commandArgs.add("--connection_type");
+        commandArgs.add("node_agent_rpc");
+        // Node agent must already be present and running for onprem manual (non-sudo).
+        NodeAgent nodeAgent = getNodeAgentClient().getAndUpgradeOrThrow(instanceData.ip);
+        nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+      }
     }
     commandArgs.add(nodeTaskParam.getNodeName());
 
@@ -1754,6 +1750,10 @@ public class NodeManager extends DevopsBase {
       Map<String, String> redactedVals) {
     String nodeIp = null;
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
+    if (!NodeAgentClient.isCloudTypeSupported(userIntent.providerType)) {
+      log.debug("Skipping node agent command args for {} provider", userIntent.providerType);
+      return;
+    }
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       Optional<NodeInstance> nodeInstanceOp =
           nodeTaskParam.nodeUuid == null
@@ -1768,22 +1768,16 @@ public class NodeManager extends DevopsBase {
         nodeIp = nodeDetails.cloudInfo.private_ip;
       }
     }
-    if (StringUtils.isNotBlank(nodeIp) && StringUtils.isNotBlank(userIntent.provider)) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    if (StringUtils.isNotBlank(nodeIp)) {
+      // Calls hitting here may or may not have node agent. Java client calls already validate the
+      // presence of node agents.
       getNodeAgentClient()
-          .maybeGetNodeAgent(nodeIp, provider, universe)
+          .maybeGetAndUpgrade(nodeIp)
           .ifPresent(
               nodeAgent -> {
-                if (nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid(), true)) {
-                  nodeAgent.refresh();
-                }
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
-                if (getNodeAgentClient()
-                    .isAnsibleOffloadingEnabled(nodeAgent, provider, universe)) {
-                  commandArgs.add("--offload_ansible");
-                }
-                nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+                getNodeAgentClient().addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
   }
@@ -3037,11 +3031,6 @@ public class NodeManager extends DevopsBase {
       // Get the node agent for the node if its present.
       Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
       NodeDetails nodeDetails = universe.getNode(taskParams.nodeName);
-      NodeAgent nodeAgent =
-          getNodeAgentClient()
-              .maybeGetNodeAgent(nodeDetails.cloudInfo.private_ip, provider, universe)
-              .orElse(null);
-
       int otelColMaxMemory =
           confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorMaxMemory);
       if (otelColMaxMemory > 0) {
@@ -3060,7 +3049,7 @@ public class NodeManager extends DevopsBase {
                   metricsExportConfig,
                   logLinePrefix,
                   getOtelColMetricsPort(taskParams),
-                  nodeAgent)
+                  NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip).orElse(null))
               .toAbsolutePath()
               .toString());
 

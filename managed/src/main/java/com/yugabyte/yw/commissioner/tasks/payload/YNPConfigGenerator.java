@@ -178,8 +178,7 @@ public class YNPConfigGenerator {
       }
       extraNode.put("mount_paths", volumePaths.toString());
     }
-    if (node.cloudInfo.cloud.equals(Common.CloudType.azu.toString())
-        && node.cloudInfo.lun_indexes.length > 0) {
+    if (userIntent.providerType == Common.CloudType.azu && node.cloudInfo.lun_indexes.length > 0) {
       StringBuilder sb = new StringBuilder();
       for (int i = 0; i < node.cloudInfo.lun_indexes.length; i++) {
         sb.append(node.cloudInfo.lun_indexes[i]);
@@ -198,7 +197,7 @@ public class YNPConfigGenerator {
       List<String> devicePaths =
           this.queryHelper.getDeviceNames(
               provider,
-              Common.CloudType.valueOf(node.cloudInfo.cloud),
+              userIntent.providerType,
               Integer.toString(deviceInfo.numVolumes),
               storageType,
               node.cloudInfo.region,
