@@ -20,6 +20,8 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/state_change_context.h"
 
+#include "yb/rpc/messenger.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
@@ -142,6 +144,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       tablet(),
       nullptr /* server_mem_tracker */,
       messenger_.get(),
+      messenger_->ThreadPoolPtr(),
       proxy_cache_.get(),
       log,
       table_metric_entity,

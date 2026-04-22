@@ -199,6 +199,7 @@ Status TabletPeer::InitTabletPeer(
     const TabletPtr& tablet,
     const std::shared_ptr<MemTracker>& server_mem_tracker,
     Messenger* messenger,
+    rpc::ThreadPoolPtr service_pool,
     rpc::ProxyCache* proxy_cache,
     const scoped_refptr<Log>& log,
     const scoped_refptr<MetricEntity>& table_metric_entity,
@@ -232,8 +233,10 @@ Status TabletPeer::InitTabletPeer(
     log_ = log;
     // "Publish" the log pointer so it can be retrieved using the log() accessor.
     log_atomic_ = log.get();
-    service_thread_pool_ = &messenger->ThreadPool();
-    strand_.reset(new rpc::Strand(&messenger->ThreadPool()));
+
+    service_thread_pool_holder_ = std::move(service_pool);
+    service_thread_pool_.store(service_thread_pool_holder_.get(), std::memory_order_release);
+    strand_.reset(new rpc::Strand(service_thread_pool_holder_.get()));
     messenger_ = messenger;
 
     tablet->SetMemTableFlushFilterFactory([log] {

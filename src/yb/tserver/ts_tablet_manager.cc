@@ -50,6 +50,7 @@
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_manager.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
@@ -2162,6 +2163,14 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
+  auto pool_tag = PoolTagForTablet(tablet);
+  auto service_thread_pool = server_->messenger()->TaggedThreadPool(pool_tag);
+  if (!service_thread_pool.ok()) {
+    LOG(ERROR) << kLogPrefix << "Failed to get service thread pool for tag " << pool_tag
+               << ": " << service_thread_pool.status();
+    tablet_peer->SetFailed(service_thread_pool.status());
+    return;
+  }
   MonoTime start(MonoTime::Now());
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "starting tablet") {
     TRACE("Initializing tablet peer");
@@ -2169,6 +2178,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         tablet,
         server_->mem_tracker(),
         server_->messenger(),
+        std::move(*service_thread_pool),
         &server_->proxy_cache(),
         log,
         tablet->GetTableMetricsEntity(),
@@ -2433,6 +2443,17 @@ void TSTabletManager::CompleteShutdown() {
   if (waiting_txn_registry_) {
     waiting_txn_registry_->CompleteShutdown();
   }
+}
+
+rpc::ThreadPoolTag TSTabletManager::PoolTagForTablet(const tablet::TabletPtr& tablet) {
+  if (FLAGS_enable_qos && tablet->table_type() == TableType::PGSQL_TABLE_TYPE) {
+    auto db_oid = GetPgsqlDatabaseOid(tablet->metadata()->primary_table_info()->table_id);
+    if (db_oid.ok()) {
+      return *db_oid;
+    }
+    LOG(WARNING) << "Failed to determine database oid for pool tag: " << db_oid.status();
+  }
+  return 0;
 }
 
 std::string TSTabletManager::LogPrefix() const {
