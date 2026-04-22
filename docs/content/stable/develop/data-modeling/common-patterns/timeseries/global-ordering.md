@@ -94,7 +94,7 @@ CREATE TABLE global_order2 (
     ts timestamp,/* time at which the event was generated */
     car varchar, /* name of the car */
     speed int,   /* speed of your car */
-    bucketid smallint DEFAULT random()*7, /* bucket id*/
+    bucketid smallint DEFAULT floor(random()*8), /* bucket id*/
     PRIMARY KEY(bucketid HASH, ts ASC)
 ) SPLIT INTO 3 TABLETS;
 ```
@@ -112,7 +112,7 @@ INSERT INTO global_order2 (ts, car, speed)
             FROM generate_series(1,100) AS id);
 ```
 
-Because the default value of `bucketid` is set to `random()*7`, you do not have to explicitly insert the value.
+Because the default value of `bucketid` is set to `floor(random()*8)`, you do not have to explicitly insert the value.
 
 Retrieve the data from the table as follows:
 
