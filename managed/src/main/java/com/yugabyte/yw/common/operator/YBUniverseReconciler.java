@@ -1379,7 +1379,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
       if (ysqlPassword != null) {
         Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
-        resourceTracker.trackDependency(currentReconcileResource, ysqlSecret);
+        resourceTracker.trackDependency(
+            currentReconcileResource, ysqlSecret, currentLocalInstanceUuid);
         log.trace(
             "Tracking secret {} as dependency of {}",
             ysqlSecret.getMetadata().getName(),
@@ -1396,7 +1397,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
       if (ycqlPassword != null) {
         Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
-        resourceTracker.trackDependency(currentReconcileResource, ycqlSecret);
+        resourceTracker.trackDependency(
+            currentReconcileResource, ycqlSecret, currentLocalInstanceUuid);
         log.trace(
             "Tracking secret {} as dependency of {}",
             ycqlSecret.getMetadata().getName(),

@@ -84,6 +84,7 @@
 
 #include "yb/qlexpr/index.h"
 
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -677,6 +678,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet,
           master_->mem_tracker(),
           master_->messenger(),
+          master_->messenger()->ThreadPoolPtr(),
           &master_->proxy_cache(),
           log,
           tablet->GetTableMetricsEntity(),

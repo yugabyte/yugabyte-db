@@ -9,6 +9,7 @@ import glob
 
 from argparse import ArgumentParser
 
+from yugabyte.build_paths import BuildPaths
 from yugabyte.command_util import run_program
 from yugabyte.common_util import get_thirdparty_dir
 
@@ -44,6 +45,7 @@ class MacLibraryPackager:
     dest_dir: str
     verbose_mode: bool
     absolute_paths_by_libname: Dict[str, str]
+    install_name_tool: str
 
     def __init__(
             self,
@@ -63,6 +65,12 @@ class MacLibraryPackager:
         self.dest_dir = dest_dir
         self.verbose_mode = verbose_mode
         self.absolute_paths_by_libname = {}
+
+        build_paths = BuildPaths(self.build_dir)
+        if build_paths.llvm_path:
+            self.install_name_tool = f'{build_paths.llvm_path}/bin/llvm-install-name-tool'
+        else:
+            self.install_name_tool = 'install_name_tool'
 
     def package_binaries(self) -> None:
         src = self.build_dir
@@ -302,7 +310,7 @@ class MacLibraryPackager:
 
     def remove_rpaths(self, filename: str, rpaths: List[str]) -> None:
         for rpath in rpaths:
-            run_program(['install_name_tool', '-delete_rpath', rpath, filename])
+            run_program([self.install_name_tool, '-delete_rpath', rpath, filename])
             logging.debug('Successfully removed rpath %s from %s', rpath, filename)
 
     def set_new_path(self, filename: str, old_path: str, new_path: str) -> None:
@@ -312,11 +320,12 @@ class MacLibraryPackager:
         #      @rpath/libmaster.dylib
 
         if os.path.basename(filename) == os.path.basename(old_path):
-            run_program(['install_name_tool', '-id', new_path, filename])
-            logging.debug('install_name_tool -id %s %s', new_path, filename)
+            run_program([self.install_name_tool, '-id', new_path, filename])
+            logging.debug('%s -id %s %s', self.install_name_tool, new_path, filename)
         else:
-            run_program(['install_name_tool', '-change', old_path, new_path, filename])
-            logging.debug('install_name_tool -change %s %s %s', old_path, new_path, filename)
+            run_program([self.install_name_tool, '-change', old_path, new_path, filename])
+            logging.debug('%s -change %s %s %s',
+                          self.install_name_tool, old_path, new_path, filename)
 
     def fix_load_paths(self, filename: str, lib_bin_dir: str, loader_path: str) -> List[str]:
         logging.debug('Processing file %s', filename)

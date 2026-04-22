@@ -555,17 +555,14 @@ set_build_type_based_on_jenkins_job_name() {
 set_default_compiler_type() {
   expect_vars_to_be_set build_type
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
-    if is_mac; then
-      YB_COMPILER_TYPE=clang
-      adjust_compiler_type_on_mac
-    elif [[ $OSTYPE =~ ^linux ]]; then
-      YB_COMPILER_TYPE=clang21
-    else
-      fatal "Cannot set default compiler type on OS $OSTYPE"
-    fi
+    YB_COMPILER_TYPE=clang21
     export YB_COMPILER_TYPE
     readonly YB_COMPILER_TYPE
   fi
+}
+
+is_apple_clang() {
+  is_mac && [[ $YB_COMPILER_TYPE == clang ]]
 }
 
 is_clang() {
@@ -1495,7 +1492,7 @@ save_brew_path_to_build_dir() {
 }
 
 save_llvm_toolchain_info_to_build_dir() {
-  if is_linux; then
+  if is_linux || ! is_apple_clang; then
     save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_DIR:-}" "llvm_path.txt"
     save_var_to_file_in_build_dir "${YB_LLVM_TOOLCHAIN_URL:-}" "llvm_url.txt"
   fi

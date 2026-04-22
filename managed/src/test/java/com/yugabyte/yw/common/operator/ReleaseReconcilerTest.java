@@ -7,6 +7,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -187,10 +188,13 @@ public class ReleaseReconcilerTest extends FakeDBApplication {
             inv -> {
               ResourceTracker tracker = inv.getArgument(3);
               KubernetesResourceDetails owner = inv.getArgument(4);
+              UUID localInstanceUuid = inv.getArgument(5);
               String name = inv.getArgument(0);
               String ns = inv.getArgument(1);
               tracker.trackDependency(
-                  owner, new KubernetesResourceDetails(name, ns != null ? ns : "default"));
+                  owner,
+                  new KubernetesResourceDetails(name, ns != null ? ns : "default"),
+                  localInstanceUuid);
               return "mock-secret-key";
             })
         .when(operatorUtils)
@@ -199,7 +203,8 @@ public class ReleaseReconcilerTest extends FakeDBApplication {
             eq(secretNamespace),
             eq("AWS_SECRET_ACCESS_KEY"),
             any(ResourceTracker.class),
-            any(KubernetesResourceDetails.class));
+            any(KubernetesResourceDetails.class),
+            nullable(UUID.class));
 
     releaseReconciler.onAdd(releaseCr);
 
@@ -263,10 +268,13 @@ public class ReleaseReconcilerTest extends FakeDBApplication {
             inv -> {
               ResourceTracker tracker = inv.getArgument(3);
               KubernetesResourceDetails owner = inv.getArgument(4);
+              UUID localInstanceUuid = inv.getArgument(5);
               String name = inv.getArgument(0);
               String ns = inv.getArgument(1);
               tracker.trackDependency(
-                  owner, new KubernetesResourceDetails(name, ns != null ? ns : "default"));
+                  owner,
+                  new KubernetesResourceDetails(name, ns != null ? ns : "default"),
+                  localInstanceUuid);
               return "{\"type\":\"service_account\"}";
             })
         .when(operatorUtils)
@@ -275,7 +283,8 @@ public class ReleaseReconcilerTest extends FakeDBApplication {
             eq(secretNamespace),
             eq("CREDENTIALS_JSON"),
             any(ResourceTracker.class),
-            any(KubernetesResourceDetails.class));
+            any(KubernetesResourceDetails.class),
+            nullable(UUID.class));
 
     releaseReconciler.onAdd(releaseCr);
 
@@ -357,10 +366,13 @@ public class ReleaseReconcilerTest extends FakeDBApplication {
             inv -> {
               ResourceTracker tracker = inv.getArgument(3);
               KubernetesResourceDetails owner = inv.getArgument(4);
+              UUID localInstanceUuid = inv.getArgument(5);
               String name = inv.getArgument(0);
               String ns = inv.getArgument(1);
               tracker.trackDependency(
-                  owner, new KubernetesResourceDetails(name, ns != null ? ns : "default"));
+                  owner,
+                  new KubernetesResourceDetails(name, ns != null ? ns : "default"),
+                  localInstanceUuid);
               return "mock-secret-key";
             })
         .when(operatorUtils)
@@ -369,7 +381,8 @@ public class ReleaseReconcilerTest extends FakeDBApplication {
             eq(NAMESPACE),
             eq("AWS_SECRET_ACCESS_KEY"),
             any(ResourceTracker.class),
-            any(KubernetesResourceDetails.class));
+            any(KubernetesResourceDetails.class),
+            nullable(UUID.class));
 
     releaseReconciler.onAdd(releaseCr);
     assertEquals(2, OperatorResource.getAll().size());

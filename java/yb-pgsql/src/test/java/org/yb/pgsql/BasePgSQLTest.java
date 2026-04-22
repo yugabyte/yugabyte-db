@@ -304,11 +304,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
-  protected void skipYsqlConnMgr(String reason, boolean isYsqlConnMgr) {
-    if (isYsqlConnMgr) {
-      LOG.info("Switching to postgres port:" + reason);
-      ConnectionEndpoint.DEFAULT = ConnectionEndpoint.POSTGRES;
+  // Switches DEFAULT connection endpoint to POSTGRES when the test is running
+  // with connection manager (so the test effectively skips conn-mgr mode).
+  // When restartCluster is true and the switch actually happened, also
+  // restarts the cluster to drop connections created by initial setup on the
+  // conn-mgr port.
+  protected void skipYsqlConnMgr(String reason, boolean restartCluster) throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
     }
+    LOG.info("Switching to postgres port:" + reason);
+    ConnectionEndpoint.DEFAULT = ConnectionEndpoint.POSTGRES;
+    if (restartCluster) {
+      restartCluster();
+    }
+  }
+
+  protected void skipYsqlConnMgr(String reason) throws Exception {
+    skipYsqlConnMgr(reason, false);
   }
 
   /**
