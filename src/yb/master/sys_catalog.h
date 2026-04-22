@@ -374,6 +374,9 @@ class SysCatalogTable {
     return tablet_peer_;
   }
 
+  Result<int64_t> CountPgYbMigrationRows(
+      uint32_t database_oid, const ReadHybridTime& read_time = ReadHybridTime());
+
   Result<PgOid> GetYsqlDatabaseOid(const NamespaceName& ns_name);
 
  private:
