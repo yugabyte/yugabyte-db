@@ -260,6 +260,8 @@ typedef enum YbStatementType
 	CatCacheNegMisses_46, CatCacheNegMisses_47, CatCacheNegMisses_48,
 	CatCacheNegMisses_49, CatCacheNegMisses_50,
 	CatCacheNegMisses_End = CatCacheNegMisses_50,
+	RegularBackendInitLatency,
+	AuthBackendInitLatency, /* Connmgr Auth backend only */
 	kMaxStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
@@ -483,6 +485,10 @@ set_metric_names(void)
 		   YSQL_METRIC_PREFIX "AuthorizedConnection");
 	strcpy(ybpgm_table[RelCachePreload].name,
 		   YSQL_METRIC_PREFIX "RelCachePreload");
+	strcpy(ybpgm_table[RegularBackendInitLatency].name,
+		   YSQL_LATENCY_METRIC_PREFIX "BackendInit");
+	strcpy(ybpgm_table[AuthBackendInitLatency].name,
+		   YSQL_LATENCY_METRIC_PREFIX "ConnMgrAuthBackendInit");
 
 	strcpy(ybpgm_table[Select].count_help,
 		   "Number of SELECT statements that have been executed");
@@ -608,6 +614,16 @@ set_metric_names(void)
 	strcpy(ybpgm_table[RelCachePreload].count_help,
 		   "Number of relcache preloads");
 	strcpy(ybpgm_table[RelCachePreload].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[RegularBackendInitLatency].count_help,
+		   "Number of regular backend connections established");
+	strcpy(ybpgm_table[RegularBackendInitLatency].sum_help,
+		   "Total time (microseconds) spent initializing regular backend connections");
+
+	strcpy(ybpgm_table[AuthBackendInitLatency].count_help,
+		   "Number of auth backend connections established (connection manager only)");
+	strcpy(ybpgm_table[AuthBackendInitLatency].sum_help,
+		   "Total time (microseconds) spent initializing auth backend connections");
 }
 
 /*
@@ -1034,6 +1050,19 @@ ybpgm_shmem_request(void)
 static void
 ybpgm_InitPostgres()
 {
+
+	/* Conn initialization latency metric */
+	long		conn_init_secs;
+	int			conn_init_usecs;
+
+	TimestampDifference(MyStartTimestamp, GetCurrentTimestamp(),
+						&conn_init_secs, &conn_init_usecs);
+	uint64_t	conn_latency_us = (uint64_t) (conn_init_secs * 1000000 + conn_init_usecs);
+	YbStatementType conn_type =
+		YbIsAuthBackend() ? AuthBackendInitLatency : RegularBackendInitLatency;
+
+	ybpgm_Store(conn_type, conn_latency_us, 0);
+
 	/* Authorized connections metric */
 	long		current_authorized_connections = YbGetAuthorizedConnections();
 	long		total_delta = current_authorized_connections - last_authorized_connection_val;

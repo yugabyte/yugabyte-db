@@ -3091,6 +3091,7 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	get_namespace_oid(GetUserNameFromId(GetUserId(), false), true);
 
 	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
+	elog(log_level, "Preloading relcache complete");
 	return NULL;
 }
 
