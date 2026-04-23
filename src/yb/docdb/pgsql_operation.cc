@@ -1047,11 +1047,17 @@ class PgsqlVectorFilter {
     if (!row_) {
       return true;
     }
+    if (!status_.ok()) {
+      return false;
+    }
     ++num_checked_entries_;
 
-    // TODO(vector_index) handle failure
-    auto ybctid = CHECK_RESULT(reverse_mapping_reader_->FetchYbctid(vector_id));
-    if (ybctid.empty()) {
+    auto ybctid = reverse_mapping_reader_->FetchYbctid(vector_id);
+    if (!ybctid.ok()) {
+      status_ = std::move(ybctid.status());
+      return false;
+    }
+    if (ybctid->empty()) {
       ++num_removed_;
       return false;
     }
@@ -1062,13 +1068,17 @@ class PgsqlVectorFilter {
     if (need_refresh_) {
       iter_.Refresh();
     }
-    auto fetch_result = CHECK_RESULT(iter_.FetchTuple(ybctid, &*row_));
+    auto fetch_result = iter_.FetchTuple(*ybctid, &*row_);
+    if (!fetch_result.ok()) {
+      status_ = std::move(fetch_result.status());
+      return false;
+    }
     // TODO(vector_index) Actually we already have all necessary info to generate response,
     // but we don't know whether this row will be in top or not.
     // So need to extend usearch interface to also provide us ability to store fetched row.
 
-    need_refresh_ = fetch_result == FetchResult::NotFound;
-    if (fetch_result != FetchResult::Found) {
+    need_refresh_ = *fetch_result == FetchResult::NotFound;
+    if (*fetch_result != FetchResult::Found) {
       return false;
     }
     ++num_found_entries_;
@@ -1086,11 +1096,17 @@ class PgsqlVectorFilter {
     ++num_accepted_entries_;
     return true;
   }
+
+  const Status& status() const {
+    return status_;
+  }
+
  private:
   const docdb::DocVectorIndexMetrics& metrics_;
   FilteringIterator iter_;
   dockv::ReaderProjection projection_;
   docdb::DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
+  Status status_;
   size_t index_column_index_ = std::numeric_limits<size_t>::max();
   std::optional<dockv::PgTableRow> row_;
   bool need_refresh_ = false;
@@ -2708,6 +2724,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
       could_have_missing_entries,
       data_.read_operation_data.statistics
   ));
+  RETURN_NOT_OK(filter.status());
   VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();
 
   // TODO(vector_index) Order keys by ybctid for fetching.
