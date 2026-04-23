@@ -1286,7 +1286,7 @@ trailing_select_clauses = [ 'FROM' ( from_item { ','  from_item } ) ] \
 
 from_item = '<See https://www.postgresql.org/docs/15/sql-select.html>' ;
 
-common_table_expression = cte_name [ '(' column_name { ',' column_name } ')' ] 'AS' '(' ( select | values | insert | update | delete ) ')' ;
+common_table_expression = cte_name [ '(' column_name { ',' column_name } ')' ] 'AS' [ [ 'NOT' ] 'MATERIALIZED' ] '(' ( select | values | insert | update | delete ) ')' ;
 
 select_expression = expression [ [ 'AS' ] name ] ;
 

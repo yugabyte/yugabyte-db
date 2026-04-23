@@ -30,6 +30,36 @@ Notice that the `WITH` clause is legal in the `SELECT` statement and in each of 
 
 The recursive CTE is explained in a [dedicated section](../recursive-cte/).
 
+### Control CTE materialization
+
+You can add the `MATERIALIZED` or `NOT MATERIALIZED` keyword after `AS` in a CTE
+definition to control whether the CTE is treated as an optimization fence.
+
+Use `MATERIALIZED` to force the CTE to be evaluated once and stored before the outer
+statement uses it. Use `NOT MATERIALIZED` to allow the planner to fold a side-effect-free
+CTE into the outer statement, which can allow outer query restrictions to be pushed down
+into the CTE.
+
+For example, this query forces the CTE result to be materialized before the outer query applies its predicate:
+
+```plpgsql
+with regional_sales(region, total_sales) as materialized (
+  values ('west', 12000), ('east', 9000))
+select region, total_sales
+from regional_sales
+where total_sales > 10000;
+```
+
+And this query allows the planner to inline the CTE:
+
+```plpgsql
+with regional_sales(region, total_sales) as not materialized (
+  values ('west', 12000), ('east', 9000))
+select region, total_sales
+from regional_sales
+where total_sales > 10000;
+```
+
 ### Example that uses three data-changing CTEs and a SELECT CTE in the WITH clause
 
 First, create some test tables and inspect the contents.
