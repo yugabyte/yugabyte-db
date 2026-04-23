@@ -943,11 +943,11 @@ void TabletSplitManager::DoSplitting(
 }
 
 Status TabletSplitManager::WaitUntilIdle(CoarseTimePoint deadline) {
-  std::shared_lock l(is_running_mutex_, deadline);
-  if (!l.owns_lock()) {
-    return STATUS_FORMAT(TimedOut,
-        "Tablet split manager iteration did not complete before deadline: $0", deadline);
-  }
+  // Ideally we would take a deadline here but GCC 12 seems to have a bug where we can fail to
+  // acquire a writer lock even if there are no readers.
+  // After upgrading to a higher version of GCC and passing the deadline below, we should check if
+  // YBBackupWithAnonymizerTest.RestoreAfterRoleRenameWithAnonymizer still fails on fastdebug.
+  std::shared_lock l(is_running_mutex_);
   return Status::OK();
 }
 
