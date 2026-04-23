@@ -395,6 +395,17 @@ Status YsqlInitDBAndMajorUpgradeHandler::UpdateCatalogVersions(const LeaderEpoch
       sys_catalog_.DeleteAllYsqlCatalogTableRows({kPgYbCatalogVersionTableId}, epoch.leader_term));
   RETURN_NOT_OK(sys_catalog_.CopyPgsqlTables(
       {kPgYbCatalogVersionTableIdPriorVersion}, {kPgYbCatalogVersionTableId}, epoch.leader_term));
+
+  // pg_upgrade may have created invalidation messages in the current version's
+  // pg_yb_invalidation_messages table that correspond to catalog version bumps during the upgrade.
+  // Since we just reset the catalog versions to their pre-upgrade values, these invalidation
+  // messages are stale and would cause message_list mismatches when the master switches from
+  // reading the prior version table to the current version table at finalization.
+  const auto pg_yb_inval_messages_table_id =
+      GetPgsqlTableId(kTemplate1Oid, kPgYbInvalidationMessagesTableOid);
+  RETURN_NOT_OK(sys_catalog_.DeleteAllYsqlCatalogTableRows(
+      {pg_yb_inval_messages_table_id}, epoch.leader_term));
+
   return Status::OK();
 }
 

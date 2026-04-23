@@ -19,10 +19,10 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -32,7 +32,6 @@
 #include "yb/master/clone/external_functions.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/ts_descriptor.h"
@@ -40,7 +39,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/physical_time.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
@@ -74,6 +72,17 @@ using ::testing::SetArgPointee;
 
 MATCHER_P(CloneTabletRequestPBMatcher, expected, "CloneTabletRequestPBs did not match") {
   return pb_util::ArePBsEqual(arg, expected, nullptr /* diff_str */);
+}
+
+// This is needed for the mock of GetYsqlMajorCatalogUpgradeInfoAt.
+std::ostream& operator<<(
+    std::ostream& os, const std::optional<YsqlMajorCatalogUpgradeInfoPB>& info) {
+  if (info.has_value()) {
+    os << info->ShortDebugString();
+  } else {
+    os << "<nullopt>";
+  }
+  return os;
 }
 
 // This is needed for the mock of GenerateSnapshotInfoFromScheduleForClone.
@@ -171,6 +180,13 @@ class CloneStateManagerTest : public YBTest {
     MOCK_METHOD(Result<TSDescriptorPtr>, GetClosestLiveTserver, (), (override));
     MOCK_METHOD(TSDescriptorVector, GetTservers, (), (override));
     MOCK_METHOD(Result<BlacklistSet>, GetBlacklist, (), (override));
+    MOCK_METHOD(
+        Result<int64_t>, CountPgYbMigrationRows,
+        (uint32_t database_oid, const ReadHybridTime& read_time), (override));
+    MOCK_METHOD(
+        Result<std::optional<YsqlMajorCatalogUpgradeInfoPB>>, GetYsqlMajorCatalogUpgradeInfoAt,
+        (std::optional<std::reference_wrapper<const ReadHybridTime>> read_time), (override));
+    MOCK_METHOD(bool, IsMajorYsqlUpgradeInProgress, (), (override));
   };
 
  private:
@@ -357,8 +373,8 @@ class CloneStateManagerTest : public YBTest {
 
   std::unique_ptr<CloneStateManager> clone_state_manager_;
 
-  const NamespaceId kSourceNamespaceId = "source_namespace_id";
-  const NamespaceId kTargetNamespaceId = "target_namespace_id";
+  const NamespaceId kSourceNamespaceId = GetPgsqlNamespaceId(33333);
+  const NamespaceId kTargetNamespaceId = GetPgsqlNamespaceId(33334);
   const std::string kSourceNamespaceName = "source_namespace_name";
   const std::string kTargetNamespaceName = "target_namespace_name";
   const SnapshotScheduleId kSnapshotScheduleId = SnapshotScheduleId::GenerateRandom();
@@ -596,6 +612,10 @@ TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateM
   EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone).WillOnce(
       Return(CatalogManagerIf::CloneSnapshotInfo()));
   EXPECT_CALL(MockFuncs(), GetBlacklist).WillOnce(Return(BlacklistSet()));
+  EXPECT_CALL(MockFuncs(), GetYsqlMajorCatalogUpgradeInfoAt(_))
+    .WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(MockFuncs(), IsMajorYsqlUpgradeInProgress).WillRepeatedly(Return(false));
+  EXPECT_CALL(MockFuncs(), CountPgYbMigrationRows(_, _)).WillRepeatedly(Return(1));
   EXPECT_CALL(MockFuncs(), GetClosestLiveTserver).WillOnce(Return(dummy_ts_desc));
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(MockFuncs(),
@@ -638,6 +658,66 @@ TEST_F_EX(CloneStateManagerTest, AbortInStartTabletsCloningPg, CloneStateManager
   ASSERT_OK(callback(Status::OK() /* pg_schema_cloning_status */));
 
   AssertCloneIsAborted();
+}
+
+TEST_F_EX(
+    CloneStateManagerTest, CloneBlockedDuringYsqlMajorCatalogUpgrade, CloneStateManagerPgTest) {
+  EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
+  EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
+      .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
+  EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone)
+      .WillOnce(Return(CatalogManagerIf::CloneSnapshotInfo()));
+  EXPECT_CALL(MockFuncs(), GetBlacklist).WillOnce(Return(BlacklistSet()));
+  EXPECT_CALL(MockFuncs(), GetYsqlMajorCatalogUpgradeInfoAt(_))
+      .WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(MockFuncs(), IsMajorYsqlUpgradeInProgress).WillRepeatedly(Return(true));
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
+
+  auto [source_namespace_id, seq_no] = ASSERT_RESULT(CloneNamespace(
+      source_ns_identifier_, kRestoreTime, kTargetNamespaceName,
+      CoarseMonoClock::Now() + 10s /* deadline */, kEpoch));
+
+  auto clone_state = GetLatestCloneState();
+  auto lock = clone_state->LockForRead();
+  ASSERT_EQ(lock->pb.aggregate_state(), SysCloneStatePB::ABORTED);
+  ASSERT_STR_CONTAINS(lock->pb.abort_message(), "YSQL major catalog upgrade is in progress");
+}
+
+TEST_F_EX(
+    CloneStateManagerTest, CloneBlockedWhenRestoreTimeDuringUpgrade, CloneStateManagerPgTest) {
+  const auto non_done_states = {
+      YsqlMajorCatalogUpgradeInfoPB::PERFORMING_INIT_DB,
+      YsqlMajorCatalogUpgradeInfoPB::PERFORMING_PG_UPGRADE,
+      YsqlMajorCatalogUpgradeInfoPB::MONITORING,
+      YsqlMajorCatalogUpgradeInfoPB::PERFORMING_ROLLBACK,
+  };
+  YsqlMajorCatalogUpgradeInfoPB upgrade_info;
+
+  for (auto state : non_done_states) {
+    upgrade_info.set_state(state);
+    LOG(INFO) << "Testing with upgrade state at restore time: "
+              << YsqlMajorCatalogUpgradeInfoPB::State_Name(state);
+    EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
+    EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
+        .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
+    EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone)
+        .WillOnce(Return(CatalogManagerIf::CloneSnapshotInfo()));
+    EXPECT_CALL(MockFuncs(), GetBlacklist).WillOnce(Return(BlacklistSet()));
+    EXPECT_CALL(MockFuncs(), GetYsqlMajorCatalogUpgradeInfoAt(_))
+        .WillRepeatedly(Return(upgrade_info));
+    EXPECT_CALL(MockFuncs(), IsMajorYsqlUpgradeInProgress).WillRepeatedly(Return(false));
+    EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
+
+    auto [source_namespace_id, seq_no] = ASSERT_RESULT(CloneNamespace(
+        source_ns_identifier_, kRestoreTime, kTargetNamespaceName,
+        CoarseMonoClock::Now() + 10s /* deadline */, kEpoch));
+
+    auto clone_state = GetLatestCloneState();
+    auto lock = clone_state->LockForRead();
+    ASSERT_EQ(lock->pb.aggregate_state(), SysCloneStatePB::ABORTED);
+    ASSERT_STR_CONTAINS(
+        lock->pb.abort_message(), "YSQL major catalog upgrade was in state");
+  }
 }
 
 TEST_F(CloneStateManagerTest, AbortInCreatingState) {

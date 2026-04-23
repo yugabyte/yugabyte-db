@@ -2296,8 +2296,8 @@ Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
 }
 
 Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
-    const std::string& db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
-    const std::string& user) {
+    std::string_view db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
+    std::string_view user) {
   ExternalClusterPGConnectionOptions options;
   options.db_name = db_name;
   if (tserver_index) {
