@@ -30,7 +30,7 @@ To add the Yugabyte Docs MCP server, do the following:
 
     {{< tabpane text=true >}}
 
-{{% tab header="Cursor" lang="cursor" %}}
+{{% tab header="Cursor IDE" lang="cursor" %}}
 
 The **Add to Cursor** option opens Cursor to your **Cursor Settings**.
 
