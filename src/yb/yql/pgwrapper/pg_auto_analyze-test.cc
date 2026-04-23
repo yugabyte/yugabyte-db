@@ -1745,7 +1745,7 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
         options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
 
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpqutils*=1";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   }
 
   void testConcurrentDDLAnalyze() {
