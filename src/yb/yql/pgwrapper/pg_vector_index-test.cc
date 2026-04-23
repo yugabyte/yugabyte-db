@@ -74,7 +74,6 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
@@ -177,7 +176,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
 
@@ -1011,7 +1010,7 @@ TEST_P(PgVectorIndexTest, ConcurrentInsertAndSearch) {
   // IndexWrapperBase::Insert and never traverses the HNSW graph -- both hide the race. Run against
   // the real index instead, with one insert task per vector so a single mutable chunk receives many
   // concurrent writes.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
   // Keep everything in a single tablet (hence a single mutable chunk) so writers and readers hit
   // the same index.
@@ -1180,7 +1179,7 @@ TEST_P(PgVectorIndexCompactionPoolTest, ShutdownNotBlockedByCompaction) {
   // We trigger the one compaction manually; no background compactions competing for the worker.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
   // Run against the real index so a compaction actually merges HNSW graphs.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   num_pre_split_tablets_ = 1;
 
@@ -1537,7 +1536,7 @@ TEST_P(PgVectorIndexTest, EfSearch) {
   constexpr int kSmallEf = 1;
   constexpr int kBigEf = 1000;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
 
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));

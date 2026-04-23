@@ -117,7 +117,7 @@ DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
-DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(TEST_vector_index_exact);
 
 namespace yb {
 
@@ -3512,7 +3512,7 @@ TEST_F(XClusterYsqlTest, ValidatePartitionType) {
 }
 
 TEST_F(XClusterYsqlTest, VectorIndex) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
 
   SetupParams params{
     .extra_columns = "embedding vector(3)",

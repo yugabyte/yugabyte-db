@@ -86,7 +86,6 @@ DECLARE_bool(TEST_xcluster_increment_logical_commit_time);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
-DECLARE_bool(TEST_usearch_exact);
 
 using namespace std::chrono_literals;
 
@@ -4867,7 +4866,7 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexCreatedBeforeDrSetup) {
     GTEST_SKIP() << "This test does not work with yb_backup.py";
   }
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   auto params = XClusterDDLReplicationTestBase::kDefaultParams;
   params.is_colocated = true;
   params.start_yb_controller_servers = true;
@@ -4913,7 +4912,7 @@ INSTANTIATE_TEST_SUITE_P(
     ColocationMode, XClusterDDLReplicationVectorIndexParamTest, ::testing::Values(false, true));
 
 TEST_P(XClusterDDLReplicationVectorIndexParamTest, VectorIndex) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   const bool use_colocated_db = GetParam();
   auto params = XClusterDDLReplicationTestBase::kDefaultParams;
   params.is_colocated = use_colocated_db;
@@ -5035,7 +5034,7 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
     GTEST_SKIP() << "This test does not work with yb_backup.py";
   }
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   auto params = XClusterDDLReplicationTestBase::kDefaultParams;
   params.start_yb_controller_servers = true;
   ASSERT_OK(SetUpClusters(params));
