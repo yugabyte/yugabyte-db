@@ -189,9 +189,13 @@ Status RWOperationCounter::WaitForOpsToFinish(
 ScopedRWOperation::ScopedRWOperation(
     RWOperationCounter* counter, const StatusHolder* abort_status_holder,
     const CoarseTimePoint& deadline)
-    : data_{counter, abort_status_holder, ""
+    : data_{
+        .counter_ = counter,
+        .abort_status_holder_ = abort_status_holder,
+        .resource_name_ = ""
 #ifndef NDEBUG
-            , counter ? LongOperationTracker("ScopedRWOperation", 1s) : LongOperationTracker()
+        , .long_operation_tracker_ = counter
+            ? LongOperationTracker("ScopedRWOperation", 1s) : LongOperationTracker()
 #endif
       } {
   if (counter != nullptr) {

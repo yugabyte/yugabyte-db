@@ -92,6 +92,7 @@ FileMetaData::FileMetaData()
 }
 
 bool FileMetaData::Unref(TableCache* table_cache) {
+  LOG_IF(DFATAL, refs <= 0) << "Unref on already-dead FileMetaData " << fd.GetNumber();
   refs--;
   if (refs <= 0) {
     if (table_reader_handle) {
