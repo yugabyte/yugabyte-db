@@ -789,6 +789,10 @@ PgApiImpl::~PgApiImpl() {
   mem_contexts_.clear();
 }
 
+void PgApiImpl::Shutdown() {
+  pg_txn_manager_->Shutdown();
+}
+
 void PgApiImpl::SetupPgBackendCgroup(YbcPgOid dboid) {
 #ifdef __linux__
   if (tserver::TServerCgroupManagementEnabled()) {
