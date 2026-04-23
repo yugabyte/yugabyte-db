@@ -59,6 +59,7 @@ DECLARE_int32(ht_lease_duration_ms);
 
 namespace yb {
 
+class Cgroup;
 class Counter;
 class HostPort;
 class ThreadPool;
@@ -141,6 +142,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     RetryableRequests* retryable_requests);
 
   virtual ~RaftConsensus() override;
+
+  // Set the per-database cgroup on consensus tokens/strands for per-DB cgroup mode.
+  void SetPerDbCgroup(Cgroup* cgroup);
 
   virtual Status Start(const ConsensusBootstrapInfo& info) override;
 

@@ -88,6 +88,7 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 
 namespace yb {
 
+class Cgroup;
 class FsManager;
 class MetricEntity;
 
@@ -640,6 +641,9 @@ class Tablet : public AbstractTablet,
   rocksdb::DB* intents_db() const {
     return intents_db_.get();
   }
+
+  // Set per-task cgroup on both regular and intents RocksDB instances for per-DB compaction mode.
+  void SetRocksDbTaskCgroup(Cgroup* cgroup);
 
   // The only way to make any conclusion that a tablet is a product of a split is to check its key
   // bounds are initialized as it is supposed that these key bounds are setup during tablet split.

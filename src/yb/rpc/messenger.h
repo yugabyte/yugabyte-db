@@ -126,6 +126,16 @@ class MessengerBuilder {
     return *this;
   }
 
+  MessengerBuilder& SetSystemHighCgroup(Cgroup* cgroup) {
+    system_high_cgroup_ = cgroup;
+    return *this;
+  }
+
+  MessengerBuilder& SetSystemMedCgroup(Cgroup* cgroup) {
+    system_med_cgroup_ = cgroup;
+    return *this;
+  }
+
   template <class ContextType>
   MessengerBuilder &CreateConnectionContextFactory(
       size_t memory_limit, const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr) {
@@ -175,6 +185,14 @@ class MessengerBuilder {
     return last_used_parent_mem_tracker_;
   }
 
+  Cgroup* system_high_cgroup() const {
+    return system_high_cgroup_;
+  }
+
+  Cgroup* system_med_cgroup() const {
+    return system_med_cgroup_;
+  }
+
  private:
   const std::string name_;
   CoarseMonoClock::Duration connection_keepalive_time_;
@@ -190,6 +208,8 @@ class MessengerBuilder {
   std::shared_ptr<MemTracker> last_used_parent_mem_tracker_;
   bool use_local_host_outbound_ip_base_in_tests_ = false;
   ThreadPoolCgroupProvider cgroup_provider_;
+  Cgroup* system_high_cgroup_ = nullptr;
+  Cgroup* system_med_cgroup_ = nullptr;
 };
 
 // A Messenger is a container for the reactor threads which run event loops for the RPC services.
@@ -458,6 +478,8 @@ class Messenger : public ProxyContext {
   std::unique_ptr<MetadataSerializerFactory> metadata_serializer_factory_;
 
   ThreadPoolCgroupProvider cgroup_provider_;
+  Cgroup* system_high_cgroup_ = nullptr;
+  Cgroup* system_med_cgroup_ = nullptr;
 
 #ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK

@@ -68,6 +68,7 @@ class Cgroup {
 
   Result<Cgroup&> CreateOrLoadChild(std::string_view name) EXCLUDES(mutex_);
 
+  Status MoveThreadToGroup(int64_t thread_id) EXCLUDES(mutex_);
   Status MoveCurrentThreadToGroup() EXCLUDES(mutex_);
 
   // These functions have an inherent race condition: the threads they read may change

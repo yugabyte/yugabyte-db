@@ -93,6 +93,10 @@ class Strand : public ThreadSubPoolBase,
 
   bool Enqueue(StrandTask* task) override;
 
+  // Set per-task cgroup for per-DB mode. The strand's underlying ThreadPoolTask will switch
+  // to this cgroup before processing queued StrandTasks.
+  void SetTaskCgroup(Cgroup* cgroup);
+
   void TEST_BusyWait();
 
  private:

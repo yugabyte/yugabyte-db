@@ -2023,6 +2023,10 @@ std::vector<FollowerCommunicationTime> PeerMessageQueue::GetFollowerCommunicatio
   return result;
 }
 
+void PeerMessageQueue::SetNotificationStrandCgroup(Cgroup* cgroup) {
+  notifications_strand_->SetTaskCgroup(cgroup);
+}
+
 void PeerMessageQueue::TEST_WaitForNotificationToFinish() {
   notifications_strand_->TEST_BusyWait();
 }

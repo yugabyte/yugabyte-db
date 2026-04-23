@@ -261,7 +261,8 @@ Status Messenger::ListenAddress(
     std::lock_guard guard(lock_);
     if (!acceptor_) {
       acceptor_.reset(new Acceptor(
-          metric_entity_, std::bind(&Messenger::RegisterInboundSocket, this, factory, _1, _2)));
+          metric_entity_, std::bind(&Messenger::RegisterInboundSocket, this, factory, _1, _2),
+          system_high_cgroup_));
     }
     auto accept_host = accept_endpoint.address();
     auto& outbound_address = accept_host.is_v6() ? outbound_address_v6_
@@ -431,6 +432,7 @@ const ThreadPoolPtr& Messenger::ThreadPoolPtr(ServicePriority priority) {
           rpc::ThreadPoolOptions {
             .name = name_ + "-high-pri",
             .max_workers = thread_pool_workers_limit_,
+            .cgroup = system_high_cgroup_,
           });
       high_priority_thread_pool_ready_.store(true, std::memory_order_release);
       return high_priority_thread_pool_;
@@ -600,7 +602,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
       uncompressed_protocol_(*bld.uncompressed_protocol_),
       rpc_services_counter_(name_ + " endpoints"),
       metric_entity_(bld.metric_entity_),
-      io_thread_pool_(name_, FLAGS_io_thread_pool_size),
+      io_thread_pool_(name_, FLAGS_io_thread_pool_size, bld.system_high_cgroup_),
       scheduler_(&io_thread_pool_.io_service()),
       thread_pool_workers_limit_(bld.workers_limit_),
       normal_thread_pools_(new TaggedThreadPools(
@@ -608,7 +610,9 @@ Messenger::Messenger(const MessengerBuilder &bld)
       resolver_(new DnsResolver(&io_thread_pool_.io_service(), metric_entity_)),
       rpc_metrics_(std::make_shared<RpcMetrics>(bld.metric_entity_)),
       num_connections_to_server_(bld.num_connections_to_server_),
-      cgroup_provider_(bld.cgroup_provider_) {
+      cgroup_provider_(bld.cgroup_provider_),
+      system_high_cgroup_(bld.system_high_cgroup_),
+      system_med_cgroup_(bld.system_med_cgroup_) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);
 #endif
@@ -796,16 +800,17 @@ scoped_refptr<MetricEntity> Messenger::metric_entity() const {
 }
 
 ThreadPoolOptions Messenger::MakeNormalThreadPoolOptions(TaggedThreadPools::Tag tag) const {
-  if (tag == 0 || !cgroup_provider_) {
+  if (tag == 0) {
     return ThreadPoolOptions {
       .name = name_,
       .max_workers = thread_pool_workers_limit_,
+      .cgroup = system_med_cgroup_,
     };
   }
   return ThreadPoolOptions {
     .name = Format("$0_pool_$1", name_, tag),
     .max_workers = thread_pool_workers_limit_,
-    .cgroup = cgroup_provider_(tag),
+    .cgroup = cgroup_provider_ ? cgroup_provider_(tag) : nullptr,
   };
 }
 

@@ -18,6 +18,7 @@
 
 #include "yb/master/master_rpc.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/thread.h"
 #include "yb/util/mutex.h"
 #include "yb/util/async_util.h"
@@ -36,7 +37,7 @@ class MasterLeaderPollScheduler::Impl {
     MasterLeaderFinder& finder, MasterLeaderPollerInterface& poller)
     : finder_(finder), poller_(poller), cond_(&mutex_) {}
 
-  Status Start();
+  Status Start(Cgroup* cgroup);
   void Shutdown();
   void Run();
   void TriggerASAP();
@@ -54,6 +55,7 @@ class MasterLeaderPollScheduler::Impl {
 
   MasterLeaderFinder& finder_;
   MasterLeaderPollerInterface& poller_;
+  [[maybe_unused]] Cgroup* cgroup_ = nullptr;
   scoped_refptr<Thread> thread_;
   bool should_run_ GUARDED_BY(mutex_) = false;
   int consecutive_failures_ = 0;
@@ -66,7 +68,7 @@ MasterLeaderPollScheduler::MasterLeaderPollScheduler(
     MasterLeaderFinder& finder, MasterLeaderPollerInterface& poller)
     : impl_(std::make_unique<MasterLeaderPollScheduler::Impl>(finder, poller)) {}
 
-Status MasterLeaderPollScheduler::Start() { return impl_->Start(); }
+Status MasterLeaderPollScheduler::Start(Cgroup* cgroup) { return impl_->Start(cgroup); }
 
 void MasterLeaderPollScheduler::Shutdown() {
   impl_->Shutdown();
@@ -78,7 +80,8 @@ MasterLeaderPollScheduler::~MasterLeaderPollScheduler() {
   Shutdown();
 }
 
-Status MasterLeaderPollScheduler::Impl::Start() {
+Status MasterLeaderPollScheduler::Impl::Start(Cgroup* cgroup) {
+  cgroup_ = cgroup;
   MutexLock l(mutex_);
   CHECK(thread_ == nullptr);
   should_run_ = true;
@@ -104,6 +107,12 @@ void MasterLeaderPollScheduler::Impl::Shutdown() {
 }
 
 void MasterLeaderPollScheduler::Impl::Run() {
+#ifdef __linux__
+  if (cgroup_) {
+    WARN_NOT_OK(cgroup_->MoveCurrentThreadToGroup(),
+                Format("Failed to move $0 thread to cgroup", poller_.name()));
+  }
+#endif
   poller_.Init();
 
   for (;;) {

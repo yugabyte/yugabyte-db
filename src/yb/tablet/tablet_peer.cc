@@ -195,6 +195,21 @@ TabletPeer::~TabletPeer() {
   LOG_IF_WITH_PREFIX(DFATAL, tablet_) << "TabletPeer not fully shut down.";
 }
 
+void TabletPeer::SetPerDbCgroup(Cgroup* cgroup) {
+  {
+    std::lock_guard l(lock_);
+    if (consensus_) {
+      consensus_->SetPerDbCgroup(cgroup);
+    }
+  }
+  if (log_) {
+    log_->SetPerDbCgroup(cgroup);
+  }
+  if (prepare_thread_) {
+    prepare_thread_->SetPerDbCgroup(cgroup);
+  }
+}
+
 Status TabletPeer::InitTabletPeer(
     const TabletPtr& tablet,
     const std::shared_ptr<MemTracker>& server_mem_tracker,

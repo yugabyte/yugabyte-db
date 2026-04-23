@@ -59,6 +59,7 @@
 namespace yb {
 template<class T>
 class AtomicGauge;
+class Cgroup;
 class MemTracker;
 class MetricEntity;
 class ThreadPoolToken;
@@ -428,6 +429,8 @@ class PeerMessageQueue {
   Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
 
   std::vector<FollowerCommunicationTime> GetFollowerCommunicationTimes() const;
+
+  void SetNotificationStrandCgroup(Cgroup* cgroup);
 
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);

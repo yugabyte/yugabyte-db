@@ -308,6 +308,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         compaction_reason_(compaction_->compaction_reason()),
         priority_(CalcSizePriority()),
         metrics_(db_impl->priority_thread_pool_metrics_) {
+    SetTaskCgroup(db_impl->task_cgroup());
     db_impl->mutex_.AssertHeld();
     SetTaskInfoAndCountAsPending();
   }
@@ -646,7 +647,9 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
 class DBImpl::FlushTask : public ThreadPoolTask {
  public:
   FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd)
-      : ThreadPoolTask(db_impl), cfd_(cfd) {}
+      : ThreadPoolTask(db_impl), cfd_(cfd) {
+    SetTaskCgroup(db_impl->task_cgroup());
+  }
 
   bool ShouldRemoveWithKey(void* key) override {
     return key == db_impl_ && db_impl_->disable_flush_on_shutdown_;

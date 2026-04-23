@@ -385,10 +385,9 @@ Result<Cgroup&> Cgroup::CreateOrLoadChild(std::string_view child_name) {
   return cg;
 }
 
-Status Cgroup::MoveCurrentThreadToGroup() {
+Status Cgroup::MoveThreadToGroup(int64_t thread_id) {
   DCHECK(parent_) << "Cannot move thread into root group";
 
-  auto thread_id = Thread::CurrentThreadId();
   VLOG_WITH_PREFIX(1) << "Add thread " << thread_id;
 
   int fd = threads_fd_.load();
@@ -407,6 +406,10 @@ Status Cgroup::MoveCurrentThreadToGroup() {
     }
   }
   return WriteConfigToDescriptor(fd, AsString(thread_id));
+}
+
+Status Cgroup::MoveCurrentThreadToGroup() {
+  return MoveThreadToGroup(Thread::CurrentThreadId());
 }
 
 Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {

@@ -45,6 +45,7 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -113,10 +114,26 @@ class ThreadPoolTokenImpl : public ThreadPoolToken {
   }
 
   Status SubmitFunc(std::function<void()> f) override {
+#ifdef __linux__
+    if (task_cgroup_) {
+      Cgroup* cg = task_cgroup_;
+      f = [orig = std::move(f), cg]() {
+        WARN_NOT_OK(cg->MoveCurrentThreadToGroup(),
+                    "Failed to move thread to per-db cgroup");
+        orig();
+      };
+    }
+#endif
     if (impl_.EnqueueFunctor(std::move(f))) {
       return Status::OK();
     }
     return STATUS(ServiceUnavailable, "Thread pool token was shut down.", "", Errno(ESHUTDOWN));
+  }
+
+  void SetTaskCgroup([[maybe_unused]] Cgroup* cgroup) override {
+#ifdef __linux__
+    task_cgroup_ = cgroup;
+#endif
   }
 
   void Shutdown() override {
@@ -125,6 +142,9 @@ class ThreadPoolTokenImpl : public ThreadPoolToken {
 
  private:
   Impl impl_;
+#ifdef __linux__
+  Cgroup* task_cgroup_ = nullptr;
+#endif
 };
 
 std::unique_ptr<ThreadPoolToken> ThreadPool::NewToken(ExecutionMode mode) {

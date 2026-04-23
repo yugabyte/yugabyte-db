@@ -48,6 +48,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 #include "yb/util/unique_lock.h"
@@ -145,6 +146,23 @@ Status MaintenanceManager::Init() {
       std::bind(&MaintenanceManager::RunSchedulerThread, this), &monitor_thread_));
   return Status::OK();
 }
+
+#ifdef __linux__
+void MaintenanceManager::SetCgroup(Cgroup* cgroup) {
+  if (!cgroup) {
+    return;
+  }
+  if (thread_pool_) {
+    thread_pool_->SetCgroup(cgroup);
+  }
+  if (monitor_thread_) {
+    auto status = cgroup->MoveThreadToGroup(monitor_thread_->tid());
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to move maintenance_scheduler to cgroup: " << status;
+    }
+  }
+}
+#endif
 
 void MaintenanceManager::Shutdown() {
   {

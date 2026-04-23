@@ -21,6 +21,7 @@
 DECLARE_int32(prepare_queue_max_size);
 
 namespace yb {
+class Cgroup;
 class ThreadPool;
 
 namespace consensus {
@@ -49,6 +50,8 @@ class Preparer {
   ThreadPoolToken* PoolToken();
 
   void DumpStatusHtml(std::ostream& out);
+
+  void SetPerDbCgroup(Cgroup* cgroup);
 
  private:
   std::unique_ptr<PreparerImpl> impl_;

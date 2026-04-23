@@ -31,6 +31,7 @@ using namespace std::chrono_literals;
 
 
 namespace yb {
+class Cgroup;
 class ThreadPool;
 class ThreadPoolToken;
 
@@ -73,6 +74,12 @@ class TaskStream {
 
   std::string ToString() const {
     return YB_CLASS_TO_STRING(queue, run_state, stopped, stop_requested);
+  }
+
+  void SetTaskCgroup(Cgroup* cgroup) {
+    if (taskstream_pool_token_) {
+      taskstream_pool_token_->SetTaskCgroup(cgroup);
+    }
   }
 
  private:

@@ -452,6 +452,12 @@ class Log::Appender {
     return task_stream_->ToString();
   }
 
+  void SetPerDbCgroup(Cgroup* cgroup) {
+    if (task_stream_) {
+      task_stream_->SetTaskCgroup(cgroup);
+    }
+  }
+
  private:
   // Process the given log entry batch or does a sync if a null is passed.
   void ProcessBatch(LogEntryBatch* entry_batch);
@@ -1719,6 +1725,18 @@ void Log::SetSchemaForNextLogSegment(const Schema& schema,
 
 Status Log::TEST_WriteCorruptedEntryBatchAndSync() {
   return active_segment_->TEST_WriteCorruptedEntryBatchAndSync();
+}
+
+void Log::SetPerDbCgroup(Cgroup* cgroup) {
+  if (appender_) {
+    appender_->SetPerDbCgroup(cgroup);
+  }
+  if (allocation_token_) {
+    allocation_token_->SetTaskCgroup(cgroup);
+  }
+  if (background_sync_threadpool_token_) {
+    background_sync_threadpool_token_->SetTaskCgroup(cgroup);
+  }
 }
 
 Status Log::Close() {

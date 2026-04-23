@@ -65,6 +65,7 @@
 
 namespace yb {
 
+class Cgroup;
 class MetricEntity;
 class ThreadPool;
 
@@ -344,6 +345,9 @@ class Log : public RefCountedThreadSafe<Log> {
   }
 
   HybridTime GetMinStartHTOfRunningTxnsFromGCSegments() const;
+
+  // Set per-DB cgroup on all internal pool tokens for per-DB cgroup mode.
+  void SetPerDbCgroup(Cgroup* cgroup);
 
  private:
   friend class LogTest;

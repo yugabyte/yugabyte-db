@@ -101,6 +101,10 @@ class ThreadPoolToken {
   virtual Status SubmitFunc(std::function<void()> f) = 0;
   virtual void Shutdown() = 0;
 
+  // Set a per-task cgroup. All tasks submitted via this token will have their executing
+  // thread moved to this cgroup before running. Used for per-DB cgroup assignment.
+  virtual void SetTaskCgroup([[maybe_unused]] Cgroup* cgroup) {}
+
   Status SubmitClosure(const Closure& task);
   Status Submit(const std::shared_ptr<Runnable>& runnable);
 };
@@ -154,6 +158,12 @@ class ThreadPool {
 
   std::unique_ptr<ThreadPoolToken> NewToken(ExecutionMode mode);
 
+#ifdef __linux__
+  void SetCgroup(Cgroup* cgroup) {
+    underlying_->SetCgroup(cgroup);
+  }
+#endif
+
  private:
   template <class F>
   Status DoSubmit(const F& f);
@@ -194,6 +204,11 @@ class ThreadPoolBuilder {
 
   ThreadPoolBuilder& set_metrics(ThreadPoolMetrics metrics) {
     options_.metrics = std::move(metrics);
+    return *this;
+  }
+
+  ThreadPoolBuilder& set_cgroup(Cgroup* cgroup) {
+    options_.cgroup = cgroup;
     return *this;
   }
 

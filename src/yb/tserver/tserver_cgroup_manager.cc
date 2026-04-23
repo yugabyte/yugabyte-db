@@ -14,6 +14,10 @@
 
 #ifdef __linux__
 
+#include <algorithm>
+
+#include "yb/gutil/sysinfo.h"
+
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
@@ -21,12 +25,56 @@
 DECLARE_bool(enable_qos);
 
 DEFINE_RUNTIME_double(qos_max_db_cpu_percent, 100.0,
-    "Maximum per-database CPU percentage (100.0 = all cores, unbounded).");
+    "Maximum per-database CPU as a percentage of the @capped-pool budget "
+    "(100% - qos_system_high_cpu_reserved_percent). @normal (the tenant pool) is uncapped within "
+    "@capped-pool, so databases can use whatever @system-med doesn't consume. 100.0 means a single "
+    "database may burst to the full @capped-pool budget when no other tenant or @system-med work "
+    "is contending. Values below 100 cap each database at that fraction even when peers are idle.");
 
 DEFINE_RUNTIME_int32(qos_evaluation_window_us, yb::Cgroup::kDefaultCpuPeriod,
-    "Period (in microseconds) for the CPU scheduler to use to determine whether a database "
+    "Period (in microseconds) for the CPU scheduler to use to determine whether a cgroup "
     "has exceeded its limit.");
 TAG_FLAG(qos_evaluation_window_us, advanced);
+
+DEFINE_RUNTIME_double(qos_system_high_cpu_reserved_percent, 0,
+    "CPU reserved for @system-high, not available for other work even if unused. "
+    "Subtracted from @capped-pool's cap: @capped-pool = 100% - this value. "
+    "Does NOT cap @system-high itself (see qos_system_high_cpu_max_percent). "
+    "0 means no reservation.");
+TAG_FLAG(qos_system_high_cpu_reserved_percent, advanced);
+
+DEFINE_RUNTIME_double(qos_system_high_cpu_max_percent, 100.0,
+    "Hard cap on CPU for the @system-high cgroup (reactors, consensus, WAL). "
+    "100.0 = uncapped (all cores). Lower values restrict @system-high's maximum CPU usage. "
+    "Independent of qos_system_high_cpu_reserved_percent, which controls @capped-pool's cap.");
+TAG_FLAG(qos_system_high_cpu_max_percent, advanced);
+
+DEFINE_RUNTIME_int32(qos_capped_pool_cpu_weight, yb::Cgroup::kDefaultCpuWeight,
+    "CPU scheduling weight for @capped-pool. @system-high uses the default weight ("
+    "100). Under contention, CPU splits proportionally: e.g. weight=400 gives "
+    "@capped-pool 4x the CPU share of @system-high. "
+    "Default = equal weighting. Range: [1, 10000].");
+TAG_FLAG(qos_capped_pool_cpu_weight, advanced);
+
+DEFINE_RUNTIME_double(qos_system_med_cpu_max_percent, 0,
+    "Hard cap on CPU for @system-med as a percentage of the @capped-pool budget "
+    "(100% - qos_system_high_cpu_reserved_percent). "
+    "0 means uncapped within @capped-pool. 100.0 = the full @capped-pool budget.");
+TAG_FLAG(qos_system_med_cpu_max_percent, advanced);
+
+DEFINE_RUNTIME_bool(qos_compaction_per_db_cgroups, false,
+    "When true, compaction/flush tasks run in the tablet's per-database cgroup (db_$DBOID) "
+    "instead of the shared @system-med cgroup.");
+TAG_FLAG(qos_compaction_per_db_cgroups, advanced);
+
+DEFINE_RUNTIME_bool(qos_consensus_per_db_cgroups, false,
+    "EXPERIMENTAL. When true, consensus/WAL tasks (raft, append, log-sync, prepare) run in "
+    "the tablet's per-database cgroup (db_$DBOID) instead of the shared @system-high cgroup. "
+    "The current implementation uses per-task cgroup switching on shared thread pools, which "
+    "incurs frequent MoveCurrentThreadToGroup() syscalls and may degrade kernel CFS scheduler "
+    "accuracy. A follow-up diff (GH #31010) will replace this with dedicated per-DB thread pools "
+    "(TaggedThreadPools).");
+TAG_FLAG(qos_consensus_per_db_cgroups, hidden);
 
 DEFINE_validator(qos_evaluation_window_us,
     // Linux requires cfs_period_us to be between 1ms and 1s.
@@ -37,6 +85,14 @@ DEFINE_validator(qos_max_db_cpu_percent,
     FLAG_RANGE_VALIDATOR(0.0, 100.0),
     FLAG_DELAYED_OK_VALIDATOR(yb::Cgroup::CheckMaxCpuValidForPeriod(
         _value / 100.0, FLAGS_qos_evaluation_window_us)));
+DEFINE_validator(qos_system_high_cpu_reserved_percent,
+    FLAG_RANGE_VALIDATOR(0.0, 100.0));
+DEFINE_validator(qos_system_high_cpu_max_percent,
+    FLAG_RANGE_VALIDATOR(0.0, 100.0));
+DEFINE_validator(qos_capped_pool_cpu_weight,
+    FLAG_RANGE_VALIDATOR(1, 10000));
+DEFINE_validator(qos_system_med_cpu_max_percent,
+    FLAG_RANGE_VALIDATOR(0.0, 100.0));
 
 namespace yb::tserver {
 
@@ -56,17 +112,13 @@ class FlagUpdateCallbacks {
     cgroup_manager_ = nullptr;
   }
 
-  void UpdateQosDbCpuLimits() {
+  void ApplyLimits() {
     std::lock_guard lock(mutex_);
-    // This can happen on startup, as well as if enable_qos = false.
     if (!cgroup_manager_) {
       VLOG(1) << "Cgroup manager not set, ignoring update to QoS gflags";
       return;
     }
-    WARN_NOT_OK(
-        cgroup_manager_->UpdateDbCpuLimits(
-            FLAGS_qos_max_db_cpu_percent / 100.0, FLAGS_qos_evaluation_window_us),
-        "Failed to update per-database CPU limits");
+    WARN_NOT_OK(cgroup_manager_->ApplyCpuLimits(), "Failed to apply cgroup CPU limits");
   }
 
  private:
@@ -76,20 +128,25 @@ class FlagUpdateCallbacks {
 
 FlagUpdateCallbacks flag_update_callbacks;
 
-REGISTER_CALLBACK(qos_max_db_cpu_percent, "qos_max_db_cpu_percent update callback",
-    [] { flag_update_callbacks.UpdateQosDbCpuLimits(); });
-REGISTER_CALLBACK(qos_evaluation_window_us, "qos_evaluation_window update callback",
-    [] { flag_update_callbacks.UpdateQosDbCpuLimits(); });
+void ApplyQosCpuLimits() { flag_update_callbacks.ApplyLimits(); }
 
-Result<Cgroup&> GetCgroupForDb(PgOid db_oid) {
-  return VERIFY_RESULT_REF(
-      DCHECK_NOTNULL(RootCgroup())->CreateOrLoadChild(Format("db_$0", db_oid)));
+REGISTER_CALLBACK(qos_max_db_cpu_percent, "qos cpu limit update", ApplyQosCpuLimits);
+REGISTER_CALLBACK(qos_evaluation_window_us, "qos cpu limit update", ApplyQosCpuLimits);
+REGISTER_CALLBACK(qos_system_high_cpu_reserved_percent, "qos cpu limit update", ApplyQosCpuLimits);
+REGISTER_CALLBACK(qos_system_high_cpu_max_percent, "qos cpu limit update", ApplyQosCpuLimits);
+REGISTER_CALLBACK(qos_capped_pool_cpu_weight, "qos cpu limit update", ApplyQosCpuLimits);
+REGISTER_CALLBACK(qos_system_med_cpu_max_percent, "qos cpu limit update", ApplyQosCpuLimits);
+
+Result<Cgroup&> GetOrCreateDbCgroup(PgOid db_oid) {
+  auto* root = DCHECK_NOTNULL(RootCgroup());
+  auto& capped_pool = VERIFY_RESULT_REF(root->CreateOrLoadChild("@capped-pool"));
+  auto& normal = VERIFY_RESULT_REF(capped_pool.CreateOrLoadChild("@normal"));
+  return VERIFY_RESULT_REF(normal.CreateOrLoadChild(Format("db_$0", db_oid)));
 }
 
-Result<Cgroup&> SetupCgroupForDb(PgOid db_oid) {
-  auto& cgroup = VERIFY_RESULT_REF(GetCgroupForDb(db_oid));
-  RETURN_NOT_OK(cgroup.UpdateCpuLimits(
-      FLAGS_qos_max_db_cpu_percent / 100.0, FLAGS_qos_evaluation_window_us));
+Result<Cgroup&> SetupCgroupForDb(PgOid db_oid, double per_db_cpu_fraction) {
+  auto& cgroup = VERIFY_RESULT_REF(GetOrCreateDbCgroup(db_oid));
+  RETURN_NOT_OK(cgroup.UpdateCpuLimits(per_db_cpu_fraction, FLAGS_qos_evaluation_window_us));
   return cgroup;
 }
 
@@ -103,19 +160,101 @@ TServerCgroupManager::~TServerCgroupManager() {
   flag_update_callbacks.Unregister(this);
 }
 
-Result<Cgroup&> TServerCgroupManager::CgroupForDb(PgOid db_oid) {
-  // The Cgroup hierarchy we set up is:
+Status TServerCgroupManager::Init() {
+  // The Cgroup hierarchy:
   // $ROOT_CGROUP
-  //   - @default (all uncategorized threads - DefaultThreadCgroup())
-  //   - db_16384 (all threads marked as work for DB 16384)
-  //   - db_16385
-  //   - ...
-  //   - db_$DBOID
-  // with all the db groups being lazily created when CgroupForDb() is called.
+  //   - @system-high  (latency-sensitive: reactors, consensus, WAL, network)
+  //   - @capped-pool  (cap = 100% - reserved%; contains tenant and background work)
+  //     - @system-med  (hard cap -- background: compaction, flushes, maintenance)
+  //     - @normal      (uncapped within @capped-pool; groups tenant work so that
+  //                     @system-med's weight share stays constant as DBs come and go)
+  //       - @default   (uncategorized threads; uncapped within @normal)
+  //       - db_$DBOID  (per-database query processing threads; individually capped)
+  //
+  // Protection model (configured via gflags, both mechanisms compose):
+  //   Cap:    qos_system_high_cpu_max_percent < 100 => hard ceiling on @system-high.
+  //   Weight: qos_capped_pool_cpu_weight vs @system-high (default weight)
+  //           => proportional CPU split under contention.
+  // @system-med and @normal share @capped-pool's budget: if @system-med is idle,
+  // @normal (and its per-DB children) can use the full @capped-pool budget.
+  auto* root = DCHECK_NOTNULL(RootCgroup());
+  system_high_cgroup_ = &VERIFY_RESULT_REF(root->CreateOrLoadChild("@system-high"));
+  capped_pool_cgroup_ = &VERIFY_RESULT_REF(root->CreateOrLoadChild("@capped-pool"));
+  system_med_cgroup_ = &VERIFY_RESULT_REF(capped_pool_cgroup_->CreateOrLoadChild("@system-med"));
+  normal_pool_cgroup_ = &VERIFY_RESULT_REF(capped_pool_cgroup_->CreateOrLoadChild("@normal"));
+
+  // Move the infrastructure-created @default under @normal.
+  // SetupCgroupManagement() creates @default under $ROOT as a landing zone; we create the
+  // "real" @default under @normal and move threads there.
+  auto& default_under_normal =
+      VERIFY_RESULT_REF(normal_pool_cgroup_->CreateOrLoadChild("@default"));
+  RETURN_NOT_OK(default_under_normal.MoveCurrentThreadToGroup());
+
+  return ApplyCpuLimits();
+}
+
+double TServerCgroupManager::CappedPoolCpuFraction() const {
+  return std::max(0.0, (100.0 - FLAGS_qos_system_high_cpu_reserved_percent) / 100.0);
+}
+
+double TServerCgroupManager::ComputePerDbCpuFraction() const {
+  return CappedPoolCpuFraction() * (FLAGS_qos_max_db_cpu_percent / 100.0);
+}
+
+Status TServerCgroupManager::ApplyCpuLimits() {
+  auto period = FLAGS_qos_evaluation_window_us;
+
+  // @system-high: default 100% = uncapped (all cores). Lower values impose a hard cap.
+  double sys_high_max = FLAGS_qos_system_high_cpu_max_percent / 100.0;
+  RETURN_NOT_OK(system_high_cgroup_->UpdateCpuLimits(sys_high_max, period));
+
+  // @system-high keeps the default weight; @capped-pool's weight is configurable.
+  RETURN_NOT_OK(capped_pool_cgroup_->UpdateCpuWeight(FLAGS_qos_capped_pool_cpu_weight));
+
+  // @capped-pool cap = 100% - reserved%. This is a ceiling, not a guarantee.
+  // The weight above provides the soft guarantee under contention.
+  double capped_pool_fraction = CappedPoolCpuFraction();
+  if (capped_pool_fraction > 0.0) {
+    RETURN_NOT_OK(capped_pool_cgroup_->UpdateCpuLimits(capped_pool_fraction, period));
+  } else {
+    LOG(WARNING) << "system-high reservation is 100%, no CPU budget left for @capped-pool; "
+                 << "applying minimum valid cgroup CPU quota.";
+    const double min_cpu_fraction =
+        1000.0 / (base::NumCPUs() * static_cast<double>(period));
+    RETURN_NOT_OK(capped_pool_cgroup_->UpdateCpuLimits(min_cpu_fraction, period));
+  }
+
+  // @system-med is hard-capped relative to @capped-pool's budget.
+  if (FLAGS_qos_system_med_cpu_max_percent > 0) {
+    double sys_med_fraction =
+        FLAGS_qos_system_med_cpu_max_percent / 100.0 * capped_pool_fraction;
+    RETURN_NOT_OK(system_med_cgroup_->UpdateCpuLimits(sys_med_fraction, period));
+  } else {
+    RETURN_NOT_OK(system_med_cgroup_->UpdateCpuLimits(1.0, period));
+  }
+
+  double per_db_fraction = ComputePerDbCpuFraction();
+  LOG(INFO) << "QoS CPU budget: system-high cap="
+            << FLAGS_qos_system_high_cpu_max_percent << "%"
+            << ", reserved=" << FLAGS_qos_system_high_cpu_reserved_percent << "%"
+            << ", @capped-pool=" << (capped_pool_fraction * 100.0) << "%"
+            << " weight=" << FLAGS_qos_capped_pool_cpu_weight
+            << " (system-med max=" << FLAGS_qos_system_med_cpu_max_percent
+            << "% of pool, @normal uncapped within pool, includes @default)"
+            << ", per-db cap=" << (per_db_fraction * 100.0)
+            << "% (qos_max_db_cpu_percent=" << FLAGS_qos_max_db_cpu_percent
+            << "% of @capped-pool)";
+
+  return UpdateDbCpuLimits(per_db_fraction, period);
+}
+
+Result<Cgroup&> TServerCgroupManager::CgroupForDb(PgOid db_oid) {
   std::lock_guard lock(mutex_);
   auto iter = db_cgroups_.find(db_oid);
   if (iter == db_cgroups_.end()) {
-    iter = db_cgroups_.try_emplace(db_oid, VERIFY_RESULT_REF(SetupCgroupForDb(db_oid))).first;
+    iter = db_cgroups_.try_emplace(
+        db_oid,
+        VERIFY_RESULT_REF(SetupCgroupForDb(db_oid, ComputePerDbCpuFraction()))).first;
   }
   return iter->second;
 }
@@ -139,7 +278,7 @@ Status TServerCgroupManager::MovePgBackendToCgroup(PgOid db_oid) {
   // This does mean that for the brief period of time where a PG backend starts up in a new
   // database, we have a database cgroup with the wrong limits. But such a backend will communicate
   // with TServer, so we can load and properly set up the cgroup on the TServer very soon after.
-  auto& cgroup = VERIFY_RESULT_REF(GetCgroupForDb(db_oid));
+  auto& cgroup = VERIFY_RESULT_REF(GetOrCreateDbCgroup(db_oid));
   return cgroup.MoveCurrentThreadToGroup();
 }
 
