@@ -36,7 +36,7 @@
 
 using namespace std::literals;
 
-DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
@@ -192,7 +192,7 @@ class VectorLSMTest
           .max_workers = 10,
         }),
         priority_thread_pool_(/* max_running_tasks = */ 2) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   }
 
   void SetUp() override {
