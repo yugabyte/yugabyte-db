@@ -680,9 +680,9 @@ Enables derivation of additional equalities for columns that are generated or co
 Default: `false`
 {{% /tags/wrap %}}
 
-Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_saop_merge_streams` is 0.
+Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_merge_scan_streams` is 0.
 
-##### yb_max_saop_merge_streams
+##### yb_max_merge_scan_streams
 
 {{% tags/wrap %}}
 {{<tags/feature/ea idea="2275">}}
@@ -690,6 +690,16 @@ Default: `0`
 {{% /tags/wrap %}}
 
 Maximum number of buckets to process in parallel. A value greater than 0 enables bucket-based merge (used for [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/)). Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64.
+
+##### yb_max_saop_merge_streams
+
+{{% tags/wrap %}}
+{{<tags/feature/deprecated>}}
+{{<tags/feature/ea idea="2275">}}
+Default: `0`
+{{% /tags/wrap %}}
+
+Deprecated in v2025.2.3.0. Use [yb_max_merge_scan_streams](#yb-max-merge-scan-streams) instead.
 
 ## Networking
 
