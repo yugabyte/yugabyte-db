@@ -38,6 +38,8 @@ import org.yb.CommonTypes;
 import org.yb.YBTestRunner;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.ModifyClusterConfigLiveReplicas;
+import org.yb.client.SnapshotInfo;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.client.ModifyClusterConfigReadReplicas;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.TestUtils;
@@ -587,16 +589,24 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, "yugabyte",
         /* retentionInSecs */ 600, /* timeIntervalInSecs */ 10);
 
-    // Wait for at least one snapshot to be created.
+    // Wait for at least one snapshot to reach COMPLETE state.
     TestUtils.waitFor(() -> {
       ListSnapshotSchedulesResponse resp = client.listSnapshotSchedules(null);
       for (SnapshotScheduleInfo info : resp.getSnapshotScheduleInfoList()) {
-        if (!info.getSnapshotInfoList().isEmpty()) {
-          return true;
+        for (SnapshotInfo snap : info.getSnapshotInfoList()) {
+          if (snap.getState()
+              == CatalogEntityInfo.SysSnapshotEntryPB.State.COMPLETE) {
+            return true;
+          }
         }
       }
       return false;
     }, 60000);
+
+    // The snapshot's timestamp is assigned as MaxGlobalNow, which can be ahead
+    // of the physical clock. The clone's restore timestamp uses the physical
+    // clock, so wait for it to exceed the snapshot's timestamp.
+    Thread.sleep(2000);
 
     final String cloneDb = "clone_db";
     try (Statement stmt = connection.createStatement()) {
