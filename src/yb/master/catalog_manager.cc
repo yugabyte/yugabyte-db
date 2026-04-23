@@ -613,6 +613,8 @@ DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(TEST_cdc_add_dynamic_index_to_state_table);
+
 
 namespace yb {
 namespace master {
@@ -11221,9 +11223,10 @@ Status CatalogManager::SendCreateTabletRequests(
         const auto stream = entry.second;
         // Set the CDCSDK retention barriers on the tablets at the time of creation only if atleast
         // one stream with replication slot consumption exists on the namespace.
-        if (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
-            !stream->GetCdcsdkYsqlReplicationSlotName().empty() &&
-            IsTableEligibleForCDCSDKStream(tablet->table(), schema)) {
+        if (PREDICT_FALSE(FLAGS_TEST_cdc_add_dynamic_index_to_state_table) ||
+            (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
+             !stream->GetCdcsdkYsqlReplicationSlotName().empty() &&
+             IsTableEligibleForCDCSDKStream(tablet->table(), schema))) {
           can_set_cdc_sdk_retention_barriers = true;
           break;
         }

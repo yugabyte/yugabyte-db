@@ -141,6 +141,10 @@ DEFINE_test_flag(bool, cdcsdk_skip_table_removal_from_qualified_list, false,
 DEFINE_RUNTIME_bool(enable_truncate_cdcsdk_table, false,
     "When set, enables truncating tables currently part of a CDCSDK Stream");
 
+DEFINE_test_flag(bool, cdc_add_dynamic_index_to_state_table, false,
+    "When enabled, adds the tablets of indexes created after slot creation to the cdc state table "
+    "and sets retention barriers on their tablets.");
+
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
@@ -1438,8 +1442,9 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
     SharedLock lock(mutex_);
     for (const auto& entry : cdc_stream_map_) {
       const auto& stream_info = entry.second;
-      if (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id &&
-          IsTableEligibleForCDCSDKStream(table, schema)) {
+      if (PREDICT_FALSE(FLAGS_TEST_cdc_add_dynamic_index_to_state_table) ||
+          (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id &&
+           IsTableEligibleForCDCSDKStream(table, schema))) {
         streams.emplace_back(stream_info);
       }
     }
