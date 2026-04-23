@@ -76,6 +76,7 @@ DEFINE_NON_RUNTIME_int32(num_iter, yb::RegularBuildVsSanitizers(10000, 1000),
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 
+DECLARE_string(vmodule);
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(transaction_not_found);
 
@@ -4201,8 +4202,11 @@ TEST_F(PgLibPqTest, TempTableMultiNodeNamespaceConflict) {
 }
 
 TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
+  FLAGS_vmodule = "libpqutils*=1";
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("SET log_statement='ALL';"));
+  ASSERT_OK(conn2.Execute("SET log_statement='ALL';"));
   auto query = "SELECT total_bytes, used_bytes FROM "
                "pg_get_backend_memory_contexts() "
                "WHERE name = 'CacheMemoryContext'"s;
