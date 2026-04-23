@@ -52,7 +52,9 @@ CREATE INDEX index_name ON table_name(yb_hash_code(<key_columns>) % <buckets>) A
 SPLIT AT VALUES ((1), (2));
 ```
 
-- For unique indexes, columns in [yb_hash_code](../../../api/ysql/exprs/func_yb_hash_code/) must be a subset of the remaining columns in the key. Non-unique indexes can have anything in `yb_hash_code`.
+- Only [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) can be used for the merge index.
+
+- For unique indexes, columns in `yb_hash_code()` must be a subset of the remaining columns in the key. Non-unique indexes can have anything in `yb_hash_code()`.
 
 - The bucket column or index expression column should generally be the first column of the key.
 
