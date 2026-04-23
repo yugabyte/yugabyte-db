@@ -496,5 +496,11 @@ void Preparer::DumpStatusHtml(std::ostream& out) {
   return impl_->DumpStatusHtml(out);
 }
 
+void Preparer::SetPerDbCgroup(Cgroup* cgroup) {
+  if (impl_->PoolToken()) {
+    impl_->PoolToken()->SetTaskCgroup(cgroup);
+  }
+}
+
 }  // namespace tablet
 }  // namespace yb

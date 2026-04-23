@@ -503,6 +503,13 @@ Status TabletServer::Init() {
   // our heartbeat thread will loop until successfully connecting.
   RETURN_NOT_OK(ValidateMasterAddressResolution());
 
+#ifdef __linux__
+  if (cgroup_manager_) {
+    RETURN_NOT_OK_PREPEND(cgroup_manager_->Init(),
+                          "Could not init TServer cgroup manager");
+  }
+#endif
+
   RETURN_NOT_OK(DbServerBase::Init());
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
@@ -770,7 +777,15 @@ Status TabletServer::Start() {
 
   RETURN_NOT_OK(heartbeater_->Start());
   ysql_lease_manager_->StartTSLocalLockManager();
-  RETURN_NOT_OK(connectivity_poller_->Start());
+  {
+    Cgroup* conn_cgroup = nullptr;
+#ifdef __linux__
+    if (cgroup_manager_) {
+      conn_cgroup = cgroup_manager_->SystemMedCgroup();
+    }
+#endif
+    RETURN_NOT_OK(connectivity_poller_->Start(conn_cgroup));
+  }
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
@@ -781,6 +796,11 @@ Status TabletServer::Start() {
   }
 
   RETURN_NOT_OK(maintenance_manager_->Init());
+#ifdef __linux__
+  if (cgroup_manager_) {
+    maintenance_manager_->SetCgroup(cgroup_manager_->SystemMedCgroup());
+  }
+#endif
 
   if (FLAGS_enable_ysql) {
     ScheduleCheckLaggingCatalogVersions();
@@ -2079,6 +2099,10 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
 
 #ifdef __linux__
   builder->SetThreadPoolCgroupProvider([this](auto tag) { return PerDbCgroupProvider(tag); });
+  if (cgroup_manager_) {
+    builder->SetSystemHighCgroup(cgroup_manager_->SystemHighCgroup());
+    builder->SetSystemMedCgroup(cgroup_manager_->SystemMedCgroup());
+  }
 #endif
 
   secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(

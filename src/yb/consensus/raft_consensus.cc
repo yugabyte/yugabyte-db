@@ -488,6 +488,15 @@ RaftConsensus::~RaftConsensus() {
   Shutdown();
 }
 
+void RaftConsensus::SetPerDbCgroup(Cgroup* cgroup) {
+  if (raft_pool_concurrent_token_) {
+    raft_pool_concurrent_token_->SetTaskCgroup(cgroup);
+  }
+  if (queue_) {
+    queue_->SetNotificationStrandCgroup(cgroup);
+  }
+}
+
 Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
   RETURN_NOT_OK(ExecuteHook(PRE_START));
 

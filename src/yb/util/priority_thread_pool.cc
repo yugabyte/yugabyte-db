@@ -26,6 +26,7 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/random_util.h"
@@ -507,6 +508,12 @@ PriorityThreadPoolTask::PriorityThreadPoolTask()
 
 void PriorityThreadPoolTask::Execute(
     ExecuteTag, const Status& status, PriorityThreadPoolSuspender* suspender) {
+#ifdef __linux__
+  if (task_cgroup_) {
+    WARN_NOT_OK(task_cgroup_->MoveCurrentThreadToGroup(),
+                "Failed to move compaction thread to per-db cgroup");
+  }
+#endif
   return Run(status, suspender);
 }
 
@@ -844,6 +851,22 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     return &mutex_;
   }
 
+#ifdef __linux__
+  void SetCgroup(Cgroup* cgroup) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    cgroup_ = cgroup;
+    if (!cgroup) {
+      return;
+    }
+    for (auto& thread : threads_) {
+      auto status = cgroup->MoveThreadToGroup(thread->tid());
+      if (!status.ok()) {
+        LOG(WARNING) << "Failed to move priority pool thread to cgroup: " << status;
+      }
+    }
+  }
+#endif
+
  private:
   std::string StateToStringUnlocked() REQUIRES(mutex_) {
     return Format(
@@ -961,6 +984,13 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
 
     worker->SetThread(*thread);
     VLOG(3) << "Created new worker: " << worker << " thread id: " << (*thread)->tid();
+#ifdef __linux__
+    if (cgroup_) {
+      WARN_NOT_OK(
+          cgroup_->MoveThreadToGroup((*thread)->tid()),
+          "Failed to move new priority pool worker to cgroup");
+    }
+#endif
     threads_.push_back(std::move(*thread));
 
     return worker;
@@ -1085,6 +1115,10 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   std::vector<PriorityThreadPoolWorker*> free_workers_ GUARDED_BY(mutex_);
   std::atomic<bool> stopping_{false};
 
+#ifdef __linux__
+  Cgroup* cgroup_ GUARDED_BY(mutex_) = nullptr;
+#endif
+
   // Used for quick check, whether task with provided priority should be paused.
   std::atomic<int> max_task_priority_to_defer_{kEmptyQueueTaskPriority};
   std::atomic<int> max_group_no_priority_to_defer_{kEmptyQueueGroupNoPriority};
@@ -1172,6 +1206,12 @@ void PriorityThreadPool::CompleteShutdown() {
 std::string PriorityThreadPool::StateToString() {
   return impl_->StateToString();
 }
+
+#ifdef __linux__
+void PriorityThreadPool::SetCgroup(Cgroup* cgroup) {
+  impl_->SetCgroup(cgroup);
+}
+#endif
 
 bool PriorityThreadPool::ChangeTaskPriority(size_t serial_no, int priority) {
   return impl_->ChangeTaskPriority(serial_no, priority);

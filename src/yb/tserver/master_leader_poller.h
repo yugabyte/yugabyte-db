@@ -20,6 +20,10 @@
 
 #include "yb/server/server_base_options.h"
 
+namespace yb {
+class Cgroup;
+} // namespace yb
+
 namespace yb::tserver {
 
 class MasterLeaderFinder {
@@ -67,7 +71,7 @@ class MasterLeaderPollScheduler {
   MasterLeaderPollScheduler(MasterLeaderFinder& connector, MasterLeaderPollerInterface& poller);
   ~MasterLeaderPollScheduler();
 
-  Status Start();
+  Status Start(Cgroup* cgroup = nullptr);
   void Shutdown();
   void TriggerASAP();
   void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses);

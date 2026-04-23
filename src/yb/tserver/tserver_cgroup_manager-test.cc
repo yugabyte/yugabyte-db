@@ -12,15 +12,21 @@
 
 #ifdef __linux__
 
+#include <dirent.h>
+#include <fstream>
+#include <set>
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server-test-base.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_cgroup_manager.h"
 
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/test_util.h"
 
 DECLARE_bool(enable_qos);
@@ -39,6 +45,51 @@ class TServerCgroupManagerTest : public TabletServerTestBase {
     StartTabletServer();
     auto& server = *mini_server_->server();
     manager_ = CHECK_NOTNULL(server.cgroup_manager());
+  }
+
+  struct ThreadCgroupInfo {
+    int64_t tid;
+    std::string comm;
+    std::string cgroup;
+  };
+
+  // Reads /proc/self/task/<tid>/comm for each thread in the process and
+  // returns threads whose comm starts with one of the given prefixes, along
+  // with their actual kernel cgroup (via GetThreadCpuCgroup).
+  Result<std::vector<ThreadCgroupInfo>> GetPoolThreadCgroups(
+      const std::vector<std::string>& pool_prefixes) {
+    std::string root_name = RootCgroup()->full_name();
+    std::vector<ThreadCgroupInfo> results;
+
+    auto dir_closer = [](DIR* d) { if (d) closedir(d); };
+    std::unique_ptr<DIR, decltype(dir_closer)> task_dir(
+        opendir("/proc/self/task"), dir_closer);
+    SCHECK(task_dir, IOError, "Failed to open /proc/self/task");
+
+    struct dirent* entry;
+    while ((entry = readdir(task_dir.get())) != nullptr) {
+      if (entry->d_name[0] == '.') continue;
+      int64_t tid = std::strtoll(entry->d_name, nullptr, 10);
+      if (tid <= 0) continue;
+
+      std::string comm_path = Format("/proc/self/task/$0/comm", tid);
+      std::ifstream comm_file(comm_path);
+      if (!comm_file.is_open()) continue;
+
+      std::string comm;
+      std::getline(comm_file, comm);
+
+      for (const auto& prefix : pool_prefixes) {
+        if (comm.substr(0, prefix.size()) == prefix) {
+          auto cgroup_result = GetThreadCpuCgroup(tid);
+          if (!cgroup_result.ok()) break;
+          std::string relative = cgroup_result->substr(root_name.size());
+          results.push_back({tid, comm, relative});
+          break;
+        }
+      }
+    }
+    return results;
   }
 
   TServerCgroupManager* manager_;
@@ -87,6 +138,67 @@ TEST_F(TServerCgroupManagerTest, TestBadDbCpuLimits) {
   // (and because we round 999.5 to 1000).
   ASSERT_NOK(SET_FLAG(qos_evaluation_window_us, 1998));
   ASSERT_OK(SET_FLAG(qos_evaluation_window_us, 1999));
+}
+
+// Verifies that thread pool worker threads land in the correct cgroups after
+// the tablet server starts. This catches the bug where workers that start before
+// SetCgroup() would cache a stale pool cgroup and revert to /@default.
+TEST_F(TServerCgroupManagerTest, TestPoolCgroupAssignment) {
+  // Wait for the tablet to be fully running (consensus elected) so that pool
+  // worker threads have processed at least one task and MoveToPoolCgroup() has run.
+  ASSERT_OK(WaitForTabletRunning(kTabletId));
+
+  // Pool name prefix -> expected cgroup path relative to the root cgroup.
+  // We test pools that have min_threads=1, guaranteeing at least one worker.
+  struct PoolExpectation {
+    std::string prefix;
+    std::string expected_cgroup;
+  };
+  std::vector<PoolExpectation> expectations = {
+      // system-high pools (consensus/WAL path).
+      {"consensus_",  "/@system-high"},
+      {"log-sync_",   "/@system-high"},
+      {"prepare_",    "/@system-high"},
+      {"append_",     "/@system-high"},
+      {"log-alloc_",  "/@system-high"},
+      // system-med pools (background work, always assigned).
+      {"flush-retry",  "/@capped-pool/@system-med"},
+      {"wait-queue_",  "/@capped-pool/@system-med"},
+  };
+
+  std::vector<std::string> prefixes;
+  prefixes.reserve(expectations.size());
+  for (const auto& e : expectations) {
+    prefixes.push_back(e.prefix);
+  }
+
+  auto threads = ASSERT_RESULT(GetPoolThreadCgroups(prefixes));
+  ASSERT_GT(threads.size(), 0) << "No pool worker threads found";
+
+  // Build a set of which pool prefixes we found at least one thread for.
+  std::set<std::string> found_prefixes;
+
+  for (const auto& t : threads) {
+    LOG(INFO) << "Thread tid=" << t.tid << " comm=" << t.comm
+              << " cgroup=" << t.cgroup;
+
+    for (const auto& e : expectations) {
+      if (t.comm.substr(0, e.prefix.size()) == e.prefix) {
+        EXPECT_EQ(t.cgroup, e.expected_cgroup)
+            << "Thread " << t.comm << " (tid " << t.tid
+            << ") expected in " << e.expected_cgroup
+            << " but found in " << t.cgroup;
+        found_prefixes.insert(e.prefix);
+        break;
+      }
+    }
+  }
+
+  // Verify we found at least one thread for each pool with min_threads=1.
+  for (const auto& e : expectations) {
+    EXPECT_TRUE(found_prefixes.count(e.prefix))
+        << "No worker thread found for pool prefix: " << e.prefix;
+  }
 }
 
 } // namespace yb::tserver

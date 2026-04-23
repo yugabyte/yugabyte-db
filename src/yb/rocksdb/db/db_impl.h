@@ -61,6 +61,10 @@
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/thread_local.h"
 
+namespace yb {
+class Cgroup;
+}  // namespace yb
+
 namespace rocksdb {
 
 class MemTable;
@@ -520,6 +524,9 @@ class DBImpl : public DB {
       CompactionFileExcluderPtr exclude_from_compaction) {
     return TEST_SetExcludeFromCompaction(DefaultColumnFamily(), std::move(exclude_from_compaction));
   }
+
+  void SetTaskCgroup(yb::Cgroup* cgroup) { task_cgroup_ = cgroup; }
+  yb::Cgroup* task_cgroup() const { return task_cgroup_; }
 
  protected:
   Env* const env_;
@@ -1086,6 +1093,8 @@ class DBImpl : public DB {
   bool ShouldntRunManualCompaction(ManualCompaction* m);
   bool HaveManualCompaction(ColumnFamilyData* cfd);
   bool MCOverlap(ManualCompaction* m, ManualCompaction* m1);
+
+  [[maybe_unused]] yb::Cgroup* task_cgroup_ = nullptr;
 };
 
 // Sanitize db options.  The caller should delete result.info_log if

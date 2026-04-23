@@ -15,6 +15,7 @@
 
 #include "yb/util/thread_pool.h"
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -55,13 +56,28 @@ constexpr size_t kStopCreatingWorkersFlag = 1ul << 48;
 
 struct ThreadPoolShare {
   const ThreadPoolOptions options;
+#ifdef __linux__
+  std::atomic<Cgroup*> cgroup;
+#endif
   TaskQueue task_queue;
   std::atomic<size_t> task_queue_size{0};
   WaitingWorkers waiting_workers;
   std::atomic<size_t> num_workers{0};
 
   explicit ThreadPoolShare(ThreadPoolOptions o)
-      : options(std::move(o)) {}
+      : options(std::move(o))
+#ifdef __linux__
+        , cgroup(options.cgroup)
+#endif
+  {}
+
+  Cgroup* GetCgroup() const {
+#ifdef __linux__
+    return cgroup.load(std::memory_order_acquire);
+#else
+    return nullptr;
+#endif
+  }
 
   void PushTask(ThreadPoolTask* task) {
     if (options.metrics.queue_time_us_stats) {
@@ -140,6 +156,39 @@ class Worker : public boost::intrusive::list_base_hook<> {
     return added_to_waiting_workers_;
   }
 
+#ifdef __linux__
+  void MoveToCurrentCgroup() {
+    if (thread_) {
+      auto* cg = share_.GetCgroup();
+      if (cg) {
+        auto status = cg->MoveThreadToGroup(thread_->tid());
+        if (!status.ok()) {
+          LOG(WARNING) << "Failed to move worker thread to cgroup: " << status;
+        }
+        current_cgroup_ = cg;
+      }
+    }
+  }
+
+  void MoveToPoolCgroup() {
+    auto* cg = share_.GetCgroup();
+    if (!cg) cg = DefaultThreadCgroup();
+    MoveToCgroup(cg);
+  }
+
+  void MoveToCgroup(Cgroup* target) {
+    if (target && target != current_cgroup_) {
+      auto status = target->MoveCurrentThreadToGroup();
+      if (status.ok()) {
+        current_cgroup_ = target;
+      } else {
+        LOG(WARNING) << "Failed to move thread to cgroup: " << status;
+        current_cgroup_ = nullptr;
+      }
+    }
+  }
+#endif
+
  private:
   // Our main invariant is empty task queue or empty worker queue.
   // In other words, one of those queues should be empty.
@@ -147,12 +196,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
   // does not have free hands (worker queue empty)
   void Execute(ThreadPoolTask* task) {
 #ifdef __linux__
-    if (auto cgroup = share_.options.cgroup ? share_.options.cgroup : DefaultThreadCgroup()) {
-      auto status = cgroup->MoveCurrentThreadToGroup();
-      if (!status.ok()) {
-        LOG(DFATAL) << "Failed to move thread to cgroup: " << status;
-      }
-    }
+    MoveToPoolCgroup();
 #endif
 
     Thread::current_thread()->SetUserData(&share_);
@@ -161,6 +205,13 @@ class Worker : public boost::intrusive::list_base_hook<> {
       task = PopTask();
     }
     while (task) {
+#ifdef __linux__
+      if (auto* task_cg = task->cgroup()) {
+        MoveToCgroup(task_cg);
+      } else {
+        MoveToPoolCgroup();
+      }
+#endif
       auto start = MonoTime::NowIf(has_run_metrics);
       if (!task->run_token()) {
         task->Run();
@@ -259,6 +310,9 @@ class Worker : public boost::intrusive::list_base_hook<> {
   const bool persistent_;
   WorkerLink* link_ = nullptr;
   scoped_refptr<Thread> thread_;
+#ifdef __linux__
+  std::atomic<Cgroup*> current_cgroup_{nullptr};
+#endif
   mutable std::mutex mutex_;
   std::condition_variable cond_;
   WorkerState state_ GUARDED_BY(mutex_) = WorkerState::kRunning;
@@ -540,6 +594,19 @@ class YBThreadPool::Impl {
     return share_.num_workers.load(std::memory_order_relaxed) & ~kStopCreatingWorkersFlag;
   }
 
+#ifdef __linux__
+  void SetCgroup(Cgroup* cgroup) EXCLUDES(mutex_) {
+    share_.cgroup.store(cgroup, std::memory_order_release);
+    if (!cgroup) {
+      return;
+    }
+    std::lock_guard lock(mutex_);
+    for (auto& worker : workers_) {
+      worker.MoveToCurrentCgroup();
+    }
+  }
+#endif
+
  private:
   ThreadPoolShare share_;
   Workers workers_ GUARDED_BY(mutex_);
@@ -603,6 +670,12 @@ size_t YBThreadPool::NumWorkers() const {
 bool YBThreadPool::Idle() const {
   return impl_->Idle();
 }
+
+#ifdef __linux__
+void YBThreadPool::SetCgroup(Cgroup* cgroup) {
+  impl_->SetCgroup(cgroup);
+}
+#endif
 
 // ------------------------------------------------------------------------------------------------
 // ThreadSubPoolBase

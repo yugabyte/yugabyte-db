@@ -77,6 +77,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 
@@ -4292,6 +4293,17 @@ bool Tablet::ShouldDisableLbMove() {
   // In this case, we want to disable tablet moves. We conservatively return true for any failure
   // if the tablet is part of a colocated table.
   return metadata_->schema()->has_colocation_id();
+}
+
+void Tablet::SetRocksDbTaskCgroup([[maybe_unused]] Cgroup* cgroup) {
+#ifdef __linux__
+  if (regular_db_) {
+    down_cast<rocksdb::DBImpl*>(regular_db_.get())->SetTaskCgroup(cgroup);
+  }
+  if (intents_db_) {
+    down_cast<rocksdb::DBImpl*>(intents_db_.get())->SetTaskCgroup(cgroup);
+  }
+#endif
 }
 
 Status Tablet::ForceManualRocksDBCompact(docdb::SkipFlush skip_flush) {

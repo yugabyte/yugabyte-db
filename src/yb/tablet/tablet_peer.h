@@ -64,6 +64,8 @@ using yb::consensus::StateChangeContext;
 
 namespace yb {
 
+class Cgroup;
+
 namespace tserver {
 class CatchUpServiceTest;
 class UpdateTransactionResponsePB;
@@ -181,6 +183,10 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       std::unique_ptr<consensus::ConsensusMetadata> consensus_meta,
       consensus::MultiRaftManager* multi_raft_manager,
       ThreadPool* flush_bootstrap_state_pool);
+
+  // Set the per-database cgroup on all internal consensus/WAL tokens and the tablet's
+  // RocksDB task cgroup. Used for per-DB cgroup mode.
+  void SetPerDbCgroup(Cgroup* cgroup);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
