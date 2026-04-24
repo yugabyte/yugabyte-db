@@ -234,7 +234,7 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%pool_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_pool_timeout)},
     {"{%yb_optimized_extended_query_protocol%}",
       BoolToString(FLAGS_ysql_conn_mgr_optimized_extended_query_protocol)},
-    {"{%yb_deallocate_if_invalid_prep_stmt%}",
+    {"{%yb_enable_prep_stmt_close%}",
       BoolToString(FLAGS_ysql_conn_mgr_enable_prep_stmt_close)},
     {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
     {"{%yb_ysql_max_connections%}", std::to_string(ysql_max_connections_)},

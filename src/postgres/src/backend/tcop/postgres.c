@@ -7088,7 +7088,6 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					int			close_type;
 					const char *close_target;
-					bool		yb_report_prep_stmt_closed = false;
 					bool		yb_skip_close_complete = false;
 
 					forbidden_in_wal_sender(firstchar);
@@ -7101,17 +7100,7 @@ PostgresMain(const char *dbname, const char *username)
 					{
 						case 'S':
 							if (close_target[0] != '\0')
-							{
-								if (YbIsClientYsqlConnMgr())
-								{
-									yb_report_prep_stmt_closed =
-										YbDropPreparedStatement(close_target, false);
-								}
-								else
-								{
-									DropPreparedStatement(close_target, false);
-								}
-							} /* YB: CLOSE for named prepared statement is supported by conn mgr */
+								DropPreparedStatement(close_target, false, YbIsClientYsqlConnMgr());
 							else
 							{
 								/* special-case the unnamed statement */
@@ -7142,8 +7131,17 @@ PostgresMain(const char *dbname, const char *username)
 											(errcode(ERRCODE_PROTOCOL_VIOLATION),
 											 errmsg("ForceClose of unnamed prep statement is not supported")));
 
-								DropPreparedStatement(close_target, false);
-								yb_report_prep_stmt_closed = true;
+								/*
+								 * Since this is force close, we disable
+								 * selective deallocation
+								 */
+								bool		yb_conn_mgr_selective_deallocate_saved;
+
+								yb_conn_mgr_selective_deallocate_saved = yb_conn_mgr_selective_deallocate;
+								yb_conn_mgr_selective_deallocate = false;
+								DropPreparedStatement(close_target, false, false);
+								yb_conn_mgr_selective_deallocate = yb_conn_mgr_selective_deallocate_saved;
+
 								yb_skip_close_complete = true;
 								break;
 							}
@@ -7156,18 +7154,15 @@ PostgresMain(const char *dbname, const char *username)
 							break;
 					}
 
+					/*
+					 * YB: Close complete needs to be skipped for ForceClose
+					 * sent by ConnMgr
+					 */
+					if (yb_skip_close_complete)
+						break;
+
 					if (whereToSendOutput == DestRemote)
-					{
-						/*
-						 * YB: With Conn mgr, send name of deallocate prep
-						 * stmt if needed. We also skip CloseComplete for a
-						 * ForceClose
-						 */
-						if (yb_report_prep_stmt_closed)
-							pq_puttextmessage('5', close_target);
-						if (!yb_skip_close_complete)
-							pq_putemptymessage('3');	/* CloseComplete */
-					}
+						pq_putemptymessage('3');	/* CloseComplete */
 				}
 				break;
 
