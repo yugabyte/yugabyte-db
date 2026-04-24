@@ -6,6 +6,7 @@ Each processor handles a specific type of work and can be registered with the Ta
 """
 
 import logging
+import mimetypes
 import threading
 import time
 from datetime import datetime
@@ -18,6 +19,7 @@ from source_location_crawlers import S3BucketCrawler
 from db.connection_pool import ConnectionPool
 from work_queue.poller import Poller
 from db.source_document_tracking import SourceDocumentTracking
+from rag_pipeline.document_types import SUPPORTED_DOCUMENT_TYPES
 
 
 class CreateSourceProcessorForAWS_S3(TaskProcessor):
@@ -97,20 +99,27 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
 
             for file_metadata in files_metadata:
                 # nik-todo: generate s3 url from files_metadata
-                # Build S3 URI
-                print(f"Building S3 URI for file: {file_metadata}")
+                self.logger.info(f"Building S3 URI for file: {file_metadata}")
                 s3_uri = self.s3_crawler.build_s3_uri(bucket_name, file_metadata['Key'])
 
-                # Create standard DocumentMetadata object
+                document_type, _ = mimetypes.guess_type(file_metadata['Key'])
+
+                if document_type not in SUPPORTED_DOCUMENT_TYPES:
+                    self.logger.warning(
+                        f"Skipping unsupported file type '{document_type}' "
+                        f"for file: {file_metadata['Key']}"
+                    )
+                    continue
+
                 document_metadata = DocumentMetadata(
                     source_id=source_id,
                     document_name=file_metadata['Key'],
                     document_uri=s3_uri,
                     document_checksum=file_metadata['ETag'],
+                    document_type=document_type,
                     status="QUEUED"
                 )
 
-                # Insert using the standard metadata object
                 self.source_document_tracking.insert_document_metadata(document_metadata)
         else:
             logging.error(f"Invalid source URI: {source_uri}")

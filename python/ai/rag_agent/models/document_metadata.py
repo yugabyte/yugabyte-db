@@ -24,6 +24,8 @@ class DocumentMetadata:
         document_name (str): The name/identifier of the document (e.g., filename).
         document_uri (str): The URI/path where the document can be accessed (e.g., S3 URI).
         document_checksum (str): Checksum or hash of the document for change detection.
+        document_type (str, optional): MIME type of the document
+            (e.g., 'text/plain', 'application/pdf').
         status (str): Current status of the document (default: "QUEUED").
                      Valid values: "QUEUED", "PROCESSING", "COMPLETED", "FAILED"
     """
@@ -32,6 +34,7 @@ class DocumentMetadata:
     document_name: str
     document_uri: str
     document_checksum: str
+    document_type: Optional[str] = None
     status: str = "QUEUED"
 
     def to_dict(self) -> Dict[str, Any]:
@@ -46,6 +49,7 @@ class DocumentMetadata:
             "document_name": self.document_name,
             "document_uri": self.document_uri,
             "document_checksum": self.document_checksum,
+            "document_type": self.document_type,
             "status": self.status
         }
 
@@ -69,6 +73,7 @@ class DocumentMetadata:
             document_name=data["document_name"],
             document_uri=data["document_uri"],
             document_checksum=data["document_checksum"],
+            document_type=data.get("document_type"),
             status=data.get("status", "QUEUED")
         )
 
