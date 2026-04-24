@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/status.h"
 

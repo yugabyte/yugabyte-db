@@ -59,7 +59,6 @@ using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
 namespace rocksdb {
 
 class Arena;
-class BoundaryValuesExtractor;
 class Cache;
 class CompactionFilter;
 class CompactionFilterFactory;

@@ -28,8 +28,7 @@ constexpr auto kDatabaseName = "yugabyte";
 
 YB_DEFINE_ENUM(StorageFormat, (Regular)(PackedRowsV1)(PackedRowsV2));
 
-class PgAddColumnDefaultTest : public LibPqTestBase,
-                               public ::testing::WithParamInterface<StorageFormat> {
+class PgAlterTableTest : public LibPqTestBase, public testing::WithParamInterface<StorageFormat> {
  public:
     void SetUp() override {
       LibPqTestBase::SetUp();
@@ -43,11 +42,11 @@ class PgAddColumnDefaultTest : public LibPqTestBase,
         // Add flags to enable packed row feature.
         options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
         options->extra_tserver_flags.push_back("--ysql_enable_packed_row=true");
-        if (GetParam() == StorageFormat::PackedRowsV2) {
-          options->extra_tserver_flags.push_back(
-              "--allowed_preview_flags_csv=ysql_use_packed_row_v2");
-          options->extra_tserver_flags.push_back("--ysql_use_packed_row_v2=true");
-        }
+        options->extra_tserver_flags.push_back(
+            "--allowed_preview_flags_csv=ysql_use_packed_row_v2");
+        options->extra_tserver_flags.push_back(Format(
+            "--ysql_use_packed_row_v2=$0",
+            GetParam() == StorageFormat::PackedRowsV2 ? "true" : "false"));
       }
     }
     std::unique_ptr<PGConn> conn_;
@@ -55,7 +54,7 @@ class PgAddColumnDefaultTest : public LibPqTestBase,
 };
 
 // Test compaction after updates are performed on columns with missing default values.
-TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCompactionAfterUpdate) {
+TEST_P(PgAlterTableTest, AddColumnDefaultCompactionAfterUpdate) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (t int PRIMARY KEY)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, 4))", kTableName));
@@ -92,7 +91,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCompactionAfterUpdate) {
 }
 
 // Test COPY FROM after a ALTER TABLE ... ADD COLUMN ... DEFAULT operation.
-TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCopy) {
+TEST_P(PgAlterTableTest, AddColumnDefaultCopy) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (t int PRIMARY KEY)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, 3))", kTableName));
@@ -143,15 +142,40 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCopy) {
   ASSERT_OK(table_content_checker());
 }
 
-INSTANTIATE_TEST_CASE_P(
-    AddColumnDefaultTest, PgAddColumnDefaultTest,
-    ::testing::Values(StorageFormat::Regular, StorageFormat::PackedRowsV1,
-        StorageFormat::PackedRowsV2));
+TEST_P(PgAlterTableTest, MultiOpsVersionMismatch) {
+  ASSERT_OK(conn_->Execute("CREATE DATABASE test_colo WITH COLOCATION = true"));
+  auto conn = ASSERT_RESULT(ConnectToDB("test_colo"));
 
-class PgAddColumnDefaultConcurrencyTest : public PgAddColumnDefaultTest {
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT) WITH (COLOCATION = true)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx1 ON t (v1)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx2 ON t (v2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (0, 0, 0)"));
+
+  auto conn2 = ASSERT_RESULT(ConnectToTsForDB(
+      *cluster_->tablet_server(1), "test_colo"));
+  ASSERT_OK(conn2.Execute("ALTER TABLE t ADD COLUMN v3 INT"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1, 1)"));
+
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(count, 2);
+}
+
+namespace {
+
+std::string ParamsToString(const testing::TestParamInfo<StorageFormat>& param_info) {
+  return AsString(param_info.param);
+}
+
+} // namespace
+
+INSTANTIATE_TEST_CASE_P(, PgAlterTableTest, testing::ValuesIn(kStorageFormatArray), ParamsToString);
+
+class PgAlterTableConcurrencyTest : public PgAlterTableTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    PgAddColumnDefaultTest::UpdateMiniClusterOptions(opts);
+    PgAlterTableTest::UpdateMiniClusterOptions(opts);
     // This test verifies behavior without table-level locking and transactional DDL.
     // Both features are disabled to concurrent inserts during ALTER TABLE.
     opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
@@ -161,7 +185,7 @@ class PgAddColumnDefaultConcurrencyTest : public PgAddColumnDefaultTest {
 
 // Test concurrently inserted rows during an ALTER TABLE ... ADD COLUMN ... DEFAULT operation
 // use the missing default value for the new column.
-TEST_P(PgAddColumnDefaultConcurrencyTest, AddColumnDefaultConcurrency) {
+TEST_P(PgAlterTableConcurrencyTest, AddColumnDefaultConcurrency) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (t int PRIMARY KEY)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, 3))", kTableName));
@@ -209,8 +233,7 @@ TEST_P(PgAddColumnDefaultConcurrencyTest, AddColumnDefaultConcurrency) {
 }
 
 INSTANTIATE_TEST_CASE_P(
-    AddColumnDefaultTest, PgAddColumnDefaultConcurrencyTest,
-    ::testing::Values(StorageFormat::Regular, StorageFormat::PackedRowsV1,
-        StorageFormat::PackedRowsV2));
+    , PgAlterTableConcurrencyTest, testing::ValuesIn(kStorageFormatArray), ParamsToString);
+
 } // namespace pgwrapper
 } // namespace yb

@@ -348,12 +348,13 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
       xClusterConfigs.forEach(
           xClusterConfig -> {
             DrConfig drConfig = xClusterConfig.getDrConfig();
+            boolean hasPitrConfigs = !xClusterConfig.getPitrConfigs().isEmpty();
             createDeleteXClusterConfigSubtasks(
                 xClusterConfig,
                 false /* keepEntry */,
                 params().isForceDelete,
-                true /* deleteSourcePitrConfigs */,
-                true /* deleteTargetPitrConfigs */);
+                hasPitrConfigs /* deleteSourcePitrConfigs */,
+                hasPitrConfigs /* deleteTargetPitrConfigs */);
           });
 
       // When the last xCluster config associated with this DR config is deleted, the dr config

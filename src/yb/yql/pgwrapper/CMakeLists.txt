@@ -119,7 +119,7 @@ ADD_YB_LIBRARY(ysql_upgrade
 
 set(YB_TEST_LINK_LIBS
     yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils geo_transactions_test_base
-    pg_locks_test_base rocksdb_tools yb-backup-test_base yb-tserver_util
+    pg_locks_test_base rocksdb_test_util rocksdb_tools yb-backup-test_base yb-tserver_util
     ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
@@ -131,7 +131,7 @@ YB_TEST_TARGET_LINK_LIBRARIES(dist_trace-test opentelemetry_proto)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(libpq_utils-test)
-ADD_YB_TEST(pg_alter_add_column_default-test)
+ADD_YB_TEST(pg_alter_table-test)
 ADD_YB_TEST(pg_analyze-test)
 ADD_YB_TEST(pg_analyze_read_time-test)
 ADD_YB_TEST(pg_anonymizer-test)

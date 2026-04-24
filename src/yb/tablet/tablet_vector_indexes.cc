@@ -57,7 +57,9 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
  public:
   Status Init(
       const Tablet& tablet, const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) {
-    rocksdb_op_ = tablet.CreateScopedRWOperationBlockingRocksDbShutdownStart();
+    // Using non-blocking operation to avoid deadlock during shutdown. This is safe because
+    // all callers handle errors from the underlying iterator gracefully.
+    rocksdb_op_ = tablet.CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     RETURN_NOT_OK(rocksdb_op_);
 
     iter_holder_ = VERIFY_RESULT(
@@ -254,7 +256,9 @@ Status TabletVectorIndexes::DoCreateIndex(
       vector_index_metric_entity));
 
   if (!bootstrap) {
-    auto read_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
+    // Using non-blocking operation to avoid deadlock during shutdown. This is safe because
+    // ScheduleBackfill handles errors from the backfill task gracefully.
+    auto read_op = tablet().CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     if (read_op.ok()) {
       ScheduleBackfill(
           vector_index, indexed_table, Slice(), index_table.hybrid_time, index_table.op_id,
@@ -455,8 +459,10 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
     }
 
     if (!read_op) {
+      // Using non-blocking operation to avoid deadlock during shutdown. This is safe because
+      // ScheduleBackfill handles errors from the backfill task gracefully.
       read_op = std::make_shared<ScopedRWOperation>(
-          tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart());
+          tablet().CreateScopedRWOperationNotBlockingRocksDbShutdownStart());
     }
     if (!read_op->ok()) {
       LOG_WITH_PREFIX_AND_FUNC(WARNING)
@@ -675,7 +681,7 @@ Status TabletVectorIndexes::Verify() {
     while (VERIFY_RESULT(reader.FetchNext())) {
       auto value = dockv::EncodedDocVectorValue::FromSlice(reader.current_vector_slice());
       auto vector_id = VERIFY_RESULT(value.DecodeId());
-      auto ybctid = CHECK_RESULT(reverse_mapping_reader->Fetch(vector_id));
+      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->Fetch(vector_id));
       if (reader.current_ybctid() != ybctid) {
         LOG_WITH_FUNC(DFATAL)
             << "Wrong reverse record for: " << vector_id << ": " << ybctid.ToDebugHexString()

@@ -1878,6 +1878,29 @@ ShutdownPostgres(int code, Datum arg)
 }
 
 
+#if defined(ADDRESS_SANITIZER)
+static volatile int yb_skip_lsan_check = 0;
+
+int
+__lsan_is_turned_off(void)
+{
+	return yb_skip_lsan_check;
+}
+#endif
+
+static void
+YbKillMe(int sig)
+{
+#if defined(ADDRESS_SANITIZER)
+	yb_skip_lsan_check = 1;
+#endif
+#ifdef HAVE_SETSID
+	/* try to signal whole process group */
+	kill(-MyProcPid, sig);
+#endif
+	kill(MyProcPid, sig);
+}
+
 /*
  * STATEMENT_TIMEOUT handler: trigger a query-cancel interrupt.
  */
@@ -1893,11 +1916,7 @@ StatementTimeoutHandler(void)
 	if (ClientAuthInProgress)
 		sig = SIGTERM;
 
-#ifdef HAVE_SETSID
-	/* try to signal whole process group */
-	kill(-MyProcPid, sig);
-#endif
-	kill(MyProcPid, sig);
+	YbKillMe(sig);
 }
 
 /*
@@ -1906,11 +1925,7 @@ StatementTimeoutHandler(void)
 static void
 LockTimeoutHandler(void)
 {
-#ifdef HAVE_SETSID
-	/* try to signal whole process group */
-	kill(-MyProcPid, SIGINT);
-#endif
-	kill(MyProcPid, SIGINT);
+	YbKillMe(SIGINT);
 }
 
 static void

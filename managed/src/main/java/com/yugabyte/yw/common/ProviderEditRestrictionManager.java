@@ -86,7 +86,7 @@ public class ProviderEditRestrictionManager {
         Universe universe = Universe.getOrBadRequest(universeUUID);
         for (UniverseDefinitionTaskParams.Cluster cluster :
             universe.getUniverseDetails().clusters) {
-          providerUUIDs.add(UUID.fromString(cluster.userIntent.provider));
+          providerUUIDs.addAll(cluster.userIntent.getAllProviderUUIDs());
         }
       } catch (Exception e) {
         log.error("Cannot find universe for id " + universeUUID);

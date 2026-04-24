@@ -2298,6 +2298,26 @@ Status SysCatalogTable::ForceWrite(
   return SyncWrite(writer.get());
 }
 
+Result<int64_t> SysCatalogTable::CountPgYbMigrationRows(
+    uint32_t database_oid, const ReadHybridTime& read_time) {
+  auto read_data = VERIFY_RESULT(
+      TableReadData(database_oid, kPgYbMigrationTableOid, read_time));
+  const auto& schema = read_data.schema();
+  dockv::ReaderProjection projection(schema);
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    docdb::DocPgsqlScanSpec spec(schema, /*condition=*/nullptr);
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+  qlexpr::QLTableRow row;
+  int64_t count = 0;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    ++count;
+  }
+  return count;
+}
+
 Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) {
   TRACE_EVENT0("master", __func__);
   auto read_data =

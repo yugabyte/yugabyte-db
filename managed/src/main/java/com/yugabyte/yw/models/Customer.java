@@ -116,7 +116,7 @@ public class Customer extends Model {
 
   private boolean checkClusterInProvider(Universe universe, UUID providerUUID) {
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      if (cluster.userIntent.provider.equals(providerUUID.toString())) {
+      if (cluster.userIntent.getAllProviderUUIDs().contains(providerUUID)) {
         return true;
       }
     }

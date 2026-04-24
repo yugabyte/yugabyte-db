@@ -1267,15 +1267,16 @@ void WriteQuery::CqlExecuteDone(const Status& status) {
 
 template <class Code, class Resp>
 void WriteQuery::SchemaVersionMismatch(Code code, size_t size, Resp* resp) {
-  auto it = resp->begin();
-  for (size_t i = 0; i != size; ++i) {
-    auto* entry = it != resp->end() ? &*it : resp->Add();
-    if (entry->status() != code) {
-      entry->Clear();
-      entry->set_status(code);
-      entry->ref_error_message("Other request entry schema version mismatch");
+  while (resp->size() < size) {
+    resp->Add();
+  }
+  for (auto& entry : *resp) {
+    if (entry.status() == code) {
+      continue;
     }
-    ++it;
+    entry.Clear();
+    entry.set_status(code);
+    entry.ref_error_message("Other request entry schema version mismatch");
   }
   Cancel(Status::OK());
 }

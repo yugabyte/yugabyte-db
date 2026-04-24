@@ -32,9 +32,6 @@
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vectorann_util.h"
 
-DEFINE_test_flag(bool, usearch_exact, false,
-    "Use exact search in usearch wrapper to guarantee deterministic results.");
-
 namespace unum::usearch {
 
 // Explicit specialization for the operator== is required for usearch need, as a compiler is not
@@ -233,7 +230,7 @@ class UsearchIndex :
     SemaphoreLock lock(*search_semaphore_);
     auto usearch_results = index_.filtered_search_with_ef(
         query_vector.data(), options.max_num_results, options.filter, options.ef,
-        IndexImpl::any_thread(), FLAGS_TEST_usearch_exact);
+        IndexImpl::any_thread());
     RSTATUS_DCHECK(
         usearch_results, RuntimeError, "Failed to search a vector: $0",
         usearch_results.error.release());

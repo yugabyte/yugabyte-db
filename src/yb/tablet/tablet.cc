@@ -1704,7 +1704,7 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
 
   if (abort_ops) {
     abort_pending_op_status_holder_.SetError(
-        STATUS_FORMAT(Aborted, "$0aborted pending operations", LogPrefix()));
+        STATUS_FORMAT(ShutdownInProgress, "$0aborted pending operations", LogPrefix()));
   }
 
   op_pauses.not_blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kFalse);
@@ -1730,13 +1730,14 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
   rocksdb::Options rocksdb_options;
 
   std::vector<std::string> db_paths;
+  // Vector indexes use regular and intents db, so should shutdown them first.
+  vector_indexes_->CompleteShutdown(db_paths);
   for (auto* db_uniq_ptr : {&intents_db_, &regular_db_}) {
     if (*db_uniq_ptr) {
       db_paths.push_back((*db_uniq_ptr)->GetName());
       db_uniq_ptr->reset();
     }
   }
-  vector_indexes_->CompleteShutdown(db_paths);
 
   key_bounds_ = docdb::KeyBounds();
   // Reset rocksdb_shutdown_requested_ to the initial state like RocksDBs were never opened,
@@ -2197,11 +2198,9 @@ Status Tablet::DoHandlePgsqlReadRequest(
 
   const auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
 
-#ifndef NDEBUG
   if (pgsql_read_request.is_aggregate()) {
-    DEBUG_ONLY_TEST_SYNC_POINT("Tablet::DoHandlePgsqlReadRequest::Aggregate");
+    TEST_SYNC_POINT("Tablet::DoHandlePgsqlReadRequest::Aggregate");
   }
-#endif
 
   Status status;
   if (pgsql_read_request.has_get_tablet_key_ranges_request()) {

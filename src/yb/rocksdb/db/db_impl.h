@@ -520,6 +520,8 @@ class DBImpl : public DB {
     return TEST_SetExcludeFromCompaction(DefaultColumnFamily(), std::move(exclude_from_compaction));
   }
 
+  DBOptions& TEST_db_options() { return const_cast<DBOptions&>(db_options_); }
+
  protected:
   Env* const env_;
   Env* const checkpoint_env_;

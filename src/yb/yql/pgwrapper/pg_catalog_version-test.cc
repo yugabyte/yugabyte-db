@@ -642,6 +642,25 @@ class PgCatalogVersionTest : public LibPqTestBase {
     return GetInt64MetricsHelper("AuthorizedConnection");
   }
 
+  static std::string ConnInitLatencyMetricName(bool auth_backend) {
+    return auth_backend ? "handler_latency_yb_ysqlserver_SQLProcessor_ConnMgrAuthBackendInit"
+                        : "handler_latency_yb_ysqlserver_SQLProcessor_BackendInit";
+  }
+
+  // Returns {count, sum_us} for the conn-init-latency metric
+  std::pair<int64_t, int64_t> GetConnInitLatencyStats(bool auth_backend) {
+    const std::string kMetricName = ConnInitLatencyMetricName(auth_backend);
+    auto json_metrics = GetJsonMetrics();
+    for (const auto& metric : json_metrics) {
+      if (metric.name == kMetricName) {
+        LOG(INFO) << kMetricName << ": count=" << metric.value << " sum_us=" << metric.sum;
+        return {metric.value, metric.sum};
+      }
+    }
+    ADD_FAILURE() << kMetricName << " not found in metrics output";
+    return {-1, -1};
+  }
+
   // This function is extracted and adapted from ysql_upgrade.cc.
   std::string ReadMigrationFile(const string& migration_file) {
     const char* kStaticDataParentDir = "share";
@@ -3478,6 +3497,22 @@ TEST_P(PgCatalogVersionConnManagerTest,
             << ", master_read_count_after: " << master_read_count_after;
   auto expected_count = (enable_ysql_conn_mgr ? 0 : 2) * num_logical_connections;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
+
+  // Validate the conn-init-latency metrics:
+  // - BackendInit covers all regular (non-auth) backends.
+  // - ConnMgrAuthBackendInit appears only when connection manager is active.
+  auto [regular_count, regular_sum] = GetConnInitLatencyStats(/*auth_backend=*/false);
+  ASSERT_GT(regular_count, 0) << "Expected BackendInit count > 0";
+  ASSERT_GT(regular_sum, 0) << "Expected BackendInit sum_us > 0";
+
+  auto [auth_count, auth_sum] = GetConnInitLatencyStats(/*auth_backend=*/true);
+  if (enable_ysql_conn_mgr) {
+    ASSERT_GT(auth_count, 0) << "Expected ConnMgrAuthBackendInit count with conn manager";
+    ASSERT_GT(auth_sum, 0) << "Expected ConnMgrAuthBackendInit sum_us with conn manager";
+  } else {
+    // Metric is always registered but should have zero auth connections without conn mgr.
+    ASSERT_EQ(auth_count, 0) << "Expected no ConnMgrAuthBackendInit without conn manager";
+  }
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
@@ -3815,6 +3850,15 @@ TEST_F(PgCatalogVersionTest, ConcurrentNonSuperuserNewConnectionsTest) {
   auto authorized_connections = GetNumAuthorizedConnections();
   LOG(INFO) << "authorized_connections: " << authorized_connections;
   ASSERT_GT(authorized_connections, relcache_preloads);
+
+  auto [regular_count, regular_sum] = GetConnInitLatencyStats(/*auth_backend=*/false);
+  ASSERT_GE(regular_count, authorized_connections)
+      << "BackendInit count should be at least authorized_connections";
+  ASSERT_GT(regular_sum, 0) << "Expected BackendInit sum_us > 0";
+
+  auto [auth_count, auth_sum] = GetConnInitLatencyStats(/*auth_backend=*/true);
+  // The metric is always registered but should have zero connections without conn mgr.
+  ASSERT_EQ(auth_count, 0) << "No auth backends expected without connection manager";
 }
 
 // Test the two-step upgrade process for enabling negative caching safely.

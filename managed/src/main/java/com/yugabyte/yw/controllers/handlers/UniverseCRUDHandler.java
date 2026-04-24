@@ -2493,6 +2493,7 @@ public class UniverseCRUDHandler {
       Universe universe, UniverseDefinitionTaskParams taskParams) {
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
 
     Set<UUID> taskParamClustersUuids =
         taskParams.clusters.stream()
@@ -2545,6 +2546,20 @@ public class UniverseCRUDHandler {
 
     for (Cluster newCluster : taskParams.clusters) {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
+      if (isK8s
+          && !Objects.equals(
+              Util.getSingleProviderUUID(curCluster), Util.getSingleProviderUUID(newCluster))) {
+        String msg =
+            String.format(
+                "Provider can't change during editing of the universe. "
+                    + "Expected provider %s but found %s for cluster type: %s",
+                Util.getSingleProviderUUID(curCluster),
+                Util.getSingleProviderUUID(newCluster),
+                newCluster.clusterType);
+        LOG.error(msg);
+        throw new PlatformServiceException(BAD_REQUEST, msg);
+      }
+
       if (newCluster.placementInfo != null && newCluster.placementInfo.hasRankOrdering()) {
         PlacementInfoUtil.validatePriority(newCluster.placementInfo);
       }

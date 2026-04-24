@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.UniverseInProgressException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -104,7 +105,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       // We support only one readonly cluster, so using the first one in the list.
       Cluster cluster = roClusters.get(0);
       UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
-      UUID providerUUID = UUID.fromString(userIntent.provider);
+      UUID providerUUID = Util.getSingleProviderUUID(cluster);
 
       Map<String, String> universeConfig = universe.getConfig();
       // True for all the new and v2 to v3 migrated universes

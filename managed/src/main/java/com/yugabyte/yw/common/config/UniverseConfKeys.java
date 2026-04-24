@@ -889,6 +889,17 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "the xCluster config.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipXClusterSnapshotSchedules =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.skip_snapshot_schedules",
+          ScopeType.UNIVERSE,
+          "Skip PITR snapshot schedules for DB-scoped xCluster configs",
+          "When enabled, YBA skips creating PITR snapshot schedules during DB-scoped xCluster/DR"
+              + " setup. DR failover then uses the DB-side XClusterFailover RPC which creates"
+              + " on-demand snapshots at failover time instead of relying on continuous PITR"
+              + " snapshot schedules.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> customHealthCheckPorts =
       new ConfKeyInfo<>(
           "yb.universe.network_load_balancer.custom_health_check_ports",

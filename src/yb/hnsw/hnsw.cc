@@ -40,8 +40,6 @@ DEFINE_RUNTIME_bool(yb_hnsw_keep_new_blocks_in_cache, false,
 #define YB_MISALIGNED_PTR(ptr, type, field) \
   MakeMisalignedPtr<decltype(type::field)>(ptr, offsetof(type, field))
 
-DECLARE_bool(TEST_usearch_exact);
-
 namespace yb::hnsw {
 
 struct YbHnswVectorData {
@@ -552,27 +550,19 @@ YbHnsw::SearchResult YbHnsw::Search(
   SearchCacheScope scs(context.search_cache, *this);
   context.search_cache.Bind(header_, *file_block_cache_);
   auto se = ScopeExit([&context] { context.search_cache.Release(); });
-  if (PREDICT_FALSE(FLAGS_TEST_usearch_exact)) {
-    SearchExact(query_vector, options, context);
-  } else {
-    auto [best_vector, best_dist] = SearchInNonBaseLayers(
-        query_vector, context.search_cache);
-    SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
-  }
+  auto [best_vector, best_dist] = SearchInNonBaseLayers(
+      query_vector, context.search_cache);
+  SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
   return MakeResult(options.max_num_results, context);
 }
 
 YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext& context) const {
-  auto& top = context.top.data();
-  std::sort(top.begin(), top.end());
-  top.resize(std::min(top.size(), max_results));
-
-  SearchResult result;
-  result.reserve(top.size());
-  for (auto [distance, vector] : top) {
-    result.emplace_back(context.search_cache.GetVectorData(vector), distance);
-  }
-  return result;
+  return vector_index::MakeResult<DistanceType>(
+      max_results, context.top.data(),
+      [&](const auto& entry) {
+        return vector_index::VectorWithDistance<DistanceType>(
+            context.search_cache.GetVectorData(entry.second), entry.first);
+      });
 }
 
 std::pair<VectorNo, YbHnsw::DistanceType> YbHnsw::SearchInNonBaseLayers(
@@ -667,25 +657,6 @@ void YbHnsw::SearchInBaseLayer(
           best_dist = extra_top.empty() ? top.top().first : extra_top.top();
         }
       }
-    }
-  }
-}
-
-void YbHnsw::SearchExact(
-    const std::byte* query_vector, const vector_index::SearchOptions& options,
-    YbHnswSearchContext& context) const {
-  auto& cache = context.search_cache;
-  auto& top = context.top;
-  top.clear();
-  for (size_t i = 0, size = header_.layers.front().size; i != size; ++i) {
-    if (options.filter && !options.filter(cache.GetVectorData(i))) {
-      continue;
-    }
-    auto dist = Distance(query_vector, i, cache);
-    if (top.size() < options.max_num_results) {
-      top.push({dist, i});
-    } else if (dist < top.top().first) {
-      top.replace_top({dist, i});
     }
   }
 }

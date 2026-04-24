@@ -58,7 +58,7 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
     }
     Set<UUID> providers =
         universe.getUniverseDetails().clusters.stream()
-            .map(c -> UUID.fromString(c.userIntent.provider))
+            .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
             .collect(Collectors.toSet());
     boolean succeeded = false;
     try {

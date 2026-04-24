@@ -29,6 +29,8 @@
 #include "yb/master/master_types.pb.h"
 #include "yb/master/ts_descriptor.h"
 
+#include "yb/common/read_hybrid_time.h"
+
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/tserver/tserver_admin.pb.h"
@@ -95,6 +97,13 @@ class CloneStateManagerExternalFunctionsBase {
   virtual TSDescriptorVector GetTservers() = 0;
 
   virtual Result<BlacklistSet> GetBlacklist() = 0;
+
+  virtual Result<int64_t> CountPgYbMigrationRows(
+      uint32_t database_oid, const ReadHybridTime& read_time) = 0;
+
+  virtual Result<std::optional<YsqlMajorCatalogUpgradeInfoPB>> GetYsqlMajorCatalogUpgradeInfoAt(
+      std::optional<std::reference_wrapper<const ReadHybridTime>> read_time) = 0;
+  virtual bool IsMajorYsqlUpgradeInProgress() = 0;
 
   // Sys catalog.
   virtual Status Upsert(int64_t leader_term, const CloneStateInfoPtr&) = 0;

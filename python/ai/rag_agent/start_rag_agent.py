@@ -5,9 +5,13 @@ from work_queue.poller import Poller
 from work_queue.task_router import get_router
 from work_queue.task_type_keys import TaskTypeKeys
 from rag_pipeline import CreateSourceProcessorForAWS_S3, DocumentPreprocessor, UserPromptEmbedder
+from rag_pipeline.document_types import (
+    DEFAULT_WORKER_TYPE,
+    WORKER_TYPE_TO_MIME_TYPES,
+)
 from models.work_queue_task import WorkQueueTask
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, List
 from contextlib import asynccontextmanager
 import asyncio
 import logging
@@ -16,6 +20,7 @@ import sys
 import threading
 import time
 import signal
+import uuid
 import psycopg
 import random
 
@@ -70,8 +75,6 @@ def embedding_generation_worker():
         embedding_generation_poller = Poller()
         while embedding_generation_poller_active:
             try:
-                # Get the worker ID from environment or generate one
-                import uuid
                 # nik-todo: make worker_id configurable from CLI args.
                 worker_id = str(uuid.uuid4())
                 # nik-todo: make lease_duration configurable from CLI args.
@@ -117,22 +120,63 @@ def generate_embeddings():
     return True
 
 
+def _resolve_worker_document_types() -> List[str]:
+    """
+    Resolve the MIME types this polling worker should process based on the
+    WORKER_DOCUMENT_TYPE env var.
+
+    Returns:
+        List of MIME types to filter PREPROCESS tasks by.
+
+    Falls back to DEFAULT_WORKER_TYPE when the env var is unset (info log)
+    or unrecognized (warning log with the raw value).
+    """
+    raw_value = os.getenv("WORKER_DOCUMENT_TYPE", "")
+    worker_type = raw_value.strip().upper()
+
+    if worker_type not in WORKER_TYPE_TO_MIME_TYPES:
+        if worker_type:
+            logger.warning(
+                f"WORKER_DOCUMENT_TYPE '{raw_value}' is not supported. "
+                f"Valid values: {list(WORKER_TYPE_TO_MIME_TYPES.keys())}. "
+                f"Defaulting to '{DEFAULT_WORKER_TYPE}'."
+            )
+        else:
+            logger.info(
+                f"WORKER_DOCUMENT_TYPE not set, defaulting to "
+                f"'{DEFAULT_WORKER_TYPE}'."
+            )
+        worker_type = DEFAULT_WORKER_TYPE
+
+    document_types = WORKER_TYPE_TO_MIME_TYPES[worker_type]
+    logger.info(
+        f"Resolved polling worker type "
+        f"(WORKER_DOCUMENT_TYPE: {worker_type}, MIME types: {document_types})"
+    )
+    return document_types
+
+
 def polling_worker():
     """
     Synchronous worker thread that continuously polls for work queue tasks.
     Gets tasks from the queue and starts processing them.
+
+    Uses WORKER_DOCUMENT_TYPE env var to determine which document types to
+    process:
+      - ``PDF``  -> GPU worker; only PDF files.
+      - ``TEXT`` -> non-GPU worker; every other supported MIME type.
+    Defaults to TEXT (non-GPU) if unset or invalid, so GPU workers must be
+    explicitly opted into.
     """
     global poller
 
-    logger.info("Polling worker thread started")
+    document_types = _resolve_worker_document_types()
 
     try:
         poller = Poller()
 
         while polling_active:
             try:
-                # Get the worker ID from environment or generate one
-                import uuid
                 # nik-todo: make worker_id configurable from CLI args.
                 worker_id = str(uuid.uuid4())
                 # nik-todo: make lease_duration configurable from CLI args.
@@ -141,7 +185,8 @@ def polling_worker():
                 # Poll for a task
                 task = poller.poll(
                     worker_id=worker_id,
-                    lease_duration_seconds=lease_duration
+                    lease_duration_seconds=lease_duration,
+                    document_types=document_types
                 )
 
                 if task:

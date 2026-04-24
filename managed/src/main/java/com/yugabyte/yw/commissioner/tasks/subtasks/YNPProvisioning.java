@@ -92,7 +92,8 @@ public class YNPProvisioning extends NodeTaskBase {
      *  YNP based provisioning because dual NIC setup will require a reboot which might
      *  clean up the tmp directory where the YNP config is created.
      */
-    AnsibleSetupServer.Params ansibleParams = buildDualNicSetupParams(universe, node, provider);
+    AnsibleSetupServer.Params ansibleParams =
+        buildDualNicSetupParams(universe, node, provider, taskParams().userIntent);
     nodeManager
         .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
         .processErrors("Dual NIC setup failed");
@@ -132,8 +133,11 @@ public class YNPProvisioning extends NodeTaskBase {
   }
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(
-      Universe universe, NodeDetails node, Provider provider) {
-    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+      Universe universe, NodeDetails node, Provider provider, UserIntent taskUserIntent) {
+    UserIntent userIntent =
+        taskUserIntent == null
+            ? universe.getCluster(node.placementUuid).userIntent
+            : taskUserIntent;
     AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
     fillSetupParamsForNode(ansibleParams, userIntent, node);
     ansibleParams.skipAnsiblePlaybook = true;

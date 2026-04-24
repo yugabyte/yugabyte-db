@@ -52,7 +52,7 @@
 
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_string(vector_index_backend);
@@ -123,7 +123,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
     auto packing_mode = GetPackingMode();
@@ -1095,7 +1095,7 @@ TEST_P(PgVectorIndexTest, EfSearch) {
   constexpr int kSmallEf = 1;
   constexpr int kBigEf = 1000;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
 
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));

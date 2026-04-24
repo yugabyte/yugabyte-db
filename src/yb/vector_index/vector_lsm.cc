@@ -100,6 +100,9 @@ DEFINE_RUNTIME_bool(vector_index_dump_stats, false,
 DEFINE_RUNTIME_bool(vector_index_enable_compactions, true,
     "Enable Vector LSM background compactions.");
 
+DEFINE_test_flag(bool, vector_index_exact, false,
+    "Use exact brute-force search in vector index to guarantee deterministic results.");
+
 DEFINE_test_flag(bool, vector_index_skip_manifest_update_during_shutdown, false,
     "Whether VectorLSM manifest update should be skipped after shutdown has been initiated");
 

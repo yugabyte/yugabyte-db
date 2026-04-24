@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOpera
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -330,8 +331,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
-    Provider provider =
-        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(primaryCluster);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     String universeOverrides = primaryCluster.userIntent.universeOverrides;
@@ -538,8 +538,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
-    Provider provider =
-        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(primaryCluster);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     String universeOverrides = primaryCluster.userIntent.universeOverrides;

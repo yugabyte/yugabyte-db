@@ -1819,6 +1819,40 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Initiates an asynchronous xCluster failover for the given replication group. The failover
+   * task runs on the DB master and can be polled via {@link #isXClusterFailoverDone}.
+   *
+   * <p>Prerequisites: AsyncYBClient must be created with the target (consumer) universe as context.
+   *
+   * @param replicationGroupId The replication group to fail over
+   * @return A deferred object that yields an {@link XClusterFailoverResponse}
+   */
+  public Deferred<XClusterFailoverResponse> xClusterFailover(String replicationGroupId) {
+    checkIsClosed();
+    XClusterFailoverRequest request =
+        new XClusterFailoverRequest(this.masterTable, replicationGroupId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Polls whether an xCluster failover initiated via {@link #xClusterFailover} has completed.
+   *
+   * <p>Prerequisites: AsyncYBClient must be created with the target (consumer) universe as context.
+   *
+   * @param replicationGroupId The replication group whose failover status to check
+   * @return A deferred object that yields an {@link IsXClusterFailoverDoneResponse}
+   */
+  public Deferred<IsXClusterFailoverDoneResponse> isXClusterFailoverDone(
+      String replicationGroupId) {
+    checkIsClosed();
+    IsXClusterFailoverDoneRequest request =
+        new IsXClusterFailoverDoneRequest(this.masterTable, replicationGroupId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
    * It waits for replication to complete to a point in time. If there were still undrained streams,
    * it will return those.
    *

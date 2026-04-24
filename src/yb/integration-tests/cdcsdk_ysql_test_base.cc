@@ -5093,5 +5093,26 @@ Status CDCSDKYsqlTest::GetIntentEntriesAndSSTFileCountForTablet(
   return Status::OK();
 }
 
+Status CDCSDKYsqlTest::CdcReleaseBarriersOnTablet(const TabletId& tablet_id) {
+  UpdateCdcReplicatedIndexRequestPB req;
+  UpdateCdcReplicatedIndexResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+  req.add_tablet_ids(tablet_id);
+  req.add_replicated_indices(std::numeric_limits<int64_t>::max());
+  req.add_replicated_terms(std::numeric_limits<int64_t>::max());
+  OpId::Max().ToPB(req.add_cdc_sdk_consumed_ops());
+  req.add_cdc_sdk_ops_expiration_ms(0);
+  req.add_cdc_sdk_safe_times(HybridTime::kInvalid.ToUint64());
+  req.set_initial_retention_barrier(false);
+
+  RETURN_NOT_OK(cdc_proxy_->UpdateCdcReplicatedIndex(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 }  // namespace cdc
 }  // namespace yb

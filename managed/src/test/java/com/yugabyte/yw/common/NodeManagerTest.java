@@ -999,9 +999,8 @@ public class NodeManagerTest extends FakeDBApplication {
           String nodeToNodeString = String.valueOf(configureParams.enableNodeToNodeEncrypt);
           String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
           String allowInsecureString = String.valueOf(configureParams.allowInsecure);
-
-          String ybHomeDir =
-              Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome();
+          Provider provider = Util.getSingleProvider(userIntent);
+          String ybHomeDir = provider.getYbHome();
           String certsDir = ybHomeDir + "/yugabyte-tls-config";
           String certsForClientDir = ybHomeDir + "/yugabyte-client-tls-config";
 
@@ -1073,8 +1072,8 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--yb_process_type");
           expectedCommand.add(processType.toLowerCase());
 
-          String yb_home_dir =
-              Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome();
+          Provider provider = Util.getSingleProvider(userIntent);
+          String yb_home_dir = provider.getYbHome();
           String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
           String certsForClientDir = yb_home_dir + "/yugabyte-client-tls-config";
 

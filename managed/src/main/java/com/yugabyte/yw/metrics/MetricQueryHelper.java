@@ -293,8 +293,7 @@ public class MetricQueryHelper {
           if (newNamingStyle) {
             Set<String> nodePrefixes = new HashSet<String>();
             for (Cluster cluster : universe.getUniverseDetails().clusters) {
-              Provider provider =
-                  Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+              Provider provider = Util.getSingleProvider(cluster);
               for (Region r : provider.getRegions()) {
                 for (AvailabilityZone az : r.getZones()) {
                   boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
@@ -589,7 +588,7 @@ public class MetricQueryHelper {
     List<String> namespaces = new ArrayList<>();
 
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getSingleProvider(cluster);
       for (Region r : Region.getByProvider(provider.getUuid())) {
         for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.getUuid())) {
           boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
@@ -672,8 +671,12 @@ public class MetricQueryHelper {
   }
 
   public static String getDataMountPoints(Universe universe) {
-    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-        == CloudType.onprem) {
+    if (universe
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent
+        .getAllCloudTypes()
+        .contains(CloudType.onprem)) {
       final String mountRoots =
           universe.getNodes().stream()
               .filter(MetricQueryHelper::checkNonNullMountRoots)
@@ -696,15 +699,21 @@ public class MetricQueryHelper {
   }
 
   public static String getOtherMountPoints(RuntimeConfGetter confGetter, Universe universe) {
-    UUID providerUuid =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUuid);
-    String otherMountPoints =
-        confGetter.getConfForScope(provider, ProviderConfKeys.monitoredMountRoots);
-    if (StringUtils.isBlank(otherMountPoints)) {
+    List<String> mountPoints = new ArrayList<>();
+    for (UUID providerUuid :
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.getAllProviderUUIDs()) {
+      Provider provider = Provider.getOrBadRequest(providerUuid);
+      String otherMountPoints =
+          confGetter.getConfForScope(provider, ProviderConfKeys.monitoredMountRoots);
+      if (!StringUtils.isBlank(otherMountPoints)) {
+        mountPoints.add(otherMountPoints);
+      }
+    }
+    if (mountPoints.isEmpty()) {
       // Special value to make sure no metric values are returned for the query
       return "#";
     }
+    String otherMountPoints = String.join("|", mountPoints);
     return otherMountPoints.replaceAll(",", "|");
   }
 

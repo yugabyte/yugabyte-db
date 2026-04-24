@@ -78,7 +78,7 @@ DECLARE_bool(TEST_xcluster_increment_logical_commit_time);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
-DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_block_apply_intent);
 
 using namespace std::chrono_literals;
@@ -4683,7 +4683,7 @@ TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
 }
 
 TEST_F(XClusterDDLReplicationTest, VectorIndex) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
@@ -4802,7 +4802,7 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
     GTEST_SKIP() << "This test does not work with yb_backup.py";
   }
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
   auto params = XClusterDDLReplicationTestBase::kDefaultParams;
   params.start_yb_controller_servers = true;
   ASSERT_OK(SetUpClusters(params));

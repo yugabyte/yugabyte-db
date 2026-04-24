@@ -16,8 +16,14 @@
 #include <atomic>
 #include <utility>
 
+#include "yb/rocksdb/util/heap.h"
+
+#include "yb/util/flags.h"
+
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
+
+DECLARE_bool(TEST_vector_index_exact);
 
 namespace yb::vector_index {
 
@@ -53,7 +59,28 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
   Result<std::vector<VectorWithDistance<DistanceResult>>> Search(
       const Vector& query_vector, const SearchOptions& options)
       const override {
+    if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
+      return SearchExact(query_vector, options);
+    }
     return impl().DoSearch(query_vector, options);
+  }
+
+  std::vector<VectorWithDistance<DistanceResult>> SearchExact(
+      const Vector& query_vector, const SearchOptions& options) const {
+    using Entry = VectorWithDistance<DistanceResult>;
+    rocksdb::BinaryHeap<Entry> top;
+    for (const auto& [vector_id, vector] : *this) {
+      if (options.filter && !options.filter(vector_id)) {
+        continue;
+      }
+      Entry element(vector_id, this->Distance(vector, query_vector));
+      if (top.size() < options.max_num_results) {
+        top.push(element);
+      } else if (element < top.top()) {
+        top.replace_top(element);
+      }
+    }
+    return MakeResult<DistanceResult>(options.max_num_results, top.data());
   }
 
   std::shared_ptr<void> Attach(std::shared_ptr<void> obj) override {
