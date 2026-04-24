@@ -202,6 +202,7 @@ class DBImpl : public DB {
                        ColumnFamilyHandle* column_family) override;
   using DB::WaitForFlush;
   virtual Status WaitForFlush(ColumnFamilyHandle* column_family) override;
+  virtual Status UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) override;
   virtual Status SyncWAL() override;
 
   virtual SequenceNumber GetLatestSequenceNumber() const override;

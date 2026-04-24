@@ -80,27 +80,18 @@ void WriteOperation::SetAsyncWrite(AsyncWriteCallback callback) {
 void WriteOperation::AddedAsPending(const TabletPtr& tablet) {
   if (async_write_callback_) {
     Status complete_status;
-    auto status = DoReplicated(op_id().term, &complete_status);
-    if (!status.ok()) {
-      complete_status = status;
-    }
+
+    complete_status = ApplyOperation(op_id().term, /*skip_opid_update=*/true);
     if (complete_status.ok()) {
       async_write_callback_(op_id());
     } else {
-      async_write_callback_(complete_status);
+      async_write_callback_(std::move(complete_status));
     }
     async_write_callback_ = {};
   }
 }
 
-// FIXME: Since this is called as a void in a thread-pool callback,
-// it seems pointless to return a Status!
-Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
-  if (do_replicated_completed_) {
-    *complete_status = Status::OK();
-    return Status::OK();
-  }
-
+Status WriteOperation::ApplyOperation(int64_t leader_term, bool skip_opid_update) {
   TRACE_EVENT0("txn", "WriteOperation::Complete");
   TRACE("APPLY: Starting");
 
@@ -113,17 +104,31 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
     TEST_PAUSE_IF_FLAG(TEST_tablet_pause_apply_write_ops);
   }
 
-  *complete_status = VERIFY_RESULT(tablet_safe())->ApplyRowOperations(this);
+  RETURN_NOT_OK(VERIFY_RESULT(tablet_safe())
+                    ->ApplyRowOperations(this, /*apply_to_storages=*/{}, skip_opid_update));
+
+  // Now that all of the changes have been applied make the changes visible to readers.
+  TRACE("FINISH: making edits visible");
+
+  apply_completed_ = true;
+
+  return Status::OK();
+}
+
+// FIXME: Since this is called as a void in a thread-pool callback,
+// it seems pointless to return a Status!
+Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
+  if (apply_completed_) {
+    // If the apply completed, we need to update the op id.
+    *complete_status = VERIFY_RESULT(tablet_safe())->UpdateOpIdForOperation(this);
+  } else {
+    *complete_status = ApplyOperation(leader_term, /*skip_opid_update=*/false);
+  }
+
   // Failure is regular case, since could happen because transaction was aborted, while
   // replicating its intents.
   LOG_IF(FATAL, !complete_status->ok() && !IsTxnAborted(*complete_status))
       << "Apply operation failed: " << *complete_status;
-
-  // Now that all of the changes have been applied and the commit is durable
-  // make the changes visible to readers.
-  TRACE("FINISH: making edits visible");
-
-  do_replicated_completed_ = true;
 
   return Status::OK();
 }

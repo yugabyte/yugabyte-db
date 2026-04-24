@@ -4759,6 +4759,10 @@ class ModelDB: public DB {
     LOG(FATAL) << "SetAllowCompactionFailures is not supported.";
   }
 
+  Status UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) override {
+    return Status::OK();
+  }
+
  private:
   Status NotSupported() const {
     return STATUS(NotSupported, "Not supported in Model DB");

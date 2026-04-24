@@ -344,12 +344,16 @@ class Tablet : public AbstractTablet,
   // Apply all of the row operations associated with this transaction.
   Status ApplyRowOperations(
       WriteOperation* operation,
-      const docdb::StorageSet& apply_to_storages = {});
+      const docdb::StorageSet& apply_to_storages = {},
+      bool skip_opid_update = false);
+
+  Status UpdateOpIdForOperation(WriteOperation* operation);
 
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
-      const docdb::StorageSet& apply_to_storages = {});
+      const docdb::StorageSet& apply_to_storages = {},
+      bool skip_opid_update = false);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.

@@ -733,6 +733,8 @@ class DB {
     return Flush(options, DefaultColumnFamily());
   }
 
+  virtual Status UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) = 0;
+
   // Wait for end of mem-table data flushing.
   virtual Status WaitForFlush(ColumnFamilyHandle* column_family) = 0;
   virtual Status WaitForFlush() {
