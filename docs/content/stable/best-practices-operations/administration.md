@@ -62,13 +62,15 @@ If table-level locking is not enabled (the default), DML is allowed to execute w
 
 Most DDL statements complete quickly, so this is typically not a significant issue in practice. However, [certain kinds of ALTER TABLE DDL statements](../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) involve making a full copy of the table(s) whose schema is being modified. For these operations, it is not recommended to run any concurrent DML statements on the table being modified by the `ALTER TABLE`, as the effect of such concurrent DML may not be reflected in the table copy.
 
+Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table; for more information, see [Concurrent index creation](../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics).
+
 ## Concurrent DDL during a DDL operation
 
 Concurrent Data Definition Language (DDL) operations are currently unsupported. All DDL statements targeting the same database must be executed sequentially, one at a time, from a single database connection. DDL statements that operate on shared objects (roles, tablespaces) affect all databases in the cluster and must also be serialized. DDL statements that affect entities in different databases can be run concurrently.
 
 To have YugabyteDB queue conflicting DDL operations automatically, enable [table-level locking](../../architecture/transactions/concurrency-control/#table-level-locks) {{<tags/feature/ea idea="1114">}}.
 
-If table-level locking is not enabled (the default), enforce DDL serialization at the application and operational level:
+Enforce DDL serialization at the application and operational level:
 
 - Execute all DDLs sequentially from a single connection. Use a dedicated, non-pooled connection for schema migrations.
 - Wait for each DDL to fully complete before issuing the next statement.
