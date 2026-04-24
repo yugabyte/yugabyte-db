@@ -3955,11 +3955,17 @@ YbBeginScan(Relation table,
 	 *
 	 * Initdb and walsender don't have local catalog version, so ignore for
 	 * those cases as well.
+	 *
+	 * Also skip when the catalog cache version is uninitialized. This
+	 * happens in the logical replication pull model path where
+	 * assign_yb_read_time resets it to 0 for historical reads. Sending 0
+	 * would cause the tserver to reject the request with MISMATCHED_SCHEMA.
 	 */
 	if (!(is_internal_scan && IsSystemRelation(table)) &&
 		!IsBootstrapProcessingMode() &&
 		MyBackendType != B_WAL_SENDER &&
-		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER)
+		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER &&
+		YbGetCatalogCacheVersion() != YB_CATCACHE_VERSION_UNINITIALIZED)
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
 

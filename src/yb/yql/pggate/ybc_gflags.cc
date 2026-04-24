@@ -147,6 +147,10 @@ DEFINE_test_flag(bool, enable_obj_tuple_locks, false,
 DEFINE_test_flag(bool, force_use_explicit_row_lock_skip_locked_read_ahead_optimization, false,
     "Force use read ahead optimization for explicit row lock SKIP LOCKED queries");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_query_api, false,
+    "When set to true, enables the query API for logical replication in YSQL via the "
+    "pg_logical_slot_get/peek_changes functions.");
+
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);

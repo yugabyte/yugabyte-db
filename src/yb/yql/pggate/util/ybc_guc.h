@@ -144,6 +144,12 @@ extern bool yb_enable_pg_export_snapshot;
 extern bool yb_enable_replication_slot_consumption;
 
 /*
+ * Guc variable that enables the query API (pull model) for logical replication
+ * via pg_logical_slot_get/peek_changes and their binary variants.
+ */
+extern bool yb_enable_replication_slot_query_api;
+
+/*
  * GUC variable that enables ALTER TABLE rewrite operations.
  */
 extern bool yb_enable_alter_table_rewrite;
@@ -347,7 +353,7 @@ extern bool yb_xcluster_target_ddl_bypass;
 extern bool yb_use_cluster_config_for_geolocation_costing;
 
 #ifdef __cplusplus
-} // extern "C"
+}  // extern "C"
 #endif
 
 #endif  // YB_YQL_PGGATE_UTIL_YBC_GUC_H
