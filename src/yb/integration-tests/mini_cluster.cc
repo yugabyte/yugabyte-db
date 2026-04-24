@@ -766,6 +766,32 @@ std::vector<std::shared_ptr<tablet::TabletPeer>> MiniCluster::GetTabletPeers(siz
   return GetTabletManager(idx)->GetTabletPeers();
 }
 
+Result<size_t> MiniCluster::GetTabletLeaderIndex(const TabletId& tablet_id) {
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
+    if (!mini_tablet_server(i)->is_started()) {
+      continue;
+    }
+    if (mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
+      return i;
+    }
+  }
+  return STATUS(NotFound, Format("Could not find leader of tablet $0.", tablet_id));
+}
+
+Result<std::vector<size_t>> MiniCluster::GetTabletFollowerIndexes(const TabletId& tablet_id) {
+  std::vector<size_t> result;
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
+    for (const auto& peer : GetTabletPeers(i)) {
+      if (peer->tablet_id() == tablet_id) {
+        if (peer->IsNotLeader()) {
+          result.push_back(i);
+        }
+      }
+    }
+  }
+  return result;
+}
+
 Status MiniCluster::WaitForReplicaCount(const TableId& tablet_id,
                                         int expected_count,
                                         TabletLocationsPB* locations) {
@@ -1228,19 +1254,14 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
 
 tserver::MiniTabletServer* GetLeaderForTablet(
     MiniCluster* cluster, const std::string& tablet_id, size_t* leader_idx) {
-  for (size_t i = 0; i < cluster->num_tablet_servers(); i++) {
-    if (!cluster->mini_tablet_server(i)->is_started()) {
-      continue;
-    }
-
-    if (cluster->mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
-      if (leader_idx) {
-        *leader_idx = i;
-      }
-      return cluster->mini_tablet_server(i);
-    }
+  auto status = cluster->GetTabletLeaderIndex(tablet_id);
+  if (!status.ok()) {
+    return nullptr;
   }
-  return nullptr;
+  if (leader_idx) {
+    *leader_idx = *status;
+  }
+  return cluster->mini_tablet_server(*status);
 }
 
 Result<tablet::TabletPeerPtr> GetLeaderPeerForTablet(
@@ -1534,20 +1555,6 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
     }
   }
   return result;
-}
-
-MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id) {
-  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
-    auto server = cluster->mini_tablet_server(i);
-    if (!server->server()) { // Server is shut down.
-      continue;
-    }
-    if (server->server()->LeaderAndReady(tablet_id)) {
-      return server;
-    }
-  }
-
-  return nullptr;
 }
 
 void ShutdownAllTServers(MiniCluster* cluster) {

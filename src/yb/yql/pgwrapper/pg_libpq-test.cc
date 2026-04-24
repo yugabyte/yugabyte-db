@@ -44,8 +44,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 
-#include "yb/tserver/tserver_service.proxy.h"
-
+#include "yb/tserver/tserver_service.pb.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
@@ -5443,42 +5442,10 @@ TEST_F(PgLibPqTest, DumpTabletData) {
   ASSERT_EQ(tablet_ids.size(), 1);
   const auto tablet_id = tablet_ids.front();
 
-  auto tablet_leader_index = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
-  auto leader_tserver = cluster_->tablet_server(tablet_leader_index);
-  auto leader_proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(leader_tserver);
-
-  LOG(INFO) << "Reading from tablet " << tablet_id << " on tserver " << leader_tserver->uuid();
-
-  tserver::DumpTabletDataRequestPB req;
-  req.set_tablet_id(tablet_id);
-  req.set_dest_path("/tmp/dump_tablet_data.txt");
-  tserver::DumpTabletDataResponsePB leader_resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(10s);
-
-  ASSERT_OK(leader_proxy.DumpTabletData(req, &leader_resp, &rpc));
-  LOG(INFO) << "DumpTabletData response: " << leader_resp.DebugString();
-  ASSERT_FALSE(leader_resp.has_error());
-
   // Wait for rows to get replicated to followers.
   SleepFor(1s * kTimeMultiplier);
 
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-    if (i == tablet_leader_index) {
-      continue;
-    }
-    auto follower_tserver = cluster_->tablet_server(i);
-    auto follower_proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(follower_tserver);
-    tserver::DumpTabletDataResponsePB follower_resp;
-    rpc::RpcController rpc;
-    rpc.set_timeout(10s);
-    ASSERT_OK(follower_proxy.DumpTabletData(req, &follower_resp, &rpc));
-    LOG(INFO) << "DumpTabletData response from follower " << follower_tserver->uuid() << ": "
-              << follower_resp.DebugString();
-    ASSERT_FALSE(follower_resp.has_error());
-    ASSERT_EQ(leader_resp.row_count(), follower_resp.row_count());
-    ASSERT_EQ(leader_resp.xor_hash(), follower_resp.xor_hash());
-  }
+  ASSERT_OK(ValidateTabletDataAcrossReplicas(tablet_id));
 }
 
 // Test yb-admin get_table_hash command for colocated, non-colocated tables with different number of

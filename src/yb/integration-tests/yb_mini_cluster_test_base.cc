@@ -16,11 +16,18 @@
 #include "yb/client/client.h"
 #include "yb/client/session.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -133,6 +140,53 @@ template <class T>
 client::YBSessionPtr MiniClusterTestWithClient<T>::NewSession() {
   auto session = client_->NewSession(60s);
   return session;
+}
+
+template <class T>
+Result<tserver::DumpTabletDataResponsePB> MiniClusterTestWithClient<T>::DumpTabletData(
+    size_t tserver_idx, const TabletId& tablet_id, const HybridTime& read_ht,
+    const std::string& dest_path) {
+  auto proxy =
+      this->cluster_->template GetTServerProxy<tserver::TabletServerServiceProxy>(tserver_idx);
+
+  tserver::DumpTabletDataRequestPB req;
+  req.set_tablet_id(tablet_id);
+  if (read_ht.is_valid()) {
+    req.set_read_ht(read_ht.ToUint64());
+  }
+  if (!dest_path.empty()) {
+    req.set_dest_path(dest_path);
+  }
+  tserver::DumpTabletDataResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s);
+  RETURN_NOT_OK(proxy.DumpTabletData(req, &resp, &rpc));
+  RETURN_NOT_OK(ResponseStatus(resp));
+  return resp;
+}
+
+template <class T>
+Status MiniClusterTestWithClient<T>::ValidateTabletDataAcrossReplicas(const TabletId& tablet_id) {
+  auto leader_idx = VERIFY_RESULT(this->cluster_->GetTabletLeaderIndex(tablet_id));
+  auto leader_resp = VERIFY_RESULT(DumpTabletData(leader_idx, tablet_id));
+
+  auto follower_indexes = VERIFY_RESULT(this->cluster_->GetTabletFollowerIndexes(tablet_id));
+  for (auto follower_idx : follower_indexes) {
+    auto follower_resp = VERIFY_RESULT(DumpTabletData(follower_idx, tablet_id));
+    SCHECK_EQ(
+        leader_resp.row_count(), follower_resp.row_count(), IllegalState,
+        Format(
+            "Row count mismatch between leader (tserver $0) and follower (tserver $1) "
+            "for tablet $2",
+            leader_idx, follower_idx, tablet_id));
+    SCHECK_EQ(
+        leader_resp.xor_hash(), follower_resp.xor_hash(), IllegalState,
+        Format(
+            "XOR hash mismatch between leader (tserver $0) and follower (tserver $1) "
+            "for tablet $2",
+            leader_idx, follower_idx, tablet_id));
+  }
+  return Status::OK();
 }
 
 // Instantiate explicitly to avoid recompilation of a lot of dependent test classes due to template

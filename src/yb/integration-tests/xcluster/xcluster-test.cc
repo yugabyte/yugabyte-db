@@ -2342,17 +2342,17 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   {
     auto tablet_ids = ListTabletIdsForTable(consumer_cluster(), consumer_table_->id());
     ASSERT_EQ(tablet_ids.size(), 1);
-    auto old_ts = FindTabletLeader(consumer_cluster(), *tablet_ids.begin());
+    auto old_ts = GetLeaderForTablet(consumer_cluster(), *tablet_ids.begin());
     old_ts->Shutdown();
     const auto deadline = CoarseMonoClock::Now() + 10s * kTimeMultiplier;
     ASSERT_OK(WaitUntilTabletHasLeader(consumer_cluster(), *tablet_ids.begin(), deadline));
     decltype(old_ts) new_ts = nullptr;
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {
-          new_ts = FindTabletLeader(consumer_cluster(), *tablet_ids.begin());
+          new_ts = GetLeaderForTablet(consumer_cluster(), *tablet_ids.begin());
           return new_ts != nullptr;
         },
-        MonoDelta::FromSeconds(10), "FindTabletLeader"));
+        MonoDelta::FromSeconds(10), "GetLeaderForTablet"));
     ASSERT_NE(old_ts, new_ts);
   }
 
@@ -3262,7 +3262,8 @@ TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
 
   itest::TServerDetails* old_ts = nullptr;
   ASSERT_OK(FindTabletLeader(ts_map, consumer_tablet_id, kTimeout, &old_ts));
-  tserver::MiniTabletServer* old_tserver = FindTabletLeader(consumer_cluster(), consumer_tablet_id);
+  auto* old_tserver =
+      GetLeaderForTablet(consumer_cluster(), consumer_tablet_id);
 
   itest::TServerDetails* new_ts = nullptr;
   for (auto& [ts_id, ts_details] : ts_map) {
@@ -3313,7 +3314,8 @@ TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
 
   ASSERT_OK(insert_rows_and_verify());
 
-  tserver::MiniTabletServer* new_tserver = FindTabletLeader(consumer_cluster(), consumer_tablet_id);
+  auto* new_tserver =
+      GetLeaderForTablet(consumer_cluster(), consumer_tablet_id);
   auto& new_consumer =
       *dynamic_cast<tserver::XClusterConsumer*>(new_tserver->server()->GetXClusterConsumer());
 

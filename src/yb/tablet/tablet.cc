@@ -485,11 +485,7 @@ std::string MakeTabletLogPrefix(
 // commit_ht - transaction commit hybrid time.
 // So frontiers should cover range of those times.
 void InitFrontiers(
-    OpId op_id,
-    HybridTime log_ht,
-    HybridTime commit_ht,
-    docdb::ConsensusFrontiers& frontiers) {
-  CHECK(!op_id.empty());
+    OpId op_id, HybridTime log_ht, HybridTime commit_ht, docdb::ConsensusFrontiers& frontiers) {
   set_op_id(op_id, &frontiers);
   HybridTime min_ht = log_ht;
   HybridTime max_ht = log_ht;
@@ -1811,7 +1807,8 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 }
 
 Status Tablet::ApplyRowOperations(
-    WriteOperation* operation, const docdb::StorageSet& apply_to_storages) {
+    WriteOperation* operation, const docdb::StorageSet& apply_to_storages,
+    bool skip_opid_update) {
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_write_batch_ms);
   const auto& write_request =
       operation->consensus_round() && operation->consensus_round()->replicate_msg()
@@ -1827,13 +1824,21 @@ Status Tablet::ApplyRowOperations(
   }
 
   return ApplyOperation(
-      *operation, write_request.batch_idx(), put_batch, apply_to_storages);
+      *operation, write_request.batch_idx(), put_batch, apply_to_storages, skip_opid_update);
+}
+
+Status Tablet::UpdateOpIdForOperation(WriteOperation* operation) {
+  SCHECK(
+      operation->consensus_round() && operation->consensus_round()->replicate_msg(), IllegalState,
+      "Operation is not a consensus round");
+  docdb::ConsensusFrontiers frontiers;
+  set_op_id(operation->op_id(), &frontiers);
+  return intents_db_->UpdateFrontiers(frontiers);
 }
 
 Status Tablet::ApplyOperation(
-    const Operation& operation, int64_t batch_idx,
-    const docdb::LWKeyValueWriteBatchPB& write_batch,
-    const docdb::StorageSet& apply_to_storages) {
+    const Operation& operation, int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& write_batch,
+    const docdb::StorageSet& apply_to_storages, bool skip_opid_update) {
   VLOG_WITH_FUNC(4)
       << "operation: " << AsString(operation) << ", batch_idx: " << batch_idx << ", write_batch: "
       << AsString(write_batch) << ", apply_to_storages: " << AsString(apply_to_storages);
@@ -1847,10 +1852,10 @@ Status Tablet::ApplyOperation(
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
   InitFrontiers(
-      operation.op_id(), batch_hybrid_time, /* commit_ht= */ HybridTime::kInvalid, frontiers);
-  auto ttl = write_batch.has_ttl()
-      ? MonoDelta::FromNanoseconds(write_batch.ttl())
-      : dockv::ValueControlFields::kMaxTtl;
+    skip_opid_update ? OpId() : operation.op_id(), batch_hybrid_time,
+      /* commit_ht= */ HybridTime::kInvalid, frontiers);
+  auto ttl = write_batch.has_ttl() ? MonoDelta::FromNanoseconds(write_batch.ttl())
+                                   : dockv::ValueControlFields::kMaxTtl;
   frontiers.Largest().set_max_value_level_ttl_expiration_time(
       dockv::FileExpirationFromValueTTL(batch_hybrid_time, ttl));
   for (const auto& p : write_batch.table_schema_version()) {
@@ -1865,9 +1870,7 @@ Status Tablet::ApplyOperation(
 }
 
 Status Tablet::WriteTransactionalBatch(
-    int64_t batch_idx,
-    const docdb::LWKeyValueWriteBatchPB& put_batch,
-    HybridTime hybrid_time,
+    int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
     const storage::UserFrontiers& frontiers) {
   auto transaction_id = VERIFY_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));

@@ -337,6 +337,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Result<size_t> GetTabletLeaderIndex(const yb::TabletId& tablet_id, bool require_lease = false);
 
+  Result<std::vector<size_t>> GetTabletFollowerIndexes(const yb::TabletId& tablet_id);
+
   // The comma separated string of the master adresses host/ports from current list of masters.
   std::string GetMasterAddresses() const override;
 

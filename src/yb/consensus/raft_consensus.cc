@@ -134,6 +134,13 @@ DEFINE_test_flag(int32, delay_update_consensus_requests_ms, 0,
     "Delay execution of UpdateConsensus() requests for specified amount of milliseconds during "
     "tests");
 
+DEFINE_test_flag(string, delay_update_consensus_before_mark_committed_tablet_id, "",
+    "If non-empty, delay UpdateConsensus before MarkOperationsAsCommitted for this tablet id.");
+
+DEFINE_test_flag(int32, delay_update_consensus_before_mark_committed_ms, 0,
+    "Delay UpdateConsensus before MarkOperationsAsCommitted by this many ms, for the tablet "
+    "specified by TEST_delay_update_consensus_before_mark_committed_tablet_id.");
+
 DEFINE_test_flag(int32, follower_reject_update_consensus_requests_seconds, 0,
                  "Whether a follower will return an error for all UpdateConsensus() requests for "
                  "the first TEST_follower_reject_update_consensus_requests_seconds seconds after "
@@ -2039,6 +2046,13 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   // 3 - Enqueue the writes.
   auto last_from_leader = EnqueueWritesUnlocked(
       deduped_req, WriteEmpty(prev_committed_op_id != deduped_req.committed_op_id));
+
+  if (PREDICT_FALSE(!deduped_req.messages.empty() &&
+                    FLAGS_TEST_delay_update_consensus_before_mark_committed_ms != 0 &&
+                    FLAGS_TEST_delay_update_consensus_before_mark_committed_tablet_id ==
+                        tablet_id())) {
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_update_consensus_before_mark_committed_ms);
+  }
 
   // 4 - Mark operations as committed
   RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(request, deduped_req, last_from_leader));
