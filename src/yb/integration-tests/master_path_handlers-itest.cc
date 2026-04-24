@@ -37,6 +37,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/path_handlers_util.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
@@ -1893,6 +1894,46 @@ TEST_F(MasterPathHandlersItest, TestTasksJsonEndpoint) {
     SCOPED_TRACE(Format("recent_tasks[$0]", i));
     verifyTaskFields(recent_tasks[i]);
   }
+}
+
+// Test that /api/v1/tasks captures an active DDL verification task by using
+// yb_test_delay_next_ddl to slow down DDL processing, then polling the endpoint.
+TEST_F_EX(MasterPathHandlersExternalItest, TestTasksJsonWithActiveDdlTask,
+          MasterPathHandlersExternalItest) {
+  // Connect to YSQL and trigger a DDL with an artificial delay so that the
+  // TableSchemaVerificationTask stays active long enough for us to observe it.
+  auto conn = ASSERT_RESULT(pgwrapper::PGConnBuilder({
+    .host = cluster_->tablet_server(0)->bound_rpc_addr().host(),
+    .port = cluster_->pgsql_hostport(0).port(),
+    .dbname = "yugabyte",
+  }).Connect());
+
+  // Delay DDL verification so the task is still running when we query /api/v1/tasks.
+  ASSERT_OK(conn.Execute("SET yb_test_delay_next_ddl='30s'"));
+  ASSERT_OK(conn.Execute("CREATE TABLE tasks_json_test_table(k INT PRIMARY KEY)"));
+
+  // Poll /api/v1/tasks until we see a TableSchemaVerificationTask in active_tasks.
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        faststring result;
+        RETURN_NOT_OK(GetUrl("/api/v1/tasks", &result));
+        JsonDocument doc;
+        auto json_obj = VERIFY_RESULT(doc.Parse(result.ToString()));
+        auto active_tasks = VERIFY_RESULT(json_obj["active_tasks"].GetArray());
+        for (size_t i = 0; i < active_tasks.size(); ++i) {
+          auto task_type = VERIFY_RESULT(active_tasks[i]["task_type"].GetString());
+          if (std::string(task_type) == "TableSchemaVerificationTask") {
+            // Also verify the other expected fields are present.
+            SCHECK(active_tasks[i]["task_state"].IsValid(), IllegalState,
+                   "Missing task_state field");
+            SCHECK(active_tasks[i]["task_description"].IsValid(), IllegalState,
+                   "Missing task_description field");
+            return true;
+          }
+        }
+        return false;
+      },
+      30s, "Waiting for TableSchemaVerificationTask in /api/v1/tasks"));
 }
 
 } // namespace yb::integration_tests
