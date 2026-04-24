@@ -277,6 +277,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       Request request, UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
+    UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // inherit RR cluster properties from primary cluster in given edit spec
     UniverseSpec v2Universe =

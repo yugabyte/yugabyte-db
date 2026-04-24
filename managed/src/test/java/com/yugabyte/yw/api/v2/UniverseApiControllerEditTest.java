@@ -3,9 +3,13 @@ package com.yugabyte.yw.api.v2;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,6 +35,7 @@ import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -39,6 +44,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
@@ -135,6 +142,100 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
     // run the edit universe
     runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2_passesWhenInstanceTypeConsistent() throws ApiException {
+    ModelFactory.addNodesToUniverse(universeUuid, 3);
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.instanceType = "c5.4xlarge";
+          for (NodeDetails n : univ.getUniverseDetails().nodeDetailsSet) {
+            n.state = NodeState.Live;
+            if (n.cloudInfo != null) {
+              n.cloudInfo.instance_type = "c5.4xlarge";
+            }
+          }
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    int incNumNodesBy = 1;
+    PlacementCloud newPlacementCloud =
+        expandNumNodes(primaryClusterSpec.getPlacementSpec().getCloudList().get(0), incNumNodesBy);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .numNodes(primaryClusterSpec.getNumNodes() + incNumNodesBy)
+            .placementSpec(new ClusterPlacementSpec().cloudList(List.of(newPlacementCloud)));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+    runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2_failsOnInstanceTypeDrift() throws ApiException {
+    ModelFactory.addNodesToUniverse(universeUuid, 3);
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.instanceType = "c5.4xlarge";
+          List<NodeDetails> nodes =
+              univ.getUniverseDetails().nodeDetailsSet.stream().collect(Collectors.toList());
+          for (int i = 0; i < nodes.size(); i++) {
+            NodeDetails n = nodes.get(i);
+            n.state = NodeState.Live;
+            n.nodeName = "host-n" + i;
+            if (n.cloudInfo == null) {
+              n.cloudInfo = new com.yugabyte.yw.models.helpers.CloudSpecificInfo();
+            }
+            n.cloudInfo.instance_type = (i == 1) ? "c5.9xlarge" : "c5.4xlarge";
+          }
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    int incNumNodesBy = 1;
+    PlacementCloud newPlacementCloud =
+        expandNumNodes(primaryClusterSpec.getPlacementSpec().getCloudList().get(0), incNumNodesBy);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .numNodes(primaryClusterSpec.getNumNodes() + incNumNodesBy)
+            .placementSpec(new ClusterPlacementSpec().cloudList(List.of(newPlacementCloud)));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    ApiException ex =
+        assertThrows(
+            ApiException.class,
+            () -> api.editUniverse(customer.getUuid(), universeUuid, universeEditSpec));
+    assertEquals(400, ex.getCode());
+    assertTrue(ex.getResponseBody().contains("Instance type metadata is inconsistent"));
+    assertTrue(ex.getResponseBody().contains("host-n1"));
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.EditUniverse), any(UniverseDefinitionTaskParams.class));
   }
 
   @Test
