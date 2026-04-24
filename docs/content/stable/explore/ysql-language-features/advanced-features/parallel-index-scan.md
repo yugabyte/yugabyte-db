@@ -46,11 +46,11 @@ This example assumes:
 To enable this behavior at the database level, set the following parameters:
 
 ```sql
-ALTER DATABASE yugabyte SET yb_enable_cbo = on;
-ALTER DATABASE yugabyte SET yb_enable_parallel_scan_colocated = on;
-ALTER DATABASE yugabyte SET yb_enable_parallel_scan_range_sharded = on;
-ALTER DATABASE yugabyte SET yb_enable_parallel_scan_hash_sharded = on;
-ALTER DATABASE yugabyte SET yb_enable_parallel_append = on;
+SET yb_enable_cbo = on;
+SET yb_enable_parallel_scan_colocated = on;
+SET yb_enable_parallel_scan_range_sharded = on;
+SET yb_enable_parallel_scan_hash_sharded = on;
+SET yb_enable_parallel_append = on;
 ```
 
 For this example, set the session-level DOP as follows:
@@ -72,6 +72,7 @@ The following anonymized schema demonstrates a temporal join pattern where PQ ca
 
 ```sql
 CREATE SCHEMA pq_anon_parallel_demo;
+SET search_path TO pq_anon_parallel_demo;
 
 CREATE TABLE entity_payload (
   version_ref BIGINT NOT NULL,
