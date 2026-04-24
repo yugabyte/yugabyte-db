@@ -168,8 +168,9 @@ Result<std::string> DownloadAndGetBinPath(const BuildInfo& build_info) {
     RETURN_NOT_OK(env->DeleteRecursively(extract_path));
   }
   RETURN_NOT_OK(env->CreateDir(extract_path));
-  RETURN_NOT_OK(
-      RunCommand({tar_bin, "xzf", tar_file_path, "--skip-old-files", "-C", version_root_path}));
+  RETURN_NOT_OK(RunCommand(
+      {tar_bin, "xzf", tar_file_path, "--skip-old-files", "--exclude=._*", "-C",
+       version_root_path}));
 
 #if defined(__linux__)
   RETURN_NOT_OK(RunCommand({"bash", JoinPathSegments(bin_path, "post_install.sh")}));
