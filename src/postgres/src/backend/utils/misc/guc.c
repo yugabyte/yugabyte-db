@@ -3120,7 +3120,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&yb_enable_derived_saops,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3235,7 +3235,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&yb_enable_derived_equalities,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -6069,7 +6069,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "to 0 to disable."),
 		},
 		&yb_max_merge_scan_streams,
-		0, 0, 1024,
+		64, 0, 1024,
 		NULL, NULL, NULL
 	},
 

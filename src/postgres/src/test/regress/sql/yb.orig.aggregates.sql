@@ -130,6 +130,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 \set query 'SELECT COUNT(*) FROM ybaggtest2'
 -- tests using run_ss_ios cannot use a plain index scan (so they also cannot use a bitmap index scan)
 -- adding a hint would just re-test sequential scan
+-- TODO(#31195): update EXPLAIN outputs having constant = constant.
 \set run_ss_ios ':explain :query; :explain :ss :query; :explain :ios :query; :ss :query; :ios :query;'
 :run_ss_ios;
 \set query 'SELECT COUNT(a) FROM ybaggtest2'

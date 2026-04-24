@@ -10,6 +10,8 @@
 SET yb_enable_optimizer_statistics = true;
 SET yb_enable_base_scans_cost_model = true;
 SET yb_enable_derived_equalities = true;
+-- Don't want derived SAOPs to mask coverage of derived equalities.
+SET yb_enable_derived_saops = false;
 -- Point lookups on single relation
 CREATE TABLE orders (
     order_id int,
