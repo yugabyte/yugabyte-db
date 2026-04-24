@@ -8,7 +8,7 @@ cascade:
   unversioned: true
 ---
 
-YugabyteDB and YugabyteDB client shell installations include sample datasets you can use to test out YugabyteDB. These are located in the `share` directory of your installation. The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. All of the datasets are PostgreSQL-compatible, and you can explore them using the [ysqlsh shell](../api/ysqlsh/) to compare between PostgreSQL and the YugabyteDB [YSQL API](../api/ysql/).
+YugabyteDB and YugabyteDB client shell installations include sample datasets you can use to test out YugabyteDB. These are located in the `share` directory of your installation. The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. All of the datasets are PostgreSQL-compatible, and you can explore them using the [ysqlsh shell](/stable/api/ysqlsh/) to compare between PostgreSQL and the YugabyteDB [YSQL API](/stable/api/ysql/).
 
 You can install and use the sample datasets using either a local installation of YugabyteDB, or by connecting to a cluster in YugabyteDB Aeon (including your free cluster).
 
@@ -16,7 +16,7 @@ Local install
 : The ysqlsh shell is included with the YugabyteDB installation. For information on installing YugabyteDB, refer to [Quick start](/stable/quick-start/macos/).
 
 YugabyteDB Aeon
-: For information on connecting to your YugabyteDB Aeon cluster using ysqlsh in cloud shell, refer to [Connect using cloud shell](../yugabyte-cloud/cloud-connect/connect-cloud-shell/).
+: For information on connecting to your YugabyteDB Aeon cluster using ysqlsh in cloud shell, refer to [Connect using cloud shell](/stable/yugabyte-cloud/cloud-connect/connect-cloud-shell/).
 : For information on connecting to your YugabyteDB Aeon cluster using the ysqlsh client installed on your computer, refer to [Connect via client shells](/stable/yugabyte-cloud/cloud-connect/connect-client-shell/).
 : The exercises can be run on free or standard clusters. To get started with YugabyteDB Aeon, refer to [Quick start](/stable/yugabyte-cloud/cloud-quickstart/).
 
