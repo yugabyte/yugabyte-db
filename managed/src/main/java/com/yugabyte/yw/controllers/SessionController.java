@@ -782,7 +782,8 @@ public class SessionController extends AbstractPlatformController {
           createdRoleBinding.toString());
     }
 
-    embeddedCollectorInitializer.start();
+    // Have to call it here, because customer only present inside the same transaction.
+    embeddedCollectorInitializer.initialize(cust);
 
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.upsertApiToken() : null;
