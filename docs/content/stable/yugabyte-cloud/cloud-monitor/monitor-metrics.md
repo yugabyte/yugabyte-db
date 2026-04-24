@@ -200,6 +200,7 @@ The [YugabyteDB Master Server](../../../architecture/yb-master/) (YB-Master) hos
 | :--- | :--- | :--- |
 | | | |
 
+<!--
 ## Advanced metrics
 
 ### YSQL
@@ -218,7 +219,7 @@ The [YugabyteDB Master Server](../../../architecture/yb-master/) (YB-Master) hos
 
 ### Master Server Advanced
 
-### DocDB
+### DocDB -->
 
 <!--### YSQL Advanced
 
