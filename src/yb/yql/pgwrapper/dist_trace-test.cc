@@ -698,6 +698,8 @@ class DistTraceDisabledTest : public DistTraceTest {
 TEST_F(DistTraceTest, TestTraceparentComment) {
   std::vector<Trace> expected_query_traces;
 
+  ASSERT_OK(conn_->Execute("SET yb_enable_spi_dist_tracing = false"));
+
   for (const auto& [mode, is_utility, query, expected_spans] : GetTestQueries("test_comment")) {
     auto tp = GenerateTraceparent();
     auto traced_query = Format("/*traceparent='$0'*/ $1;", tp.full, query);
@@ -710,6 +712,8 @@ TEST_F(DistTraceTest, TestTraceparentComment) {
 }
 
 TEST_F(DistTraceTest, TestTraceparentGuc) {
+  ASSERT_OK(conn_->Execute("SET yb_enable_spi_dist_tracing = false"));
+
   for (const auto& [mode, is_utility, query, expected_spans] : GetTestQueries("test_guc")) {
     auto tp = GenerateTraceparent();
     ASSERT_OK(conn_->ExecuteFormat("SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));

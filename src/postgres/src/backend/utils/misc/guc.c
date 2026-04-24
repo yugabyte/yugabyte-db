@@ -2496,6 +2496,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_spi_dist_tracing", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enables distributed tracing for SPI (Server Programming Interface) calls."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_spi_dist_tracing,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
 			gettext_noop("Silence the advisory locks error message."),
 			gettext_noop("Enable this with high caution. When enabled, advisory lock requests will silently succeed "
