@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: handling-grey-failures
     parent: fault-tolerance
-    weight: 730
+    weight: 45
 type: docs
 ---
 
@@ -271,5 +271,4 @@ A degraded follower is usually tolerated with little impact. A degraded leader m
 
 - [Replication](../../../architecture/docdb-replication/)
 - [Read replicas](../../../architecture/docdb-replication/read-replicas/)
-- [Place nodes in zones, regions, and clouds](../../../multicloud-deployments/cloud-topologies/)
 - [Transactions and consistency](../../../architecture/transactions/)
