@@ -3265,12 +3265,16 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
   std::set<TabletId> polled_tablets;
 
   Status iteration_status;
+  // Filter the cdc_state scan by stream_id to avoid reading all rows.
+  // Without this filter, the full table (87K+ rows on large clusters) is scanned
+  // on every call.
   auto entries = VERIFY_RESULT(cdc_state_table_->GetTableRange(
       CDCStateTableEntrySelector()
           .IncludeCheckpoint()
           .IncludeLastReplicationTime()
           .IncludeCDCSDKSafeTime(),
-      &iteration_status));
+      &iteration_status,
+      stream_id));
 
   for (auto entry_result : entries) {
     if (!entry_result) {
@@ -3278,9 +3282,6 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
       continue;
     }
     auto& entry = *entry_result;
-    if (entry.key.stream_id != stream_id) {
-      continue;
-    }
 
     auto& tablet_id = entry.key.tablet_id;
     auto is_cur_tablet_polled = entry.last_replication_time.has_value();
@@ -3304,9 +3305,6 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
     }
 
     auto& entry = *entry_result;
-    if (entry.key.stream_id != stream_id) {
-      continue;
-    }
 
     auto& tablet_id = entry.key.tablet_id;
     auto is_active_or_hidden =

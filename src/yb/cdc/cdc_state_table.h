@@ -166,6 +166,11 @@ class CDCStateTable {
 
   Result<CDCStateTableRange> GetTableRange(
       CDCStateTableEntrySelector&& field_filter, Status* iteration_status) EXCLUDES(mutex_);
+  // Filtered variant that only returns rows matching the given stream_id.
+  // This avoids a full table scan when only a single stream's entries are needed.
+  Result<CDCStateTableRange> GetTableRange(
+      CDCStateTableEntrySelector&& field_filter, Status* iteration_status,
+      const xrepl::StreamId& stream_id) EXCLUDES(mutex_);
   // Returns early if the CDC state table doesn't exist.
   Result<CDCStateTableRange> GetTableRangeAsync(
       CDCStateTableEntrySelector&& field_filter, Status* iteration_status) EXCLUDES(mutex_);
@@ -226,7 +231,8 @@ class CDCStateTableRange {
 
   explicit CDCStateTableRange(
       const std::shared_ptr<client::TableHandle>& table, Status* failure_status,
-      std::vector<std::string>&& columns);
+      std::vector<std::string>&& columns,
+      client::TableFilter filter = {});
 
   const_iterator begin() const { return CdcStateTableIterator(table_.get(), options_); }
   const_iterator end() const { return CdcStateTableIterator(); }
