@@ -216,8 +216,6 @@ The following PostgreSQL features are not supported in YugabyteDB:
 
 | Unsupported PostgreSQL feature      | Track feature request GitHub issue |
 | ----------- | ----------- |
-| LOCK TABLE to obtain a table-level lock | {{<issue 5384>}}|
-| Table inheritance    | {{<issue 5956>}}|
 | Exclusion constraints | {{<issue 3944>}}|
 | Deferrable constraints | {{<issue 1709>}}|
 | Constraint Triggers|{{<issue 4700>}}|
@@ -225,16 +223,13 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Events (Listen/Notify) | {{<issue 1872>}}|
 | XML Functions | {{<issue 1043>}}|
 | XA syntax | {{<issue 11084>}}|
-| ALTER TYPE | {{<issue 1893>}}|
+| Some ALTER TYPE variants | {{<issue 1893>}}|
 | CREATE CONVERSION | {{<issue 10866>}}|
 | Primary/Foreign key constraints on foreign tables | {{<issue 10698>}}, {{<issue 10699>}} |
-| GENERATED ALWAYS AS STORED columns | {{<issue 10695>}}|
 | Multi-column GIN indexes| {{<issue 10652>}}|
 | CREATE ACCESS METHOD | {{<issue 10693>}}|
 | DESC/HASH on GIN indexes (ASC supported) | {{<issue 10653>}}|
 | CREATE SCHEMA with elements | {{<issue 10865>}}|
-| Index on citext column | {{<issue 9698>}}|
-| ABSTIME type | {{<issue 15637>}}|
 | transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | {{<issue 15638>}}|
 | Some ALTER TABLE variants| {{<issue 1124>}}|
 | UNLOGGED table | {{<issue 1129>}} |
@@ -242,4 +237,3 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | %TYPE syntax in Functions/Procedures/Triggers|{{<issue 23619>}}|
 | Storage parameters on indexes or constraints|{{<issue 23467>}}|
 | REFERENCING clause for triggers | {{<issue 1668>}}|
-| BEFORE ROW triggers on partitioned tables | {{<issue 24830>}}|
