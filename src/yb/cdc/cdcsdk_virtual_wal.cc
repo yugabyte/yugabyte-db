@@ -112,11 +112,26 @@ DEFINE_test_flag(uint32, cdcsdk_vwal_getchanges_rpc_delay_ms, 0,
     "Delay in milliseconds to simulate a slow GetChanges RPC call.");
 
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
+DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
 namespace yb::cdc {
+
+namespace {
+
+// Cap an inner RPC deadline to cdc_read_rpc_timeout_ms so that a single unavailable
+// tablet (e.g. during a rolling upgrade) does not consume the entire outer deadline.
+CoarseTimePoint GetCappedRpcDeadline(CoarseTimePoint outer_deadline) {
+  if (FLAGS_cdc_read_rpc_timeout_ms <= 0) {
+    return outer_deadline;
+  }
+  auto capped_deadline = CoarseMonoClock::Now() + FLAGS_cdc_read_rpc_timeout_ms * 1ms;
+  return std::min(capped_deadline, outer_deadline);
+}
+
+}  // namespace
 
 using RecordInfo = CDCSDKVirtualWAL::RecordInfo;
 using TabletRecordInfoPair = CDCSDKVirtualWAL::TabletRecordInfoPair;
@@ -320,7 +335,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
   // TODO(20946): Change this RPC call to a local call.
   auto cdc_proxy = cdc_service_->GetCDCServiceProxy(hostport);
   rpc::RpcController rpc;
-  rpc.set_deadline(deadline);
+  rpc.set_deadline(GetCappedRpcDeadline(deadline));
   auto s = cdc_proxy->GetTabletListToPollForCDC(req, &resp, &rpc);
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << s.ToString();
@@ -906,7 +921,7 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
     // TODO(20946): Change this RPC call to a local call.
     auto cdc_proxy = cdc_service_->GetCDCServiceProxy(hostport);
     rpc::RpcController rpc;
-    rpc.set_deadline(deadline);
+    rpc.set_deadline(GetCappedRpcDeadline(deadline));
     auto s = cdc_proxy->GetChanges(req, &resp, &rpc);
     std::string error_msg = Format("Error calling GetChanges on tablet_id: $0", tablet_id);
     if (!s.ok()) {
