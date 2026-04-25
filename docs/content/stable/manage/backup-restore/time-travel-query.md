@@ -18,6 +18,8 @@ Use time travel queries to read data as it was at a specific point in time, with
 - Read rows that have been deleted by mistake. Restore the rows by exporting the result of the query and then importing it back into the database.
 - Analyze trends and data changes over time.
 
+**Note:** Time travel queries are not supported for temporary tables.
+
 ## Configure time travel queries
 
 ### Set the history retention interval
