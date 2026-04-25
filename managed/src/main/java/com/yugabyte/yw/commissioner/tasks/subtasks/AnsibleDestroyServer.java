@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -106,8 +107,11 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     boolean cleanupFailed = true;
     try {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-      boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(provider.getCloudCode());
-      if (isNodeAgentSupported) {
+      boolean cleanupOnly =
+          provider.getCloudCode() == CloudType.onprem
+              && NodeAgentClient.isCloudTypeSupported(provider.getCloudCode());
+      if (cleanupOnly) {
+        // Use node agent to only clean up the node.
         NodeAgent nodeAgent =
             nodeAgentClient.getAndUpgradeOrThrow(nodeDetails.cloudInfo.private_ip);
         log.info(
@@ -121,6 +125,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         nodeAgentClient.runDestroyServer(
             nodeAgent, builder.build(), NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       } else {
+        // Terminate the instance.
         getNodeManager()
             .nodeCommand(NodeManager.NodeCommandType.Destroy, taskParams())
             .processErrors();
