@@ -157,6 +157,10 @@ TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 DEFINE_NON_RUNTIME_int64(shmem_exchange_idle_timeout_ms, 2000 * yb::kTimeMultiplier,
     "Idle timeout interval in milliseconds used by shared memory exchange thread pool.");
 
+DEFINE_RUNTIME_int32(tablet_disk_sizes_cache_ttl_sec, 30,
+    "TTL in seconds for cached tablet disk sizes used by yb_tablet_metadata. "
+    "Set to 0 to disable caching.");
+
 DEFINE_test_flag(bool, pause_get_lock_status, false,
     "Whether tservers should pause before sending GetLockStatus requests.");
 
@@ -169,6 +173,16 @@ DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb::tserver {
 namespace {
+
+// Timeout for ListTablets RPCs during disk size enrichment. Kept short since
+// this is best-effort enrichment within a synchronous SQL function.
+const auto kEnrichDiskSizesRpcTimeout = MonoDelta::FromMilliseconds(2000);
+
+struct TabletDiskSizeInfo {
+  int64_t sst_files_disk_size = -1;
+  int64_t wal_files_disk_size = -1;
+  int64_t uncompressed_sst_files_disk_size = -1;
+};
 
 template <class Resp>
 void Respond(const Status& status, Resp* resp, rpc::RpcContext* context) {
@@ -2717,8 +2731,162 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     } else {
       auto tablet_metadatas = VERIFY_RESULT(client().GetTabletsMetadata());
       *resp->mutable_tablets() = {tablet_metadatas.begin(), tablet_metadatas.end()};
+
+      // Best-effort enrichment with disk size info from tservers.
+      // The master doesn't have per-tablet disk sizes; those live on tservers.
+      EnrichTabletsWithDiskSizes(resp);
     }
     return Status::OK();
+  }
+
+  // Best-effort enrichment: failures are logged but never fail the overall request.
+  // Uses a TTL-based cache to avoid fanning out ListTablets RPCs on every query.
+  void EnrichTabletsWithDiskSizes(PgTabletsMetadataResponsePB* resp) {
+    // Check if cache needs refreshing. Use a separate in-flight flag to prevent
+    // concurrent threads from all triggering refreshes (thundering herd), which
+    // is especially important when TTL is 0 (caching disabled).
+    bool needs_refresh = false;
+    {
+      std::lock_guard lock(disk_sizes_cache_mutex_);
+      auto now = CoarseMonoClock::now();
+      if (now >= disk_sizes_cache_expiry_ && !disk_sizes_refresh_in_flight_) {
+        needs_refresh = true;
+        disk_sizes_refresh_in_flight_ = true;
+      }
+    }
+
+    if (needs_refresh) {
+      // Collect data without holding the lock to avoid blocking concurrent readers.
+      // Concurrent threads will use stale (but valid) cache data while this runs.
+      auto new_cache = CollectDiskSizes();
+
+      // Swap the new data into the cache under the lock.
+      std::lock_guard lock(disk_sizes_cache_mutex_);
+      disk_sizes_cache_ = std::move(new_cache);
+      disk_sizes_cache_populated_ = true;
+      disk_sizes_refresh_in_flight_ = false;
+      disk_sizes_cache_expiry_ = CoarseMonoClock::now() + std::chrono::seconds(
+          FLAGS_tablet_disk_sizes_cache_ttl_sec);
+    }
+
+    // Apply cached sizes to response entries. Only set fields for known values
+    // (>= 0) so that unknown values remain unset in the protobuf, allowing the
+    // downstream YSQL layer to correctly omit them from the JSON output.
+    std::lock_guard lock(disk_sizes_cache_mutex_);
+    if (!disk_sizes_cache_populated_) {
+      // Cache not yet populated (first request still in flight). Skip enrichment
+      // rather than returning misleading empty data.
+      return;
+    }
+    for (int i = 0; i < resp->tablets_size(); ++i) {
+      auto* tablet = resp->mutable_tablets(i);
+      auto it = disk_sizes_cache_.find(tablet->tablet_id());
+      if (it != disk_sizes_cache_.end()) {
+        if (it->second.sst_files_disk_size >= 0) {
+          tablet->set_sst_files_disk_size(it->second.sst_files_disk_size);
+        }
+        if (it->second.wal_files_disk_size >= 0) {
+          tablet->set_wal_files_disk_size(it->second.wal_files_disk_size);
+        }
+        if (it->second.uncompressed_sst_files_disk_size >= 0) {
+          tablet->set_uncompressed_sst_files_disk_size(
+              it->second.uncompressed_sst_files_disk_size);
+        }
+      }
+    }
+  }
+
+  // Collects disk sizes from all tservers into a local map.
+  // Does NOT hold any locks, safe to call without disk_sizes_cache_mutex_.
+  std::unordered_map<std::string, TabletDiskSizeInfo> CollectDiskSizes() {
+    std::unordered_map<std::string, TabletDiskSizeInfo> result;
+
+    // Helper to merge disk sizes using MAX across replicas for consistency.
+    auto merge_disk_sizes = [&](const std::string& tablet_id,
+                                int64_t sst_size, int64_t wal_size,
+                                int64_t uncompressed_sst_size) {
+      auto& entry = result[tablet_id];
+      entry.sst_files_disk_size = std::max(entry.sst_files_disk_size, sst_size);
+      entry.wal_files_disk_size = std::max(entry.wal_files_disk_size, wal_size);
+      entry.uncompressed_sst_files_disk_size = std::max(
+          entry.uncompressed_sst_files_disk_size, uncompressed_sst_size);
+    };
+
+    // Collect disk sizes from local tserver.
+    auto local_tablets = tablet_server_.GetLocalTabletsMetadata();
+    if (local_tablets.ok()) {
+      for (const auto& local_tablet : *local_tablets) {
+        merge_disk_sizes(local_tablet.tablet_id(),
+                         local_tablet.sst_files_disk_size(),
+                         local_tablet.wal_files_disk_size(),
+                         local_tablet.uncompressed_sst_files_disk_size());
+      }
+    } else {
+      LOG(WARNING) << "Failed to get local tablets metadata for disk size enrichment: "
+                   << local_tablets.status();
+    }
+
+    // Fan out to all remote tservers to collect their local tablet disk sizes.
+    auto remote_tservers_result = tablet_server_.GetRemoteTabletServers();
+    if (!remote_tservers_result.ok()) {
+      LOG(WARNING) << "Failed to get remote tservers for disk size enrichment: "
+                   << remote_tservers_result.status();
+      return result;
+    }
+    const auto& remote_tservers = *remote_tservers_result;
+
+    std::vector<std::future<Status>> status_futures;
+    std::vector<std::shared_ptr<ListTabletsResponsePB>> node_responses;
+
+    ListTabletsRequestPB list_req;
+    status_futures.reserve(remote_tservers.size());
+    node_responses.reserve(remote_tservers.size());
+
+    for (const auto& remote_tserver : remote_tservers) {
+      auto init_status = remote_tserver->InitProxy(&client());
+      if (!init_status.ok()) {
+        LOG(WARNING) << "Failed to init proxy for tserver " << remote_tserver->permanent_uuid()
+                     << " during disk size enrichment: " << init_status;
+        continue;
+      }
+      auto proxy = remote_tserver->proxy();
+      auto status_promise = std::make_shared<std::promise<Status>>();
+      status_futures.push_back(status_promise->get_future());
+      auto node_resp = std::make_shared<ListTabletsResponsePB>();
+      node_responses.push_back(node_resp);
+
+      auto controller = std::make_shared<rpc::RpcController>();
+      controller->set_timeout(kEnrichDiskSizesRpcTimeout);
+
+      proxy->ListTabletsAsync(list_req, node_resp.get(), controller.get(),
+          [controller, status_promise] {
+            status_promise->set_value(controller->status());
+          });
+    }
+
+    for (size_t i = 0; i < status_futures.size(); ++i) {
+      auto s = status_futures[i].get();
+      if (!s.ok()) {
+        LOG(WARNING) << "ListTablets RPC failed for remote tserver during disk size enrichment: "
+                     << s;
+        continue;
+      }
+      const auto& node_resp = node_responses[i];
+      if (node_resp->has_error()) {
+        LOG(WARNING) << "ListTablets returned error during disk size enrichment: "
+                     << node_resp->error().status().message();
+        continue;
+      }
+      for (const auto& status_and_schema : node_resp->status_and_schema()) {
+        const auto& tablet_status = status_and_schema.tablet_status();
+        merge_disk_sizes(tablet_status.tablet_id(),
+                         tablet_status.sst_files_disk_size(),
+                         tablet_status.wal_files_disk_size(),
+                         tablet_status.uncompressed_sst_files_disk_size());
+      }
+    }
+
+    return result;
   }
 
   Status GetTabletForKey(
@@ -3190,6 +3358,14 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   std::optional<cdc::CDCStateTable> cdc_state_table_;
   PgTxnSnapshotManager txn_snapshot_manager_;
+
+  std::mutex disk_sizes_cache_mutex_;
+  bool disk_sizes_cache_populated_ GUARDED_BY(disk_sizes_cache_mutex_) = false;
+  bool disk_sizes_refresh_in_flight_ GUARDED_BY(disk_sizes_cache_mutex_) = false;
+  std::unordered_map<std::string, TabletDiskSizeInfo> disk_sizes_cache_
+      GUARDED_BY(disk_sizes_cache_mutex_);
+  CoarseTimePoint disk_sizes_cache_expiry_
+      GUARDED_BY(disk_sizes_cache_mutex_);
 
   bool shutting_down_ GUARDED_BY(mutex_) = false;
 };
