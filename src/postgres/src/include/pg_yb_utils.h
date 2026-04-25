@@ -144,6 +144,7 @@ extern YbGeolocationDistance get_geolocation_distance(Oid tablespaceoid);
 extern bool IsYugaByteEnabled();
 
 extern bool yb_enable_docdb_tracing;
+extern bool yb_enable_spi_dist_tracing;
 extern bool yb_read_from_followers;
 extern bool yb_follower_reads_behavior_before_fixing_20482;
 extern int32_t yb_follower_read_staleness_ms;
