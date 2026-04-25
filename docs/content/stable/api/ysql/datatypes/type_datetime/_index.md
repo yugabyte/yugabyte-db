@@ -40,6 +40,8 @@ The [PostgreSQL documentation](https://www.postgresql.org/docs/15/datatype-datet
 > The data type _time with time zone_ is defined by the SQL standard, but the definition exhibits properties which lead to questionable usefulness. In most cases, a combination of _date_, (plain) _time_, (plain) _timestamp_, and _timestamptz_ should provide the complete range of _date-time_ functionality that any application could require.
 
 The thinking is that a notion that expresses only what a clock might read in a particular timezone gives only part of the picture. For example when a clock reads 20:00 in _UTC_, it reads 03:00 in China Standard Time. But 20:00 _UTC_ is the evening of one day and 03:00 is in the small hours of the morning of the _next day_ in China Standard Time. (Neither _UTC_ nor China Standard Time adjusts its clocks for Daylight Savings.) The data type _timestamptz_ represents both the time of day and the date and so it handles the present use case naturally. No further reference will be made to _timetz_.
+
+YugabyteDB also doesn't support index key columns that use the _timetz_ data type.
 {{< /tip >}}
 <a name="maximum-and-minimum-supported-values"></br></a>
 {{< note title="Maximum and minimum supported values." >}}

@@ -58,7 +58,7 @@ The following table lists the primitive and compound data types in YSQL.
 | [serial](type_serial) | [serial4](type_serial) | Autoincrementing four-byte integer |
 | [text](type_character) | | Variable-length character string |
 | [time [ (p) ] [ without time zone ]](type_datetime/) | | Time of day (no time zone) |
-| [time [ (p) ] with time zone](type_datetime/) | [timetz](type_datetime/) | Time of day, including time zone |
+| [time [ (p) ] with time zone](type_datetime/) <sup>1</sup> | [timetz](type_datetime/) <sup>1</sup> | Time of day, including time zone |
 | [timestamp [ (p) ] [ without time zone ]](type_datetime/) | | Date and time (no time zone) |
 | [timestamp [ (p) ] with time zone](type_datetime/) | [timestamptz](type_datetime/) | Date and time, including time zone |
 | `tsquery` <sup>1</sup> | | Text search query |
