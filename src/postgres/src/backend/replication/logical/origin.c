@@ -1377,6 +1377,42 @@ pg_replication_origin_session_setup(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Setup a replication origin for this session without acquiring an exclusive
+ * slot. This allows multiple sessions to tag their writes with the same
+ * xrepl_origin_id concurrently. No progress tracking is performed — this is
+ * only suitable for write tagging (e.g., CDC origin filtering).
+ */
+Datum
+pg_replication_origin_session_setup_shared(PG_FUNCTION_ARGS)
+{
+	char	   *name;
+	RepOriginId origin;
+
+	replorigin_check_prerequisites(true, false);
+
+	if (session_replication_state != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("cannot use shared replication origin session while an exclusive one is active")));
+
+	if (replorigin_session_origin != InvalidRepOriginId)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("replication origin session already setup")));
+
+	name = text_to_cstring((text *) DatumGetPointer(PG_GETARG_DATUM(0)));
+	origin = replorigin_by_name(name, false);
+
+	replorigin_session_origin = origin;
+	replorigin_session_origin_lsn = InvalidXLogRecPtr;
+	replorigin_session_origin_timestamp = 0;
+
+	pfree(name);
+
+	PG_RETURN_VOID();
+}
+
+/*
  * Reset previously setup origin in this session
  */
 Datum
@@ -1385,6 +1421,32 @@ pg_replication_origin_session_reset(PG_FUNCTION_ARGS)
 	replorigin_check_prerequisites(true, false);
 
 	replorigin_session_reset();
+
+	replorigin_session_origin = InvalidRepOriginId;
+	replorigin_session_origin_lsn = InvalidXLogRecPtr;
+	replorigin_session_origin_timestamp = 0;
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * Reset a shared replication origin previously set with
+ * pg_replication_origin_session_setup_shared(). Simply clears the
+ * session variable without touching shared-memory slots.
+ */
+Datum
+pg_replication_origin_session_reset_shared(PG_FUNCTION_ARGS)
+{
+	if (session_replication_state != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("cannot reset shared replication origin session while an exclusive one is active"),
+				 errhint("Use pg_replication_origin_session_reset() instead.")));
+
+	if (replorigin_session_origin == InvalidRepOriginId)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("no replication origin is setup for this session")));
 
 	replorigin_session_origin = InvalidRepOriginId;
 	replorigin_session_origin_lsn = InvalidXLogRecPtr;

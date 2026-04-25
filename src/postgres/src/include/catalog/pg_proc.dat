@@ -11602,6 +11602,18 @@
   proparallel => 'u', prorettype => 'void', proargtypes => 'text',
   prosrc => 'pg_replication_origin_session_setup' },
 
+{ oid => '6015',
+  descr => 'set session replication origin without exclusive lock (for concurrent write tagging)',
+  proname => 'pg_replication_origin_session_setup_shared', provolatile => 'v',
+  proparallel => 'u', prorettype => 'void', proargtypes => 'text',
+  prosrc => 'pg_replication_origin_session_setup_shared' },
+
+{ oid => '6016',
+  descr => 'reset shared replication origin set by pg_replication_origin_session_setup_shared',
+  proname => 'pg_replication_origin_session_reset_shared', provolatile => 'v',
+  proparallel => 'u', prorettype => 'void', proargtypes => '',
+  prosrc => 'pg_replication_origin_session_reset_shared' },
+
 { oid => '6007', descr => 'teardown configured replication progress tracking',
   proname => 'pg_replication_origin_session_reset', provolatile => 'v',
   proparallel => 'u', prorettype => 'void', proargtypes => '',
