@@ -61,17 +61,18 @@ The local cluster setup on a single host is intended for development and learnin
   </li>
 </ul>
 
-## Install YugabyteDB
-
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the packaged database](#download).
-
-### Prerequisites
+## Prerequisites
 
 {{% readfile "include-prerequisites-macos.md" %}}
 
-#### Set file limits
+### Set file limits
 
-Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. Execute the following command to ensure that the limit is set to a large number:
+Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You should ensure the file limit is set sufficiently high.
+
+<details>
+  <summary>Set file limits in macOS.</summary>
+
+Execute the following command to ensure that the limit is set to a large number:
 
 ```sh
 launchctl limit
@@ -154,9 +155,11 @@ sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
 
 You might need to `unload` the service before loading it.
 
-### Download
+</details>
 
-You download YugabyteDB as follows:
+## Download
+
+Download YugabyteDB as follows:
 
 {{< tabpane text=true >}}
 
@@ -196,6 +199,17 @@ You download YugabyteDB as follows:
 
 {{< /tabpane >}}
 
+{{< tip title="Developer not verified error" >}}
+
+After extracting the files, macOS may quarantine the binaries and prevent them from running. In this case, you may see an error when starting YugabyteDB to the effect that the developer cannot be verified. To remove the quarantine, run the following command:
+
+```sh
+xattr -dr com.apple.quarantine yugabyte-{{< yb-version version="stable">}}/
+```
+
+{{< /tip >}}
+
+
 ## Create a local cluster
 
 Use the [yugabyted](/stable/reference/configuration/yugabyted/) utility to create and manage universes.
@@ -214,13 +228,21 @@ On macOS pre-Monterey, create a single-node local cluster with a replication fac
 
   {{% tab header="macOS Monterey" lang="Monterey" %}}
 
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](/stable/reference/configuration/yugabyted/#advanced-flags) when you start the cluster to change the default port number, as follows:
+macOS Monterey and later enable AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail.
 
-```sh
-./bin/yugabyted start --master_webserver_port=9999
-```
+You can do one of the following:
 
-Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+- Disable Airplay recieving in System Settings (typically under **General>Airplay & Handoff**). Then start YugabyteDB by running the following command:
+
+    ```sh
+    ./bin/yugabyted start
+    ```
+
+- Start YugabyteDB on a different port by running the following command:
+
+    ```sh
+    ./bin/yugabyted start --master_webserver_port=7001
+    ```
 
   {{% /tab %}}
 

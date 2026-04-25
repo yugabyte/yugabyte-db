@@ -58,19 +58,15 @@ The local cluster setup on a single host is intended for development and learnin
   </li>
 </ul>
 
-## Install YugabyteDB
-
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the YugabyteDB package](#download).
-
-### Prerequisites
+## Prerequisites
 
 {{% readfile "include-prerequisites-linux.md" %}}
 
-#### ulimits
+### ulimits
 
 Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. You need to [configure ulimit values](/stable/deploy/manual-deployment/system-config/#set-ulimits).
 
-### Download
+## Download
 
 The following instructions are for downloading the Preview release of YugabyteDB, which is recommended for development and testing only. For other versions, see [Releases](/stable/releases/).
 
