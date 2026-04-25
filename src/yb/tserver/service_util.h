@@ -327,7 +327,8 @@ Status CheckPeerIsReady(
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     TabletPeerLookupIf* tablet_manager, TabletIdView tablet_id,
     tablet::TabletPeerPtr tablet_peer, YBConsistencyLevel consistency_level,
-    AllowSplitTablet allow_split_tablet, ReadResponseMsg* resp = nullptr);
+    AllowSplitTablet allow_split_tablet, ReadResponseMsg* resp = nullptr,
+    HybridTime* follower_safe_time = nullptr);
 
 Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
 
