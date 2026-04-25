@@ -28,7 +28,7 @@ The `WHERE` clause specifies which rows need to be added to the index.
 
 {{% explore-setup-single %}}
 
-This example uses the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
+This example uses the `customers` table from the [Northwind sample database](/stable/develop/sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `customers` table:
 

@@ -164,7 +164,7 @@ Replace the following:
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
 - `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
 
-To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](../../../sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
+To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](/stable/develop/sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
 
   </div>
 

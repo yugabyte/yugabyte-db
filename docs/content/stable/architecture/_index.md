@@ -10,7 +10,7 @@ menu:
   stable:
     identifier: architecture
     parent: reference
-    weight: 1050
+    weight: 100
 type: indexpage
 ---
 

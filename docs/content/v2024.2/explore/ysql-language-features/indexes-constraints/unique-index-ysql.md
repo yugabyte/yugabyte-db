@@ -41,7 +41,7 @@ The examples run on any YugabyteDB universe.
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-This example uses the `categories` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
+This example uses the `categories` table from the [Northwind sample database](/stable/develop/sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `categories` table:
 

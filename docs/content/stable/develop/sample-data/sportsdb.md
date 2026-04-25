@@ -4,10 +4,12 @@ headerTitle: SportsDB sample database
 linkTitle: SportsDB
 description: Use the SportsDB to query sports statistics while learning YugabyteDB.
 menu:
-  stable:
+  stable_develop:
     identifier: sportsdb
     parent: sample-data
     weight: 400
+aliases:
+  - /stable/sample-data/sportsdb/
 type: docs
 ---
 
@@ -18,7 +20,7 @@ You can install and use the SportsDB sample database using:
 - A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](/stable/quick-start/macos/).
 - Using cloud shell or a client shell to connect to a cluster in YugabyteDB Aeon. Refer to [Connect to clusters in YugabyteDB Aeon](/stable/yugabyte-cloud/cloud-connect/). To get started with YugabyteDB Aeon, refer to [Quick Start](/stable/yugabyte-cloud/cloud-quickstart/).
 
-In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../api/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
+In either case, you use the YugabyteDB SQL shell ([ysqlsh](/stable/api/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](/stable/api/ysql/).
 
 ## About the SportsDB sample database
 

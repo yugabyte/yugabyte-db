@@ -30,9 +30,9 @@ You can use yugabyted for production deployments. You can also administer [YB-TS
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-For information on installing YugabyteDB, see [Use a local cluster](/stable/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+For information on installing YugabyteDB, see [Use a local cluster](/stable/quick-start/linux/).
 
-After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
+After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation. (YB Controller is not available for MacOS.)
 
 For example, if you installed v{{< yb-version version="stable"  format="short">}}, extract the `ybc-2.2.0.3-b17-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
 
