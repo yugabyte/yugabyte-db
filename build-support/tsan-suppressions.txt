@@ -187,3 +187,8 @@ race:k5_once
 race:od_logger_format
 race:od_stat_query_end
 race:od_route_pool_stat
+
+# pg_documentdb_gw_host: Rust/tokio runtime is not compiled with TSAN instrumentation.
+# Tokio's task handoff between threads uses atomics that TSAN cannot track, causing
+# false positive data races in memcpy during task::Cell::new and task::Core::poll.
+race:pg_documentdb_gw_host
