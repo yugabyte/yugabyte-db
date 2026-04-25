@@ -10,8 +10,6 @@
 #include <fmgr.h>
 #include <miscadmin.h>
 #include <utils/guc.h>
-/* YB includes */
-#include <utils/memutils.h>
 
 #include "bson_init.h"
 #include "utils/feature_counter.h"
@@ -50,12 +48,7 @@ _PG_init(void)
 	InstallBsonMemVTables();
 
 	RegisterRoaringBitmapHooks();
-
-	/* YB: GUC name strings (from psprintf) must survive in TopMemoryContext. */
-	MemoryContext oldctx = MemoryContextSwitchTo(TopMemoryContext);
 	InitApiConfigurations("documentdb", "documentdb");
-	MemoryContextSwitchTo(oldctx); /* YB */
-
 	InitializeSharedMemoryHooks();
 	MarkGUCPrefixReserved("documentdb");
 
