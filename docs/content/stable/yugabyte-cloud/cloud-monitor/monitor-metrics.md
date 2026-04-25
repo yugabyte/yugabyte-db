@@ -1,22 +1,18 @@
 ---
 title: YugabyteDB Aeon Performance metrics
-headerTitle: Performance metrics
-linkTitle: Performance metrics
+headerTitle: Metrics
+linkTitle: Metrics
 description: View time series charts of cluster metrics.
 headcontent: Evaluate cluster performance with time series charts
 menu:
   stable_yugabyte-cloud:
-    identifier: overview-clusters
-    parent: cloud-monitor
+    identifier: monitor-metrics
+    parent: monitor-performance
     weight: 100
 type: docs
 ---
 
-Monitor performance metrics for your cluster to ensure the cluster configuration matches its performance requirements using the cluster **Overview** and **Performance** tabs.
-
-- The **Overview** tab displays a summary of the cluster infrastructure, along with time series charts of four key performance metrics for all the nodes in the cluster - Operations/sec, Average Latency, CPU Usage, and Disk Usage.
-
-- The **Performance** tab **Metrics** displays a comprehensive array of more specific performance metrics, including for YSQL and YCQL API performance.
+Detailed performance metrics for your cluster are available on the cluster **Performance>Metrics** tab. **Metrics** displays a comprehensive array of performance metrics, including for YSQL and YCQL API performance.
 
 {{< youtube id="Xv4y6wWSHJ8" title="Monitor cluster performance in YugabyteDB Aeon" >}}
 
@@ -28,26 +24,13 @@ You can enable alerts for some performance metrics. Refer to [Alerts](../cloud-a
 
 You can show metrics by region and by node, for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
 
-## Overview metrics
+To choose the metrics to display, click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position.
 
-The **Overview** tab shows metrics averaged over all the nodes in the cluster.
-
-You can enable alerts for CPU usage and disk usage. Refer to [Alerts](../cloud-alerts/).
-
-The following table describes the metrics available on the **Overview**.
-
-| Graph | Description | Use |
-| :---| :--- | :--- |
-| Operations/sec | The number of [YB-TServer](../../../architecture/yb-tserver/) read and write operations per second. | Spikes in read operations are normal during backups and scheduled maintenance. If the count drops significantly below average, it might indicate an application connection failure. If the count is much higher than average, it could indicate a DDoS, security incident, and so on. Coordinate with your application team because there could be legitimate reasons for dips and spikes. |
-| Average Latency (ms) | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
-| CPU Usage (%) | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. An [alert](../cloud-alerts/) is issued when node CPU use exceeds 70% (Warning) or 90% (Severe) on average for at least 5 minutes. |
-| Disk Usage (GB) | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks. An [alert](../cloud-alerts/) is issued when the free storage on any node in the cluster falls below 40% (Warning) and 25% (Severe). |
+To [export metrics](../metrics-export/) to third-party tools, click **Export**. You can additionally view the metrics for specific nodes.
 
 ## Performance metrics
 
-To choose the metrics to display on the **Performance** tab, select **Metrics** and then click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position. To [export metrics](../metrics-export/) to third-party tools, click **Export**. You can additionally view the metrics for specific nodes.
-
-The **Performance** tab provides the following metrics in addition to the Overview metrics.
+The **Performance** tab provides the following metrics in addition to the [Overview metrics](../monitor-performance/#overview).
 
 ### YSQL Ops
 
@@ -209,11 +192,39 @@ The [YugabyteDB Master Server](../../../architecture/yb-master/) (YB-Master) hos
 <!--| LSM-DB Seek/Next Num Ops | The number of calls to seek / next. | |
 | LSM-DB Seeks/Sec/Node | The number of calls to seek per second per node. | |
 | SSTable size/Node | The size (in bytes) of all SST files. | |
+-->
+
+### CDC
+
+| Graph | Description | Use |
+| :--- | :--- | :--- |
+| | | |
+
+<!--
+## Advanced metrics
+
+### YSQL
+
+### YCQL
+
+### Resource
+
+### Per Process
+
+### Disk I/O
+
+### Tablet Server
+
+### Master Server
+
+### Master Server Advanced
+
+### DocDB -->
 
 <!--### YSQL Advanced
 
 | Graph | Description | Use |
-| :---| :--- | :--- |
+| :--- | :--- | :--- |
 | YSQL Operations/sec  | The number of various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | You may consider this information while examining other metrics. |
 | YSQL Average Latency (ms) | The average time taken by various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | You may consider this information while examining other metrics. |
 -->

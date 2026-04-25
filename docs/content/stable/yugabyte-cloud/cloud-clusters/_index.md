@@ -76,7 +76,7 @@ If your cluster database version is v2024.1.0 or later, you can enable early acc
 
 {{<tags/feature/ea>}}If your cluster database version is v2024.2.3 or later, you can enable built-in Connection Pooling on the cluster **Settings>Connection Pooling** tab. For more information and limitations, refer to [Built-in connection pooling](../../additional-features/connection-manager-ysql/).
 
-For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview/#ysql-ops).
+For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/monitor-metrics/#ysql-ops).
 
 &nbsp;
 

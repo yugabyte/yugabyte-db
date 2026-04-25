@@ -7,7 +7,7 @@ headcontent: View live queries running on your cluster
 menu:
   stable_yugabyte-cloud:
     identifier: cloud-queries-live
-    parent: cloud-monitor
+    parent: monitor-performance
     weight: 300
 type: docs
 ---
