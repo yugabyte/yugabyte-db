@@ -1,0 +1,126 @@
+--
+-- Test ROW(yb_hash_code(hash_cols), ...) as Index Cond on hash indexes.
+-- When yb_hash_code is the leading element and subsequent elements form
+-- a prefix of the index key, the planner should recognize the ROW
+-- comparison as an index condition.
+-- See https://github.com/yugabyte/yugabyte-db/issues/30524
+--
+-- Single hash column, two range columns.
+CREATE TABLE hc_rc_t1(
+    h int,
+    r1 int,
+    r2 int,
+    v text,
+    PRIMARY KEY(h HASH, r1 ASC, r2 ASC)
+);
+INSERT INTO hc_rc_t1
+    SELECT i % 5, i, i * 10, 'val' || i FROM generate_series(1, 50) i;
+-------------------------------------------------------------------
+-- Test 1: Full key ROW comparison with leading yb_hash_code.
+-- Should show ROW(yb_hash_code...) as Index Cond, not Filter.
+-------------------------------------------------------------------
+EXPLAIN (COSTS OFF)
+SELECT * FROM hc_rc_t1
+    WHERE (yb_hash_code(h), h, r1, r2) > (yb_hash_code(1), 1, 10, 100)
+    LIMIT 5;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1
+         Index Cond: (ROW(yb_hash_code(h), h, r1, r2) > ROW(4624, 1, 10, 100))
+(3 rows)
+
+-------------------------------------------------------------------
+-- Test 2: Without leading yb_hash_code.
+-- Should NOT be our Index Cond path (Seq Scan or Filter).
+-------------------------------------------------------------------
+EXPLAIN (COSTS OFF)
+SELECT * FROM hc_rc_t1
+    WHERE (h, r1, r2) > (1, 10, 100)
+    LIMIT 5;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Limit
+   ->  Seq Scan on hc_rc_t1
+         Filter: (ROW(h, r1, r2) > ROW(1, 10, 100))
+(3 rows)
+
+-------------------------------------------------------------------
+-- Test 3: ROW comparison with upper bound on yb_hash_code.
+-- Both conditions should be Index Cond.
+-------------------------------------------------------------------
+EXPLAIN (COSTS OFF)
+SELECT * FROM hc_rc_t1
+    WHERE (yb_hash_code(h), h, r1, r2) > (yb_hash_code(1), 1, 10, 100)
+      AND yb_hash_code(h) < 50000
+    LIMIT 5;
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1
+         Index Cond: ((ROW(yb_hash_code(h), h, r1, r2) > ROW(4624, 1, 10, 100)) AND (yb_hash_code(h) < 50000))
+(3 rows)
+
+-------------------------------------------------------------------
+-- Test 4: yb_hash_code arity mismatch (single arg on 2-col hash key).
+-- Should NOT match our path.
+-------------------------------------------------------------------
+CREATE TABLE hc_rc_t2(
+    h1 int,
+    h2 int,
+    r int,
+    v text,
+    PRIMARY KEY((h1, h2) HASH, r ASC)
+);
+INSERT INTO hc_rc_t2
+    SELECT i % 3, i % 5, i, 'val' || i FROM generate_series(1, 30) i;
+EXPLAIN (COSTS OFF)
+SELECT * FROM hc_rc_t2
+    WHERE (yb_hash_code(h1), h1, h2, r) > (yb_hash_code(1), 1, 2, 7)
+    LIMIT 10;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Limit
+   ->  Seq Scan on hc_rc_t2
+         Filter: (ROW(yb_hash_code(h1), h1, h2, r) > ROW(4624, 1, 2, 7))
+(3 rows)
+
+-------------------------------------------------------------------
+-- Test 5: Less-than direction.
+-- Should be Index Cond.
+-------------------------------------------------------------------
+EXPLAIN (COSTS OFF)
+SELECT * FROM hc_rc_t1
+    WHERE (yb_hash_code(h), h, r1, r2) < (yb_hash_code(3), 3, 30, 300)
+    LIMIT 5;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using hc_rc_t1_pkey on hc_rc_t1
+         Index Cond: (ROW(yb_hash_code(h), h, r1, r2) < ROW(64672, 3, 30, 300))
+(3 rows)
+
+-------------------------------------------------------------------
+-- Test 6: Verify execution correctness.
+-- Pin to a known hash bucket and verify the ROW comparison filters
+-- correctly within it.
+-------------------------------------------------------------------
+SELECT h, r1, r2 FROM hc_rc_t1
+    WHERE yb_hash_code(h) = yb_hash_code(1)
+      AND (yb_hash_code(h), h, r1, r2) > (yb_hash_code(1), 1, 6, 60)
+    ORDER BY h, r1, r2;
+ h | r1 | r2  
+---+----+-----
+ 1 | 11 | 110
+ 1 | 16 | 160
+ 1 | 21 | 210
+ 1 | 26 | 260
+ 1 | 31 | 310
+ 1 | 36 | 360
+ 1 | 41 | 410
+ 1 | 46 | 460
+(8 rows)
+
+-- Clean up.
+DROP TABLE hc_rc_t1;
+DROP TABLE hc_rc_t2;
