@@ -34,6 +34,12 @@ Ensure the universes have the following characteristics:
 
 - They have network connectivity; see [Networking for xCluster](../../../prepare/networking/#networking-for-xcluster). If the source and target universe Master and TServer nodes use DNS addresses, those addresses must be resolvable on all nodes.
 
+Prepare your database and tables on the DR primary. Make sure the database and tables aren't already being used for xCluster replication; databases and tables can only be used in one replication at a time. DR primary databases must have at least one table, but tables can be empty or have data. If the DR primary tables have a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before ongoing asynchronous replication starts.
+
+DR performs a full copy of the data to be replicated on the DR primary, and restores data on the DR replica from the DR primary.
+
+After DR is configured, the DR replica is only available for reads.
+
 ### Best practices
 
 - Monitor CPU and keep its use below 65%.
@@ -49,13 +55,7 @@ Ensure the universes have the following characteristics:
 
 ## Set up disaster recovery
 
-Prepare your database and tables on the DR primary. Make sure the database and tables aren't already being used for xCluster replication; databases and tables can only be used in one replication at a time. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
-
 During DR setup in semi-automatic mode, create objects on the DR replica as well.
-
-DR performs a full copy of the data to be replicated on the DR primary, and restores data on the DR replica from the DR primary.
-
-After DR is configured, the DR replica is only available for reads.
 
 To set up disaster recovery for a universe, do the following:
 
@@ -154,8 +154,6 @@ The **xCluster Disaster Recovery** tab also lists all the tables in replication 
 - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
 - Use the search bar to filter the view by table name, database, size, and more.
-
-For information on managing tables in DR, refer to [Manage tables and indexes](../disaster-recovery-tables/).
 
 #### Status
 
