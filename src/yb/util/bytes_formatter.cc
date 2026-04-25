@@ -14,6 +14,7 @@
 #include "yb/util/bytes_formatter.h"
 
 #include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/cast.h"
@@ -55,7 +56,7 @@ string FormatBytesAsStr(const char* data,
       result.push_back(quote);
     } else if (c == '\\') {
       result.append("\\\\");
-    } else if (isgraph(c) || c == ' ') {
+    } else if (ascii_isprint(c)) {
       result.push_back(c);
     } else {
       result.append(StringPrintf("\\x%02x", c));
