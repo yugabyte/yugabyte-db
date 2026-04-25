@@ -319,6 +319,7 @@ extern PGDLLIMPORT char *yb_hinted_uids;
 extern PGDLLIMPORT bool yb_enable_derived_equalities;
 extern PGDLLIMPORT bool yb_enable_listen_notify;
 extern PGDLLIMPORT bool yb_test_fatal_after_notifs_queue_write;
+extern PGDLLIMPORT int yb_test_notify_queue_max_pages;
 extern PGDLLIMPORT bool yb_conn_mgr_selective_deallocate;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
