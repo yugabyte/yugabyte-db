@@ -43,6 +43,14 @@ Indexes provide alternate access patterns for queries not involving the primary 
 To design optimal indexes for faster lookup, see [Secondary indexes](./secondary-indexes-ysql/).
 {{</lead>}}
 
+## CIDR range lookups
+
+Use generated columns and secondary indexes to model efficient containment queries for IPv4 and IPv6 CIDR ranges.
+
+{{<lead link="./cidr-range-lookups-ysql/">}}
+To model efficient `inet` and `cidr` lookup queries, see [CIDR range lookups](./cidr-range-lookups-ysql/).
+{{</lead>}}
+
 ## Hot shards
 
 In distributed systems, a hot-spot or hot-shard refers to a node that is overloaded with queries due to disproportionate traffic compared to other nodes in the cluster.

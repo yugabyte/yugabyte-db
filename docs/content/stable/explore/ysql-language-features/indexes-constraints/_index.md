@@ -68,6 +68,14 @@ Expression indexes are created on a calculated expression rather than a simple c
 To understand how to use expression indexes in your data model, see [Expression indexes](expression-index-ysql/)
 {{</lead>}}
 
+## CIDR range lookups
+
+YSQL supports the `inet` and `cidr` data types, but columns of these types can't be used directly as index keys. You can use generated columns and secondary indexes to model efficient CIDR containment queries.
+
+{{<lead link="../../../develop/data-modeling/cidr-range-lookups-ysql/">}}
+To model efficient IPv4 and IPv6 range containment queries, see [CIDR range lookups](../../../develop/data-modeling/cidr-range-lookups-ysql/).
+{{</lead>}}
+
 ## GIN index
 
 Generalized Inverted Indexes (GIN) are specialized indexes designed to handle complex data types and full-text search efficiently. GIN indexes are particularly effective for indexing columns that contain composite values, such as arrays, JSONB, and full-text documents.
