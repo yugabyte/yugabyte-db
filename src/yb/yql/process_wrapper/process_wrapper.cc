@@ -12,8 +12,13 @@
 
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
+#ifdef __linux__
+#include "yb/util/cgroups.h"
+#endif
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
 
 using namespace std::literals;
@@ -72,8 +77,13 @@ void ProcessSupervisor::RunThread() {
   });
   std::string process_name = GetProcessName();
   while (true) {
-    if (process_wrapper_) {
-      Result<int> wait_result = process_wrapper_->Wait();
+    std::shared_ptr<ProcessWrapper> pw;
+    {
+      std::lock_guard lock(mtx_);
+      pw = process_wrapper_;
+    }
+    if (pw) {
+      Result<int> wait_result = pw->Wait();
       if (wait_result.ok()) {
         int ret_code = *wait_result;
         if (ret_code == 0) {
@@ -125,6 +135,17 @@ Status ProcessSupervisor::StartProcessUnlocked() {
   }
   auto process_wrapper = CreateProcessWrapper();
   RETURN_NOT_OK(process_wrapper->Start());
+
+#ifdef __linux__
+  if (cgroup_) {
+    if (auto pid = process_wrapper->ProcessId()) {
+      WARN_NOT_OK(
+          cgroup_->MoveProcessToGroup(*pid),
+          Format("Failed to move $0 (pid $1) to cgroup $2",
+                 GetProcessName(), *pid, cgroup_->full_name()));
+    }
+  }
+#endif
 
   process_wrapper_.swap(process_wrapper);
   return Status::OK();
@@ -235,7 +256,8 @@ Status ProcessSupervisor::Init(YbSubProcessState target_state) {
 }
 
 std::optional<int64_t> ProcessSupervisor::ProcessId() {
-  return process_wrapper_->ProcessId();
+  std::lock_guard l(mtx_);
+  return process_wrapper_ ? process_wrapper_->ProcessId() : std::nullopt;
 }
 
 }  // namespace yb

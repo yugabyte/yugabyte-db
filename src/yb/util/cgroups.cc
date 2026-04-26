@@ -412,6 +412,12 @@ Status Cgroup::MoveCurrentThreadToGroup() {
   return MoveThreadToGroup(Thread::CurrentThreadId());
 }
 
+Status Cgroup::MoveProcessToGroup(int64_t pid) {
+  DCHECK(parent_) << "Cannot move process into root group";
+  VLOG_WITH_PREFIX(1) << "Add process " << pid;
+  return WriteConfig("cgroup.procs", AsString(pid));
+}
+
 Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
   auto path = CgroupConfigPath(
       name_, cgroup_manager.version() == CgroupVersion::kVersion1 ? "tasks" : "cgroup.threads");

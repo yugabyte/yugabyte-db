@@ -71,6 +71,8 @@ class Cgroup {
   Status MoveThreadToGroup(int64_t thread_id) EXCLUDES(mutex_);
   Status MoveCurrentThreadToGroup() EXCLUDES(mutex_);
 
+  // Move a child process (by PID) into this cgroup. Writes to cgroup.procs.
+  Status MoveProcessToGroup(int64_t pid) EXCLUDES(mutex_);
   // These functions have an inherent race condition: the threads they read may change
   // cgroups or exit immediately after reading, and the thread id may even be reused by
   // another thread before returning. They should only be used for testing and for
