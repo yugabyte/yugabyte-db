@@ -19,7 +19,7 @@ dependencies:
       group: "{{ user_name }}"
       shell: "/bin/bash"
       comment: "{{ user_name }}"
-      home_dir: "{{ yb_home_dir }}"
+      home_dir: "{{ yb_user_home }}"
     ssh_config:
       ssh_type: "{{ ssh_version | default('ssh') }}"
       enabled: "{{ cluster_server_vault|default(False) }}"

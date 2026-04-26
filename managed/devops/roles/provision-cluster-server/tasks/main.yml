@@ -310,7 +310,7 @@
 
   - name: Create or Update .bashrc file to display systemd mode upon ssh login
     blockinfile:
-      dest: "{{ yb_home_dir }}/.bash_profile"
+      dest: "{{ yb_user_home }}/.bash_profile"
       block: |
         ORANGE='\033[0;33m'
         NC='\033[0m' # No Color

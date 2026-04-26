@@ -7,6 +7,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 yb_home_dir: "/home/{{ user_name }}"
+yb_user_home: "/home/{{ user_name }}"
 otel_col_dir: "{{ yb_home_dir }}/otel-collector"
 otel_col_config_file: "{{ yb_home_dir }}/otel-collector/config.yml"
 otel_col_logs_dir: "{{ yb_home_dir }}/otel-collector/logs"

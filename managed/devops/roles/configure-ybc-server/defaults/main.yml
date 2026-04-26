@@ -7,6 +7,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 yb_home_dir: "/home/{{ user_name }}"
+yb_user_home: "/home/{{ user_name }}"
 yb_bin_dir: "{{ yb_home_dir }}/bin"
 yb_software_dir: "{{ yb_home_dir }}/yb-software"
 ybc_conf_dir: "{{ yb_home_dir }}/controller/conf"

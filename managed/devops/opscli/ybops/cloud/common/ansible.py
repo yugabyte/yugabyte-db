@@ -137,6 +137,9 @@ class AnsibleProcess(object):
         process_args.extend([os.path.join(ybutils.YB_DEVOPS_HOME, filename)])
         playbook_args["yb_home_dir"] = ybutils.YB_HOME_DIR
 
+        yb_user_home = ybutils.detect_yb_user_home(extra_vars, self.yb_user_name)
+        playbook_args["yb_user_home"] = yb_user_home or ybutils.YB_HOME_DIR
+
         if connection_type == 'node_agent_rpc':
             playbook_args.update({
                 # Below args are used in the playbooks.

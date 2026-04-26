@@ -40,6 +40,7 @@
 #         `-- www
 
 yb_home_dir: "/home/{{ user_name }}"
+yb_user_home: "/home/{{ user_name }}"
 yb_bin_dir: "{{ yb_home_dir }}/bin"
 yb_cores_dir: "{{ yb_home_dir }}/cores"
 yb_conf_dir: "{{ yb_home_dir }}/{{ yb_process_type }}/conf"

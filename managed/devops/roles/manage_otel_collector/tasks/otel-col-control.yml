@@ -1,7 +1,7 @@
 - block:
     - name: Control OpenTelemetry collector | Determine system or user scope
       stat:
-        path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/otel-collector.service"
+        path: "{{ yb_user_home | default('/home/yugabyte') }}/.config/systemd/user/otel-collector.service"
       register: user_systemd
 
     - name: Control OpenTelemetry collector | User mode systemd | Stop existing running OpenTelemetry Collector
