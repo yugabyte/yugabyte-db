@@ -105,6 +105,16 @@ class MaintenanceOpStats {
     perf_improvement_ = perf_improvement;
   }
 
+  bool cdcsdk_reset_stale_retention_barrier() const {
+    DCHECK(valid_);
+    return cdcsdk_reset_stale_retention_barrier_;
+  }
+
+  void set_cdcsdk_reset_stale_retention_barrier(bool cdcsdk_reset_stale_retention_barrier) {
+    UpdateLastModified();
+    cdcsdk_reset_stale_retention_barrier_ = cdcsdk_reset_stale_retention_barrier;
+  }
+
   const MonoTime& last_modified() const {
     DCHECK(valid_);
     return last_modified_;
@@ -138,6 +148,9 @@ class MaintenanceOpStats {
   // The estimated performance improvement-- how good it is to do this on some
   // absolute scale (yet TBD).
   double perf_improvement_;
+
+  // True if the operation should run when retention barriers are stale.
+  bool cdcsdk_reset_stale_retention_barrier_;
 
   // The last time that the stats were modified.
   MonoTime last_modified_;

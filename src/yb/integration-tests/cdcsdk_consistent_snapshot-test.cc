@@ -127,6 +127,7 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = poll_catalog_tables;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
   auto tablet_peer =
@@ -316,6 +317,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
 TEST_F(CDCSDKConsistentSnapshotTest, TestCleanupAfterLateAlterTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rpc_timeout_sec) = 30 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
   yb::SyncPoint::GetInstance()->SetCallBack("AsyncAlterTable::CDCSDKCreateStream", [&](void* arg) {
@@ -368,10 +370,11 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotMetadataPersistence) 
 TEST_F(CDCSDKConsistentSnapshotTest, TestRetentionBarrierSettingRace) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   google::SetVLOGLevel("tablet*", 1);
   SyncPoint::GetInstance()->LoadDependency(
       {{"Tablet::SetAllInitialCDCSDKRetentionBarriers::End", "UpdatePeersAndMetrics::Start"},
-       {"UpdateTabletPeersWithMaxCheckpoint::Done",
+       {"TabletPeer::reset_all_cdc_retention_barriers_if_stale::End",
         "PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails::Start"}});
   SyncPoint::GetInstance()->EnableProcessing();
 
@@ -1414,6 +1417,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
   // Since the test requires the state table entries to verify the release of resources, we disable
   // the cleanup of not of interest tables for this test.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -1464,7 +1468,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
   //  3) Retention barriers on tablet1 must be in place
   //  4) Retention barriers on tablet2 should be released
   //  5) GetChanges on stream_id should work for both tablet1 and tablet2
-  SleepFor(MonoDelta::FromSeconds(5));
+  SleepFor(MonoDelta::FromSeconds(7));
   ASSERT_OK(GetLastActiveTimeFromCdcStateTable(
       cs_stream_id, tablets1[0].tablet_id(), test_client()));
   ASSERT_OK(GetLastActiveTimeFromCdcStateTable(
@@ -1484,6 +1488,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
@@ -1527,7 +1532,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
 
   // Now, sleep and make stream indicate no interest in all tablets
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 3;
-  SleepFor(MonoDelta::FromSeconds(8));
+  SleepFor(MonoDelta::FromSeconds(15));
 
   // Check that retention barriers have been released on parent and child tablets
   for (const auto& tablet : {tablets[0], tablets_after_split[0], tablets_after_split[1]}) {
@@ -1544,6 +1549,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
 TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesWhenNoStreamsOnTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
   auto tablet_peer =
