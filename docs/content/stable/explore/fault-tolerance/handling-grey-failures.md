@@ -20,7 +20,7 @@ Examples include:
 - Long GC pauses
 - CPU starvation
 - Disk stalls
-- Asymmetric network connectivity
+- Partial or asymmetric network partitions
 
 Grey failures are harder to detect than clean failures because the affected component can still respond some of the time. YugabyteDB mitigates these failures using quorum-based replication, leader election, and topology-aware replica placement.
 
@@ -41,6 +41,8 @@ In a grey failure, a node may still be partially functional. For example, it may
 - Lagging behind while still sending occasional heartbeats
 
 These conditions can increase latency before the system has enough evidence to treat the component as failed.
+
+A network partition is a communication failure in which parts of the cluster cannot reach each other. A _partial network partition_ is a less clear-cut form in which communication fails only on some paths, in one direction, or intermittently. Partial network partitions are a common type of grey failure.
 
 ## How YugabyteDB mitigates grey failures
 
@@ -100,7 +102,7 @@ YugabyteDB supports placement across failure domains such as:
 
 Spreading replicas across independent failure domains reduces the chance that a grey failure in one host, rack, or AZ affects quorum for a tablet.
 
-For more information, see [Place nodes in zones, regions, and clouds](../../multicloud-deployments/cloud-topologies/).
+For more information, see [Synchronous replication](../../../architecture/docdb-replication/replication/).
 
 ### Client retries and reconnection
 
@@ -133,15 +135,18 @@ Typical outcome:
 
 This is one of the most visible grey-failure patterns because all writes for the tablet go through the leader.
 
-### Asymmetric network connectivity
+### Partial or asymmetric network partition
 
-A node can reach some peers but not others.
+A node can communicate with some peers but not others, or communication may fail intermittently or in only one direction.
 
 Typical outcome:
 
 - Quorum rules prevent conflicting leaders from committing writes.
 - The side of the partition with a majority can continue after electing a leader.
 - The minority side cannot make progress.
+- Before failover completes, clients may observe timeouts or higher latency.
+
+A partial network partition can be harder to diagnose than a clean partition because some heartbeats or RPCs may still succeed.
 
 ### Node under intermittent stalls
 
@@ -153,9 +158,9 @@ Typical outcome:
 - Leadership may move away if stalls become severe enough.
 - If the condition persists, the node may eventually be treated as unavailable.
 
-## Failure timeline: slow leader
+## Failure timeline: slow leader during a partial network partition
 
-The following example shows how YugabyteDB typically handles a grey failure affecting a tablet leader in an RF3 deployment.
+The following example shows how YugabyteDB typically handles a grey failure affecting a tablet leader in an RF=3 deployment. In this example, the failure is caused by a partial network partition: the leader remains reachable from some peers or clients some of the time, but communication becomes delayed or intermittent.
 
 ### Initial state
 
@@ -167,17 +172,18 @@ Tablet `T1` has three replicas:
 
 All three nodes are healthy. Clients send writes for `T1` to leader `R1`.
 
-### T0: Leader begins to degrade
+### T0: Partial network partition begins
 
-Node A experiences severe disk latency or CPU stalls.
+A network path affecting node A degrades.
 
 Effects:
 
-- `R1` still responds, but more slowly.
+- `R1` still responds, but more slowly or inconsistently.
+- Some heartbeats and RPCs from `R1` still get through.
 - Client write latency for `T1` increases.
-- Followers still receive some heartbeats, so no election happens yet.
+- Followers may not immediately start an election because communication has not failed completely.
 
-At this stage, the problem looks like slowness rather than failure.
+At this stage, the problem looks like intermittent slowness rather than a clean partition.
 
 ### T1: Timeouts begin
 
@@ -187,6 +193,7 @@ Effects:
 
 - Writes to `R1` begin timing out.
 - Heartbeats from `R1` to `R2` and `R3` are delayed or missed.
+- Replication traffic becomes unreliable.
 - Followers start suspecting that the leader is no longer healthy enough to lead.
 
 Clients may start seeing transient errors or timeouts.
@@ -201,7 +208,7 @@ Effects:
 - `R2` or `R3` requests votes from the other replicas.
 - One of the healthy followers wins leadership by obtaining a majority.
 
-If node A is badly degraded, it cannot prevent the majority from electing a new leader.
+If node A is isolated from enough peers, it cannot prevent the majority from electing a new leader.
 
 ### T3: Leadership changes
 
@@ -212,8 +219,9 @@ Effects:
 - New writes are routed to `R2`.
 - Clients may need to refresh metadata or retry requests.
 - Write latency returns closer to normal once traffic reaches the new leader.
+- `R1` can no longer make progress as leader because it does not have a quorum.
 
-At this point, the grey failure has been isolated to the degraded former leader.
+At this point, the grey failure has been isolated to the degraded former leader and its network path.
 
 ### T4: Former leader recovers or remains degraded
 
@@ -252,7 +260,7 @@ To reduce the impact of grey failures:
 - Place replicas across multiple AZs or racks.
 - Monitor node health, RPC latency, Raft metrics, and follower lag.
 - Use client drivers that support retries and reconnection.
-- Investigate nodes with recurring stalls, long GC pauses, or storage latency spikes.
+- Investigate nodes with recurring stalls, long GC pauses, storage latency spikes, or intermittent network loss.
 - Configure alerting to detect degraded nodes before they become fully unavailable.
 
 ## Summary
@@ -265,7 +273,7 @@ YugabyteDB mitigates grey failures through:
 - Topology-aware replica placement
 - Client retries for transient failures
 
-A degraded follower is usually tolerated with little impact. A degraded leader may temporarily increase latency, but YugabyteDB can elect a healthier leader once the failure is severe enough to be detected.
+A degraded follower is usually tolerated with little impact. A degraded leader may temporarily increase latency, especially during a partial network partition, but YugabyteDB can elect a healthier leader once the failure is severe enough to be detected.
 
 ## Related content
 
