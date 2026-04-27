@@ -148,7 +148,7 @@ networkx_to_age(connection, G, graphName)
 
 ### AGE to Netowkx
 
-Converts data from an Apache AGE graph database into a Networkx directed graph.
+Converts data from an Apache AGE graph database into a NetworkX directed graph.
 
 #### Parameters
 
