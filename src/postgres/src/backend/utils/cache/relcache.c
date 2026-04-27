@@ -189,6 +189,8 @@ bool		criticalSharedRelcachesBuilt = false;
 static long relcacheInvalsReceived = 0L;
 
 static long YbNumRelCachePreloads = 0L;
+static long YbNumRelCacheInitFileRevalidated = 0L;
+static long YbNumRelCacheInitFileRevalidationFailed = 0L;
 
 /*
  * Set only when this is a pg auth backend that needs to rebuild the relcache
@@ -2969,6 +2971,18 @@ long
 YbGetRelCachePreloads()
 {
 	return YbNumRelCachePreloads;
+}
+
+long
+YbGetRelCacheInitFileRevalidated()
+{
+	return YbNumRelCacheInitFileRevalidated;
+}
+
+long
+YbGetRelCacheInitFileRevalidationFailed()
+{
+	return YbNumRelCacheInitFileRevalidationFailed;
 }
 
 static YbcStatus
@@ -6429,6 +6443,12 @@ YbTryRevalidateRelcacheFile(uint64_t stored_version, uint64_t catalog_version, i
 	YbcCatalogMessageLists message_lists = {0};
 	uint32_t    num_catalog_versions = catalog_version - stored_version;
 	Assert(OidIsValid(MyDatabaseId));
+	/*
+	 * Let the new connection waits for the local tserver's shared memory catalog
+	 * version to catch up, making the invalidation messages more likely to be
+	 * available.
+	 */
+	YbWaitForSharedCatalogVersionToCatchup(catalog_version);
 	HandleYBStatus(YBCGetTserverCatalogMessageLists(MyDatabaseId,
 													stored_version,
 													num_catalog_versions,
@@ -8891,6 +8911,7 @@ load_relcache_init_file(bool shared, bool yb_retry)
 				YbTryRevalidateRelcacheFile(ybc_stored_cache_version, catalog_cache_version, &reason);
 			if (revalidated)
 			{
+				YbNumRelCacheInitFileRevalidated++;
 				elog(DEBUG1, "Revalidated %srelcache init file for database %u from version %" PRIu64 " to %" PRIu64,
 					 (shared ? "shared " : ""),
 					 MyDatabaseId, ybc_stored_cache_version, catalog_cache_version);
@@ -8899,6 +8920,7 @@ load_relcache_init_file(bool shared, bool yb_retry)
 			}
 			else
 			{
+				YbNumRelCacheInitFileRevalidationFailed++;
 				elog(LOG,
 					 "Cannot revalidate %srelcache init file for database %u from version %" PRIu64 " to %" PRIu64
 					 ", reason: %d",

@@ -262,6 +262,8 @@ typedef enum YbStatementType
 	CatCacheNegMisses_End = CatCacheNegMisses_50,
 	RegularBackendInitLatency,
 	AuthBackendInitLatency, /* Connmgr Auth backend only */
+	RelCacheInitFileRevalidated,
+	RelCacheInitFileRevalidationFailed,
 	kMaxStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
@@ -317,6 +319,8 @@ static long last_hint_cache_misses_val = 0;
 
 static long last_authorized_connection_val = 0;
 static long last_relcache_preload_val = 0;
+static long last_relcache_init_file_revalidated_val = 0;
+static long last_relcache_init_file_revalidation_failed_val = 0;
 
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t got_SIGTERM = false;
@@ -490,6 +494,11 @@ set_metric_names(void)
 	strcpy(ybpgm_table[AuthBackendInitLatency].name,
 		   YSQL_LATENCY_METRIC_PREFIX "ConnMgrAuthBackendInit");
 
+	strcpy(ybpgm_table[RelCacheInitFileRevalidated].name,
+		   YSQL_METRIC_PREFIX "RelCacheInitFileRevalidated");
+	strcpy(ybpgm_table[RelCacheInitFileRevalidationFailed].name,
+		   YSQL_METRIC_PREFIX "RelCacheInitFileRevalidationFailed");
+
 	strcpy(ybpgm_table[Select].count_help,
 		   "Number of SELECT statements that have been executed");
 	strcpy(ybpgm_table[Select].sum_help,
@@ -624,6 +633,14 @@ set_metric_names(void)
 		   "Number of auth backend connections established (connection manager only)");
 	strcpy(ybpgm_table[AuthBackendInitLatency].sum_help,
 		   "Total time (microseconds) spent initializing auth backend connections");
+
+	strcpy(ybpgm_table[RelCacheInitFileRevalidated].count_help,
+		   "Number of successful relcache init file revalidations");
+	strcpy(ybpgm_table[RelCacheInitFileRevalidated].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[RelCacheInitFileRevalidationFailed].count_help,
+		   "Number of failed relcache init file revalidations");
+	strcpy(ybpgm_table[RelCacheInitFileRevalidationFailed].sum_help, "Not applicable");
 }
 
 /*
@@ -1076,6 +1093,19 @@ ybpgm_InitPostgres()
 	total_delta = current_relcache_preloads - last_relcache_preload_val;
 	last_relcache_preload_val = current_relcache_preloads;
 	ybpgm_StoreCount(RelCachePreload, 0, total_delta);
+
+	/* Relcache init file revalidation metrics */
+	long		current_revalidated = YbGetRelCacheInitFileRevalidated();
+
+	total_delta = current_revalidated - last_relcache_init_file_revalidated_val;
+	last_relcache_init_file_revalidated_val = current_revalidated;
+	ybpgm_StoreCount(RelCacheInitFileRevalidated, 0, total_delta);
+
+	long		current_revalidation_failed = YbGetRelCacheInitFileRevalidationFailed();
+
+	total_delta = current_revalidation_failed - last_relcache_init_file_revalidation_failed_val;
+	last_relcache_init_file_revalidation_failed_val = current_revalidation_failed;
+	ybpgm_StoreCount(RelCacheInitFileRevalidationFailed, 0, total_delta);
 }
 
 /*
