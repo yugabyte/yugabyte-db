@@ -28,7 +28,7 @@
   </a>
   &nbsp;
   <a href="https://www.postgresql.org/docs/15/index.html">
-    <img src="https://img.shields.io/badge/Version-Postgresql%2015-00008B?labelColor=gray&style=flat&link=https://www.postgresql.org/docs/15/index.html"/>
+    <img src="https://img.shields.io/badge/Version-PostgreSQL%2015-00008B?labelColor=gray&style=flat&link=https://www.postgresql.org/docs/15/index.html"/>
   </a>
   &nbsp;
   <a href="https://github.com/apache/age/issues">
