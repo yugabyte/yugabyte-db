@@ -63,6 +63,8 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
                    const dockv::DocKey& upper_doc_key = DefaultStartDocKey(),
                    const size_t prefix_length = 0);
 
+  DocPgsqlScanSpec(const Schema& schema, const PgsqlConditionPB* condition);
+
   // Returns the lower/upper range components of the key.
   dockv::KeyEntryValues RangeComponents(
       bool lower_bound,

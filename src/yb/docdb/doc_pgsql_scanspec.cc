@@ -36,6 +36,12 @@ using dockv::KeyBytes;
 using dockv::KeyEntryType;
 using dockv::KeyEntryValue;
 
+namespace {
+
+const dockv::KeyEntryValues kEmptyKeyComponents;
+
+}
+
 DocPgsqlScanSpec::DocPgsqlScanSpec(
     const Schema& schema,
     const rocksdb::QueryId query_id,
@@ -156,6 +162,10 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
 
   CompleteBounds();
 }
+
+DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema, const PgsqlConditionPB* condition)
+    : DocPgsqlScanSpec(schema, rocksdb::kDefaultQueryId, kEmptyKeyComponents, kEmptyKeyComponents,
+                       condition, std::nullopt, std::nullopt) {}
 
 void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
   switch (condition.op()) {
