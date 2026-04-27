@@ -5364,7 +5364,11 @@ yb_collect_portal_restart_data(const char *portal_name)
 {
 	Portal		portal = GetPortalByName(portal_name);
 
-	Assert(portal);
+	if (!PortalIsValid(portal))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_CURSOR),
+				 errmsg("portal \"%s\" does not exist", portal_name)));
+
 	Assert(!strcmp(portal->name, portal_name));
 
 	YBQueryRetryData *result = palloc(sizeof(YBQueryRetryData));
