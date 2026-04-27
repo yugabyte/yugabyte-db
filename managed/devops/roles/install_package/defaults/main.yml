@@ -7,6 +7,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 yb_home_dir: "/home/{{ user_name }}"
+yb_user_home: "/home/{{ user_name }}"
 yb_software_dir: "{{ yb_home_dir }}/yb-software"
 itest_s3_package_path: ""
 num_retries: 5

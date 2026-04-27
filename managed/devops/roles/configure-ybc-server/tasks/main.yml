@@ -164,7 +164,7 @@
 
   - name: Determine system or user scope
     stat:
-      path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/yb-controller.service"
+      path: "{{ yb_user_home | default('/home/yugabyte') }}/.config/systemd/user/yb-controller.service"
     register: user_systemd
 
   - name: User mode systemd

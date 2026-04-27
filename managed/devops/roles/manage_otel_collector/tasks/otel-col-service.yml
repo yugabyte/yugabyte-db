@@ -4,7 +4,7 @@
 
     - block:
       - set_fact:
-          systemd_dir: "{{ yb_home_dir }}/.config/systemd/user"
+          systemd_dir: "{{ yb_user_home }}/.config/systemd/user"
 
       - name: Add user systemd directory
         file:

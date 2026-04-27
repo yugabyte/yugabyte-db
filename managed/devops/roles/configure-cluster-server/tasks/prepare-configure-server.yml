@@ -168,8 +168,8 @@
 
   - name: Configure | Add yb user bash profile
     lineinfile:
-      dest: "{{ yb_home_dir }}/.bash_profile"
-      line: ". {{ yb_home_dir }}/.bashrc"
+      dest: "{{ yb_user_home }}/.bash_profile"
+      line: ". {{ yb_user_home }}/.bashrc"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
       create: yes
@@ -177,7 +177,7 @@
 
   - name: Configure | Export XDG_RUNTIME_DIR for yb user
     lineinfile:
-      dest: "{{ yb_home_dir }}/.bashrc"
+      dest: "{{ yb_user_home }}/.bashrc"
       line: "export XDG_RUNTIME_DIR=/run/user/{{ output.stdout }}"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -186,14 +186,14 @@
 
   - name: Configure | Add user systemd directory
     file:
-      path: "{{ yb_home_dir }}/.config/systemd/user/"
+      path: "{{ yb_user_home }}/.config/systemd/user/"
       state: directory
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
       mode: 0744
 
   - set_fact:
-      systemd_dir: "{{ yb_home_dir }}/.config/systemd/user"
+      systemd_dir: "{{ yb_user_home }}/.config/systemd/user"
 
   - name: Configure | Enable linger for {{ user_name }} user
     shell:
@@ -292,7 +292,7 @@
 
   - name: Configure | Create or Update .bashrc file to display systemd mode upon ssh login
     blockinfile:
-      dest: "{{ yb_home_dir }}/.bash_profile"
+      dest: "{{ yb_user_home }}/.bash_profile"
       block: |
         ORANGE='\033[0;33m'
         NC='\033[0m' # No Color
@@ -346,7 +346,7 @@
 
   - name: Determine system or user scope
     stat:
-      path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/yb-zip_purge_yb_logs.service"
+      path: "{{ yb_user_home | default('/home/yugabyte') }}/.config/systemd/user/yb-zip_purge_yb_logs.service"
     register: user_systemd
 
   - name: Systemd user units

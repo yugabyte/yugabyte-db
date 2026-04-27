@@ -69,6 +69,51 @@ def get_path_from_yb(path):
     return os.path.join(pipes.quote(YB_FOLDER_PATH), path)
 
 
+def detect_yb_user_home(connect_options, user_name):
+    """Detect the actual home directory of the given user on a remote node.
+
+    Uses 'getent passwd' over SSH/RPC to look up the user's home directory
+    from /etc/passwd on the target node. This handles deployments where the
+    software install directory (YB_HOME_DIR) differs from the Linux user's
+    home directory (e.g. /apps/yugabyte vs /apps/home/yugabyte).
+
+    Returns the detected home directory path, or None if the user does not
+    exist yet (e.g. during initial provision) or on connection failure.
+    """
+    remote_shell = None
+    try:
+        remote_shell = RemoteShell(connect_options)
+        cmd = "getent passwd {} || true".format(user_name)
+        rc, stdout, stderr = remote_shell.exec_command(cmd)
+        if rc == 0:
+            passwd_line = ""
+            if isinstance(stdout, list) and stdout:
+                passwd_line = stdout[0].strip()
+            elif isinstance(stdout, str):
+                passwd_line = stdout.strip()
+            if passwd_line:
+                fields = passwd_line.split(":")
+                if len(fields) >= 6 and fields[5]:
+                    logging.info("Detected home directory for user '{}': {}".format(
+                        user_name, fields[5]))
+                    return fields[5]
+            logging.info("User '{}' not found on node, will use default home dir.".format(
+                user_name))
+        else:
+            logging.warning("Failed to execute getent on node (rc={}), "
+                            "will use default home dir.".format(rc))
+    except Exception as e:
+        logging.warning("Failed to detect home directory for user '{}': {}".format(
+            user_name, str(e)))
+    finally:
+        if remote_shell is not None:
+            try:
+                remote_shell.close()
+            except Exception:
+                pass
+    return None
+
+
 # Home directory of the devops source tree. This is determined based on the yb_devops_home
 # environment variable, which is set by wrapper shell scripts, or on the nearest directory that this
 # Python codebase is part of that looks like the devops source directory. This is called

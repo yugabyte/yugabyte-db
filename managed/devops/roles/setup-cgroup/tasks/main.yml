@@ -18,7 +18,7 @@
 - block:
   - name: Determine system or user scope
     stat:
-      path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/"
+      path: "{{ yb_user_home | default('/home/yugabyte') }}/.config/systemd/user/"
     register: systemd_user
   - name: Print systemd_user
     debug:
@@ -28,7 +28,7 @@
     - set_fact:
         systemd_dir: "/etc/systemd/system"
     - set_fact:
-        systemd_dir: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user"
+        systemd_dir: "{{ yb_user_home | default('/home/yugabyte') }}/.config/systemd/user"
       when: systemd_user.stat.exists
 
   - name: check for cgconfig service
