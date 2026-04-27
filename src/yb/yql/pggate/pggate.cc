@@ -726,6 +726,10 @@ Status PgApiImpl::StartPgApi(const YbcPgInitPostgresInfo& init_postgres_info) {
   return Status::OK();
 }
 
+void PgApiImpl::Shutdown() {
+  pg_txn_manager_->Shutdown();
+}
+
 PgApiImpl::~PgApiImpl() {
   mem_contexts_.clear();
   pg_session_.reset();

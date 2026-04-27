@@ -513,6 +513,7 @@ void YBCDestroyPgGate() {
   LOG_IF(FATAL, !is_main_thread())
       << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
 
+  pgapi->Shutdown();
   if (pgapi_shutdown_done.exchange(true)) {
     LOG(DFATAL) << __PRETTY_FUNCTION__ << " should only be called once";
     return;

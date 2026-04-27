@@ -257,11 +257,13 @@ bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
   return using_table_locks_;
 }
 
-PgTxnManager::~PgTxnManager() {
+PgTxnManager::~PgTxnManager() = default;
+
+void PgTxnManager::Shutdown() {
   // Abort the transaction before the transaction manager gets destroyed.
-  WARN_NOT_OK(
-      ExitSeparateDdlTxnModeWithAbort(), "Failed to abort separate DDL transaction in dtor");
-  WARN_NOT_OK(AbortPlainTransaction(), "Failed to abort plain transaction in dtor");
+  WARN_NOT_OK(ExitSeparateDdlTxnModeWithAbort(),
+              "Failed to abort separate DDL transaction during shutdown");
+  WARN_NOT_OK(AbortPlainTransaction(), "Failed to abort plain transaction during shutdown");
 }
 
 Status PgTxnManager::BeginTransaction(int64_t start_time) {
