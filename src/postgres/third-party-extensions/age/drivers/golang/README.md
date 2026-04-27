@@ -32,7 +32,7 @@ require  github.com/apache/age/drivers/golang {version}
 Check [latest version](https://github.com/apache/age/releases)
 
 ### For more information about [Apache AGE](https://age.apache.org/)
-* Apache Age : https://age.apache.org/
+* Apache AGE : https://age.apache.org/
 * GitHub : https://github.com/apache/age
 * Document : https://age.apache.org/docs/
 
