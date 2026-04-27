@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -114,6 +116,16 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       Map<UUID, List<NodeDetails>> nodesGroupedByAZs,
       GFlagsValidation.GFlagsValidationErrors gFlagsValidationErrors) {
 
+    // Load metadata once per server type for the whole cluster — it only depends on
+    // ybSoftwareVersion and serverType, not on AZ or node, so there is no reason to
+    // re-fetch it inside every per-AZ call to validateGFlagsWithYBServerBinary.
+    Map<String, GFlagDetails> masterGflagMeta = Collections.emptyMap();
+    Map<String, GFlagDetails> tserverGflagMeta = Collections.emptyMap();
+    if (taskParams().useCLIBinary) {
+      masterGflagMeta = loadGflagMeta(ServerType.MASTER);
+      tserverGflagMeta = loadGflagMeta(ServerType.TSERVER);
+    }
+
     boolean hasAnyFailure = false;
 
     for (Map.Entry<UUID, List<NodeDetails>> nodesMappedWithAZ : nodesGroupedByAZs.entrySet()) {
@@ -122,7 +134,14 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
 
       try {
         validateGFlagsForAZ(
-            azUuid, nodesInAZ, cluster, newCluster, universe, gFlagsValidationErrors);
+            azUuid,
+            nodesInAZ,
+            cluster,
+            newCluster,
+            universe,
+            gFlagsValidationErrors,
+            masterGflagMeta,
+            tserverGflagMeta);
         log.info("Completed gflags validation for AZ {}", azUuid);
       } catch (Exception e) {
         log.warn("Failed to validate gflags in AZ {} (going to next AZ)", azUuid, e);
@@ -145,7 +164,9 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       UniverseDefinitionTaskParams.Cluster cluster,
       UniverseDefinitionTaskParams.Cluster newCluster,
       Universe universe,
-      GFlagsValidation.GFlagsValidationErrors gFlagsValidationErrors) {
+      GFlagsValidation.GFlagsValidationErrors gFlagsValidationErrors,
+      Map<String, GFlagDetails> masterGflagMeta,
+      Map<String, GFlagDetails> tserverGflagMeta) {
 
     Map<String, String> masterGFlagsForAZ = new HashMap<>();
     Map<String, String> tserverGFlagsForAZ = new HashMap<>();
@@ -215,12 +236,12 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       if (!masterGFlagsForAZ.isEmpty()) {
         masterGFlagsValidationErrors.putAll(
             validateGFlagsWithYBServerBinary(
-                masterGFlagsForAZ, universe, ServerType.MASTER, masterNode));
+                masterGFlagsForAZ, universe, ServerType.MASTER, masterNode, masterGflagMeta));
       }
       if (!tserverGFlagsForAZ.isEmpty()) {
         tserverGFlagsValidationErrors.putAll(
             validateGFlagsWithYBServerBinary(
-                tserverGFlagsForAZ, universe, ServerType.TSERVER, tserverNode));
+                tserverGFlagsForAZ, universe, ServerType.TSERVER, tserverNode, tserverGflagMeta));
       }
     } else {
       if (!masterGFlagsForAZ.isEmpty()) {
@@ -387,6 +408,29 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
     return filteredGFlags;
   }
 
+  private Map<String, GFlagDetails> loadGflagMeta(ServerType serverType) {
+    Map<String, GFlagDetails> meta = new HashMap<>();
+    try {
+      for (GFlagDetails d :
+          gFlagsValidation.extractGFlags(
+              taskParams().ybSoftwareVersion, serverType.name(), false)) {
+        meta.put(d.name, d);
+      }
+    } catch (Exception e) {
+      log.error(
+          "Got error while fetching gflags metadata {} {}: {}",
+          serverType,
+          taskParams().ybSoftwareVersion,
+          e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Failed to fetch gflags metadata for %s %s: %s",
+              serverType, taskParams().ybSoftwareVersion, e.getMessage()));
+    }
+    return meta;
+  }
+
   private Map<String, String> validateGFlagsWithYBClient(
       Map<String, String> gflags, Universe universe, ServerType serverType) {
     Map<String, String> serverGFlagsValidationErrors = new HashMap<String, String>();
@@ -402,7 +446,11 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
   }
 
   private Map<String, String> validateGFlagsWithYBServerBinary(
-      Map<String, String> gflags, Universe universe, ServerType serverType, NodeDetails node) {
+      Map<String, String> gflags,
+      Universe universe,
+      ServerType serverType,
+      NodeDetails node,
+      Map<String, GFlagDetails> gflagMeta) {
     Map<String, String> serverGFlagsValidationErrors = new HashMap<>();
 
     UUID providerUUID =
@@ -442,15 +490,9 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
     List<String> command = new ArrayList<>();
     command.add(cliPath);
     command.add("--version");
-    for (Map.Entry<String, String> gflag : gflags.entrySet()) {
-      String flagName = gflag.getKey();
-      String flagValue = gflag.getValue();
-      if (StringUtils.isBlank(flagValue)) {
-        flagValue = "\"\"";
-      }
 
-      command.add("--" + flagName);
-      command.add(flagValue);
+    for (Map.Entry<String, String> gflag : gflags.entrySet()) {
+      appendGflagCliArg(command, gflag.getKey(), gflag.getValue(), gflagMeta.get(gflag.getKey()));
     }
 
     log.debug(
@@ -502,5 +544,28 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
                   e.getMessage(), taskParams().ybSoftwareVersion, gFlagsValidation));
     }
     return serverGFlagsValidationErrors;
+  }
+
+  /**
+   * Non-bool: {@code --name=value}. Bool: {@code --name} / {@code --noname} or else {@code
+   * --name=value}.
+   */
+  static void appendGflagCliArg(
+      List<String> command, String name, String value, GFlagDetails meta) {
+    boolean isBool = meta != null && meta.type != null && "bool".equalsIgnoreCase(meta.type.trim());
+    // All incoming flags (YBA-set and user-set) are merged upstream in buildGFlagsForValidation
+    // and every entry reaches this point.
+    if (!isBool) {
+      command.add("--" + name + "=" + StringUtils.defaultString(value));
+      return;
+    }
+    String v = StringUtils.trimToEmpty(value);
+    if (v.isEmpty() || v.equalsIgnoreCase("false") || v.equals("0")) {
+      command.add("--no" + name);
+    } else if (v.equalsIgnoreCase("true") || v.equals("1")) {
+      command.add("--" + name);
+    } else {
+      command.add("--" + name + "=" + v);
+    }
   }
 }
