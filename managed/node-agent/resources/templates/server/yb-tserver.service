@@ -33,7 +33,7 @@ StandardError=journal
 # ulimit
 LimitCORE=infinity
 LimitNOFILE=1048576
-LimitNPROC=12000
+LimitNPROC=64000
 # Allow tserver to move postgres into its own cgroup
 # Allow tserver to manage cpu cgroup
 Delegate=yes

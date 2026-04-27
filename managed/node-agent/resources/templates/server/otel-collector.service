@@ -27,7 +27,7 @@ StandardError=journal
 # ulimit
 LimitCORE=infinity
 LimitNOFILE=1048576
-LimitNPROC=12000
+LimitNPROC=64000
 # Hard Memory limit
 MemoryMax={{otel_col_max_memory}}M
 
