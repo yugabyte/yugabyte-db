@@ -22,7 +22,7 @@ This pattern works best when CIDR ranges don't overlap.
 
 ## Setup
 
-Follow the [local cluster setup instructions](../../../quick-start/explore/ysql/) to start a local YugabyteDB cluster and connect to it using ysqlsh.
+Follow the [local cluster setup instructions](../../../quick-start/macos/) to start a local YugabyteDB cluster and connect to it using ysqlsh.
 
 Create helper functions to normalize IPv4 and IPv6 addresses into a 16-byte binary representation. IPv4 addresses are stored as IPv6-mapped addresses so both address families can be compared consistently.
 
