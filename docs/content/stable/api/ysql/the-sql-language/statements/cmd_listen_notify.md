@@ -60,7 +60,7 @@ Client library interaction (for example, polling for notifications via libpq or 
 
 ## Enabling LISTEN/NOTIFY in YugabyteDB
 
-LISTEN/NOTIFY is **disabled by default**. You must enable it on **both** `yb-master` and `yb-tserver` by setting `yb_enable_listen_notify` to `true` (see [yb-tserver](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) and [yb-master](../../../../reference/configuration/yb-master/#ysql-yb-enable-listen-notify) configuration).
+LISTEN/NOTIFY is **disabled by default**. You must enable it on **both** `yb-master` and `yb-tserver` by setting `ysql_yb_enable_listen_notify` to `true` (see [yb-tserver](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) and [yb-master](../../../../reference/configuration/yb-master/#ysql-yb-enable-listen-notify) configuration).
 
 After you enable the feature, the leader master creates internal objects (including the `yb_system` database and the `yb_system.pg_yb_notifications` table) in the background. If you run `LISTEN` or `NOTIFY` before those objects exist, you may see an error asking you to retry shortly; waiting a few seconds and retrying is expected during startup or right after turning the feature on.
 
@@ -72,8 +72,8 @@ Because the poller relies on logical replication internally, LISTEN/NOTIFY also 
 
 | tserver flag | Default | Role for LISTEN/NOTIFY |
 | :------------- | :---------------- | :---------------------- |
-| `yb_enable_replication_commands` | `true` | Must be **true**. If `false`, the notifications poller fails to start. |
-| `yb_enable_replication_slot_consumption` | `true` | Must be **true**. If `false`, the notifications poller fails to start. |
+| `ysql_yb_enable_replication_commands` | `true` | Must be **true**, otherwise LISTEN will fail. |
+| `ysql_yb_enable_replication_slot_consumption` | `true` | Must be **true**, otherwise LISTEN will fail. |
 | `max_replication_slots` | `10` | LISTEN/NOTIFY creates one internal replication slot per listening node. Ensure this limit is large enough to accommodate these internal slots alongside any user-created replication slots. |
 
 Each tserver creates a **named logical replication slot** derived from the node identity (`yb_notifications_<tserver-uuid>`). Do not drop or repurpose that slot for other work.
@@ -94,9 +94,3 @@ These flags control how frequently the notifications poller checks for new notif
 | :------------- | :------ | :---------- |
 | `yb_notifications_poll_sleep_duration_nonempty_ms` | `1` | Wait time in milliseconds before the next poll when the previous poll returned data. |
 | `yb_notifications_poll_sleep_duration_empty_ms` | `100` | Wait time in milliseconds before the next poll when the previous poll returned no data. |
-
-## See also
-
-- [yb-tserver configuration: yb_enable_listen_notify](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify)
-- [yb-master configuration: yb_enable_listen_notify](../../../../reference/configuration/yb-master/#ysql-yb-enable-listen-notify)
-- [PostgreSQL LISTEN](https://www.postgresql.org/docs/15/sql-listen.html), [NOTIFY](https://www.postgresql.org/docs/15/sql-notify.html), and [UNLISTEN](https://www.postgresql.org/docs/15/sql-unlisten.html)
