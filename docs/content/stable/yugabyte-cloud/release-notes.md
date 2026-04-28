@@ -21,6 +21,18 @@ rightNav:
 
 ### 2026
 
+#### April 28, 2026
+
+##### New features
+
+- Support for [exporting database audit logs](../cloud-monitor/managed-integrations/#amazon-s3) to [Amazon S3](https://aws.amazon.com/s3/).
+- Automatic replication of DDL changes in [Disaster Recovery](../cloud-clusters/disaster-recovery/). Disaster Recovery now suppoprts seamless automated replication of YSQL DDL changes across xCluster DR, eliminating the need to manually apply DDLs on both source and target clusters. This simplifies DDL operations and reduces management overhead. Available for clusters running {{<release "2025.2.2.1">}} or later.
+- {{<tags/feature/ea>}}[Multi account](../managed-security/manage-accounts/) support. Create multiple accounts for your organization, each with its own access control. For example, you might create separate accounts for different environments, such as development staging and production. To try this feature, contact {{% support-cloud %}}.
+
+##### Database
+
+- Early Access track updated to 2025.2.2.2.
+
 #### March 27, 2026
 
 ##### New features
