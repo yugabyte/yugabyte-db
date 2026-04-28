@@ -1898,13 +1898,14 @@ TEST_F(MasterPathHandlersItest, TestTasksJsonEndpoint) {
 
 // Test that /api/v1/tasks captures an active DDL verification task by using
 // yb_test_delay_next_ddl to slow down DDL processing, then polling the endpoint.
-TEST_F_EX(MasterPathHandlersExternalItest, TestTasksJsonWithActiveDdlTask,
+TEST_F_EX(MasterPathHandlersItest, TestTasksJsonWithActiveDdlTask,
           MasterPathHandlersExternalItest) {
   // Connect to YSQL and trigger a DDL with an artificial delay so that the
   // TableSchemaVerificationTask stays active long enough for us to observe it.
+  auto host_port = cluster_->ysql_hostport(0);
   auto conn = ASSERT_RESULT(pgwrapper::PGConnBuilder({
-    .host = cluster_->tablet_server(0)->bound_rpc_addr().host(),
-    .port = cluster_->pgsql_hostport(0).port(),
+    .host = host_port.host(),
+    .port = host_port.port(),
     .dbname = "yugabyte",
   }).Connect());
 
