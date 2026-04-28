@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-You can add multiple accounts for your organization. For example, you might create separate accounts for different products, or departments in your organization, or for different environments, such as development staging and production. Each account has its own access control.
+You can add multiple accounts for your organization. For example, you might create separate accounts for different products, or departments in your organization, or for different environments, such as development, staging, and production. Each account has its own access control.
 
 {{<tip title="Early Access">}}
 This feature is Early Access; to try it, contact {{% support-cloud %}}.

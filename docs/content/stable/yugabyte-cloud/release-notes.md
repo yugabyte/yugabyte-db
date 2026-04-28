@@ -25,9 +25,8 @@ rightNav:
 
 ##### New features
 
-- Support for [exporting database audit logs](../cloud-monitor/managed-integrations/#amazon-s3) to [Amazon S3](https://aws.amazon.com/s3/).
-- Automatic replication of DDL changes in [Disaster Recovery](../cloud-clusters/disaster-recovery/). Disaster Recovery now suppoprts seamless automated replication of YSQL DDL changes across xCluster DR, eliminating the need to manually apply DDLs on both source and target clusters. This simplifies DDL operations and reduces management overhead. Available for clusters running {{<release "2025.2.2.1">}} or later.
-- {{<tags/feature/ea>}}[Multi account](../managed-security/manage-accounts/) support. Create multiple accounts for your organization, each with its own access control. For example, you might create separate accounts for different environments, such as development staging and production. To try this feature, contact {{% support-cloud %}}.
+- {{<tags/feature/ga>}}[Disaster Recovery](../cloud-clusters/disaster-recovery/). A turnkey solution for business continuity and disaster recovery, allowing you to recover from an unplanned outage (failover) or to perform a planned switchover. Available for clusters running {{<release "2025.2.2.1">}} or later.
+- {{<tags/feature/ea>}}[Multi-account](../managed-security/manage-accounts/) support. Create multiple accounts for your organization, each with its own access control. For example, you might create separate accounts for different environments, such as development, staging, and production. To try this feature, contact {{% support-cloud %}}.
 
 ##### Database
 
