@@ -1,12 +1,12 @@
 ---
-title: Query plan manager
-linkTitle: Query plan manager
+title: Query plan management
+linkTitle: Query plan management
 description: Capture all unique plans for a query so that you can track plan changes
-headerTitle: Query plan manager
+headerTitle: Query plan management
 headcontent: Monitor plan changes
 menu:
   stable:
-    identifier: query-plan-manager
+    identifier: query-plan-manage
     parent: query-tuning
     weight: 600
 type: docs
@@ -18,14 +18,14 @@ Enterprises need stable and consistent performance during various system changes
 - Changes to the query planner configuration parameters.
 - Changes to the schema, such as adding a new index.
 - Changes to the bind variables used in the query.
-- Minor version or major version upgrades to the database version. 
+- Minor version or major version upgrades to the database version.
 
-The query plan manager (QPM) serves two main objectives:
+Query plan management (QPM) serves two main objectives:
 
-- Plan stability. QPM prevents plan regression and improves plan stability when changes occur in the system.
-- Plan adaptability. QPM automatically detects new minimum-cost plans and controls when new plans may be used and adapts to the changes.
+- Plan stability. QPM records the plan history and generated hints needed to restore a known good plan when changes occur in the system.
+- Plan adaptability. QPM records new plans and their execution statistics so that you can evaluate when to adopt a better plan.
 
-Because plans can change over time (you turn on the cost-based optimizer, for example), there is a chance a new plan for a query degrades performance. QPM provides views that capture all unique plans for a query so that you can look back and see when a plan changed. The entry for the old plan will have a set of hints that can generate the same plan. You can then insert those hints into the hint plan table and get the old better-performing plan back.
+Because plans can change over time (you turn on the cost-based optimizer, for example), there is a chance a new plan for a query degrades performance. QPM provides views that capture all unique plans for a query so that you can look back and see when a plan changed. The entry for the old plan includes hints that can generate the same plan. You can then insert those hints into the hint plan table and get the old better-performing plan back.
 
 ## Using QPM
 
@@ -34,7 +34,7 @@ QPM is enabled by default, and you view QPM data using two views:
 - [yb_pg_stat_plans](#yb-pg-stat-plans)
 - [yb_pg_stat_plans_insights](#yb-pg-stat-plans-insights)
 
-If you notice a query is performing poorly, you can run [EXPLAIN](../../../../api/ysql/the-sql-language/statements/perf_explain/) to get its current query ID and/or plan ID, and then use this ID to look up the query in the yb_pg_stat_plans view to see if this is a new plan, or if its execution time has recently increased. To have EXPLAIN include the query and plan IDs, use the QUEYID and PLANID options. For example:
+If you notice a query is performing poorly, you can run [EXPLAIN](../../../../api/ysql/the-sql-language/statements/perf_explain/) to get its current query ID and/or plan ID, and then use this ID to look up the query in the yb_pg_stat_plans view to see if this is a new plan, or if its execution time has recently increased. To have EXPLAIN include the query and plan IDs, use the QUERYID and PLANID options. For example:
 
 ```sql
 EXPLAIN (queryid on, planid on) SELECT count(*) FROM t0, t1 WHERE a0=a1;
@@ -46,11 +46,11 @@ If hints cannot be generated for a plan, then the plan is not stored. (For examp
 
 Nested queries and queries referencing catalog tables may or may not be tracked, depending on the settings of the `yb_pg_stat_plans_track` and `yb_pg_stat_plans_track_catalog_queries` parameters.
 
-If the string `__YB_STAT_PLANS_SKIP` is encountered in an SQL comment of a statement, QPM will not process the query. This provides a way to prevent QPM entries for selected queries.
+If the string `__YB_STAT_PLANS_SKIP` is encountered in an SQL comment of a statement, the planner will not process the query. This provides a way to prevent QPM entries for selected queries.
 
 A query may have multiple plans, such as when optimizer statistics change, or a new execution method becomes available.
 
-For example, running the following 2 queries results in two entries in the QPM table, one for each plan:
+For example, running the following two queries results in two entries in the QPM table, one for each plan:
 
 ```sql
 /*+ MergeJoin(t0 t3) */ SELECT 1 FROM t0, t3 WHERE pk0_0 = pk3_0;
@@ -139,6 +139,135 @@ yugabyte=# explain (queryid on, planid on) select count(*) from t1, t0 where a1=
  Plan Identifier: 1344843950213355732
 ```
 
+### Pin a plan using QPM
+
+The following example shows how you can use QPM features to pin a plan.
+
+Assume a simple order and order_details schema with an initial state of 1000 accounts each with 20 orders. The join query uses a batched nested loop join as expected.
+
+Then suppose a lot of accounts are added, each with a single order. After statistics are refreshed, the optimizer estimates about one order per account and may switch to a regular nested loop join even for the original accounts with 20 orders each. This would be considered a plan regression for those accounts.
+
+You can use QPM to:
+
+- Detect the plan change/regression
+- Revert to a previous (good) plan
+- Optionally, pin other known good plans to prevent any future regressions
+
+First create the tables and add orders:
+
+```sql
+CREATE TABLE orders (
+    account_id INT,
+    order_no INT,
+    order_id TEXT,
+    PRIMARY KEY (account_id, order_no));
+CREATE TABLE order_details (
+    order_id TEXT PRIMARY KEY,
+    details json);
+INSERT INTO orders (account_id, order_no, order_id)
+   SELECT a,o, a::text || '_' || o::text FROM generate_series(1,1000) a, generate_series(1,20) o;
+INSERT INTO order_details (order_id, details) SELECT order_id, '{}' from orders;
+ANALYZE orders;
+ANALYZE order_details;
+
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+SET yb_enable_cbo = on;
+SET yb_pg_stat_plans_track = 'all';
+SELECT pg_stat_statements_reset();
+SELECT yb_pg_stat_plans_reset(NULL, NULL, NULL, NULL);
+\pset pager off
+\timing
+```
+
+Use EXPLAIN ANALYZE to inspect the plan, then run the SELECT repeatedly to populate pg_stat_statements and QPM statistics:
+
+```sql
+EXPLAIN ANALYZE SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
+SELECT pg_stat_statements_reset();
+SELECT 'SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;' FROM generate_series(1,100); \gexec
+SELECT queryid, mean_exec_time, query from pg_stat_statements
+    WHERE query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
+```
+
+Load new data (many small accounts with just 1 order each):
+
+```sql
+INSERT INTO orders (account_id, order_no, order_id)
+   SELECT a, 1, a::text || '_1' FROM generate_series(1001,1000000) a;
+INSERT INTO order_details (order_id, details)
+SELECT order_id, '{}' from orders WHERE account_id > 1000;
+ANALYZE orders;
+ANALYZE order_details;
+```
+
+Re-run the query and workload:
+
+```sql
+EXPLAIN ANALYZE SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
+SELECT pg_stat_statements_reset();
+SELECT 'SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;' FROM generate_series(1,100); \gexec
+SELECT queryid, mean_exec_time, query from pg_stat_statements
+    WHERE query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
+```
+
+Get the plans used and their statistics (average execution time and first/last used time):
+
+```sql
+SELECT s.queryid, s.query, p.planid, p.first_used, p.last_used,
+       p.avg_exec_time, p.avg_est_cost, p.plan FROM
+    pg_stat_statements s JOIN yb_pg_stat_plans p ON s.queryid = p.queryid
+    WHERE s.query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
+```
+
+Get hints for the plans:
+
+```sql
+SELECT s.queryid, s.query, p.planid, p.first_used, p.hints FROM
+    pg_stat_statements s JOIN yb_pg_stat_plans p ON s.queryid = p.queryid
+    WHERE s.query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
+```
+
+Inspect the current plan before pinning:
+
+```sql
+EXPLAIN ANALYZE SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
+```
+
+Enable and set up the hint table:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_hint_plan;
+SET pg_hint_plan.enable_hint_table = on;
+SET pg_hint_plan.yb_use_query_id_for_hinting = on;
+```
+
+Insert the hints for the earliest plan into the hint table:
+
+```sql
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+SELECT s.queryid::text, '', substring(p.hints from 5 for char_length(p.hints) - 7) FROM
+    pg_stat_statements s JOIN yb_pg_stat_plans p ON s.queryid = p.queryid
+    WHERE s.query LIKE 'SELECT d.details FROM orders o JOIN order_details%'
+    ORDER BY first_used ASC LIMIT 1
+ON CONFLICT (norm_query_string, application_name) DO UPDATE
+    SET hints = EXCLUDED.hints;
+```
+
+Check that EXPLAIN plan is updated:
+
+```sql
+EXPLAIN (ANALYZE, HINTS) SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
+```
+
+Reset the statistics and re-run the workload:
+
+```sql
+SELECT pg_stat_statements_reset();
+SELECT 'SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;' FROM generate_series(1,100); \gexec
+SELECT queryid, mean_exec_time, query from pg_stat_statements
+    WHERE query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
+```
+
 ## Views
 
 ### yb_pg_stat_plans
@@ -189,23 +318,23 @@ View definition:
       max_exec_time_params text, avg_est_cost double precision, plan text);
 ```
 
-The columns of the yb_pg_stat_plans view are described in the following table.
+The columns of the yb_pg_stat_plans view are described, along with their purpose, in the following table.
 
-| Column | Description |
-| :----- | :---------- |
-| userid | OID of user who executed the statement. |
-| dbid | OID of database in which the statement was executed. |
-| queryid | Hash code to identify identical normalized queries. |
-| planid | Hash of a query's execution plan representation. |
-| first_used | First recorded instance of the [dbid query id, plan id] use. |
-| last_used | Last recorded instance of the [dbid query id, plan id] use. |
-| calls | Number of times [dbid query id, plan id] pair is used. |
-| avg_exec_time | Average execution time. |
-| max_exec_time | Maximum recorded execution time for this plan. |
-| max_exec_time_params | This particular set of query parameters led to the longest execution time. |
-| avg_est_cost | Planner's average estimated cost for the plan. |
-| hints | These hints, if applied during query planning, would lead to the same plan being used. |
-| plan | Text representation of the plan. |
+| Column | Purpose | Description |
+| :----- | :------ | :---------- |
+| userid | Identify a plan | OID of user who executed the statement. |
+| dbid   |         | OID of database in which the statement was executed. |
+| queryid |        | Hash code to identify identical normalized queries. |
+| planid |         | Hash of a query's execution plan representation. |
+| plan   |         | Text representation of the plan. |
+| first_used | Detect plan changes | First recorded instance of the [dbid query id, plan id] use. |
+| last_used |         | Last recorded instance of the [dbid query id, plan id] use. |
+| calls | Detect plan regressions | Number of times [dbid query id, plan id] pair is used. |
+| avg_exec_time |         | Average execution time. |
+| max_exec_time |         | Maximum recorded execution time for this plan. |
+| max_exec_time_params |         | This particular set of query parameters led to the longest execution time. |
+| avg_est_cost |         | Planner's average estimated cost for the plan. |
+| hints | Pin the plan | These hints, if applied during query planning, would lead to the same plan being used. |
 
 yb_pg_stat_plans does not store query text. You can retrieve query text by joining with pg_stat_statements on `queryid`. For example:
 

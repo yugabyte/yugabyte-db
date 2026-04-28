@@ -65,11 +65,11 @@ Define the desired output format, choosing from TEXT, XML, JSON, or YAML. Non-te
 
 ### QUERYID
 
-Output the query ID (`EXPLAIN (QUERYID ON)`). Use this ID to match queries in the [Query Plan Manager](../../../../../launch-and-manage/monitor-and-alert/query-tuning/query-plan-manager/), to see if execution time has recently increased, and detect plan regressions. Default is OFF.
+Output the query ID (`EXPLAIN (QUERYID ON)`). Use this ID to match queries in [Query plan management](../../../../../launch-and-manage/monitor-and-alert/query-tuning/query-plan-manage/), to see if execution time has recently increased, and detect plan regressions. Default is OFF.
 
 ### PLANID
 
-Output the plan ID (`EXPLAIN (PLANID ON)`). Use this ID to match plans in the [Query Plan Manager](../../../../../launch-and-manage/monitor-and-alert/query-tuning/query-plan-manager/) to see if this is a new plan or if its execution time has recently increased, and detect plan regressions. Default is OFF.
+Output the plan ID (`EXPLAIN (PLANID ON)`). Use this ID to match plans in [Query plan management](../../../../../launch-and-manage/monitor-and-alert/query-tuning/query-plan-manage/) to see if this is a new plan or if its execution time has recently increased, and detect plan regressions. Default is OFF.
 
 ### SUMMARY
 
