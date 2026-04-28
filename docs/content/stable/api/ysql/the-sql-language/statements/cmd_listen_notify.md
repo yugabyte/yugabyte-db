@@ -68,13 +68,15 @@ After you enable the feature, the leader master creates internal objects (includ
 
 In vanilla PostgreSQL, notifications are written through shared memory. In YugabyteDB, `NOTIFY` temporarily stores the notifications in the `yb_system.pg_yb_notifications` table. A per-node **notifications poller** reads that table using CDC-style logical replication (an internal logical replication slot on each tserver) and delivers the notifications to local listeners.
 
-Because the poller relies on logical replication internally, LISTEN/NOTIFY also depends on the following tserver flags.
+Because the poller relies on logical replication internally, LISTEN/NOTIFY also depends on the following tserver flags. These flags all have defaults that are compatible with LISTEN/NOTIFY, so no action is needed unless you have explicitly changed them.
 
 | tserver flag | Default | Role for LISTEN/NOTIFY |
-| :------------- | :---------------- | :---------------------- |
-| `ysql_yb_enable_replication_commands` | `true` | Must be **true**, otherwise LISTEN will fail. |
-| `ysql_yb_enable_replication_slot_consumption` | `true` | Must be **true**, otherwise LISTEN will fail. |
-| `max_replication_slots` | `10` | LISTEN/NOTIFY creates one internal replication slot per listening node. Ensure this limit is large enough to accommodate these internal slots alongside any user-created replication slots. |
+| :------------- | :------ | :---------------------- |
+| `ysql_yb_enable_replication_commands` | `true` | Must be **true**, otherwise LISTEN fails. |
+| `ysql_yb_enable_replication_slot_consumption` | `true` | Must be **true**, otherwise LISTEN fails. |
+| `ysql_yb_allow_replication_slot_lsn_types` | `true` | Must be **true**, otherwise LISTEN fails. |
+| `ysql_yb_allow_replication_slot_ordering_modes` | `false` | Must be **false**, otherwise LISTEN fails. |
+| `max_replication_slots` | `10` | LISTEN/NOTIFY creates one internal replication slot per node. Ensure this limit is large enough to accommodate it alongside any user-created replication slots. |
 
 Each tserver creates a **named logical replication slot** derived from the node identity (`yb_notifications_<tserver-uuid>`). Do not drop or repurpose that slot for other work.
 
