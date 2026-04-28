@@ -22,7 +22,7 @@ LISTEN/NOTIFY provides a communication mechanism for a collection of processes a
 
 ## Syntax and SQL reference
 
-YSQL follows the same SQL syntax as PostgreSQL. For complete syntax (including `LISTEN`, `NOTIFY`, and `UNLISTEN` variants), refer to the PostgreSQL documentation:
+YSQL follows the same SQL syntax as PostgreSQL. For complete syntax, refer to the PostgreSQL documentation:
 
 - [NOTIFY](https://www.postgresql.org/docs/15/sql-notify.html)
 - [LISTEN](https://www.postgresql.org/docs/15/sql-listen.html)
@@ -46,7 +46,9 @@ Because the poller relies on logical replication internally, LISTEN/NOTIFY also 
 | :------------- | :---------------- | :---------------------- |
 | `yb_enable_replication_commands` | `true` | Must be **true**. If `false`, the notifications poller fails to start. |
 | `yb_enable_replication_slot_consumption` | `true` | Must be **true**. If `false`, the notifications poller fails to start. |
-| `max_replication_slots` | `10` | LISTEN/NOTIFY creates one internal replication slot per listening node. Ensure this limit is large enough to accommodate it alongside any user-created replication slots. |
+| `max_replication_slots` | `10` | LISTEN/NOTIFY creates one internal replication slot per listening node. Ensure this limit is large enough to accommodate these internal slots alongside any user-created replication slots. |
+
+Each tserver creates a **named logical replication slot** derived from the node identity (`yb_notifications_<tserver-uuid>`). Do not drop or repurpose that slot for other work.
 
 ## Differences from PostgreSQL
 
@@ -56,18 +58,14 @@ Because the poller relies on logical replication internally, LISTEN/NOTIFY also 
 | `pg_notification_queue_usage()` | Returns the usage fraction of the server's notification queue. | Returns the usage fraction of the **local tserver's** notification queue. |
 | Behavior when the queue is full | New `NOTIFY` calls fail (return an error) until the queue drains. | The **slowest listener** on that tserver is terminated so the queue tail can advance. Applications must handle disconnections by reconnecting and re-issuing `LISTEN`. |
 
-## Advanced tuning (tserver only)
+## Advanced tuning
 
-`yb_notifications_poll_sleep_duration_nonempty_ms` and `yb_notifications_poll_sleep_duration_empty_ms` are **poller-only** settings that control how long the notifications poller waits before polling again after a non-empty or empty result, respectively.
+These flags control how frequently the notifications poller checks for new notifications.
 
 | tserver flag | Default | Description |
 | :------------- | :------ | :---------- |
 | `yb_notifications_poll_sleep_duration_nonempty_ms` | `1` | Wait time in milliseconds before the next poll when the previous poll returned data. |
 | `yb_notifications_poll_sleep_duration_empty_ms` | `100` | Wait time in milliseconds before the next poll when the previous poll returned no data. |
-
-## Operational notes
-
-- Each tserver that runs a notifications poller creates a **named logical replication slot** derived from the node identity (`yb_notifications_<tserver-uuid>`). Do not drop or repurpose that slot for other work.
 
 ## See also
 
