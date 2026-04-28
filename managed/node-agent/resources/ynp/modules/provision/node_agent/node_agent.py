@@ -267,7 +267,6 @@ class InstallNodeAgent(BaseYnpModule):
         if context.get('is_cloud', 'False') == 'True':
             return super().render_templates(context)
 
-        node_agent_enabled = False
         self._cleanup(context)
 
         try:
@@ -306,7 +305,6 @@ class InstallNodeAgent(BaseYnpModule):
                             json.dump(update_provider_data, f, indent=4)
                     self._create_instance_if_not_exists(context, provider_data)
                     context['provider_id'] = str(provider_data.get('uuid'))
-                    node_agent_enabled = provider_details.get('enableNodeAgent', False)
                 else:
                     logging.info("Generating provider create payload...")
                     provider_payload = self._generate_provider_payload(context)
@@ -319,7 +317,6 @@ class InstallNodeAgent(BaseYnpModule):
                         context.get('tmp_directory'), 'create_instance.json')
                     with open(instance_payload_file, 'w') as f:
                         json.dump(instance_create_payload, f, indent=4)
-                    node_agent_enabled = True
 
             except ValueError as json_err:
                 logging.error(f"Error parsing JSON response: {json_err}")
@@ -334,6 +331,4 @@ class InstallNodeAgent(BaseYnpModule):
         with open(add_node_payload_file, 'w') as f:
             json.dump(add_node_payload, f, indent=4)
 
-        if node_agent_enabled:
-            return super().render_templates(context)
-        return None
+        return super().render_templates(context)
