@@ -194,13 +194,13 @@ The [YugabyteDB Master Server](../../../architecture/yb-master/) (YB-Master) hos
 | SSTable size/Node | The size (in bytes) of all SST files. | |
 -->
 
+<!--
 ### CDC
 
 | Graph | Description | Use |
 | :--- | :--- | :--- |
 | | | |
 
-<!--
 ## Advanced metrics
 
 ### YSQL
