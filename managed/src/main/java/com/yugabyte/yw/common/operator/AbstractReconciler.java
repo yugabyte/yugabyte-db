@@ -66,6 +66,11 @@ public abstract class AbstractReconciler<T extends CustomResource<?, ?>>
       if (resourceInformer.hasSynced()) {
         break;
       }
+      try {
+        Thread.sleep(10);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
     }
     while (true) {
       try {

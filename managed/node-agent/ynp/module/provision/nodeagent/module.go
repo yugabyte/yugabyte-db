@@ -372,7 +372,6 @@ func (m *InstallNodeAgent) RenderTemplates(
 		return nil, nil
 	}
 	m.cleanup(ctx, values)
-	nodeAgentEnabled := false
 	provider, err := m.getProvider(ctx, values)
 	if err != nil && err != util.ErrNotExist {
 		return nil, err
@@ -423,7 +422,6 @@ func (m *InstallNodeAgent) RenderTemplates(
 			return nil, err
 		}
 		values["provider_id"] = provider.Uuid
-		nodeAgentEnabled = provider.Details.EnableNodeAgent
 	} else {
 		util.ConsoleLogger().Info(ctx, "Generating provider create payload...")
 		providerPayload, err := m.generateProviderPayload(values)
@@ -456,7 +454,6 @@ func (m *InstallNodeAgent) RenderTemplates(
 		if err := enc2.Encode(instanceCreatePayload); err != nil {
 			return nil, err
 		}
-		nodeAgentEnabled = true
 	}
 	nodeAlreadyExists := false
 	addNodePayload := m.generateAddNodePayload(values)
@@ -483,8 +480,5 @@ func (m *InstallNodeAgent) RenderTemplates(
 			return nil, err
 		}
 	}
-	if nodeAgentEnabled {
-		return m.BaseModule.RenderTemplates(ctx, values)
-	}
-	return nil, nil
+	return m.BaseModule.RenderTemplates(ctx, values)
 }

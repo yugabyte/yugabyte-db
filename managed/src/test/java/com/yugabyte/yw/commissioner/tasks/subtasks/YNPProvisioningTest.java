@@ -324,7 +324,6 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Path tempFile = Files.createTempFile("ynp-test-primary-", ".json");
     String outputPath = tempFile.toString();
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
-    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
     // Call the method
     ynpProvisioning.generateProvisionConfig(
         universe, primaryNode, provider, outputPath, nodeAgentHome, updatedUserIntent);
