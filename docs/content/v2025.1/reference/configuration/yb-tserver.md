@@ -1319,7 +1319,6 @@ Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architec
 
 {{% tags/wrap %}}
 
-
 Default: `4194304` (4MB)
 {{% /tags/wrap %}}
 
