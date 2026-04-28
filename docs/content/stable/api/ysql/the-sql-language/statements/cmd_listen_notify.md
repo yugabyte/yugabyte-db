@@ -3,6 +3,8 @@ title: LISTEN, NOTIFY, and UNLISTEN [YSQL]
 headerTitle: LISTEN, NOTIFY, and UNLISTEN
 linkTitle: LISTEN, NOTIFY, and UNLISTEN
 description: Use LISTEN, NOTIFY, and UNLISTEN for asynchronous notification between database sessions in YSQL.
+tags:
+  feature: early-access
 menu:
   stable_api:
     identifier: cmd_listen_notify
@@ -10,7 +12,7 @@ menu:
 type: docs
 ---
 
-LISTEN/NOTIFY provides a communication mechanism for a collection of processes accessing the same YSQL database. A session can register interest in a particular notification channel with `LISTEN`, and can send notifications to a channel with `NOTIFY`. `UNLISTEN` removes a previously registered listener.
+LISTEN/NOTIFY provides a communication mechanism for a collection of processes accessing the same YSQL database.
 
 ## Synopsis
 
@@ -20,7 +22,7 @@ LISTEN/NOTIFY provides a communication mechanism for a collection of processes a
 
 ## Syntax and SQL reference
 
-YSQL follows the same SQL forms as PostgreSQL. For complete syntax (including `LISTEN`, `NOTIFY`, and `UNLISTEN` variants), refer to the PostgreSQL documentation:
+YSQL follows the same SQL syntax as PostgreSQL. For complete syntax (including `LISTEN`, `NOTIFY`, and `UNLISTEN` variants), refer to the PostgreSQL documentation:
 
 - [NOTIFY](https://www.postgresql.org/docs/15/sql-notify.html)
 - [LISTEN](https://www.postgresql.org/docs/15/sql-listen.html)
@@ -30,33 +32,29 @@ Client library interaction (for example, polling for notifications via libpq or 
 
 ## Enabling LISTEN/NOTIFY in YugabyteDB
 
-LISTEN/NOTIFY is **disabled by default**. You must enable it on **both** `yb-master` and `yb-tserver` using the YSQL configuration parameter:
-
-| YSQL parameter | Default | Where to set |
-| :------------- | :------ | :----------- |
-| `yb_enable_listen_notify` | `false` | `yb-tserver` and `yb-master` (see [yb-tserver](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) and [yb-master](../../../../reference/configuration/yb-master/#ysql-yb-enable-listen-notify) configuration) |
+LISTEN/NOTIFY is **disabled by default**. You must enable it on **both** `yb-master` and `yb-tserver` by setting `yb_enable_listen_notify` to `true` (see [yb-tserver](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) and [yb-master](../../../../reference/configuration/yb-master/#ysql-yb-enable-listen-notify) configuration).
 
 After you enable the feature, the leader master creates internal objects (including the `yb_system` database and the `yb_system.pg_yb_notifications` table) in the background. If you run `LISTEN` or `NOTIFY` before those objects exist, you may see an error asking you to retry shortly; waiting a few seconds and retrying is expected during startup or right after turning the feature on.
 
 ## How notifications are delivered in YugabyteDB
 
-In vanilla PostgreSQL, notifications are written through shared memory. In YugabyteDB, `NOTIFY` (and the `pg_notify()` function) store notifications in the `yb_system.pg_yb_notifications` table. A per-node **notifications poller** reads that table using CDC-style logical replication (an internal logical replication slot on each tserver) and delivers the notifications to local listeners.
+In vanilla PostgreSQL, notifications are written through shared memory. In YugabyteDB, `NOTIFY` temporarily stores the notifications in the `yb_system.pg_yb_notifications` table. A per-node **notifications poller** reads that table using CDC-style logical replication (an internal logical replication slot on each tserver) and delivers the notifications to local listeners.
 
 Because the poller relies on logical replication internally, LISTEN/NOTIFY depends on the following replication-related YSQL parameters in addition to `yb_enable_listen_notify`.
 
 | YSQL parameter | Default (typical) | Role for LISTEN/NOTIFY |
 | :------------- | :---------------- | :---------------------- |
-| `yb_enable_replication_commands` | `true` (auto-promoted) | Must be **true** on **master and tserver**. If it is `false` on the tserver, the notifications poller fails to start. The master also uses this to allow creation of the internal logical replication stream that backs the per-node slot. |
-| `yb_enable_replication_slot_consumption` | `true` (auto-promoted) | Must be **true** on the **tserver** so the notifications poller can run. (If you explicitly disable it, `LISTEN` may fail when the poller starts.) |
-| `max_replication_slots` | `10` | Must be **greater than zero**, same as for any logical replication slot. The internal notifications slot counts toward this limit on each tserver. |
+| `yb_enable_replication_commands` | `true` | Must be **true** on the **tserver**. If `false`, the notifications poller fails to start. |
+| `yb_enable_replication_slot_consumption` | `true` | Must be **true** on the **tserver**. If `false`, the notifications poller fails to start. |
+| `max_replication_slots` | `10` | Each tserver creates one internal replication slot for LISTEN/NOTIFY. Ensure this limit is large enough to accommodate these slots alongside any user-created replication slots. |
 
 ## Differences from PostgreSQL
 
 | Aspect | PostgreSQL | YugabyteDB |
 | :----- | :--------- | :--------- |
-| **Sender identity** | The notification message contains the sender's PID. A listener can compare this PID with its own backend PID to ignore self-notifications. | The notification message still carries a PID, but in a multi-node cluster different tservers can have backends with the same PID. To reliably identify the sender, include the tserver UUID in the notification payload. A session can obtain its tserver UUID from the `uuid` column of `yb_servers()`. |
-| **`pg_notification_queue_usage()`** | Returns the usage fraction of the server's notification queue. | Returns the usage fraction of the **local tserver's** notification queue. |
-| **Behavior when the queue is full** | New `NOTIFY` calls fail (return an error) until the queue drains. | The **slowest listener** on that tserver is terminated so the queue tail can advance. Applications must handle disconnections by reconnecting and re-issuing `LISTEN`. |
+| Sender identity | The notification message contains the sender's PID. A listener can compare this PID with its own backend PID to ignore self-notifications. | The notification message still carries a PID, but in a multi-node cluster different tservers can have backends with the same PID. To reliably identify the sender, include the tserver UUID in the notification payload. A session can obtain its tserver UUID from the `uuid` column of `yb_servers()`. |
+| `pg_notification_queue_usage()` | Returns the usage fraction of the server's notification queue. | Returns the usage fraction of the **local tserver's** notification queue. |
+| Behavior when the queue is full | New `NOTIFY` calls fail (return an error) until the queue drains. | The **slowest listener** on that tserver is terminated so the queue tail can advance. Applications must handle disconnections by reconnecting and re-issuing `LISTEN`. |
 
 ## Advanced tuning (tserver only)
 
@@ -70,10 +68,9 @@ Because the poller relies on logical replication internally, LISTEN/NOTIFY depen
 ## Operational notes
 
 - Each tserver that runs a notifications poller creates a **named logical replication slot** derived from the node identity (`yb_notifications_<tserver-uuid>`). Do not drop or repurpose that slot for other work.
-- LISTEN/NOTIFY is supported when `yb_enable_listen_notify` is enabled. The [YugabyteDB Voyager known-issues](../../../../yugabyte-voyager/known-issues/postgresql) page may still reference older behavior where LISTEN/NOTIFY was a no-op.
 
 ## See also
 
-- [YugabyteDB yb-tserver YSQL / PostgreSQL configuration parameters](../../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters)
-- [CREATE_REPLICATION_SLOT](../streaming_create_repl_slot) (YugabyteDB logical replication and slots)
-- [PostgreSQL NOTIFY](https://www.postgresql.org/docs/15/sql-notify.html)
+- [yb-tserver configuration: yb_enable_listen_notify](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify)
+- [yb-master configuration: yb_enable_listen_notify](../../../../reference/configuration/yb-master/#ysql-yb-enable-listen-notify)
+- [PostgreSQL LISTEN](https://www.postgresql.org/docs/15/sql-listen.html), [NOTIFY](https://www.postgresql.org/docs/15/sql-notify.html), and [UNLISTEN](https://www.postgresql.org/docs/15/sql-unlisten.html)
