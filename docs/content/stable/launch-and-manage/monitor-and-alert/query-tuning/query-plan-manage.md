@@ -9,6 +9,8 @@ menu:
     identifier: query-plan-manage
     parent: query-tuning
     weight: 600
+tags:
+  feature: early-access
 type: docs
 ---
 
@@ -27,9 +29,11 @@ Query plan management (QPM) serves two main objectives:
 
 Because plans can change over time (you turn on the cost-based optimizer, for example), there is a chance a new plan for a query degrades performance. QPM provides views that capture all unique plans for a query so that you can look back and see when a plan changed. The entry for the old plan includes hints that can generate the same plan. You can then insert those hints into the hint plan table and get the old better-performing plan back.
 
+QPM features are available in v2025.2.3 and later.
+
 ## Using QPM
 
-QPM is enabled by default, and you view QPM data using two views:
+QPM is enabled by default (v2025.2.3 and later only), and you view QPM data using two views:
 
 - [yb_pg_stat_plans](#yb-pg-stat-plans)
 - [yb_pg_stat_plans_insights](#yb-pg-stat-plans-insights)
