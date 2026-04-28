@@ -40,13 +40,13 @@ After you enable the feature, the leader master creates internal objects (includ
 
 In vanilla PostgreSQL, notifications are written through shared memory. In YugabyteDB, `NOTIFY` temporarily stores the notifications in the `yb_system.pg_yb_notifications` table. A per-node **notifications poller** reads that table using CDC-style logical replication (an internal logical replication slot on each tserver) and delivers the notifications to local listeners.
 
-Because the poller relies on logical replication internally, LISTEN/NOTIFY depends on the following replication-related YSQL parameters in addition to `yb_enable_listen_notify`.
+Because the poller relies on logical replication internally, LISTEN/NOTIFY also depends on the following tserver flags.
 
-| YSQL parameter | Default (typical) | Role for LISTEN/NOTIFY |
+| tserver flag | Default | Role for LISTEN/NOTIFY |
 | :------------- | :---------------- | :---------------------- |
-| `yb_enable_replication_commands` | `true` | Must be **true** on the **tserver**. If `false`, the notifications poller fails to start. |
-| `yb_enable_replication_slot_consumption` | `true` | Must be **true** on the **tserver**. If `false`, the notifications poller fails to start. |
-| `max_replication_slots` | `10` | Each tserver creates one internal replication slot for LISTEN/NOTIFY. Ensure this limit is large enough to accommodate these slots alongside any user-created replication slots. |
+| `yb_enable_replication_commands` | `true` | Must be **true**. If `false`, the notifications poller fails to start. |
+| `yb_enable_replication_slot_consumption` | `true` | Must be **true**. If `false`, the notifications poller fails to start. |
+| `max_replication_slots` | `10` | LISTEN/NOTIFY creates one internal replication slot per listening node. Ensure this limit is large enough to accommodate it alongside any user-created replication slots. |
 
 ## Differences from PostgreSQL
 
@@ -60,7 +60,7 @@ Because the poller relies on logical replication internally, LISTEN/NOTIFY depen
 
 `yb_notifications_poll_sleep_duration_nonempty_ms` and `yb_notifications_poll_sleep_duration_empty_ms` are **poller-only** settings that control how long the notifications poller waits before polling again after a non-empty or empty result, respectively.
 
-| YSQL parameter | Default | Description |
+| tserver flag | Default | Description |
 | :------------- | :------ | :---------- |
 | `yb_notifications_poll_sleep_duration_nonempty_ms` | `1` | Wait time in milliseconds before the next poll when the previous poll returned data. |
 | `yb_notifications_poll_sleep_duration_empty_ms` | `100` | Wait time in milliseconds before the next poll when the previous poll returned no data. |
