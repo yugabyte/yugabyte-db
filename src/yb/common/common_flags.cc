@@ -169,11 +169,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidation_messages, true,
     "True to enable invalidation messages");
 
 // Keep in sync with the same definition in ybc_guc.h
-#ifdef NDEBUG
-constexpr bool kEnableDdlTransactionBlocks = true;
-#else
 constexpr bool kEnableDdlTransactionBlocks = false;
-#endif
 DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_ddl_transaction_block_enabled, kEnableDdlTransactionBlocks,
     "If true, DDL operations in YSQL will execute within the active transaction"
     "block instead of their separate transactions. Ensure DDL atomicity is "
@@ -219,11 +215,7 @@ DEFINE_RUNTIME_uint64(refresh_waiter_timeout_ms, 30000,
 TAG_FLAG(refresh_waiter_timeout_ms, advanced);
 TAG_FLAG(refresh_waiter_timeout_ms, hidden);
 
-#ifdef NDEBUG
-constexpr bool kEnableObjectLockingForTableLocks = kEnableDdlTransactionBlocks;
-#else
 constexpr bool kEnableObjectLockingForTableLocks = false;
-#endif
 DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     kEnableObjectLockingForTableLocks,
     "This flag enables the object lock APIs provided by tservers and masters - "
