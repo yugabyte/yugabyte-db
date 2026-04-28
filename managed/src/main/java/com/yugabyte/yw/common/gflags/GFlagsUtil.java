@@ -88,7 +88,7 @@ public class GFlagsUtil {
   // handling of both cgroup v1 and v2.
   public static final String YSQL_CGROUP_PATH = "ysql";
 
-  private static final int DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED = 90;
+  private static final String DEFAULT_MAX_MEMORY_USAGE_RATIO_FOR_DEDICATED = "0.9";
   private static final int DEFAULT_LOAD_BALANCER_INITIAL_DELAY_SECS = 480;
 
   public static final String DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO =
@@ -341,8 +341,7 @@ public class GFlagsUtil {
 
     if (node.dedicatedTo != null) {
       extra_gflags.put(
-          DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO,
-          String.valueOf(DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED));
+          DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO, DEFAULT_MAX_MEMORY_USAGE_RATIO_FOR_DEDICATED);
     }
 
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound()) {
