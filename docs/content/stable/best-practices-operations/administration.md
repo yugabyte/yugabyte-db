@@ -76,8 +76,7 @@ Enforce DDL serialization at the application and operational level:
 - Wait for each DDL to fully complete before issuing the next statement.
 - Implement client-side retry logic for schema mismatch and catalog version mismatch errors in any [DML that may overlap with DDL windows](#concurrent-dml-during-a-ddl-operation).  
 - Schedule DDL during maintenance windows to minimize overlap with application DML traffic, backup jobs, and other administrative operations.
-- Run DDL and backup jobs separately. DDL verification states can block backup and restore operations. 
-- Enable Point-in-Time Recovery (PITR) as a safety net before performing schema changes, to allow [rollback](../../explore/cluster-management/point-in-time-recovery-ysql/#undo-metadata-changes) if DDL operations leave the database in an inconsistent state.
+- In versions earlier than v2025.1.1, DDL verification states can block backup and restore operations; run DDL and backup jobs separately. (In v2025.2.1 and later, taking YSQL backups during DDL operations is supported by default, and backups succeed even in case of concurrent DDLs.)
 
 ## Preload PostgreSQL system catalog entries into the local catalog cache
 
