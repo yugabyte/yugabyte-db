@@ -60,7 +60,7 @@ Client library interaction (for example, polling for notifications via libpq or 
 
 ## Enabling LISTEN/NOTIFY in YugabyteDB
 
-LISTEN/NOTIFY is **disabled by default**. You must enable it on **both** `yb-master` and `yb-tserver` by setting `ysql_yb_enable_listen_notify` to `true` (see [yb-tserver](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) and [yb-master](../../../../reference/configuration/yb-master/#ysql-yb-enable-listen-notify) configuration).
+LISTEN/NOTIFY is **disabled by default**. You must enable it on **both** `yb-master` and `yb-tserver` by setting `ysql_yb_enable_listen_notify` to `true` (see [yb-tserver](../../../../../reference/configuration/yb-tserver/#ysql-yb-enable-listen-notify) and [yb-master](../../../../../reference/configuration/yb-master/#ysql-yb-enable-listen-notify) configuration).
 
 After you enable the feature, the leader master creates internal objects (including the `yb_system` database and the `yb_system.pg_yb_notifications` table) in the background. If you run `LISTEN` or `NOTIFY` before those objects exist, you may see an error asking you to retry shortly; waiting a few seconds and retrying is expected during startup or right after turning the feature on.
 
