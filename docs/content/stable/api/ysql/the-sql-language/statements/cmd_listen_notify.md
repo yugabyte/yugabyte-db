@@ -20,6 +20,34 @@ LISTEN/NOTIFY provides a communication mechanism for a collection of processes a
 - `NOTIFY` (or the `pg_notify()` function) sends a notification on a channel, optionally with a payload.
 - `UNLISTEN` removes one or more listener registrations for the current session.
 
+## Examples
+
+```sql
+LISTEN virtual;
+NOTIFY virtual;
+```
+
+```output
+Asynchronous notification "virtual" received from server process with PID 8448.
+```
+
+```sql
+NOTIFY virtual, 'This is the payload';
+```
+
+```output
+Asynchronous notification "virtual" with payload "This is the payload" received from server process with PID 8448.
+```
+
+```sql
+LISTEN foo;
+SELECT pg_notify('fo' || 'o', 'pay' || 'load');
+```
+
+```output
+Asynchronous notification "foo" with payload "payload" received from server process with PID 8448.
+```
+
 ## Syntax and SQL reference
 
 YSQL follows the same SQL syntax as PostgreSQL. For complete syntax, refer to the PostgreSQL documentation:
