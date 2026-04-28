@@ -1226,7 +1226,7 @@ The following flag controls the LISTEN/NOTIFY feature on the master. To learn ab
 ##### --ysql_yb_enable_listen_notify
 
 {{% tags/wrap %}}
-{{<tags/feature/master>}}
+{{<tags/feature/t-server>}}
 Default: `false`
 {{% /tags/wrap %}}
 
