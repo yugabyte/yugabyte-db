@@ -256,7 +256,7 @@ export interface CreateDrConfigRequest {
       storageConfigUUID: string;
     };
   };
-  pitrParams: {
+  pitrParams?: {
     retentionPeriodSec: number;
   };
 
