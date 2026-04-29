@@ -172,7 +172,7 @@ public class BackupRequestParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.2.2.0")
   @Getter
   @Setter
-  private Boolean backupStats = false;
+  private Boolean backupStats = true;
 
   // Intermediate states to resume ybc backups
   public UUID backupUUID;
