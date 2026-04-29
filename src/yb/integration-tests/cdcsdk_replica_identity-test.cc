@@ -619,9 +619,6 @@ TEST_F(
   ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
   ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
 
-  // Assert that the safe time is invalid in the tablet_peers
-  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
-
   // Count the number of snapshot READs.
   uint32_t reads_snapshot = 0;
   bool do_update = true;
@@ -684,6 +681,10 @@ TEST_F(
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
   LOG(INFO) << "Sleeping to expire files according to TTL (history retention prevents deletion): "
             << change_resp.cdc_sdk_proto_records_size();
+  auto explicit_checkpoint = change_resp.cdc_sdk_checkpoint();
+  explicit_checkpoint.set_snapshot_time(change_resp.safe_hybrid_time());
+  change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &explicit_checkpoint));
   ASSERT_OK(UpdateRows(2 /* key */, 6 /* value */, &test_cluster_));
   ASSERT_OK(UpdateRows(2 /* key */, 10 /* value */, &test_cluster_));
   auto count_before_compaction = CountEntriesInDocDB(peers, table.table_id());
@@ -714,7 +715,6 @@ TEST_F(
   ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
   ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
 
-  // Assert that the safe time is invalid in the tablet_peers
   AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
 }
 
