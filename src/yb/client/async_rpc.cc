@@ -396,6 +396,7 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
       return;
     }
 
+    ts_proxy_ = tablet_invoker_.proxy();
     CallRemoteMethod();
   };
 
@@ -715,8 +716,7 @@ WriteRpc::~WriteRpc() {
 }
 
 void WriteRpc::CallRemoteMethod() {
-  ts_proxy_ = tablet_invoker_.proxy();
-  ts_proxy_->WriteAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
+  ts_proxy()->WriteAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
 Status WriteRpc::SwapResponses() {
@@ -815,6 +815,7 @@ ReadRpc::ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_lev
   VTRACE_TO(1, trace_, "Tablet $0 table $1", data.tablet->tablet_id(), table()->name().ToString());
   req_.set_consistency_level(yb_consistency_level);
   req_.set_proxy_uuid(data.batcher->proxy_uuid());
+  req_.set_use_async_write(data.use_async_write);
 
   switch (table()->table_type()) {
     case YBTableType::REDIS_TABLE_TYPE:
@@ -856,8 +857,7 @@ ReadRpc::~ReadRpc() {
 
 void ReadRpc::CallRemoteMethod() {
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
-  tablet_invoker_.proxy()->ReadAsync(
-      req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
+  ts_proxy()->ReadAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
 Status ReadRpc::SwapResponses() {

@@ -74,22 +74,22 @@ Status WriteOperation::DoAborted(const Status& status) {
 }
 
 void WriteOperation::SetAsyncWrite(AsyncWriteCallback callback) {
-  added_to_leader_callback_ = std::move(callback);
+  async_write_callback_ = std::move(callback);
 }
 
 void WriteOperation::AddedAsPending(const TabletPtr& tablet) {
-  if (added_to_leader_callback_) {
+  if (async_write_callback_) {
     Status complete_status;
     auto status = DoReplicated(op_id().term, &complete_status);
     if (!status.ok()) {
       complete_status = status;
     }
     if (complete_status.ok()) {
-      added_to_leader_callback_(op_id());
+      async_write_callback_(op_id());
     } else {
-      added_to_leader_callback_(complete_status);
+      async_write_callback_(complete_status);
     }
-    added_to_leader_callback_ = {};
+    async_write_callback_ = {};
   }
 }
 

@@ -97,6 +97,8 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }
   const InFlightOps& ops() const { return ops_; }
 
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy() const { return ts_proxy_; }
+
  protected:
   void Finished(const Status& status) override;
 
@@ -140,6 +142,8 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   CoarseTimePoint start_;
   std::shared_ptr<AsyncRpcMetrics> async_rpc_metrics_;
   rpc::RpcCommandPtr retained_self_;
+
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
 };
 
 template <class Req, class Resp>
@@ -186,14 +190,10 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
 
   std::string GetRpcName() override { return "Write"; }
 
-  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy() const { return ts_proxy_; }
-
  private:
   Status SwapResponses() override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
-
-  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
 };
 
 class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {
