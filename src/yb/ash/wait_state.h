@@ -328,6 +328,7 @@ struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
   Uuid top_level_node_id = Uuid::Nil();
   uint64_t query_id = 0;
+  uint64_t plan_id = 0;
   pid_t pid = 0;
   uint32_t database_id = 0;
   uint32_t user_id = 0;
@@ -349,6 +350,9 @@ struct AshMetadata {
     }
     if (other.query_id != 0) {
       query_id = other.query_id;
+    }
+    if (other.plan_id != 0) {
+      plan_id = other.plan_id;
     }
     if (other.pid != 0) {
       pid = other.pid;
@@ -403,6 +407,11 @@ struct AshMetadata {
     } else {
       pb->clear_query_id();
     }
+    if (plan_id != 0) {
+      pb->set_plan_id(plan_id);
+    } else {
+      pb->clear_plan_id();
+    }
     if (pid != 0) {
       pb->set_pid(pid);
     } else {
@@ -454,15 +463,16 @@ struct AshMetadata {
       }
     }
     return AshMetadata{
-        root_request_id,                       // root_request_id
-        top_level_node_id,                     // top_level_node_id
-        pb.query_id(),                         // query_id
-        pb.pid(),                              // pid
-        pb.database_id(),                      // database_id
-        pb.user_id(),                          // user_id
-        pb.rpc_request_id(),                   // rpc_request_id
-        HostPortFromPB(pb.client_host_port()), // client_host_port
-        static_cast<uint8_t>(pb.addr_family()) // addr_family
+        root_request_id,                        // root_request_id
+        top_level_node_id,                      // top_level_node_id
+        pb.query_id(),                          // query_id
+        pb.plan_id(),                           // plan_id
+        pb.pid(),                               // pid
+        pb.database_id(),                       // database_id
+        pb.user_id(),                           // user_id
+        pb.rpc_request_id(),                    // rpc_request_id
+        HostPortFromPB(pb.client_host_port()),  // client_host_port
+        static_cast<uint8_t>(pb.addr_family()), // addr_family
     };
   }
 };

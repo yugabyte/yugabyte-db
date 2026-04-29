@@ -148,7 +148,8 @@ CREATE OR REPLACE FUNCTION
                             OUT ysql_dbid OID,
                             OUT wait_event_code INT8,
                             OUT pss_mem_bytes INT8,
-                            OUT ysql_userid OID)
+                            OUT ysql_userid OID,
+                            OUT plan_id INT8)
 RETURNS SETOF RECORD
 LANGUAGE INTERNAL
 VOLATILE ROWS 100000 PARALLEL RESTRICTED

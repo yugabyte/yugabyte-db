@@ -2700,8 +2700,9 @@ yb_active_session_history| SELECT yb_active_session_history.sample_time,
     yb_active_session_history.ysql_dbid,
     yb_active_session_history.wait_event_code,
     yb_active_session_history.pss_mem_bytes,
-    yb_active_session_history.ysql_userid
-   FROM yb_active_session_history() yb_active_session_history(sample_time, root_request_id, rpc_request_id, wait_event_component, wait_event_class, wait_event, top_level_node_id, query_id, pid, client_node_ip, wait_event_aux, sample_weight, wait_event_type, ysql_dbid, wait_event_code, pss_mem_bytes, ysql_userid);
+    yb_active_session_history.ysql_userid,
+    yb_active_session_history.plan_id
+   FROM yb_active_session_history() yb_active_session_history(sample_time, root_request_id, rpc_request_id, wait_event_component, wait_event_class, wait_event, top_level_node_id, query_id, pid, client_node_ip, wait_event_aux, sample_weight, wait_event_type, ysql_dbid, wait_event_code, pss_mem_bytes, ysql_userid, plan_id);
 yb_local_tablets| SELECT yb_local_tablets.tablet_id,
     yb_local_tablets.table_id,
     yb_local_tablets.table_type,

@@ -42,7 +42,8 @@ Status VerifyMetadata(const AshMetadata& metadata, const YbcPgAshConfig& config)
   SCHECK(metadata.query_id != 0, IllegalState, "Query ID is zero, which is not expected.");
   RETURN_NOT_OK(VerifyField(metadata.root_request_id, root_request_id, "Root request ID"));
   RETURN_NOT_OK(VerifyField(metadata.top_level_node_id, top_level_node_id, "Top level node ID"));
-  RETURN_NOT_OK(VerifyField(metadata.query_id, config.metadata->query_id, "Query ID"));
+  RETURN_NOT_OK(VerifyField(metadata.query_id, config.metadata->qp.query_id, "Query ID"));
+  RETURN_NOT_OK(VerifyField(metadata.plan_id, config.metadata->qp.plan_id, "Plan ID"));
   RETURN_NOT_OK(VerifyField(metadata.pid, config.metadata->pid, "PID"));
   RETURN_NOT_OK(VerifyField(metadata.database_id, config.metadata->database_id, "Database ID"));
   RETURN_NOT_OK(VerifyField(metadata.user_id, config.metadata->user_id, "User ID"));
@@ -61,7 +62,8 @@ PgWaitStateInfo::PgWaitStateInfo(std::reference_wrapper<const YbcPgAshConfig> co
       cached_metadata_({
         .top_level_node_id = Uuid::TryFullyDecode(
             Slice(config.get().top_level_node_id, sizeof(config.get().top_level_node_id))),
-        .query_id = config.get().metadata->query_id,
+        .query_id = config.get().metadata->qp.query_id,
+        .plan_id = config.get().metadata->qp.plan_id,
         .pid = config.get().metadata->pid,
         .database_id = config.get().metadata->database_id,
         .user_id = config.get().metadata->user_id,
@@ -71,7 +73,8 @@ PgWaitStateInfo::PgWaitStateInfo(std::reference_wrapper<const YbcPgAshConfig> co
 }
 
 AshMetadata PgWaitStateInfo::metadata() {
-  cached_metadata_.query_id = config_.metadata->query_id;
+  cached_metadata_.query_id = config_.metadata->qp.query_id;
+  cached_metadata_.plan_id = config_.metadata->qp.plan_id;
   cached_metadata_.root_request_id = Uuid::TryFullyDecode(
       Slice(config_.metadata->root_request_id, sizeof(config_.metadata->root_request_id)));
   cached_metadata_.database_id = config_.metadata->database_id;

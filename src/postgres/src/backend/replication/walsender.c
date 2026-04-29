@@ -338,7 +338,10 @@ InitWalSender(void)
 	lag_tracker = MemoryContextAllocZero(TopMemoryContext, sizeof(LagTracker));
 
 	if (IsYugaByteEnabled())
-		MyProc->yb_ash_metadata.query_id = YBCGetConstQueryId(QUERY_ID_TYPE_WALSENDER);
+		MyProc->yb_ash_metadata.qp =
+			(YbcAshQueryPlanPair){
+			YBCGetConstQueryId(QUERY_ID_TYPE_WALSENDER),
+			YB_ASH_DEFAULT_PLAN_ID};
 }
 
 /*

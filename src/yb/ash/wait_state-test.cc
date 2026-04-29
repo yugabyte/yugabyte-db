@@ -35,6 +35,7 @@ AshMetadata GenerateRandomMetadata() {
       .root_request_id{Uuid::Generate()},
       .top_level_node_id{Uuid::Generate()},
       .query_id = RandomUniformInt<uint64_t>(),
+      .plan_id = RandomUniformInt<uint64_t>(),
       .pid = RandomUniformInt<pid_t>(),
       .database_id = RandomUniformInt<uint32_t>(),
       .user_id = RandomUniformInt<uint32_t>(),
@@ -52,6 +53,7 @@ void testToAndFromPB() {
   ASSERT_EQ(meta1.root_request_id, meta2.root_request_id);
   ASSERT_EQ(meta1.top_level_node_id, meta2.top_level_node_id);
   ASSERT_EQ(meta1.query_id, meta2.query_id);
+  ASSERT_EQ(meta1.plan_id, meta2.plan_id);
   ASSERT_EQ(meta1.pid, meta2.pid);
   ASSERT_EQ(meta1.database_id, meta2.database_id);
   ASSERT_EQ(meta1.user_id, meta2.user_id);
@@ -71,12 +73,14 @@ TEST(WaitStateTest, TestUpdate) {
   auto pb1_root_request_id = Uuid::Generate();
   pb1_root_request_id.ToBytes(pb1.mutable_root_request_id());
   pb1.set_query_id(RandomUniformInt<uint64_t>());
+  pb1.set_plan_id(RandomUniformInt<uint64_t>());
   pb1.set_pid(RandomUniformInt<pid_t>());
   HostPortToPB(RandomHostPort(), pb1.mutable_client_host_port());
   meta1.UpdateFrom(AshMetadata::FromPB(pb1));
   ASSERT_EQ(meta1.root_request_id, pb1_root_request_id);
   ASSERT_EQ(meta1.top_level_node_id, meta1_copy.top_level_node_id);
   ASSERT_EQ(meta1.query_id, pb1.query_id());
+  ASSERT_EQ(meta1.plan_id, pb1.plan_id());
   ASSERT_EQ(meta1.pid, pb1.pid());
   ASSERT_EQ(meta1.database_id, meta1_copy.database_id);
   ASSERT_EQ(meta1.user_id, meta1_copy.user_id);
@@ -93,6 +97,7 @@ TEST(WaitStateTest, TestUpdate) {
   ASSERT_EQ(meta1.root_request_id, meta1_copy.root_request_id);
   ASSERT_EQ(meta1.top_level_node_id, pb2_top_level_node_id);
   ASSERT_EQ(meta1.query_id, meta1_copy.query_id);
+  ASSERT_EQ(meta1.plan_id, meta1_copy.plan_id);
   ASSERT_EQ(meta1.pid, meta1_copy.pid);
   ASSERT_EQ(meta1.user_id, meta1_copy.user_id);
   ASSERT_EQ(meta1.rpc_request_id, pb2.rpc_request_id());
