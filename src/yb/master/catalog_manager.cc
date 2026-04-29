@@ -3606,9 +3606,9 @@ Status CatalogManager::ValidateSplitCandidate(
 Status CatalogManager::ValidateSplitCandidateUnlocked(
     const TabletInfoPtr& tablet, const ManualSplit is_manual_split) {
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
-  const IgnoreVectorIndexes ignore_vector_indexes { is_manual_split.get() };
+  const IgnoreVectorIndexesValidation ignore_vector_indexes_validation { is_manual_split.get() };
   RETURN_NOT_OK(master_->tablet_split_manager().ValidateSplitCandidateTable(
-      tablet->table(), ignore_disabled_list, ignore_vector_indexes));
+      tablet->table(), ignore_disabled_list, ignore_vector_indexes_validation));
   RETURN_NOT_OK(XReplValidateSplitCandidateTableUnlocked(tablet->table()->id()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };

@@ -44,25 +44,23 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 
-using std::vector;
-
 DEFINE_RUNTIME_int32(process_split_tablet_candidates_interval_msec, 0,
-             "The minimum time between automatic splitting attempts. The actual splitting time "
-             "between runs is also affected by catalog_manager_bg_task_wait_ms, which controls how "
-             "long the bg tasks thread sleeps at the end of each loop. The top-level automatic "
-             "tablet splitting method, which checks for the time since last run, is run once per "
-             "loop.");
+    "The minimum time between automatic splitting attempts. The actual splitting time "
+    "between runs is also affected by catalog_manager_bg_task_wait_ms, which controls how "
+    "long the bg tasks thread sleeps at the end of each loop. The top-level automatic "
+    "tablet splitting method, which checks for the time since last run, is run once per "
+    "loop.");
 DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
 DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 0,
-              "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
-              "value is set to 0.");
+    "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
+    "value is set to 0.");
 
 DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit_per_tserver, 1,
-              "Limit of the number of outstanding tablet splits per node. Limitation is disabled "
-              "if this value is set to 0.");
+    "Limit of the number of outstanding tablet splits per node. Limitation is disabled "
+    "if this value is set to 0.");
 
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 
@@ -70,21 +68,24 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_pitr_tables, true,
     "When set, it enables automatic tablet splitting of tables covered by "
     "Point In Time Restore schedules.");
 
+DEFINE_RUNTIME_bool(enable_tablet_split_of_tables_with_vector_index, false,
+    "When set, it enables automatic tablet splitting for tables with vector indexes");
+
 DEFINE_RUNTIME_uint64(tablet_split_limit_per_table, 0,
-              "Limit of the number of tablets per table for tablet splitting. Limitation is "
-              "disabled if this value is set to 0.");
+    "Limit of the number of tablets per table for tablet splitting. Limitation is "
+    "disabled if this value is set to 0.");
 
 DEFINE_RUNTIME_uint64(prevent_split_for_ttl_tables_for_seconds, 86400,
-              "Seconds between checks for whether to split a table with TTL. Checks are disabled "
-              "if this value is set to 0.");
+    "Seconds between checks for whether to split a table with TTL. Checks are disabled "
+    "if this value is set to 0.");
 
 DEFINE_RUNTIME_uint64(prevent_split_for_small_key_range_tablets_for_seconds, 300,
-              "Seconds between checks for whether to split a tablet whose key range is too small "
-              "to be split. Checks are disabled if this value is set to 0.");
+    "Seconds between checks for whether to split a tablet whose key range is too small "
+    "to be split. Checks are disabled if this value is set to 0.");
 
 DEFINE_RUNTIME_bool(sort_automatic_tablet_splitting_candidates, true,
-            "Whether we should sort candidates for new automatic tablet splits, so the largest "
-            "candidates are picked first.");
+    "Whether we should sort candidates for new automatic tablet splits, so the largest "
+    "candidates are picked first.");
 
 DEFINE_RUNTIME_double(tablet_split_min_size_ratio, 0.8,
     "If sorting by size is enabled, a tablet will only be considered for splitting if the ratio "
@@ -95,7 +96,7 @@ DEFINE_RUNTIME_double(tablet_split_min_size_ratio, 0.8,
     "(even if that means waiting for existing splits to complete).");
 
 DEFINE_test_flag(bool, skip_partitioning_version_validation, false,
-                 "When set, skips partitioning_version checks to prevent tablet splitting.");
+    "When set, skips partitioning_version checks to prevent tablet splitting.");
 
 DEFINE_RUNTIME_int32(inflight_splits_completion_timeout_secs, 600,
     "Total time to wait for all inflight splits to complete during Restore.");
@@ -237,7 +238,7 @@ Status TabletSplitManager::ValidatePartitioningVersion(const TableInfo& table) {
 Status TabletSplitManager::ValidateSplitCandidateTable(
     const TableInfoPtr& table,
     const IgnoreDisabledList ignore_disabled_lists,
-    const IgnoreVectorIndexes ignore_vector_indexes) {
+    const IgnoreVectorIndexesValidation ignore_vector_indexes_validation) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
@@ -261,7 +262,8 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         *table);
   }
 
-  if (!ignore_vector_indexes) {
+  if (!ignore_vector_indexes_validation &&
+      !FLAGS_enable_tablet_split_of_tables_with_vector_index) {
     for (const auto& index : table_lock->pb.indexes()) {
       if (index.has_vector_idx_options()) {
         return STATUS_FORMAT(
@@ -821,7 +823,7 @@ void TabletSplitManager::DoSplitting(
   // splitting. This is most critical for tables that frequently switch between being valid and
   // invalid for splitting (e.g. for tables with frequent PITR schedules).
   // https://github.com/yugabyte/yugabyte-db/issues/11459
-  vector<TableInfoPtr> valid_tables;
+  std::vector<TableInfoPtr> valid_tables;
   for (const auto& table : tables) {
     Status status = ValidateSplitCandidateTable(table);
     if (!status.ok()) {
