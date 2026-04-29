@@ -1720,7 +1720,7 @@ Status RaftGroupMetadata::set_all_cdc_retention_barriers(
   return Flush();
 }
 
-Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
+Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
     bool require_history_cutoff, bool initial_retention_barrier) {
 
@@ -1730,7 +1730,18 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
   // WAL retention
   //  cdc_min_replicated_index : indicates if a WAL segment is being used by CDC
   //                             and thus impacts GC of the WAL segments
-  if (!initial_retention_barrier || cdc_min_replicated_index() > cdc_wal_index) {
+  if (!initial_retention_barrier) {
+    if (cdc_min_replicated_index() < cdc_wal_index) {
+      VLOG_WITH_PREFIX(1) << "Moving cdc_min_replicated index WAL retention barrier to "
+                          << cdc_wal_index;
+      set_cdc_min_replicated_index_check = true;
+    } else {
+      VLOG_WITH_PREFIX(1) << "Skipping moving cdc_min_replicated index WAL retention barrier. "
+                          << "The barrier is set at " << cdc_min_replicated_index()
+                          << ", current requirement is for " << cdc_wal_index
+                          << ", cannot move the barrier backwards.";
+    }
+  } else if (cdc_min_replicated_index() > cdc_wal_index) {
     VLOG_WITH_PREFIX(1) << "Setting cdc_min_replicated index WAL retention barrier to "
                         << cdc_wal_index;
     set_cdc_min_replicated_index_check = true;
@@ -1742,7 +1753,17 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
 
   // History Retention
   if (require_history_cutoff) {
-    if (!initial_retention_barrier ||
+    if (!initial_retention_barrier) {
+      if (cdc_sdk_safe_time() < cdc_sdk_history_cutoff) {
+        VLOG_WITH_PREFIX(1) << "Moving history retention barrier to " << cdc_sdk_history_cutoff;
+        set_cdc_sdk_safe_time_check = true;
+      } else {
+        VLOG_WITH_PREFIX(1) << "Skipping moving history retention barrier. "
+                            << "The barrier is set at " << cdc_sdk_safe_time()
+                            << ", current requirement is for " << cdc_sdk_history_cutoff
+                            << ", cannot move the barrier backwards.";
+      }
+    } else if (
         cdc_sdk_safe_time() == HybridTime::kInvalid ||
         cdc_sdk_safe_time() > cdc_sdk_history_cutoff) {
       VLOG_WITH_PREFIX(1) << "Setting history retention barrier to " << cdc_sdk_history_cutoff;
@@ -1756,7 +1777,17 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
 
   // Intents Retention
   //  set_cdc_sdk_min_checkpoint_op_id - opid beyond which GC will not happen
-  if (!initial_retention_barrier ||
+  if (!initial_retention_barrier) {
+    if (cdc_sdk_min_checkpoint_op_id() < cdc_sdk_intents_op_id) {
+      VLOG_WITH_PREFIX(1) << "Moving intents retention barrier to " << cdc_sdk_intents_op_id;
+      set_cdc_min_checkpoint_op_id_check = true;
+    } else {
+      VLOG_WITH_PREFIX(1) << "Skipping moving intents retention barrier. "
+                          << "The barrier is set at " << cdc_sdk_min_checkpoint_op_id()
+                          << ", current requirement is for " << cdc_sdk_intents_op_id
+                          << ", cannot move the barrier backwards.";
+    }
+  } else if (
       cdc_sdk_min_checkpoint_op_id() == OpId::Invalid() ||
       cdc_sdk_min_checkpoint_op_id() > cdc_sdk_intents_op_id) {
     VLOG_WITH_PREFIX(1) << "Setting intents retention barrier to " << cdc_sdk_intents_op_id;
@@ -1778,7 +1809,7 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
                                                 set_cdc_sdk_safe_time_check));
   }
 
-  return set_cdc_min_checkpoint_op_id_check;
+  return Status::OK();
 }
 
 std::string RaftGroupMetadata::AllCDCRetentionBarriersToString() const {

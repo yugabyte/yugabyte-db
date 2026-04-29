@@ -2628,21 +2628,31 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
     StreamIdSet* slot_entries_to_be_deleted,
     const std::unordered_map<NamespaceId, uint64_t>& namespace_to_min_record_id_commit_time,
     TableIdToStreamIdMap* expired_tables_map) {
+  DCHECK(stream_metadata.GetSourceType() == CDCSDK);
   const auto& stream_id = entry.key.stream_id;
   const auto& tablet_id = entry.key.tablet_id;
   const auto& checkpoint = *entry.checkpoint;
 
+  bool is_before_image_active = false;
+  bool before_image_not_found = false;
   auto is_before_image_active_result =
       CheckBeforeImageActive(tablet_id, stream_metadata, tablet_peer);
   if (!is_before_image_active_result.ok()) {
     LOG(WARNING) << "Unable to obtain before image / replica identity information for tablet: "
                  << tablet_id << " in stream " << stream_id.ToString() << ": "
                  << is_before_image_active_result.status();
-    return;
+    before_image_not_found = true;
+  } else {
+    is_before_image_active = *is_before_image_active_result;
   }
-  bool is_before_image_active = *is_before_image_active_result;
 
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
+
+  // Do not move the history barriers if the requirement of before image could not be discerned.
+  if (before_image_not_found) {
+    cdc_sdk_safe_time = HybridTime::kInitial;
+  }
+
   // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
   // taking the snapshot of any table.
   // TODO(#26427): We will also set the cdc_sdk_safe_time for sys catalog tablet but this will not
@@ -2702,62 +2712,59 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
   // Check stream associated with the tablet is active or not.
   // Don't consider those inactive stream for the min_checkpoint calculation.
   int64_t latest_active_time = 0;
-  if (stream_metadata.GetSourceType() == CDCSDK) {
-    // Support backward compatibility, where active_time as not part of cdc_state table.
-    if (last_active_time_cdc_state_table == std::numeric_limits<int64_t>::min()) {
-      LOG(WARNING)
-          << "In previous server version, active time was not part of cdc_state table,"
-             "as a part of upgrade, updating the active time forcefully for the tablet_id: "
-          << tablet_id;
-      last_active_time_cdc_state_table = GetCurrentTimeMicros();
-    }
-    auto status = CheckTabletNotOfInterest(
-        producer_tablet, last_active_time_cdc_state_table, /*deletion_check=*/true);
-    if (!status.ok()) {
-      // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
-      // such entries to the expired_tables_map.
-      if (expired_tables_map && checkpoint != OpId::Max() &&
-          !IsReplicationSlotStream(stream_metadata)) {
-        AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
-      }
-
-      if (!tablet_min_checkpoint_map.contains(tablet_id)) {
-        VLOG(2) << "Stream: " << stream_id << ", is not of interest for tablet: " << tablet_id
-                << ", hence we are adding default entries to tablet_min_checkpoint_map";
-        auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
-        tablet_info.cdc_sdk_op_id = OpId::Max();
-        tablet_info.cdc_sdk_safe_time = HybridTime::kInvalid;
-      }
-      return;
-    }
-    status = CheckStreamActive(producer_tablet, last_active_time_cdc_state_table);
-    if (!status.ok()) {
-      // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
-      // such entries to the expired_tables_map.
-      if (expired_tables_map && checkpoint != OpId::Max() &&
-          !IsReplicationSlotStream(stream_metadata)) {
-        AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
-      }
-
-      // It is possible that all streams associated with a tablet have expired, in which case we
-      // have to create a default entry in 'tablet_min_checkpoint_map' corresponding to the
-      // tablet. This way the fact that all the streams have expired will be communicated to the
-      // tablet_peer as well, through the method: "UpdateTabletPeersWithMinReplicatedIndex". If
-      // 'tablet_min_checkpoint_map' already had an entry corresponding to the tablet, then
-      // either we already saw an inactive stream assocaited with the tablet and created the
-      // default entry or we saw an active stream and the map has a legitimate entry, in both
-      // cases repopulating the map is not needed.
-      if (tablet_min_checkpoint_map.find(tablet_id) == tablet_min_checkpoint_map.end()) {
-        VLOG(2) << "Stream: " << stream_id << ", is expired for tablet: " << tablet_id
-                << ", hence we are adding default entries to tablet_min_checkpoint_map";
-        auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
-        tablet_info.cdc_sdk_op_id = OpId::Max();
-        tablet_info.cdc_sdk_safe_time = HybridTime::kInvalid;
-      }
-      return;
-    }
-    latest_active_time = last_active_time_cdc_state_table;
+  // Support backward compatibility, where active_time as not part of cdc_state table.
+  if (last_active_time_cdc_state_table == std::numeric_limits<int64_t>::min()) {
+    LOG(WARNING) << "In previous server version, active time was not part of cdc_state table,"
+                    "as a part of upgrade, updating the active time forcefully for the tablet_id: "
+                 << tablet_id;
+    last_active_time_cdc_state_table = GetCurrentTimeMicros();
   }
+  auto status = CheckTabletNotOfInterest(
+      producer_tablet, last_active_time_cdc_state_table, /*deletion_check=*/true);
+  if (!status.ok()) {
+    // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
+    // such entries to the expired_tables_map.
+    if (expired_tables_map && checkpoint != OpId::Max() &&
+        !IsReplicationSlotStream(stream_metadata)) {
+      AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
+    }
+
+    if (!tablet_min_checkpoint_map.contains(tablet_id)) {
+      VLOG(2) << "Stream: " << stream_id << ", is not of interest for tablet: " << tablet_id
+              << ", hence we are adding default entries to tablet_min_checkpoint_map";
+      auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
+      tablet_info.cdc_sdk_op_id = OpId::Max();
+      tablet_info.cdc_sdk_safe_time = HybridTime::kInvalid;
+    }
+    return;
+  }
+  status = CheckStreamActive(producer_tablet, last_active_time_cdc_state_table);
+  if (!status.ok()) {
+    // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
+    // such entries to the expired_tables_map.
+    if (expired_tables_map && checkpoint != OpId::Max() &&
+        !IsReplicationSlotStream(stream_metadata)) {
+      AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
+    }
+
+    // It is possible that all streams associated with a tablet have expired, in which case we
+    // have to create a default entry in 'tablet_min_checkpoint_map' corresponding to the
+    // tablet. This way the fact that all the streams have expired will be communicated to the
+    // tablet_peer as well, through the method: "UpdateTabletPeersWithMinReplicatedIndex". If
+    // 'tablet_min_checkpoint_map' already had an entry corresponding to the tablet, then
+    // either we already saw an inactive stream assocaited with the tablet and created the
+    // default entry or we saw an active stream and the map has a legitimate entry, in both
+    // cases repopulating the map is not needed.
+    if (tablet_min_checkpoint_map.find(tablet_id) == tablet_min_checkpoint_map.end()) {
+      VLOG(2) << "Stream: " << stream_id << ", is expired for tablet: " << tablet_id
+              << ", hence we are adding default entries to tablet_min_checkpoint_map";
+      auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
+      tablet_info.cdc_sdk_op_id = OpId::Max();
+      tablet_info.cdc_sdk_safe_time = HybridTime::kInvalid;
+    }
+    return;
+  }
+  latest_active_time = last_active_time_cdc_state_table;
 
   // Ignoring those non-bootstrapped CDCSDK stream
   if (checkpoint != OpId::Invalid()) {
@@ -3232,7 +3239,8 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
   VLOG_WITH_FUNC(1) << "Trying to move forward retention barriers";
   auto barrier_revised = VERIFY_RESULT(tablet_peer->MoveForwardAllCDCRetentionBarriers(
       min_index, tablet_info->cdc_sdk_op_id, tablet_info->cdc_sdk_op_id_expiration,
-      tablet_info->cdc_sdk_safe_time, true /* require_history_cutoff */));
+      tablet_info->cdc_sdk_safe_time, /* require_history_cutoff */
+      tablet_info->cdc_sdk_safe_time == HybridTime::kInitial ? false : true));
 
   if (!ignore_rpc_failures && !barrier_revised) {
     return STATUS_FORMAT(TryAgain, "Revision of CDC retention barriers is currently blocked");

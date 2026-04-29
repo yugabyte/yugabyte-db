@@ -1241,6 +1241,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
   ASSERT_GT(record_size, 100);
   LOG(INFO) << "Total records read by get change call: " << record_size;
 
+  // Call GetChanges and send explicit checkpoint here.
+  auto explicit_checkpoint = change_resp_2.cdc_sdk_checkpoint();
+  explicit_checkpoint.set_snapshot_time(change_resp_2.safe_hybrid_time());
+  change_resp_2 = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint(), &explicit_checkpoint));
+
   // Restart one of the node.
   SleepFor(MonoDelta::FromSeconds(1));
   test_cluster()->mini_tablet_server(1)->Shutdown();

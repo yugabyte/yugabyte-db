@@ -6394,5 +6394,70 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseOfRetentionBarriersOnD
   ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUPAMReleasesBarriersOnIndexTablets) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_shards_per_tserver) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */, true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  auto base_table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> base_tablets;
+  ASSERT_OK(test_client()->GetTablets(base_table, 0, &base_tablets, nullptr));
+  ASSERT_EQ(base_tablets.size(), 1);
+
+  // Create a stream and then create an index. Since FLAGS_TEST_cdc_add_dynamic_index_to_state_table
+  // is true, we will set retention barriers on its tablets and state table entries.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_add_dynamic_index_to_state_table) = true;
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
+  auto index_table =
+      ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, Format("$0_idx", kTableName)));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> index_tablets;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        index_tablets.Clear();
+        RETURN_NOT_OK(test_client()->GetTablets(index_table, 0, &index_tablets, nullptr));
+        return index_tablets.size() == 1;
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Timed out waiting for index tablet to be available"));
+  const auto index_tablet_id = index_tablets.begin()->tablet_id();
+
+  // Verify that the index's tablet is present in the cdc_state table.
+  CheckTabletsInCDCStateTable(
+      {base_tablets[0].tablet_id(), index_tablet_id, kCDCSDKSlotEntryTabletId}, test_client(),
+      stream_id, {} /* expected_colocated_table_ids */,
+      "Timed out waiting for index tablet to be added to cdc_state table",
+      true /* include_catalog_tables */);
+
+  auto tablet_peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), index_tablet_id));
+
+  // Verify that the retention barriers (WAL and intents) have been set on the index tablet. The
+  // cdc_sdk_safe_time would be invalid since we do not set history barriers.
+  ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  ASSERT_GE(tablet_peer->get_cdc_min_replicated_index(), 0);
+  ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+  ASSERT_GE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Min());
+  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+
+  // Reduce the value of cdc_intent_retention_ms to 0, so that we simulate the index tablet getting
+  // expired.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+
+  // UPAM will see that the tablet has expired and will stop updating its barriers. The maintenance
+  // op will release all the barriers. Lower the value
+  // FLAGS_cdc_min_replicated_index_considered_stale_secs so that this happens quickly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
+
+  // Eventually all the CDC barriers from index tablet will be released.
+  VerifyTransactionParticipant(tablet_peer->tablet_id(), OpId::Max());
+  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+}
+
 }  // namespace cdc
 }  // namespace yb
