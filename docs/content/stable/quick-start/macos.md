@@ -232,7 +232,7 @@ macOS Monterey and later enable AirPlay receiving by default, which listens on p
 
 You can do one of the following:
 
-- Disable Airplay recieving in System Settings (typically under **General>Airplay & Handoff**). Then start YugabyteDB by running the following command:
+- Disable AirPlay receiving in System Settings (typically under **General > AirPlay & Handoff**). Then start YugabyteDB by running the following command:
 
     ```sh
     ./bin/yugabyted start
