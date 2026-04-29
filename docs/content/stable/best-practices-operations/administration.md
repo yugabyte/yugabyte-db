@@ -52,13 +52,12 @@ You can set certain flags to increase performance using YugabyteDB in CI and CD 
 
 ## Concurrent DML during a DDL operation
 
-To prevent DML and DDL operations executing concurrently, enable [table-level locking](../../architecture/transactions/concurrency-control/#table-level-locks) {{<tags/feature/ea idea="1114">}}.
+By default, YugabyteDB doesn't restrict DML and DDL concurrency. As a result, a DML statement can potentially operate using the old (prior to the DDL) or new schema; for example, an `ALTER TABLE <table> .. ADD COLUMN` DDL statement may add a new column while a `SELECT * from <table>` executes concurrently on the same relation. This can cause the following problems:
 
-If table-level locking is not enabled (the default), DML is allowed to execute while a DDL statement modifies the schema that is accessed by the DML statement. For example, an `ALTER TABLE <table> .. ADD COLUMN` DDL statement may add a new column while a `SELECT * from <table>` executes concurrently on the same relation. When a DDL modifies the schema of tables that are accessed by concurrent DML statements, the DML statement may do one of the following:
+- Errors such as `schema mismatch errors` or `catalog version mismatch`. The client should [retry such operations](https://www.yugabyte.com/blog/retry-mechanism-spring-boot-app/) whenever possible.
+- Inconsistencies. For example, cases such as alter tables that cause rewrites, or creating indexes nonconcurrently.
 
-- Operate with the old schema prior to the DDL.
-- Operate with the new schema after the DDL completes.
-- Encounter temporary errors such as `schema mismatch errors` or `catalog version mismatch`. The client should [retry such operations](https://www.yugabyte.com/blog/retry-mechanism-spring-boot-app/) whenever possible.
+To avoid this, you can manually enable [table-level locking](../../architecture/transactions/concurrency-control/#table-level-locks) {{<tags/feature/ea idea="1114">}}.
 
 Most DDL statements complete quickly, so this is typically not a significant issue in practice. However, [certain kinds of ALTER TABLE DDL statements](../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) involve making a full copy of the table(s) whose schema is being modified. For these operations, it is not recommended to run any concurrent DML statements on the table being modified by the `ALTER TABLE`, as the effect of such concurrent DML may not be reflected in the table copy.
 
@@ -68,13 +67,11 @@ Nonconcurrent index builds are not safe to perform while there are ongoing chang
 
 Concurrent Data Definition Language (DDL) operations are currently unsupported. All DDL statements targeting the same database must be executed sequentially, one at a time, from a single database connection. DDL statements that operate on shared objects (roles, tablespaces) affect all databases in the cluster and must also be serialized. DDL statements that affect entities in different databases can be run concurrently.
 
-To have YugabyteDB queue conflicting DDL operations automatically, enable [table-level locking](../../architecture/transactions/concurrency-control/#table-level-locks) {{<tags/feature/ea idea="1114">}}.
-
 Enforce DDL serialization at the application and operational level:
 
 - Execute all DDLs sequentially from a single connection. Use a dedicated, non-pooled connection for schema migrations.
 - Wait for each DDL to fully complete before issuing the next statement.
-- Implement client-side retry logic for schema mismatch and catalog version mismatch errors in any [DML that may overlap with DDL windows](#concurrent-dml-during-a-ddl-operation).  
+- Implement client-side retry logic for schema mismatch and catalog version mismatch errors in any [DML that may overlap with DDL windows](#concurrent-dml-during-a-ddl-operation).
 - Schedule DDL during maintenance windows to minimize overlap with application DML traffic, backup jobs, and other administrative operations.
 - In versions earlier than v2025.1.1, DDL verification states can block backup and restore operations; run DDL and backup jobs separately. (In v2025.2.1 and later, taking YSQL backups during DDL operations is supported by default, and backups succeed even in case of concurrent DDLs.)
 
