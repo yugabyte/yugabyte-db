@@ -885,8 +885,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
-  Status IsCatalogVersionTableInPerdbMode(bool* perdb_mode);
-
   Status InitializeTransactionTablesConfig(int64_t term);
 
   Status IncrementTransactionTablesVersion();
@@ -3417,20 +3415,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
-
-  // For per-database catalog version mode upgrade support: when the gflag
-  // --ysql_enable_db_catalog_version_mode is true, whether the table
-  // pg_yb_catalog_version has been upgraded to have one row per database.
-  // During upgrade the binaries are installed first but before YSQL migration
-  // script is run pg_yb_catalog_version only has one row for template1.
-  // YB Note:
-  // (1) Each time we read the entire pg_yb_catalog_version table if the number
-  // of rows is > 1 we assume that the table has exactly one row per database.
-  // (2) This is only used to support per-database catalog version mode upgrade.
-  // Once set it is never reset back to false. It is an error to change
-  // pg_yb_catalog_version back to global catalog version mode when
-  // --ysql_enable_db_catalog_version_mode=true.
-  std::atomic<bool> catalog_version_table_in_perdb_mode_ = false;
 
   // mutex on heartbeat_pg_catalog_versions_cache_
   mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;

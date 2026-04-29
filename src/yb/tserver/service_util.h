@@ -41,8 +41,6 @@
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
 
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
-
 namespace yb::tserver {
 
 // Non-template helpers.
@@ -389,9 +387,6 @@ class CatalogVersionChecker {
       return VersionInfo(std::nullopt, request.ysql_catalog_version());
     }
     DCHECK(request.has_ysql_db_catalog_version());
-    SCHECK(
-        FLAGS_ysql_enable_db_catalog_version_mode, InvalidArgument,
-        "enable_db_catalog_version_mode is not enabled");
     SCHECK(request.has_ysql_db_oid(), InvalidArgument, "ysql_db_oid is not specified");
     return VersionInfo(request.ysql_db_oid(), request.ysql_db_catalog_version());
   }

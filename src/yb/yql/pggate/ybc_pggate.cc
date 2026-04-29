@@ -98,7 +98,7 @@ DEFINE_RUNTIME_PG_FLAG(
     "the start of DDLs, causing conflict errors to occur before useful work is done. This flag is "
     "only applicable without object locking. If object locking is enabled, it ensures that "
     "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
-    "ysql_enable_db_catalog_version_mode and yb_enable_invalidation_messages are enabled.");
+    "yb_enable_invalidation_messages is enabled.");
 
 DECLARE_bool(TEST_ash_debug_aux);
 
@@ -1012,17 +1012,15 @@ YbcStatus YBCPgExecDropTablegroup(YbcPgStatement handle) {
 YbcStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called) {
   return ToYBCStatus(pgapi->InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called));
 }
 
 YbcStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
                                               int64_t seq_oid,
                                               uint64_t ysql_catalog_version,
-                                              bool is_db_catalog_version_mode,
                                               int64_t last_val,
                                               bool is_called,
                                               int64_t expected_last_val,
@@ -1030,26 +1028,24 @@ YbcStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
                                               bool *skipped) {
   return ToYBCStatus(
       pgapi->UpdateSequenceTupleConditionally(
-          db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode,
+          db_oid, seq_oid, ysql_catalog_version,
           last_val, is_called, expected_last_val, expected_is_called, skipped));
 }
 
 YbcStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called,
                                  bool* skipped) {
   return ToYBCStatus(pgapi->UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode,
+      db_oid, seq_oid, ysql_catalog_version,
       last_val, is_called, skipped));
 }
 
 YbcStatus YBCFetchSequenceTuple(int64_t db_oid,
                                 int64_t seq_oid,
                                 uint64_t ysql_catalog_version,
-                                bool is_db_catalog_version_mode,
                                 uint32_t fetch_count,
                                 int64_t inc_by,
                                 int64_t min_value,
@@ -1058,18 +1054,17 @@ YbcStatus YBCFetchSequenceTuple(int64_t db_oid,
                                 int64_t *first_value,
                                 int64_t *last_value) {
   return ToYBCStatus(pgapi->FetchSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      db_oid, seq_oid, ysql_catalog_version, fetch_count, inc_by,
       min_value, max_value, cycle, first_value, last_value));
 }
 
 YbcStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
-                               bool is_db_catalog_version_mode,
                                int64_t *last_val,
                                bool *is_called) {
   return ToYBCStatus(pgapi->ReadSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called));
 }
 
 YbcStatus YBCPgNewDropSequence(const YbcPgOid database_oid,
@@ -2229,10 +2224,6 @@ YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
   return ExtractValueFromResult(pgapi->GetNumberOfDatabases(), num_databases);
 }
 
-YbcStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode) {
-  return ExtractValueFromResult(pgapi->CatalogVersionTableInPerdbMode(), perdb_mode);
-}
-
 YbcStatus YBCGetTserverCatalogMessageLists(
     YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
     YbcCatalogMessageLists* message_lists) {
@@ -3384,10 +3375,6 @@ YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(
 YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
     uint64_t tuples_processed, const char *table_name) {
   return PgFlushDebugContext::YbcCopyBatch(tuples_processed, table_name);
-}
-
-YbcFlushDebugContext YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(YbcPgOid db_oid) {
-  return PgFlushDebugContext::YbcSwitchToDbCatalogVersionMode(db_oid);
 }
 
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {

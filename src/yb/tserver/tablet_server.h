@@ -337,11 +337,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
-  std::optional<bool> catalog_version_table_in_perdb_mode() const EXCLUDES(lock_) {
-    std::lock_guard l(lock_);
-    return catalog_version_table_in_perdb_mode_;
-  }
-
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB* resp) const EXCLUDES(lock_) override;
@@ -592,9 +587,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   };
   using DbOidToInvalidationMessagesMap = std::unordered_map<uint32_t, InvalidationMessagesInfo>;
   DbOidToInvalidationMessagesMap ysql_db_invalidation_messages_map_ GUARDED_BY(lock_);
-
-  // See same variable comments in CatalogManager.
-  std::optional<bool> catalog_version_table_in_perdb_mode_ GUARDED_BY(lock_) {std::nullopt};
 
   // Fingerprint of the catalog versions map.
   std::atomic<std::optional<uint64_t>> catalog_versions_fingerprint_;

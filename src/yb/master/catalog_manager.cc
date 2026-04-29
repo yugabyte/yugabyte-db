@@ -597,8 +597,6 @@ DEFINE_RUNTIME_bool(master_join_existing_universe, false,
     "other factors. To create a new universe with a new group of masters, unset this flag. Set "
     "this flag on all new and existing master processes once the universe creation completes.");
 
-DEFINE_test_flag(bool, disable_set_catalog_version_table_in_perdb_mode, false,
-                 "Whether to disable setting the catalog version table in perdb mode.");
 DEFINE_RUNTIME_uint32(initial_tserver_registration_duration_secs,
     yb::master::kDelayAfterFailoverSecs,
     "Amount of time to wait between becoming master leader and relying on all live TServers having "
@@ -4068,19 +4066,10 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
     return Status::OK();
   }
 
-  // Use new API with YSQL DB Name only with ysql_enable_db_catalog_version_mode = true.
-  // Use old API without YSQL DB Name only with ysql_enable_db_catalog_version_mode = false.
-  SCHECK_EQ(
-      catalog_version_table_in_perdb_mode_, req->has_namespace_(), IllegalState,
-      Format("Invalid per-database catalog version mode = $0",
-             catalog_version_table_in_perdb_mode_));
-
-  if (!req->has_namespace_()) {
-    LOG(WARNING) << "Called deprecated version of " << __func__
-                 << " without DB. Use per-db version. Request PB: " << req->ShortDebugString();
-    resp->set_version(ysql_manager_->GetYsqlCatalogVersion());
-    return Status::OK();
-  }
+  // Per-database catalog version mode is now mandatory; the caller must pass a namespace.
+  SCHECK(
+      req->has_namespace_(), IllegalState,
+      "GetYsqlCatalogConfig requires a namespace in per-database catalog version mode");
 
   auto ns = VERIFY_RESULT(FindNamespace(req->namespace_()));
   const uint32_t db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns->id()));
@@ -10864,8 +10853,7 @@ Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap*
 // Note: versions and fingerprint are outputs.
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
     bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
-  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-  if (use_cache && catalog_version_table_in_perdb_mode_) {
+  if (use_cache) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
     // We expect that the only caller uses this cache is the heartbeat service.
     // It is ok for heartbeat_pg_catalog_versions_cache_ to be empty: the
@@ -10891,12 +10879,6 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
     VLOG_WITH_FUNC(3) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
   }
-  if (!catalog_version_table_in_perdb_mode_ &&
-      versions->size() > 1 && !FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
-    LOG(INFO) << "set catalog_version_table_in_perdb_mode_ to true";
-    catalog_version_table_in_perdb_mode_ = true;
-    master_->shared_object()->SetCatalogVersionTableInPerdbMode(true);
-  }
   return Status::OK();
 }
 
@@ -10907,9 +10889,7 @@ CatalogManager::GetYsqlCatalogInvalationMessagesImpl() {
 
 Result<DbOidVersionToMessageListMap> CatalogManager::GetYsqlCatalogInvalationMessages(
     bool use_cache) {
-  if (!FLAGS_ysql_yb_enable_invalidation_messages ||
-      !FLAGS_ysql_enable_db_catalog_version_mode ||
-      !catalog_version_table_in_perdb_mode_) {
+  if (!FLAGS_ysql_yb_enable_invalidation_messages) {
     return DbOidVersionToMessageListMap();
   }
   if (use_cache) {
@@ -10925,32 +10905,6 @@ Result<DbOidVersionToMessageListMap> CatalogManager::GetYsqlCatalogInvalationMes
                                                           : DbOidVersionToMessageListMap();
   }
   return GetYsqlCatalogInvalationMessagesImpl();
-}
-
-// When a cluster is running in per-database catalog version mode, normally
-// catalog_version_table_in_perdb_mode_ is set to true as part of preparing for
-// tserver heartbeat response and once set to true it is never reset back to
-// false. In case a new leader master has not received any tserver heartbeat
-// request, then catalog_version_table_in_perdb_mode_ still has its initial
-// value false, but we cannot assume that the table pg_yb_catalog_version is
-// still in global mode. That's why this function does an on-demand reading of
-// pg_yb_catalog_version table to find out.
-Status CatalogManager::IsCatalogVersionTableInPerdbMode(bool* perdb_mode) {
-  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-  if (!catalog_version_table_in_perdb_mode_) {
-    DbOidToCatalogVersionMap versions;
-    RETURN_NOT_OK(GetYsqlAllDBCatalogVersions(
-        false /* use_cache */, &versions, nullptr /* fingerprint */));
-    // If FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode is set, for
-    // unit test purpose, we return perdb_mode properly while leaving
-    // catalog_version_table_in_perdb_mode_ not set.
-    if (FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
-      *perdb_mode = versions.size() > 1;
-      return Status::OK();
-    }
-  }
-  *perdb_mode = catalog_version_table_in_perdb_mode_;
-  return Status::OK();
 }
 
 Status CatalogManager::InitializeTransactionTablesConfig(int64_t term) {
@@ -13791,7 +13745,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
   restoring_sys_catalog_ = false;
 
-  if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
+  if (FLAGS_enable_ysql) {
     // Initialize the catalog version cache.
     // This is needed for cases like major YSQL upgrade where master runs a postgres process.
     DbOidToCatalogVersionMap versions;

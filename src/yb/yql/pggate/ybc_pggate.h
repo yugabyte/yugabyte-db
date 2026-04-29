@@ -108,10 +108,6 @@ YbcStatus YBCGetSharedDBCatalogVersion(
 // catalog version mode is enabled.
 YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 
-// Return true if the pg_yb_catalog_version table has been updated to
-// have one row per database.
-YbcStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode);
-
 YbcStatus YBCGetTserverCatalogMessageLists(
     YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
     YbcCatalogMessageLists* message_lists);
@@ -217,14 +213,12 @@ YbcStatus YBCPgIsDatabaseColocated(const YbcPgOid database_oid, bool *colocated,
 YbcStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called);
 
 YbcStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
                                               int64_t seq_oid,
                                               uint64_t ysql_catalog_version,
-                                              bool is_db_catalog_version_mode,
                                               int64_t last_val,
                                               bool is_called,
                                               int64_t expected_last_val,
@@ -234,7 +228,6 @@ YbcStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
 YbcStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
-                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called,
                                  bool* skipped);
@@ -242,7 +235,6 @@ YbcStatus YBCUpdateSequenceTuple(int64_t db_oid,
 YbcStatus YBCFetchSequenceTuple(int64_t db_oid,
                                 int64_t seq_oid,
                                 uint64_t ysql_catalog_version,
-                                bool is_db_catalog_version_mode,
                                 uint32_t fetch_count,
                                 int64_t inc_by,
                                 int64_t min_value,
@@ -254,7 +246,6 @@ YbcStatus YBCFetchSequenceTuple(int64_t db_oid,
 YbcStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
-                               bool is_db_catalog_version_mode,
                                int64_t *last_val,
                                bool *is_called);
 
@@ -1097,7 +1088,6 @@ YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(
     const char *cmd_name, const char *func_name);
 YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
     uint64_t tuples_processed, const char *table_name);
-YbcFlushDebugContext YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(YbcPgOid db_oid);
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);

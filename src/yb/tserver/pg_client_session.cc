@@ -139,7 +139,6 @@ DECLARE_bool(enable_qos);
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
@@ -4004,7 +4003,6 @@ class PgClientSession::Impl {
            InvalidArgument, "Wrong catalog versions: $0 and $1",
            in_req.ysql_catalog_version(), in_req.ysql_db_catalog_version());
     if (in_req.ysql_db_catalog_version()) {
-      CHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       out_req->set_ysql_db_catalog_version(in_req.ysql_db_catalog_version());
       out_req->set_ysql_db_oid(narrow_cast<uint32_t>(in_req.db_oid()));
     } else if (in_req.ysql_catalog_version()) {

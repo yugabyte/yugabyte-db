@@ -27,7 +27,6 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_table.h"
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 namespace yb::pggate {
 
@@ -151,7 +150,6 @@ class PgDml : public PgStatement {
       Request* req, std::optional<PgOid> db_oid, uint64_t version) {
     auto& request = *DCHECK_NOTNULL(req);
     if (db_oid) {
-      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       request.set_ysql_db_catalog_version(version);
       request.set_ysql_db_oid(*db_oid);
     } else {

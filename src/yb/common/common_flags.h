@@ -22,7 +22,6 @@ DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(log_ysql_catalog_versions);
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_bool(ysql_enable_pg_per_database_oid_allocator);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_enable_replication_slot_consumption);

@@ -260,10 +260,6 @@ DEFINE_RUNTIME_int32(
     "Minimal time at which a catalog version with invalidation message is retained.");
 TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 
-DEFINE_test_flag(int32, delay_set_catalog_version_table_mode_count, 0,
-    "Delay set catalog version table mode by this many times of heartbeat responses "
-    "after tserver starts");
-
 DECLARE_bool(enable_qos);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(enable_update_local_peer_min_index);
@@ -395,11 +391,9 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
-  if (FLAGS_ysql_enable_db_catalog_version_mode) {
-    ysql_db_catalog_version_index_used_ =
+  ysql_db_catalog_version_index_used_ =
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
-    ysql_db_catalog_version_index_used_->fill(false);
-  }
+  ysql_db_catalog_version_index_used_->fill(false);
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
 }
@@ -1420,21 +1414,6 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
                                                  .last_breaking_version = new_breaking_version,
                                                  .shm_index = -1,
                                                  .new_version_ignored_count = 0})));
-    if (ysql_db_catalog_version_map_.size() > 1) {
-      if (!catalog_version_table_in_perdb_mode_.has_value() ||
-          !catalog_version_table_in_perdb_mode_.value()) {
-        if (PREDICT_FALSE(FLAGS_TEST_delay_set_catalog_version_table_mode_count > 0)) {
-          --FLAGS_TEST_delay_set_catalog_version_table_mode_count;
-        } else {
-          LOG(INFO) << "set pg_yb_catalog_version table in perdb mode"
-                    << ", debug_id: " << debug_id;
-          catalog_version_table_in_perdb_mode_ = true;
-          shared_object()->SetCatalogVersionTableInPerdbMode(true);
-        }
-      }
-    } else {
-      DCHECK_EQ(ysql_db_catalog_version_map_.size(), 1);
-    }
     bool row_inserted = it.second;
     bool row_updated = false;
     int shm_index = -1;
@@ -1574,16 +1553,6 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       ysql_db_invalidation_messages_map_.insert(
           std::make_pair(db_oid, InvalidationMessagesInfo()));
     }
-  }
-  if (!catalog_version_table_in_perdb_mode_.has_value() &&
-      ysql_db_catalog_version_map_.size() == 1) {
-    // We can initialize to false at most one time. Once set,
-    // catalog_version_table_in_perdb_mode_ can only go from false to
-    // true (i.e., from global mode to perdb mode).
-    LOG(INFO) << "set pg_yb_catalog_version table in global mode"
-              << ", debug_id: " << debug_id;
-    catalog_version_table_in_perdb_mode_ = false;
-    shared_object()->SetCatalogVersionTableInPerdbMode(false);
   }
 
   // We only do full catalog report for now, remove entries that no longer exist.

@@ -896,27 +896,27 @@ Status PgApiImpl::CreateSequencesDataTable() {
 }
 
 Status PgApiImpl::InsertSequenceTuple(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
+    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t last_val, bool is_called) {
   return pg_client_.InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called);
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
 }
 
 Status PgApiImpl::UpdateSequenceTupleConditionally(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
+    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t last_val, bool is_called, int64_t expected_last_val, bool expected_is_called,
     bool *skipped) {
   *skipped = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called,
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
       expected_last_val, expected_is_called));
   return Status::OK();
 }
 
 Status PgApiImpl::UpdateSequenceTuple(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
+    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t last_val, bool is_called, bool* skipped) {
   auto result = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val,
+      db_oid, seq_oid, ysql_catalog_version, last_val,
       is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
@@ -925,11 +925,11 @@ Status PgApiImpl::UpdateSequenceTuple(
 }
 
 Status PgApiImpl::FetchSequenceTuple(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
+    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     uint32_t fetch_count, int64_t inc_by, int64_t min_value, int64_t max_value, bool cycle,
     int64_t *first_value, int64_t *last_value) {
   auto res = VERIFY_RESULT(pg_client_.FetchSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      db_oid, seq_oid, ysql_catalog_version, fetch_count, inc_by,
       min_value, max_value, cycle));
   *first_value = res.first;
   *last_value = res.second;
@@ -937,13 +937,13 @@ Status PgApiImpl::FetchSequenceTuple(
 }
 
 Status PgApiImpl::ReadSequenceTuple(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
+    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t *last_val, bool *is_called) {
   const auto actual_ysql_catalog_version =
       yb_disable_catalog_version_check ? std::nullopt : std::optional(ysql_catalog_version);
   const auto actual_yb_read_time = yb_read_time ? std::optional(yb_read_time) : std::nullopt;
   const auto res = VERIFY_RESULT(pg_client_.ReadSequenceTuple(
-      db_oid, seq_oid, actual_ysql_catalog_version, is_db_catalog_version_mode,
+      db_oid, seq_oid, actual_ysql_catalog_version,
       actual_yb_read_time));
   if (last_val) {
     *last_val = res.first;
@@ -2077,30 +2077,6 @@ Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
   const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
       true /* size_only */, kPgInvalidOid /* db_oid */));
   return info.num_entries();
-}
-
-Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
-  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-  if (!tserver_shared_object_.catalog_version_table_in_perdb_mode().has_value()) {
-    // If this tserver has just restarted, it may not have received any
-    // heartbeat response from yb-master that has set a value in
-    // catalog_version_table_in_perdb_mode_ in the shared memory object
-    // yet. Let's wait with 500ms interval until a value is set or until
-    // a 30-second timeout.
-    auto status = LoggedWaitFor(
-        [this]() -> Result<bool> {
-          return tserver_shared_object_.catalog_version_table_in_perdb_mode().has_value();
-        },
-        30s /* timeout */,
-        "catalog_version_table mode not set in shared memory, "
-        "tserver not ready to serve requests",
-        500ms /* initial_delay */,
-        1.0 /* delay_multiplier */);
-    RETURN_NOT_OK_PREPEND(
-        status,
-        "Failed to find out pg_yb_catalog_version mode");
-  }
-  return tserver_shared_object_.catalog_version_table_in_perdb_mode().value();
 }
 
 Result<tserver::PgGetTserverCatalogMessageListsResponsePB>

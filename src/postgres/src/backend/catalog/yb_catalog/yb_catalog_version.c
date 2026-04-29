@@ -539,48 +539,6 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 		return;
 	}
 
-	/*
-	 * There are two more scenarios we also call the function
-	 * yb_increment_all_db_catalog_versions(is_breaking_change), both
-	 * are related to cluster upgrade to a new release that has the
-	 * per-database catalog version mode on by default:
-	 * (1) during the tryout phase (the phase where the upgrade can be
-	 * rolled back)
-	 * (2) during the finalization phase (the phase where the upgrade can
-	 * not be rolled back)
-	 * In both cases, the gflag --ysql_enable_db_catalog_version_mode is
-	 * true but YBIsDBCatalogVersionMode() is false. PG does not
-	 * distinguish them. In (1), the table pg_yb_catalog_version has only
-	 * one row. In (2), it is possible that pg_yb_catalog_version has
-	 * already been updated to have multiple rows, but this PG backend
-	 * hasn't seen multple rows yet and still operates in global catalog
-	 * version mode. Calling yb_increment_all_db_catalog_versions ensures
-	 * that this PG's version bump has an effect to all the PG backends
-	 * including those already upgraded and are operating in per-database
-	 * catalog version mode.
-	 */
-	if (*YBCGetGFlags()->ysql_enable_db_catalog_version_mode &&
-		!YBIsDBCatalogVersionMode())
-	{
-		Oid			func_oid = YbGetSQLIncrementCatalogVersionsFunctionOid();
-
-		if (OidIsValid(func_oid))
-		{
-			/* Call yb_increment_all_db_catalog_versions(is_breaking_change). */
-			YbCallSQLIncrementCatalogVersions(func_oid, is_breaking_change,
-											  command_tag);
-			return;
-		}
-		/*
-		 * If the function yb_increment_all_db_catalog_versions does not exist
-		 * yet, there cannot be any PG backend in the cluster running in
-		 * per-database catalog version mode. This is because the function
-		 * is introduced before the table pg_yb_catalog_version is upgraded
-		 * to have one row per database. In this case we continue to increment
-		 * catalog version in the old way below.
-		 */
-	}
-
 	YbcPgTypeAttrs type_attrs = {0};
 
 	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
@@ -645,13 +603,11 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 	if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
 	{
 		bool		log_ysql_catalog_versions = *YBCGetGFlags()->log_ysql_catalog_versions;
-		char		tmpbuf[30] = "";
 
-		if (YBIsDBCatalogVersionMode())
-			snprintf(tmpbuf, sizeof(tmpbuf), " for database %u", db_oid);
 		ereport(LOG,
-				(errmsg("%s: incrementing master catalog version (%sbreaking)%s",
-						__func__, is_breaking_change ? "" : "non", tmpbuf),
+				(errmsg("%s: incrementing master catalog version (%sbreaking) "
+						"for database %u",
+						__func__, is_breaking_change ? "" : "non", db_oid),
 				 errdetail("Local version: %" PRIu64 ", %snode tag: %s.",
 						   YbGetCatalogCacheVersion(),
 						   LastDdlInTransactionBlock() ? "last ddl " : "",
@@ -661,20 +617,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 	}
 
 	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt, &rows_affected_count));
-	/*
-	 * Under normal situation rows_affected_count should be exactly 1. However
-	 * when a connection is established in per-database catalog version mode,
-	 * if the table pg_yb_catalog_version is updated to only have one row
-	 * for database template1 which is part of the process of converting to
-	 * global catalog version mode, this connection remains in per-database
-	 * catalog version mode. In this case rows_affected_count will be 0 unless
-	 * MyDatabaseId is template1 because in pg_yb_catalog_version the row for
-	 * MyDatabaseId no longer exists.
-	 */
-	if (rows_affected_count == 0)
-		Assert(YBIsDBCatalogVersionMode());
-	else
-		Assert(rows_affected_count == 1);
+	Assert(rows_affected_count == 1);
 
 	/* Cleanup. */
 	update_stmt = NULL;
@@ -1006,7 +949,13 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 	YbcPgSysColumns syscols;
 	bool		result = false;
 
-	if (!YBIsDBCatalogVersionMode())
+	/*
+	 * When prefetching is enabled we always load all the rows even though
+	 * we bind to the row matching given db_oid. This is a work around to
+	 * pick the row that matches db_oid. This work around should be removed
+	 * when prefetching is enhanced to support filtering.
+	 */
+	while (true)
 	{
 		/* Fetch one row. */
 		HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
@@ -1016,46 +965,21 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 									 &syscols,
 									 &has_data));
 
-		if (has_data)
+		if (!has_data)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATABASE_DROPPED),
+					 errmsg("catalog version for database %u was not found.", db_oid),
+					 errhint("Database may have been dropped and recreated. "
+							 "Ensure your client connection pool or metadata cache "
+							 "is refreshed to pick up the new database OID.")));
+
+		uint32_t	oid = DatumGetUInt32(values[oid_attnum - 1]);
+
+		if (oid == db_oid)
 		{
 			*version = DatumGetUInt64(values[current_version_attnum - 1]);
 			result = true;
-		}
-	}
-	else
-	{
-		/*
-		 * When prefetching is enabled we always load all the rows even though
-		 * we bind to the row matching given db_oid. This is a work around to
-		 * pick the row that matches db_oid. This work around should be removed
-		 * when prefetching is enhanced to support filtering.
-		 */
-		while (true)
-		{
-			/* Fetch one row. */
-			HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
-										 natts,
-										 (uint64_t *) values,
-										 nulls,
-										 &syscols,
-										 &has_data));
-
-			if (!has_data)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATABASE_DROPPED),
-						 errmsg("catalog version for database %u was not found.", db_oid),
-						 errhint("Database may have been dropped and recreated. "
-								 "Ensure your client connection pool or metadata cache "
-								 "is refreshed to pick up the new database OID.")));
-
-			uint32_t	oid = DatumGetUInt32(values[oid_attnum - 1]);
-
-			if (oid == db_oid)
-			{
-				*version = DatumGetUInt64(values[current_version_attnum - 1]);
-				result = true;
-				break;
-			}
+			break;
 		}
 	}
 

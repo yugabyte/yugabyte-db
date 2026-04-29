@@ -789,9 +789,6 @@ extern bool yb_test_fail_table_rewrite_after_creation;
  */
 extern bool yb_test_preload_catalog_tables;
 
-/* GUC variable yb_test_stay_in_global_catalog_version_mode. */
-extern bool yb_test_stay_in_global_catalog_version_mode;
-
 /*
  * If set to true, any DDLs that rewrite tables/indexes will not drop the
  * old relfilenode/DocDB table.
@@ -1327,7 +1324,6 @@ void		YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
 
 uint64_t	YbGetSharedCatalogVersion();
 uint32_t	YbGetNumberOfDatabases();
-bool		YbCatalogVersionTableInPerdbMode();
 
 /*
  * This function maps the user intended row-level lock policy i.e., "pg_wait_policy" of

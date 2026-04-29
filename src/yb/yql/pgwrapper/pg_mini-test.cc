@@ -155,7 +155,7 @@ namespace {
 
 Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
   auto version_getter =
-      [conn]() { return GetCatalogVersion(conn, FLAGS_ysql_enable_db_catalog_version_mode); };
+      [conn]() { return GetCatalogVersion(conn); };
   const auto initial_version = VERIFY_RESULT(version_getter());
   RETURN_NOT_OK(conn->Execute(ddl_query));
   return initial_version != VERIFY_RESULT(version_getter());

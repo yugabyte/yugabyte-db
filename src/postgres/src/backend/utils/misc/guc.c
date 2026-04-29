@@ -2904,22 +2904,6 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_test_stay_in_global_catalog_version_mode", PGC_SUSET,
-			DEVELOPER_OPTIONS,
-			gettext_noop("When set, this PG backend will stay in global "
-						 "catalog version mode. Used in testing to simulate "
-						 "a lagging PG backend during the finalization phase "
-						 "of cluster upgrade to a new release that has the "
-						 "per-database catalog version mode on by default."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_test_stay_in_global_catalog_version_mode,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"yb_test_table_rewrite_keep_old_table", PGC_SUSET,
 			DEVELOPER_OPTIONS,
 			gettext_noop("When set, DDLs that rewrite tables/indexes will"
@@ -3743,8 +3727,7 @@ static struct config_bool ConfigureNamesBool[] =
 						 "start of DDLs, causing conflict errors to occur before useful work is done. This "
 						 "flag is only applicable without object locking. If object locking is enabled, it "
 						 "ensures that concurrent DDLs block on each other for serialization. Also, this flag "
-						 "is valid only if ysql_enable_db_catalog_version_mode and "
-						 "yb_enable_invalidation_messages are enabled."),
+						 "is valid only if yb_enable_invalidation_messages is enabled."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},

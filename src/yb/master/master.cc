@@ -152,8 +152,6 @@ DECLARE_int64(inbound_rpc_memory_limit);
 
 DECLARE_int32(master_ts_rpc_timeout_ms);
 
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
-
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb {
@@ -674,7 +672,6 @@ const std::shared_future<client::YBClient*>& Master::cdc_state_client_future() c
 Status Master::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,
     tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
-  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;
   // We do not use cache/fingerprint which is only used for filling heartbeat
