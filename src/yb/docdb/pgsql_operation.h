@@ -258,6 +258,12 @@ Status GetIntents(
     const PgsqlReadRequestMsg& request, const Schema& schema, IsolationLevel level,
     LWKeyValueWriteBatchPB* out);
 
+// Variant of GetIntents that processes only a single batch_argument at the given index.
+// Used for batch SKIP LOCKED: we try each candidate row's lock individually.
+Status GetIntentsForBatchArg(
+    const PgsqlReadRequestMsg& request, int batch_arg_index, const Schema& schema,
+    IsolationLevel level, LWKeyValueWriteBatchPB* out);
+
 class PgsqlLockOperation :
     public DocOperationBase<DocOperationType::PGSQL_LOCK_OPERATION, PgsqlLockRequestMsg> {
  public:
