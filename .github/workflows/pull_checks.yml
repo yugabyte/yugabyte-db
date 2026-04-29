@@ -1,0 +1,63 @@
+name: "Check PR Title"
+
+on:
+  pull_request:
+    types: [opened, edited]
+    paths-ignore:
+      - README.md
+      - 'docs/**'
+
+jobs:
+  validate-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title
+        run: |
+          TITLE_RE='^(\[(BACKPORT )?(\d+(\.\d+)+)\])?'
+          TITLE_RE+='\[((#\d+(,#\d+)*)|([A-Z]+-\d+(,[A-Z]+-\d+)*))\]'
+          TITLE_RE+=' [\w-]+(,[\w-]+)*:'
+          TITLE_RE+=' \S.{8,98}\S'$'
+
+          if [[ ! "${{ github.event.pull_request.title }}" =~ $TITLE_RE ]]; then
+            echo "::error ::PR title must include issue ID, code area (no extra whitespace), and short description.)
+            echo "::error ::  [#12345,#12367] area: Cool feature xyz"
+            echo "::error ::  [BACKPORT branch][#12345] area1,area2: Must have fix"
+            echo "::error ::Issue referenced must be a github issue or YB-internal Jira ID"
+            echo "::error ::Short description must be less than 100 characters."
+            exit 1
+          fi
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: 'false'
+
+      - name: Lint
+        run: |
+            build_dir_in_container=/opt/yb-build/yugabyte-db
+            docker run \
+              --user root \
+              -i \
+              "-w=$build_dir_in_container" \
+              --mount type=bind,source="$PWD",target="$build_dir_in_container" \
+              yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
+              bash -c '
+                chown -R yugabyteci .
+                sudo -H -u yugabyteci bash -c "
+                  set -euo pipefail
+                  export PATH=/usr/local/bin:\$HOME/yb-cpplint/cpplint:\$PATH
+                  echo ::group::Lint
+                  # Base reference should not be set for non-PR actions.
+                  if [[ -n \"${{ github.base_ref }}\" ]]; then
+                    echo Base reference: ${{ github.base_ref }}
+                    git fetch origin ${{ github.base_ref }}
+                    ./build-support/lint.py --rev origin/${{ github.base_ref }}
+                  else
+                    echo No base reference: Skipping Lint Step
+                    exit
+                  fi
+                "
+              '
