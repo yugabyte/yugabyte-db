@@ -18,6 +18,7 @@
 
 #include "yb/util/debug.h"
 #include "yb/util/enums.h"
+#include "yb/util/sync_point.h"
 
 DECLARE_string(metric_node_name);
 
@@ -255,6 +256,7 @@ Status PrometheusWriter::FlushPreAggregatedValues(
     const MetricsAggregator& metrics_aggregator) {
   const auto& attributes_ptr_by_metric_entity_type_and_aggregation_id =
       metrics_aggregator.attributes_ptr_by_metric_entity_type_and_aggregation_id();
+  TEST_SYNC_POINT("FlushPreAggregatedValues.after_snapshots");
   const auto& pre_aggregated_metric_info_by_metric_name =
       metrics_aggregator.pre_aggregated_metric_info_by_metric_name();
 
