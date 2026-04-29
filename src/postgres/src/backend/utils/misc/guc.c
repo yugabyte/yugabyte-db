@@ -7958,6 +7958,7 @@ static const char *const map_old_guc_names[] = {
  * yb_db_admin to modify PG_SUSET variables without being a superuser itself.
  */
 static const char *const YbDbAdminVariables[] = {
+	"backtrace_functions",
 	"session_replication_role",
 	"yb_make_next_ddl_statement_nonbreaking",
 	"yb_make_next_ddl_statement_nonincrementing",
