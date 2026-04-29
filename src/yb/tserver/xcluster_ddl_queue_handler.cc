@@ -44,6 +44,10 @@ DEFINE_RUNTIME_int64(xcluster_ddl_queue_advisory_lock_key, 8674896558949688690,
     "Advisory lock key to use for DDL queue handler sessions. This ensures only one handler "
     "processes the DDL queue at a time. A value of 0 means no advisory lock will be used.");
 
+DEFINE_RUNTIME_bool(xcluster_ddl_queue_enable_transactional_ddl, true,
+    "When enabled, multiple DDLs from the same source transaction are applied "
+    "atomically within a transaction block on the target.");
+
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
 
@@ -65,6 +69,7 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_before_incremental_safe_t
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_ddl, false,
     "Whether the ddl_queue handler should fail the ddl command that it executes.");
 
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
@@ -350,6 +355,95 @@ void XClusterDDLQueueHandler::Shutdown() {
   }
 }
 
+bool XClusterDDLQueueHandler::ShouldUseTransactionalDDL(
+    const std::vector<XClusterDDLQueryInfo>& queries) const {
+  return queries.size() > 1 &&
+         FLAGS_xcluster_ddl_queue_enable_transactional_ddl &&
+         FLAGS_ysql_yb_ddl_transaction_block_enabled;
+}
+
+Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& commit_time) {
+  auto queries = VERIFY_RESULT(GetQueriesToProcess(commit_time));
+
+  std::vector<XClusterDDLQueryInfo> queries_to_process;
+  for (auto& query_info : queries) {
+    if (query_info.is_manual_execution) {
+      RETURN_NOT_OK(ProcessManualExecutionQuery(query_info));
+    } else {
+      queries_to_process.push_back(std::move(query_info));
+    }
+  }
+
+  if (queries_to_process.empty()) {
+    return Status::OK();
+  }
+
+  const bool is_txn_batch = ShouldUseTransactionalDDL(queries_to_process);
+
+  if (is_txn_batch) {
+    VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Starting transactional DDL batch with "
+                        << queries_to_process.size() << " DDLs for commit time " << commit_time;
+    RETURN_NOT_OK(RunAndLogQuery("BEGIN"));
+  }
+
+  // On failure, issue ABORT to return the postgres connection to idle, otherwise the next retry
+  // would loop on the transaction being aborted. We drop the connection only if ABORT itself fails.
+  bool txn_committed = !is_txn_batch;
+  auto txn_cleanup = ScopeExit([this, &txn_committed]() {
+    if (txn_committed) {
+      return;
+    }
+    auto abort_status = RunAndLogQuery("ABORT");
+    if (!abort_status.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to ABORT transactional DDL batch, dropping connection: " << abort_status;
+      pg_conn_.reset();
+    }
+  });
+
+  for (const auto& query_info : queries_to_process) {
+    VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Processing entry " << query_info.ToString();
+    SCHECK(
+        kSupportedCommandTags.contains(query_info.command_tag), InvalidArgument,
+        "Found unsupported command tag $0", query_info.command_tag);
+
+    // Register source table mappings for new relations before running the DDL.
+    // CREATE TABLE on the target needs the mapping to exist before it executes.
+    std::unordered_set<YsqlFullTableName> new_relations;
+    auto relation_cleanup = ScopeExit([this, &new_relations]() {
+      for (const auto& new_rel : new_relations) {
+        xcluster_context_.ClearSourceTableInfoMappingForCreateTable(new_rel);
+      }
+    });
+    RETURN_NOT_OK(ProcessNewRelations(query_info, new_relations, commit_time));
+
+    auto s = ProcessDDLQuery(query_info);
+    if (!s.ok()) {
+      RETURN_NOT_OK(ProcessFailedDDLQuery(s, query_info));
+    }
+    TEST_SYNC_POINT("XClusterDDLQueueHandler::DDLQueryProcessed");
+
+    VLOG_WITH_PREFIX(2) << "ExecuteCommittedDDLs: "
+                        << (is_txn_batch ? "Executed entry inside open transaction "
+                                         : "Successfully processed entry ")
+                        << query_info.ToString();
+  }
+
+  if (is_txn_batch) {
+    RETURN_NOT_OK(RunAndLogQuery("COMMIT"));
+    VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Committed transactional DDL batch";
+  }
+  txn_committed = true;
+
+  // Reset failure tracking only after the whole batch commits, so that the retry counter
+  // accumulates across attempts when an earlier DDL keeps succeeding but a later one keeps failing.
+  num_fails_for_this_ddl_ = 0;
+  last_failed_query_.reset();
+  original_failed_status_ = Status::OK();
+
+  return Status::OK();
+}
+
 Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
   SCHECK(safe_time_batch_, InternalError, "Safe time batch is not initialized");
   if (!safe_time_batch_->IsComplete()) {
@@ -387,37 +481,8 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
       break;
     }
 
-    // TODO(Transactional DDLs): Could detect these here and run them in a transaction.
     // TODO(#20928): Make these calls async.
-    for (const auto& query_info : VERIFY_RESULT(GetQueriesToProcess(commit_time))) {
-      if (query_info.is_manual_execution) {
-        // Just add to the replicated_ddls table.
-        RETURN_NOT_OK(ProcessManualExecutionQuery(query_info));
-        continue;
-      }
-
-      VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Processing entry " << query_info.ToString();
-
-      SCHECK(
-          kSupportedCommandTags.contains(query_info.command_tag), InvalidArgument,
-          "Found unsupported command tag $0", query_info.command_tag);
-
-      std::unordered_set<YsqlFullTableName> new_relations;
-      auto se = ScopeExit([this, &new_relations]() {
-        // Ensure that we always clear the xcluster_context.
-        for (const auto& new_rel : new_relations) {
-          xcluster_context_.ClearSourceTableInfoMappingForCreateTable(new_rel);
-        }
-      });
-
-      RETURN_NOT_OK(ProcessNewRelations(query_info, new_relations, commit_time));
-      RETURN_NOT_OK(ProcessDDLQuery(query_info));
-
-      TEST_SYNC_POINT("XClusterDDLQueueHandler::DDLQueryProcessed");
-
-      VLOG_WITH_PREFIX(2) << "ExecuteCommittedDDLs: Successfully processed entry "
-                          << query_info.ToString();
-    }
+    RETURN_NOT_OK(ProcessQueriesForCommitTime(commit_time));
     last_commit_time_processed = commit_time;
 
     SCHECK(
@@ -513,7 +578,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
       "SET statement_timeout TO $0;", FLAGS_xcluster_ddl_queue_statement_timeout_ms);
 
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
-  RETURN_NOT_OK(ProcessFailedDDLQuery(RunAndLogQuery(query_info.query), query_info));
+  RETURN_NOT_OK(RunAndLogQuery(query_info.query));
   RETURN_NOT_OK(
       // The SELECT here can't be last; otherwise, RunAndLogQuery complains that rows are returned.
       RunAndLogQuery(
@@ -523,19 +588,13 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
 
 Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
     const Status& s, const XClusterDDLQueryInfo& query_info) {
-  if (s.ok()) {
-    num_fails_for_this_ddl_ = 0;
-    last_failed_query_.reset();
-    original_failed_status_ = Status::OK();
-    return Status::OK();
-  }
+  DCHECK(!s.ok());
 
   LOG_WITH_PREFIX(WARNING) << "Error when running DDL: " << s
                            << (FLAGS_TEST_xcluster_ddl_queue_handler_log_queries
                                    ? Format(". Query: $0", query_info.ToString())
                                    : "");
 
-  DCHECK(!last_failed_query_ || last_failed_query_->MatchesQueryInfo(query_info));
   if (last_failed_query_ && last_failed_query_->MatchesQueryInfo(query_info)) {
     num_fails_for_this_ddl_++;
     if (num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl) {

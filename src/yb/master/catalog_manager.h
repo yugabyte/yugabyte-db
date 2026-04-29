@@ -560,7 +560,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       int rollback_till_ddl_state_index = 0);
 
   Status ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data,
-                              int rollback_till_ddl_state_index = 0);
+                              int rollback_till_ddl_state_index = 0,
+                              bool is_success = true);
 
   Status YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                     const std::vector<DdlLogEntry>& ddl_log_entries,

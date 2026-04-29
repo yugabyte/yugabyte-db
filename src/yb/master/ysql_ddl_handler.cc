@@ -523,7 +523,7 @@ Status CatalogManager::RollbackYsqlTxnDdlStates(
             rollback_till_ddl_state_index));
     DCHECK_EQ(
         mutable_pb.ysql_ddl_txn_verifier_state_size(), rollback_till_ddl_state_index + 1);
-    return ClearYsqlDdlTxnState(txn_data, rollback_till_ddl_state_index);
+    return ClearYsqlDdlTxnState(txn_data, rollback_till_ddl_state_index, /*is_success=*/false);
   }
 
   // There might be more than one YsqlDdlTxnVerifierStatePB with alter table op but since we are
@@ -556,7 +556,7 @@ void RemoveDdlTxnVerifierStateFromIndex(
 }
 
 Status CatalogManager::ClearYsqlDdlTxnState(
-    const YsqlTableDdlTxnState txn_data, int rollback_till_ddl_state_index) {
+    const YsqlTableDdlTxnState txn_data, int rollback_till_ddl_state_index, bool is_success) {
   auto& pb = txn_data.write_lock.mutable_data()->pb;
   VLOG(3) << "Clearing ysql_ddl_txn_verifier_state from table "
           << txn_data.table->id() << ", txn_id: " << txn_data.ddl_txn_id
@@ -567,8 +567,12 @@ Status CatalogManager::ClearYsqlDdlTxnState(
     pb.clear_ysql_ddl_txn_verifier_state();
     pb.clear_transaction();
 
-    RETURN_NOT_OK(
-        GetXClusterManager()->ClearXClusterFieldsAfterYsqlDDL(txn_data.table, pb, txn_data.epoch));
+    // Don't clean up xCluster metadata unless the DDLs succeed since retries will still need
+    // this metadata.
+    if (is_success) {
+      RETURN_NOT_OK(GetXClusterManager()->ClearXClusterFieldsAfterYsqlDDL(
+          txn_data.table, pb, txn_data.epoch));
+    }
   } else {
     // Only a part of the ysql_ddl_txn_verifier_state needs to be cleared.
     // Represents a rollback to a sub-transaction.
