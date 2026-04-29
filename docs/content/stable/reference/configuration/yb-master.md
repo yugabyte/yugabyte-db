@@ -1221,11 +1221,7 @@ Toggle automatic tablet splitting for tables under replication slot. Applicable 
 
 ### LISTEN/NOTIFY flags
 
-{{<tags/feature/ea idea="1901">}}The following flag controls the LISTEN/NOTIFY feature on the master.
-
-To learn about LISTEN/NOTIFY, see [LISTEN, NOTIFY, and UNLISTEN](../../../api/ysql/the-sql-language/statements/cmd_listen_notify/).
-
-For TServer flags, refer to [LISTEN/NOTIFY flags](../yb-tserver/#listen-notify-flags).
+{{<tags/feature/ea idea="1901">}} To learn about LISTEN/NOTIFY, see [LISTEN, NOTIFY, and UNLISTEN](../../../api/ysql/the-sql-language/statements/cmd_listen_notify/).
 
 ##### --ysql_yb_enable_listen_notify
 
@@ -1234,9 +1230,7 @@ For TServer flags, refer to [LISTEN/NOTIFY flags](../yb-tserver/#listen-notify-f
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables YSQL LISTEN/NOTIFY. This value must be set on **both** YB-Master and YB-TServer.
-
-When enabled, the leader master creates the `yb_system` database and the `yb_system.pg_yb_notifications` table in the background.
+Enables YSQL LISTEN/NOTIFY.
 
 ### File expiration based on TTL flags
 

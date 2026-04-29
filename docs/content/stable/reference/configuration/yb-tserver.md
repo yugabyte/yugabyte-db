@@ -1363,7 +1363,7 @@ The time interval, in seconds, to retain history/older versions of the system ca
 
 ### LISTEN/NOTIFY flags
 
-{{<tags/feature/ea idea="1901">}}The following flags control the LISTEN/NOTIFY feature. To learn about LISTEN/NOTIFY, see [LISTEN, NOTIFY, and UNLISTEN](../../../api/ysql/the-sql-language/statements/cmd_listen_notify/).
+{{<tags/feature/ea idea="1901">}} To learn about LISTEN/NOTIFY, see [LISTEN, NOTIFY, and UNLISTEN](../../../api/ysql/the-sql-language/statements/cmd_listen_notify/).
 
 ##### --ysql_yb_enable_listen_notify
 
@@ -1372,9 +1372,7 @@ The time interval, in seconds, to retain history/older versions of the system ca
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables YSQL LISTEN/NOTIFY. This value must be set on both YB-Master and YB-TServer.
-
-When enabled, the leader master creates the `yb_system` database and the `yb_system.pg_yb_notifications` table in the background.
+Enables YSQL LISTEN/NOTIFY.
 
 ##### --ysql_yb_notifications_poll_sleep_duration_nonempty_ms
 
