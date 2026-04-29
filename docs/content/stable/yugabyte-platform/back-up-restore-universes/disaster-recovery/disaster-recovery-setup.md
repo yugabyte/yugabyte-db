@@ -53,6 +53,20 @@ After DR is configured, the DR replica is only available for reads.
 - [Set a replication lag alert](#manage-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
 
+## Universe runtime configuration for DB-scoped DR
+
+DB-scoped [xCluster Disaster Recovery](../) in YugabyteDB Anywhere means you select whole YSQL databases to protect, and the platform manages replication at the database level.
+
+When you create a new DR configuration, the platform sets the [schema change mode](../#schema-change-modes) to automatic or semi-automatic (when the YugabyteDB version on both universes supports that mode) using runtime configuration on the DR primary universe. The values below are **universe-scoped** keys; they can be set on the DR primary or inherited from Customer or Global configuration:
+
+- **`yb.xcluster.db_scoped.creationEnabled`** — Must be `true` for DB-scoped DR. In the YugabyteDB Anywhere UI (runtime configuration search), this option is labeled **Enable xCluster DR Semi-automatic Mode**. When it is `true` and automatic DDL is not in effect, new DR configurations use semi-automatic mode (for YugabyteDB versions that support it).
+
+- **`yb.xcluster.db_scoped.automatic_ddl.creationEnabled`** — In the UI, **Enable xCluster DR Automatic Mode**. When this flag **and** `yb.xcluster.db_scoped.creationEnabled` are both `true` on the DR primary, **and** both universes run YugabyteDB {{<release "2025.2.1">}} or later, YugabyteDB Anywhere creates new DR configurations in **automatic** mode so that DDL from the primary is replicated without manual steps on the replica.
+
+Defaults for new installs follow `reference.conf` (both flags default to `true`). If automatic mode does not apply when you create a DR configuration, confirm these keys on the DR primary universe (and inherited scopes), not only the YugabyteDB version.
+
+To view or edit runtime configuration, navigate to **Admin** > **Advanced** and use the appropriate scope tab. For scope hierarchy and permissions, refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
 ## Set up disaster recovery
 
 During DR setup in semi-automatic mode, create objects on the DR replica as well.

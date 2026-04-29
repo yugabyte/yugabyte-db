@@ -89,7 +89,12 @@ You don't need to make any changes to the DR configuration.
 
 Automatic mode is recommended for all new DR configurations. When possible, you should delete existing DR configurations and re-create them using automatic mode to reduce the operational burden of DDL changes.
 
-Automatic mode is used for any xCluster DR configuration when both DR primary and replica are running YugabyteDB {{<release "2025.2.1">}} or later. For earlier versions, semi-automatic mode is used.
+For **new** DR configurations, YugabyteDB Anywhere uses automatic mode when **all** of the following are true:
+
+- On the **DR primary** universe, the universe-scoped runtime configuration keys `yb.xcluster.db_scoped.creationEnabled` and `yb.xcluster.db_scoped.automatic_ddl.creationEnabled` are both set to `true` (in the UI, **Enable xCluster DR Semi-automatic Mode** and **Enable xCluster DR Automatic Mode**).
+- Both DR primary and replica are running YugabyteDB {{<release "2025.2.1">}} or later.
+
+If `yb.xcluster.db_scoped.automatic_ddl.creationEnabled` is `false` on the DR primary while `yb.xcluster.db_scoped.creationEnabled` remains `true`, new configurations use semi-automatic mode for supported versions. For earlier YugabyteDB versions than {{<release "2025.2.1">}}, semi-automatic or manual mode applies as described in this section. For where to set these keys and default behavior, refer to [Universe runtime configuration for DB-scoped DR](./disaster-recovery-setup/#universe-runtime-configuration-for-db-scoped-dr) and [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
 ### Semi-automatic mode
 
