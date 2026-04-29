@@ -1377,6 +1377,7 @@ Enables YSQL LISTEN/NOTIFY.
 ##### --ysql_yb_notifications_poll_sleep_duration_nonempty_ms
 
 {{% tags/wrap %}}
+
 Default: `1`
 {{% /tags/wrap %}}
 
@@ -1385,6 +1386,7 @@ Wait time in milliseconds before the notifications poller polls again when the p
 ##### --ysql_yb_notifications_poll_sleep_duration_empty_ms
 
 {{% tags/wrap %}}
+
 Default: `100`
 {{% /tags/wrap %}}
 
