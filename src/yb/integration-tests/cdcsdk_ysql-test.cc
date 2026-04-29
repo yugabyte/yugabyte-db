@@ -776,8 +776,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndIn
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
 
   // Insert a row and consume its CDC records so the next GetChanges only returns upsert records.
   ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
