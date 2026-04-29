@@ -14,6 +14,8 @@ type: docs
 
 {{<tags/feature/ea idea="1901">}}LISTEN/NOTIFY provides a communication mechanism for a collection of processes accessing the same YSQL database.
 
+LISTEN/NOTIFY is available in v2025.2.3 and later.
+
 ## Synopsis
 
 - `LISTEN` registers the current session as a listener on a channel.

@@ -1363,7 +1363,7 @@ The time interval, in seconds, to retain history/older versions of the system ca
 
 ### LISTEN/NOTIFY flags
 
-{{<tags/feature/ea idea="1901">}} To learn about LISTEN/NOTIFY, see [LISTEN, NOTIFY, and UNLISTEN](../../../api/ysql/the-sql-language/statements/cmd_listen_notify/).
+{{<tags/feature/ea idea="1901">}}Available in v2025.2.3 and later. To learn about LISTEN/NOTIFY, see [LISTEN, NOTIFY, and UNLISTEN](../../../api/ysql/the-sql-language/statements/cmd_listen_notify/).
 
 ##### --ysql_yb_enable_listen_notify
 
