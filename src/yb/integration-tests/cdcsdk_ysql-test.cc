@@ -13479,5 +13479,51 @@ TEST_F(CDCSDKYsqlTest, TestMetricsDontRecreateAfterStreamDeletion) {
   ASSERT_TRUE(!metrics.ok() && metrics.status().IsNotFound());
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetSchemaUpdatesSchemaNameInCDC)) {
+  ASSERT_OK(SetUpWithParams(
+      1 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA new_schema"));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(WriteRows(1, 10, &test_cluster_));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::Op::RowMessage_Op_DDL ||
+        record.row_message().op() == RowMessage::Op::RowMessage_Op_INSERT) {
+      ASSERT_EQ(record.row_message().pgschema_name(), "public");
+    }
+  }
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table SET SCHEMA new_schema"));
+
+  // Insert into the table under its new schema.
+  ASSERT_OK(WriteRows(11, 20, &test_cluster_, 2, "new_schema.test_table"));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  auto change_resp_2 = ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  for (const auto& record : change_resp_2.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::Op::RowMessage_Op_DDL ||
+        record.row_message().op() == RowMessage::Op::RowMessage_Op_INSERT) {
+      ASSERT_EQ(record.row_message().pgschema_name(), "new_schema");
+    }
+  }
+}
+
 }  // namespace cdc
 }  // namespace yb

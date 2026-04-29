@@ -3444,7 +3444,7 @@ Status CatalogManager::GetTableSchemaFromSysCatalog(
   VLOG(1) << "Get the table: " << req->table().table_id()
           << " specific schema from system catalog with read hybrid time: " << req->read_time();
   Schema schema;
-  uint32_t schema_version;
+  uint32_t schema_version = 0;
   auto status = sys_catalog_->GetTableSchema(
       req->table().table_id(), ReadHybridTime::FromUint64(read_time), &schema, &schema_version);
   if (!status.ok()) {
@@ -3455,6 +3455,26 @@ Status CatalogManager::GetTableSchemaFromSysCatalog(
   }
   SchemaToPB(schema, resp->mutable_schema());
   resp->set_version(schema_version);
+
+  const auto& table_id = req->table().table_id();
+  auto table_result = FindTableById(table_id);
+  if (table_result.ok() && (*table_result)->GetTableType() == PGSQL_TABLE_TYPE) {
+    auto pg_tbl_oids = (*table_result)->GetPgTableAllOids();
+    if (pg_tbl_oids.ok()) {
+      // pgschema_name inside that schema object comes from SchemaPB.DEPRECATED_pgschema_name.
+      // So, instead we query the pgschema_name from the pg_class+pg_namespace tables.
+      auto pgschema_name = GetYsqlManager().GetPgSchemaName(
+          *pg_tbl_oids, ReadHybridTime::FromUint64(read_time));
+      if (pgschema_name.ok() && !pgschema_name->empty()) {
+        resp->set_pgschema_name(std::move(*pgschema_name));
+      } else {
+        LOG(WARNING) << "Unable to find schema name for YSQL table "
+                     << (*table_result)->name() << " id " << table_id
+                     << " due to error: " << pgschema_name.status();
+      }
+    }
+  }
+
   return Status::OK();
 }
 

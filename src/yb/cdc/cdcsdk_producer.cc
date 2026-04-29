@@ -759,8 +759,11 @@ void FillDDLInfo(
   }
 
   row_message->set_schema_version(schema_version);
-  // SchemaPB::pgschema_name is deprecated. See GHI: #12770.
-  row_message->set_pgschema_name(schema_pb.deprecated_pgschema_name());
+  // TODO(GHI#26196): Revist once the PR for removing deprecated_pg_schema_name is landed.
+  const auto& pgschema_name = current_schema_details.schema->SchemaName();
+  LOG_IF(DFATAL, pgschema_name.empty())
+      << "pgschema_name is empty for table " << table_id << " (" << table_name << ")";
+  row_message->set_pgschema_name(pgschema_name);
   CDCSDKTablePropertiesPB* cdc_sdk_table_properties_pb =
       row_message->mutable_schema()->mutable_tab_info();
 

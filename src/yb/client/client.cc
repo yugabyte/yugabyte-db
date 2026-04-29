@@ -2921,6 +2921,11 @@ Result<std::pair<Schema, uint32_t>> YBClient::GetTableSchemaFromSysCatalog(
 
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetTableSchemaFromSysCatalog);
   RETURN_NOT_OK(SchemaFromPB(resp.schema(), &current_schema));
+
+  if (resp.has_pgschema_name() && !resp.pgschema_name().empty()) {
+    current_schema.SetSchemaName(resp.pgschema_name());
+  }
+
   VLOG(1) << "For table_id " << table_id << " found specific schema version from system catalog.";
 
   return std::make_pair(current_schema, resp.version());
