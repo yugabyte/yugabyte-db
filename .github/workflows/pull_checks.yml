@@ -14,8 +14,8 @@ jobs:
       - name: Check PR title
         run: |
           TITLE_RE='^(\[(BACKPORT )?(\d+(\.\d+)+)\])?'
-          TITLE_RE+='\[((#\d+(,#\d+)*)|([A-Z]+-\d+(,[A-Z]+-\d+)*))\]'
-          TITLE_RE+=' [\w-]+(,[\w-]+)*:'
+          TITLE_RE+='\[((#\d+(,#[0-9]+)*)|([A-Z]+-[0-9]+(,[A-Z]+-[0-9]+)*))\]'
+          TITLE_RE+=' [a-zA-Z0-9_-]+(,[[a-zA-Z0-9_]-]+)*:'
           TITLE_RE+=' \S.{8,98}\S$'
 
           if [[ ! "${{ github.event.pull_request.title }}" =~ $TITLE_RE ]]; then
@@ -24,5 +24,6 @@ jobs:
             echo "::error ::  [BACKPORT branch][#12345] area1,area2: Must have fix"
             echo "::error ::Issue referenced must be a github issue or YB-internal Jira ID"
             echo "::error ::Short description must be less than 100 characters."
+            echo "::error ::Backport branch should be used only for non-master release branches."
             exit 1
           fi
