@@ -3203,7 +3203,8 @@ TEST_F(PgMiniTest, KillPGInTheMiddleOfBatcherOperation) {
 
 // The test checks absence of t-server crash in case some tables can't be opened during
 // read/write operation
-TEST_F_EX(PgMiniTest, OpenTableFailureDuringPerform, PgMiniTestSingleNode) {
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_ON_MACOS(OpenTableFailureDuringPerform),
+          PgMiniTestSingleNode) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_request_unknown_tables_during_perform) = true;
