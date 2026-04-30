@@ -92,6 +92,7 @@ struct od_config {
 	int yb_enable_prep_stmt_close;
 	int TEST_yb_auth_delay_ms;
 	_Atomic int yb_max_prepared_statements;
+	_Atomic int yb_tcmalloc_gc_interval;
 };
 
 void od_config_init(od_config_t *);

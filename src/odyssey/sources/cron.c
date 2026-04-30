@@ -359,6 +359,8 @@ static void od_cron(void *arg)
 			setTCMallocSamplePeriod(sample_period_bytes);
 		}
 	}
+
+	int tcmalloc_gc_tick = 0;
 #endif // YB_GOOGLE_TCMALLOC
 
 	cron->stat_time_us = machine_time_us();
@@ -393,6 +395,23 @@ static void od_cron(void *arg)
 			
 			free(tcmalloc_stats);
 			tcmalloc_stats_tick = 0;
+		}
+
+		/*
+		 * YB: Periodic tcmalloc page-heap GC. The interval is controlled
+		 * by runtime gflag ysql_conn_mgr_tcmalloc_gc_interval.
+		 * Keep incrementing the tick even interval is not set so that we can
+		 * release memory in one-shot when interval is set at run time.
+		 */
+		tcmalloc_gc_tick++;
+		int tcmalloc_gc_interval = instance->config.yb_tcmalloc_gc_interval;
+		if (tcmalloc_gc_interval > 0 &&
+			tcmalloc_gc_tick >= tcmalloc_gc_interval) {
+			if (yb_tcmalloc_gc_if_needed()) {
+				od_debug(&instance->logger, "tcmalloc", NULL, NULL,
+					"released pageheap free memory to OS");
+			}
+			tcmalloc_gc_tick = 0;
 		}
 #endif // YB_GOOGLE_TCMALLOC
 

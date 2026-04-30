@@ -189,6 +189,12 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "snapshots is enabled. Otherwise we keep the sample period same as what google tcmalloc "
     "has set for connection manager process");
 
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcmalloc_gc_interval, 300,
+    "Interval in seconds between tcmalloc page-heap GC checks in Ysql Connection Manager. "
+    "Each tick invokes yb::MemTracker::GcTcmallocIfNeeded(); if the pageheap free-list "
+    "overhead exceeds tcmalloc_max_free_bytes_percentage of currently-allocated bytes, the "
+    "excess is returned to the OS. Set to 0 to disable periodic GC.");
+
 namespace {
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {

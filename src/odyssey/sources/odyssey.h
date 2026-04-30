@@ -158,6 +158,15 @@ char *getTCMallocStats();
 /* Set TCMalloc sample period */
 void setTCMallocSamplePeriod(uint64_t sample_period_bytes);
 
+/*
+ * Release tcmalloc page-heap free memory to the OS if the free-list
+ * overhead exceeds FLAGS_tcmalloc_max_free_bytes_percentage of
+ * currently-allocated bytes. Thin wrapper over
+ * yb::MemTracker::GcTcmallocIfNeeded(); returns 1 if a release was
+ * performed, 0 otherwise.
+ */
+bool yb_tcmalloc_gc_if_needed(void);
+
 #endif /* YB_GOOGLE_TCMALLOC */
 
 #endif /* ODYSSEY_H */
