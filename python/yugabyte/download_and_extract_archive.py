@@ -134,10 +134,15 @@ def download_url(url: str, dest_path: str, other_curl_flags: List[str] = []) -> 
     # -f / --fail: don't write the response body for HTTP error responses, so we don't end up
     #              with an HTML error page on disk masquerading as the requested artifact.
     # --retry / --retry-delay: retry transient failures (5xx, connection errors) before giving up.
+    #              Note: curl --retry counts retries after the initial attempt, so we pass
+    #              MAX_DOWNLOAD_ATTEMPTS - 1 to get MAX_DOWNLOAD_ATTEMPTS total attempts.
+    # --retry-connrefused: also retry on ECONNREFUSED, which curl does not retry by default
+    #              and which is a common transient failure in CI environments.
     run_cmd([
         'curl', '-LsSf',
-        '--retry', str(MAX_DOWNLOAD_ATTEMPTS),
+        '--retry', str(MAX_DOWNLOAD_ATTEMPTS - 1),
         '--retry-delay', str(RETRY_DELAY_SEC),
+        '--retry-connrefused',
         url, '-o', dest_path,
     ] + other_curl_flags)
     if not os.path.exists(dest_path):
