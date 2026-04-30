@@ -1075,8 +1075,7 @@ The number of tablet replicas that each core on a YB-TServer can support.
 
 {{% tags/wrap %}}
 
-
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+Default: `1462`
 {{% /tags/wrap %}}
 
 The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
