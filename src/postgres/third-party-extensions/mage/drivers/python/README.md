@@ -74,9 +74,9 @@ python setup.py install
 Connect to your containerized Postgres instance and then run the following commands:
 ```
 # psql 
-CREATE EXTENSION age;
-LOAD 'age';
-SET search_path = ag_catalog, "$user", public;
+CREATE EXTENSION mage;
+LOAD 'mage';
+SET search_path = mag_catalog, "$user", public;
 ```
 
 ### Usage
@@ -88,7 +88,7 @@ SET search_path = ag_catalog, "$user", public;
 * For non-superuser usage see: [Allow Non-Superusers to Use Apache AGE](https://age.apache.org/age-manual/master/intro/setup.html).
 * Make sure to give your non-superuser db account proper permissions to the graph schemas and corresponding objects
 * Make sure to initiate the Apache AGE python driver with the ```load_from_plugins``` parameter. This parameter tries to
-  load the Apache AGE extension from the PostgreSQL plugins directory located at ```$libdir/plugins/age```. Example:
+  load the Apache AGE extension from the PostgreSQL plugins directory located at ```$libdir/plugins/mage```. Example:
   ```python.
   ag = age.connect(host='localhost', port=5432, user='dbuser', password='strong_password', 
                    dbname=postgres, load_from_plugins=True, graph='graph_name)
