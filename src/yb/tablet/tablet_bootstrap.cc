@@ -1513,7 +1513,15 @@ class TabletBootstrap {
     }
 
     replay_state_ = std::make_unique<ReplayState>(flushed_op_ids, LogPrefix());
-    replay_state_->max_committed_hybrid_time = VERIFY_RESULT(tablet_->MaxPersistentHybridTime());
+
+    // Use only the regular DB frontier for safe time. The intents DB may contain hybrid times
+    // from async writes that have not yet been Raft committed.
+    if (tablet_->regular_db()) {
+      if (auto frontier = tablet_->regular_db()->GetFlushedFrontier()) {
+        replay_state_->max_committed_hybrid_time =
+            down_cast<docdb::ConsensusFrontier*>(frontier.get())->hybrid_time();
+      }
+    }
 
     if (FLAGS_force_recover_flushed_frontier) {
       LOG_WITH_PREFIX(WARNING)

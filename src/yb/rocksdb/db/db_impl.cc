@@ -2919,6 +2919,13 @@ Status DBImpl::WaitForFlush(ColumnFamilyHandle* column_family) {
   return WaitForFlushMemTable(cfh->cfd());
 }
 
+Status DBImpl::UpdateFrontiers(const UserFrontiers& frontiers) {
+  InstrumentedMutexLock l(&mutex_);
+  SCHECK(column_family_memtables_->Seek(0), NotFound, "Column family not found");
+  column_family_memtables_->GetMemTable()->UpdateFrontiers(frontiers);
+  return Status::OK();
+}
+
 Status DBImpl::SyncWAL() {
   autovector<log::Writer*, 1> logs_to_sync;
   bool need_log_dir_sync;
