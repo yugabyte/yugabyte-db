@@ -10,7 +10,6 @@ import clsx from 'clsx';
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
 import { Box, makeStyles, Tab, Typography, useTheme } from '@material-ui/core';
 import { TabContext, TabList, TabPanel } from '@material-ui/lab';
-import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 
 import { CodeBlock } from './CodeBlock';
@@ -30,7 +29,11 @@ import {
 import { adaptHistogramData } from './helpers/utils';
 import { parseFloatIfDefined } from '../xcluster/ReplicationUtils';
 import { QueryApi } from '../../redesign/helpers/constants';
-import { formatDatetime, YB_LIVE_QUERY_TIMESTAMP_FORMAT, YBTimeFormats } from '../../redesign/helpers/DateUtils';
+import {
+  YB_LIVE_QUERY_TIMESTAMP_FORMAT,
+  YBTimeFormats,
+  useFormatDatetime
+} from '../../redesign/helpers/DateUtils';
 
 interface QueryInfoSidePanelBaseProps {
   visible: boolean;
@@ -157,10 +160,10 @@ export const QueryInfoSidePanel = ({
   onHide
 }: QueryInfoSidePanelProps) => {
   const [currentTab, setCurrentTab] = useState<QueryInfoTab>(DEFAULT_TAB);
-  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const { t, i18n } = useTranslation('translation', {
     keyPrefix: TRANSLATION_KEY_PREFIX
   });
+  const formatDatetime = useFormatDatetime();
   const classes = useStyles();
   const theme = useTheme();
   const handleTabChange = (_event: React.ChangeEvent<{}>, newTab: QueryInfoTab) => {
@@ -170,12 +173,12 @@ export const QueryInfoSidePanel = ({
     i18n.exists(`${TRANSLATION_KEY_PREFIX}.${key}`) ? t(key) : fallback;
 
   const formatQueryData = (
-    ysqlSlowQueryKey:
+    ysqlQueryKey:
       | YsqlLiveQueryPrimativeFields
       | YcqlLiveQueryPrimativeFields
       | YsqlSlowQueryPrimativeFields
   ): string => {
-    const queryDataEntry = queryData?.[ysqlSlowQueryKey];
+    const queryDataEntry = queryData?.[ysqlQueryKey];
 
     // The following formatters expect only string or finite number types.
     // This guard is used to catch undefined values or unhandled types.
@@ -189,18 +192,17 @@ export const QueryInfoSidePanel = ({
       return NO_DATA_PLACEHOLDER_TEXT;
     }
 
-    if ((DURATION_FIELDS as readonly string[]).includes(ysqlSlowQueryKey)) {
+    if ((DURATION_FIELDS as readonly string[]).includes(ysqlQueryKey)) {
       const duration = parseFloatIfDefined(queryDataEntry);
       return duration === undefined || isNaN(duration)
         ? NO_DATA_PLACEHOLDER_TEXT
         : `${duration?.toFixed(DURATION_FIELD_DECIMALS)} ms`;
     }
 
-    if ((TIMESTAMP_FIELDS as readonly string[]).includes(ysqlSlowQueryKey)) {
+    if ((TIMESTAMP_FIELDS as readonly string[]).includes(ysqlQueryKey)) {
       return formatDatetime(
         queryDataEntry,
         YBTimeFormats.YB_DEFAULT_TIMESTAMP,
-        currentUserTimezone,
         YB_LIVE_QUERY_TIMESTAMP_FORMAT
       );
     }

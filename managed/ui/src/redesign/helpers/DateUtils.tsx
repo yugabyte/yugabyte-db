@@ -69,6 +69,21 @@ export const formatDatetime = (
   return timezone ? momentObj.tz(timezone).format(timeFormat) : momentObj.format(timeFormat);
 };
 
+/**
+ * Custom hook that returns a function to format datetime with user timezone from Redux
+ */
+export const useFormatDatetime = () => {
+  const userTimezone = useSelector((state: any) => state.customer?.currentUser?.data?.timezone);
+
+  return (
+    date: moment.MomentInput,
+    timeFormat: YBTimeFormats = YBTimeFormats.YB_DEFAULT_TIMESTAMP,
+    inputTimeFormat?: string
+  ): string => {
+    return formatDatetime(date, timeFormat, userTimezone, inputTimeFormat);
+  };
+};
+
 type FormatDateProps = {
   date: Date | string | number;
   timeFormat: YBTimeFormats;
