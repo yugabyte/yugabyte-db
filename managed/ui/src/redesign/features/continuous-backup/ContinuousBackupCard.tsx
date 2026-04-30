@@ -14,7 +14,7 @@ import {
   ConfigureContinuousBackupModal,
   ConfigureContinuousBackupOperation
 } from './ConfigureContinuousBackupModal';
-import { formatDatetime } from '../../helpers/DateUtils';
+import { useFormatDatetime } from '../../helpers/DateUtils';
 import { DeleteContinuousBackupConfigModal } from './DeleteContinuousBackupConfigModal';
 import { getIsLastPlatformBackupOld } from './utils';
 import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
@@ -108,6 +108,7 @@ export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBacku
   );
   const [isDeleteContinuousBackupModalOpen, setIsDeleteContinuousBackupModalOpen] = useState(false);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const formatDatetime = useFormatDatetime();
   const classes = useStyles();
 
   const openConfigureContinuousBackupModal = () => setIsConfigureContinuousBackupModalOpen(true);

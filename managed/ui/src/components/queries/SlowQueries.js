@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 import { Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { toast } from 'react-toastify';
-import { Box, Typography, useTheme } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 
 import { useSlowQueriesApi, filterBySearchTokens } from './helpers/queriesHelper';
 import { resetSlowQueries } from '../../actions/universe';
@@ -20,7 +20,7 @@ import {
   PG_15_VERSION_THRESHOLD_STABLE,
   QueryType
 } from './helpers/constants';
-import { formatDatetime } from '../../redesign/helpers/DateUtils';
+import { useFormatDatetime } from '../../redesign/helpers/DateUtils';
 import {
   compareYBSoftwareVersionsWithReleaseTrack,
   getPrimaryCluster
@@ -97,7 +97,7 @@ const SlowQueriesComponent = () => {
   const [selectedRow, setSelectedRow] = useState([]);
   const [panelState, setPanelState] = useState(PANEL_STATE.INITIAL);
   const [searchTokens, setSearchTokens] = useState([]);
-  const theme = useTheme();
+  const formatDatetime = useFormatDatetime();
   let initialColumns = initialQueryColumns;
   try {
     const cachedColumns = localStorage.getItem('__yb_slow_query_columns__');
