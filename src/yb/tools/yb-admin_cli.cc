@@ -1133,7 +1133,7 @@ Status change_leader_blacklist_action(
   return ChangeBlacklist(client, args, true, "Unable to change leader blacklist");
 }
 
-const auto master_leader_stepdown_args = "[<dest_uuid>]";
+const auto master_leader_stepdown_args = "[<new_leader_id>]";
 Status master_leader_stepdown_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   return MasterLeaderStepDown(client, args);
