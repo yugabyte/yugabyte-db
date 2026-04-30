@@ -184,7 +184,7 @@
         "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*[^/]*$)"
       ],
       "exclude": [
-        "(^src/postgres/third-party-extensions/age/sql/)",
+        "(^src/postgres/third-party-extensions/mage/sql/)",
         "(^src/postgres/third-party-extensions/documentdb/pg_documentdb/sql/.*$)",
         "(^src/postgres/third-party-extensions/documentdb/pg_documentdb_core/sql/.*$)",
         "(^src/postgres/third-party-extensions/pg_hint_plan/.*$)",
