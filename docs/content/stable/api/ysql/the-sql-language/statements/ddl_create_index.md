@@ -374,8 +374,8 @@ DROP INDEX
 
 ### Recreate a partition index
 
-Suppose you have a partitioned table where the parent has unique constraint.
-To recreate indexes, you should avoid directly creating index on the partitioned table (parent table) because that will be nonconcurrent, which lacks parallelism and is more susceptible to the snapshot too old error.
+Suppose you have a partitioned table where the parent has a unique constraint.
+To recreate indexes, you should avoid directly creating an index on the partitioned table (parent table) because that cannot use `CONCURRENTLY`.
 Follow these steps to recreate a partition index online:
 
 ```plpgsql
@@ -388,30 +388,36 @@ INSERT INTO parent VALUES (generate_series(0, 299999));
 
 -- 1. Build standalone unique index (slow, but non-blocking)
 CREATE UNIQUE INDEX CONCURRENTLY child0_i_unique ON child0 (i);
--- 2. Add CHECK constraint matching partition bounds (fast, no scan)
+-- 2. Add CHECK constraint matching partition bounds (fast: no scan)
 ALTER TABLE child0 ADD CONSTRAINT child0_partition_check
   CHECK (i IS NOT NULL AND i >= 0 AND i < 100000) NOT VALID;
 -- 3. Validate the CHECK (slow, but non-blocking on parent)
 ALTER TABLE child0 VALIDATE CONSTRAINT child0_partition_check;
--- 4. Prevent reads on the parent during the partition reattach.
+-- 4. Lock the parent to prevent queries from missing the partition's data
+--    while it is detached.
 BEGIN;
 LOCK TABLE parent IN ACCESS EXCLUSIVE MODE;
 -- 5. Detach (fast)
 ALTER TABLE parent DETACH PARTITION child0;
--- 6. Drop inherited constraint (fast, drops old backing index)
+-- 6. Drop inherited constraint (fast: drops old backing index)
 ALTER TABLE child0 DROP CONSTRAINT child0_i_key;
--- 7. Promote standalone index to a constraint (instant, no rebuild)
+-- 7. Promote standalone index to a constraint (fast: no rebuild)
 ALTER TABLE child0 ADD CONSTRAINT child0_i_key UNIQUE USING INDEX child0_i_unique;
--- 8. Reattach (instant as both CHECK and UNIQUE already satisfy parent)
+-- 8. Reattach (fast: CHECK and UNIQUE already satisfy parent)
 ALTER TABLE parent ATTACH PARTITION child0 FOR VALUES FROM (0) TO (100000);
 COMMIT;
 -- 9. Drop temporary CHECK constraint
 ALTER TABLE child0 DROP CONSTRAINT child0_partition_check;
 ```
 
-Repeat for any other partition indexes as desired.
-Step 4 to lock the table is optional if there will be no reads/writes over the partition's data while it is detached.
-Step 4 requires object locking support: set YB-TServer flags `enable_object_locking_for_table_locks=true` and `ysql_yb_ddl_transaction_block_enabled=true`.
+Repeat steps 1–9 for `child1`, `child2`, and any other partitions as needed.
+Step 4 to lock the parent is optional if there will be no reads or writes against the parent table while the partition is detached.
+
+{{< note title="Note" >}}
+
+Step 4 requires object locking support (available since 2025.2): set YB-TServer flags `enable_object_locking_for_table_locks=true` and `ysql_yb_ddl_transaction_block_enabled=true`.
+
+{{< /note >}}
 
 ### Common errors and solutions
 
