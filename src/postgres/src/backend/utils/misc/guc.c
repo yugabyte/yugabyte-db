@@ -4041,7 +4041,6 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-
 	{
 		{"yb_enable_mage", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("Enable the use of mage extension."),
