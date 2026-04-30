@@ -57,7 +57,7 @@ After DR is configured, the DR replica is only available for reads.
 
 DB-scoped [xCluster Disaster Recovery](../) in YugabyteDB Anywhere means you select whole YSQL databases to protect, and the platform manages replication at the database level.
 
-When you create a new DR configuration, the platform sets the [schema change mode](../#schema-change-modes) to automatic or semi-automatic (when the YugabyteDB version on both universes supports that mode) using runtime configuration on the DR primary universe. The values below are **universe-scoped** keys; they can be set on the DR primary or inherited from Customer or Global configuration:
+When you create a new DR configuration, the platform determines the [schema change mode](../#schema-change-modes) (automatic or semi-automatic) based on the YugabyteDB version and the runtime configuration on the DR primary universe. The values below are **universe-scoped** keys; they can be set on the DR primary or inherited from Customer or Global configuration:
 
 - **`yb.xcluster.db_scoped.creationEnabled`** — Must be `true` for DB-scoped DR. In the YugabyteDB Anywhere UI (runtime configuration search), this option is labeled **Enable xCluster DR Semi-automatic Mode**. When it is `true` and automatic DDL is not in effect, new DR configurations use semi-automatic mode (for YugabyteDB versions that support it).
 
