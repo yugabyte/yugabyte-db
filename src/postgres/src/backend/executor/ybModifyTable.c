@@ -398,7 +398,7 @@ YBCApplyInsertRow(YbcPgStatement insert_stmt,
 			pfree(tuple);
 	}
 
-	if (onConflictAction == ONCONFLICT_YB_REPLACE || yb_enable_upsert_mode)
+	if (onConflictAction == ONCONFLICT_YB_REPLACE)
 	{
 		HandleYBStatus(YBCPgInsertStmtSetUpsertMode(insert_stmt));
 	}
@@ -526,7 +526,8 @@ void
 YBCHeapInsert(ResultRelInfo *resultRelInfo,
 			  TupleTableSlot *slot,
 			  YbcPgStatement blockInsertStmt,
-			  EState *estate)
+			  EState *estate,
+			  OnConflictAction onConflictAction)
 {
 	/*
 	 * get information on the (current) result relation
@@ -541,7 +542,7 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 	if (blockInsertStmt)
 	{
 		YBCApplyInsertRow(blockInsertStmt, resultRelationDesc, slot,
-						  ONCONFLICT_NONE, NULL /* ybctid */ ,
+						  onConflictAction, NULL /* ybctid */ ,
 						  YBCFixTransactionSetting(resultRelationDesc,
 												   transaction_setting));
 		return;
@@ -556,7 +557,7 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 	 * transaction that targets a single row (i.e. single-row-modify txn), and
 	 * there are no indices or triggers on the target table.
 	 */
-	YBCExecuteInsertForDb(dboid, resultRelationDesc, slot, ONCONFLICT_NONE,
+	YBCExecuteInsertForDb(dboid, resultRelationDesc, slot, onConflictAction,
 						  NULL /* ybctid */ , transaction_setting);
 }
 

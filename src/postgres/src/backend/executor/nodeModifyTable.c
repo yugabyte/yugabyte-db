@@ -829,15 +829,17 @@ YbExecInsertPrologue(ModifyTableContext *context,
 		 * execution also needs to process primary key index.
 		 */
 		if ((YBRelHasSecondaryIndices(resultRelInfo->ri_RelationDesc) ||
-			 onconflict != ONCONFLICT_NONE) &&
+			 YbOnConflictClauseIsExplicitlySpecified(onconflict)) &&
 			resultRelInfo->ri_IndexRelationDescs == NULL)
-			ExecOpenIndices(resultRelInfo, onconflict != ONCONFLICT_NONE);
+			ExecOpenIndices(resultRelInfo,
+							YbOnConflictClauseIsExplicitlySpecified(onconflict));
 	}
 	else
 	{
 		if (resultRelationDesc->rd_rel->relhasindex &&
 			resultRelInfo->ri_IndexRelationDescs == NULL)
-			ExecOpenIndices(resultRelInfo, onconflict != ONCONFLICT_NONE);
+			ExecOpenIndices(resultRelInfo,
+							YbOnConflictClauseIsExplicitlySpecified(onconflict));
 	}
 
 	/*
@@ -944,7 +946,7 @@ ExecInsert(ModifyTableContext *context,
 		resultRelInfo = partRelInfo;
 	}
 
-	if (onconflict != ONCONFLICT_NONE &&
+	if (YbOnConflictClauseIsExplicitlySpecified(onconflict) &&
 		!resultRelInfo->ri_ybIocBatchingPossible &&
 		mtstate->yb_ioc_state != NULL &&
 		mtstate->yb_ioc_state->num_slots > 0)
@@ -968,7 +970,7 @@ ExecInsert(ModifyTableContext *context,
 							  blockInsertStmt))
 		return NULL;
 
-	if (onconflict != ONCONFLICT_NONE &&
+	if (YbOnConflictClauseIsExplicitlySpecified(onconflict) &&
 		resultRelInfo->ri_ybIocBatchingPossible)
 	{
 		TupleTableSlot *returnSlot = NULL;
@@ -1184,7 +1186,8 @@ YbExecInsertAct(ModifyTableContext *context,
 			  resultRelInfo->ri_TrigDesc->trig_insert_before_row)))
 			ExecPartitionCheck(resultRelInfo, slot, estate, true);
 
-		if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0)
+		if (YbOnConflictClauseIsExplicitlySpecified(onconflict) &&
+			resultRelInfo->ri_NumIndices > 0)
 		{
 			/* Perform a speculative insertion. */
 			uint32		specToken;
@@ -1282,7 +1285,8 @@ YbExecInsertAct(ModifyTableContext *context,
 				 * locked and released in this call.
 				 * TODO(Mikhail) Verify the YugaByte transaction support works properly for on-conflict.
 				 */
-				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate);
+				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate,
+							  ONCONFLICT_NONE);
 
 				/* insert index entries for tuple */
 				recheckIndexes = ExecInsertIndexTuples(resultRelInfo, slot, estate, true, true,
@@ -1348,7 +1352,8 @@ YbExecInsertAct(ModifyTableContext *context,
 			{
 				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
-				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate);
+				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate,
+							  onconflict);
 
 				/* insert index entries for tuple */
 				if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
@@ -4778,6 +4783,37 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	mtstate->yb_is_inplace_index_update_enabled = yb_enable_inplace_index_update;
 
+	/*
+	 * YB: If the user requested upsert mode via the yb_enable_upsert_mode
+	 * GUC for a plain INSERT, either promote the plan's onConflictAction to
+	 * ONCONFLICT_YB_REPLACE (so the per-row insert path enables DocDB upsert
+	 * mode like COPY REPLACE) or, if the target relation is unsafe (has
+	 * secondary indexes, triggers, or rewrite rules / foreign key
+	 * constraints), leave onConflictAction alone and emit a WARNING so the
+	 * statement silently falls back to a normal insert. COPY has its own
+	 * equivalent handling before the row loop in copyfrom.c.
+	 */
+	if (operation == CMD_INSERT &&
+		yb_enable_upsert_mode &&
+		node->onConflictAction == ONCONFLICT_NONE)
+	{
+		if (YBIsUpsertUnsafeOnRel(mtstate->resultRelInfo[0].ri_RelationDesc))
+		{
+			const char *relname =
+				RelationGetRelationName(mtstate->resultRelInfo[0].ri_RelationDesc);
+
+			ereport(WARNING,
+					(errmsg("upsert mode disabled for table \"%s\" "
+							"because it has secondary indexes, "
+							"triggers, or foreign key constraints",
+							relname),
+					 errhint("Consider using INSERT ... ON CONFLICT "
+							 "for true upsert semantics instead.")));
+		}
+		else
+			node->onConflictAction = ONCONFLICT_YB_REPLACE;
+	}
+
 	/* set up epqstate with dummy subplan data for the moment */
 	EvalPlanQualInitExt(&mtstate->mt_epqstate, estate, NULL, NIL,
 						node->epqParam, node->resultRelations);
@@ -5056,7 +5092,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	/* Set the list of arbiter indexes if needed for ON CONFLICT */
 	resultRelInfo = mtstate->resultRelInfo;
-	if (node->onConflictAction != ONCONFLICT_NONE)
+	if (YbOnConflictClauseIsExplicitlySpecified(node->onConflictAction))
 	{
 		/* insert may only have one relation, inheritance is not expanded */
 		Assert(nrels == 1);

@@ -120,3 +120,104 @@ INSERT INTO gh30373 VALUES(1);
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (ANALYZE ON) UPDATE gh30373 a SET id = b.id+1 FROM gh30373 b WHERE a.id=b.id;
 ROLLBACK;
+
+-- Test B: yb_enable_upsert_mode + INSERT on table with secondary index
+-- Conflicting INSERT gets duplicate key error; non-conflicting INSERT succeeds.
+create table upsert_guard_test2 (h int primary key, v1 int, v2 int);
+create index upsert_guard_idx2 on upsert_guard_test2 (v1);
+insert into upsert_guard_test2 values (1, 10, 100), (2, 20, 200);
+
+set yb_enable_upsert_mode = true;
+-- conflicting PK: fails with duplicate key error
+insert into upsert_guard_test2 values (1, 11, 111);
+-- non-conflicting PK: succeeds (upsert mode silently disabled)
+insert into upsert_guard_test2 values (3, 30, 300);
+set yb_enable_upsert_mode = false;
+
+-- Original rows intact, plus the non-conflicting row was inserted.
+select * from upsert_guard_test2 order by h;
+
+-- Index should be consistent with base table.
+/*+IndexOnlyScan(upsert_guard_test2 upsert_guard_idx2)*/
+select v1 from upsert_guard_test2 where v1 > 0 order by v1;
+
+-- Test D: BEFORE ROW trigger
+-- Upsert mode should be disabled; trigger should fire on insert so the audit
+-- row reflects the insert.
+create table upsert_guard_test4 (h int primary key, v1 int);
+create table upsert_guard_audit4 (event text, h int);
+create function upsert_guard_trig4() returns trigger as $$
+begin
+    insert into upsert_guard_audit4 values (tg_op || ' BEFORE', new.h);
+    return new;
+end;
+$$ language plpgsql;
+create trigger upsert_guard_trig4_b before insert on upsert_guard_test4
+    for each row execute function upsert_guard_trig4();
+insert into upsert_guard_test4 values (1, 10);
+
+set yb_enable_upsert_mode = true;
+insert into upsert_guard_test4 values (2, 20);
+set yb_enable_upsert_mode = false;
+
+-- Base table has both rows; audit has BEFORE INSERT entries for both.
+select * from upsert_guard_test4 order by h;
+select * from upsert_guard_audit4 order by h;
+
+-- Test E: AFTER ROW trigger
+-- Same as Test D but with AFTER INSERT trigger.
+create table upsert_guard_test5 (h int primary key, v1 int);
+create table upsert_guard_audit5 (event text, h int);
+create function upsert_guard_trig5() returns trigger as $$
+begin
+    insert into upsert_guard_audit5 values (tg_op || ' AFTER', new.h);
+    return new;
+end;
+$$ language plpgsql;
+create trigger upsert_guard_trig5_a after insert on upsert_guard_test5
+    for each row execute function upsert_guard_trig5();
+insert into upsert_guard_test5 values (1, 10);
+
+set yb_enable_upsert_mode = true;
+insert into upsert_guard_test5 values (2, 20);
+set yb_enable_upsert_mode = false;
+
+select * from upsert_guard_test5 order by h;
+select * from upsert_guard_audit5 order by h;
+
+-- Test F: CHECK constraint (unaffected by the guardrail)
+-- CHECK constraints do not use triggers, so upsert mode should still work.
+-- Upsert on conflicting PK should overwrite the row (blind write).
+create table upsert_guard_test6 (h int primary key, v1 int check (v1 >= 0));
+insert into upsert_guard_test6 values (1, 10);
+
+set yb_enable_upsert_mode = true;
+insert into upsert_guard_test6 values (1, 99);
+set yb_enable_upsert_mode = false;
+
+-- Upsert succeeded, v1 was replaced.
+select * from upsert_guard_test6 order by h;
+
+-- Test G: Generated column (unaffected by the guardrail)
+-- Generated columns do not use triggers, so upsert mode should still work.
+create table upsert_guard_test7 (h int primary key, v1 int,
+                                 v2 int generated always as (v1 * 2) stored);
+insert into upsert_guard_test7 (h, v1) values (1, 10);
+
+set yb_enable_upsert_mode = true;
+insert into upsert_guard_test7 (h, v1) values (1, 99);
+set yb_enable_upsert_mode = false;
+
+-- Upsert succeeded, v1 replaced and v2 regenerated.
+select * from upsert_guard_test7 order by h;
+
+-- clean up
+DROP TABLE upsert_guard_test2;
+DROP TABLE upsert_guard_test4;
+DROP TABLE upsert_guard_audit4;
+DROP FUNCTION upsert_guard_trig4();
+DROP TABLE upsert_guard_test5;
+DROP TABLE upsert_guard_audit5;
+DROP FUNCTION upsert_guard_trig5();
+DROP TABLE upsert_guard_test6;
+DROP TABLE upsert_guard_test7;

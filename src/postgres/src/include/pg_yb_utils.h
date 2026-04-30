@@ -265,6 +265,14 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation);
 extern bool YBRelHasSecondaryIndices(Relation relation);
 
 /*
+ * Check if upsert (blind write) is unsafe on the given relation.
+ * Blind writes skip reading the old row, which means secondary index
+ * entries are updated incorrectly, triggers fire incorrectly, and
+ * foreign key cascades are skipped.
+ */
+extern bool YBIsUpsertUnsafeOnRel(Relation relation);
+
+/*
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed
  * transactions.
  */

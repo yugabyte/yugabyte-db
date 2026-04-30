@@ -649,6 +649,25 @@ YBRelHasSecondaryIndices(Relation relation)
 }
 
 bool
+YBIsUpsertUnsafeOnRel(Relation relation)
+{
+	/*
+	 * Check if upsert (blind write) is unsafe on the given relation.
+	 * Blind writes skip reading the old row, which means secondary index
+	 * entries are updated incorrectly, triggers fire incorrectly, and
+	 * foreign key cascades are skipped.
+	 *
+	 * Upsert mode only applies to YB relations (DocDB-backed tables). For
+	 * non-YB relations it is a no-op, so treat them as trivially safe.
+	 */
+	if (!IsYBRelation(relation))
+		return false;
+	return YBRelHasSecondaryIndices(relation) ||
+		   relation->rd_rel->relhastriggers ||
+		   relation->rd_rel->relhasrules;
+}
+
+bool
 YBTransactionsEnabled()
 {
 	static int	cached_value = -1;
