@@ -133,13 +133,11 @@ def download_url(url: str, dest_path: str, other_curl_flags: List[str] = []) -> 
         raise IOError("Destination directory %s does not exist" % dest_dir)
     # -f / --fail: don't write the response body for HTTP error responses, so we don't end up
     #              with an HTML error page on disk masquerading as the requested artifact.
-    # --retry / --retry-delay / --retry-all-errors: have curl retry transient failures
-    #              (including HTTP errors enabled by --fail) before giving up.
+    # --retry / --retry-delay: retry transient failures (5xx, connection errors) before giving up.
     run_cmd([
         'curl', '-LsSf',
         '--retry', str(MAX_DOWNLOAD_ATTEMPTS),
         '--retry-delay', str(RETRY_DELAY_SEC),
-        '--retry-all-errors',
         url, '-o', dest_path,
     ] + other_curl_flags)
     if not os.path.exists(dest_path):
@@ -279,39 +277,23 @@ def download_and_extract(
     if tar_gz_path is None:
         tmp_tar_gz_path = os.path.join(tmp_dir, tar_gz_name)
         tmp_checksum_path = os.path.join(tmp_dir, checksum_file_name)
-        # Retry the entire download + verify cycle to recover from cases where curl's own
-        # retry can't help (e.g. server returns HTTP 200 with a transient HTML error page).
-        for attempt in range(1, MAX_DOWNLOAD_ATTEMPTS + 1):
-            try:
-                if is_pr_artifact:
-                    if not github_token:
-                        raise ValueError("GitHub token is required to download PR artifacts")
+        if is_pr_artifact:
+            if not github_token:
+                raise ValueError("GitHub token is required to download PR artifacts")
 
-                    tmp_tar_gz_zip_path = os.path.join(tmp_dir, zip_name)
-                    tmp_checksum_zip_path = os.path.join(tmp_dir, checksum_zip_name)
+            tmp_tar_gz_zip_path = os.path.join(tmp_dir, zip_name)
+            tmp_checksum_zip_path = os.path.join(tmp_dir, checksum_zip_name)
 
-                    download_artifact(checksum_url, tmp_checksum_zip_path,
-                                      'archive.tar.gz.sha256', tmp_checksum_path, github_token)
-                    download_artifact(url, tmp_tar_gz_zip_path, 'archive.tar.gz',
-                                      tmp_tar_gz_path, github_token)
-                else:
-                    download_url(checksum_url, tmp_checksum_path)
-                    download_url(url, tmp_tar_gz_path)
+            download_artifact(checksum_url, tmp_checksum_zip_path, 'archive.tar.gz.sha256',
+                              tmp_checksum_path, github_token)
+            download_artifact(url, tmp_tar_gz_zip_path, 'archive.tar.gz', tmp_tar_gz_path,
+                              github_token)
+        else:
+            download_url(checksum_url, tmp_checksum_path)
+            download_url(url, tmp_tar_gz_path)
 
-                if not verify_sha256sum(tmp_checksum_path, tmp_tar_gz_path):
-                    raise ValueError(
-                        "Checksum verification failed for the download of %s" % url)
-                break
-            except Exception as ex:
-                if attempt >= MAX_DOWNLOAD_ATTEMPTS:
-                    raise
-                logging.warning(
-                    "Download attempt %d of %d for %s failed: %s. Retrying in %d sec.",
-                    attempt, MAX_DOWNLOAD_ATTEMPTS, url, ex, RETRY_DELAY_SEC)
-                for partial_path in [tmp_checksum_path, tmp_tar_gz_path]:
-                    remove_ignore_errors(partial_path)
-                time.sleep(RETRY_DELAY_SEC)
-
+        if not verify_sha256sum(tmp_checksum_path, tmp_tar_gz_path):
+            raise ValueError("Checksum verification failed for the download of %s" % url)
         file_names = [tar_gz_name, checksum_file_name]
         for file_name in file_names:
             move_file(os.path.join(tmp_dir, file_name),
