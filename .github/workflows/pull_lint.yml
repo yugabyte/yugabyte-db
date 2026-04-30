@@ -19,9 +19,12 @@ jobs:
       - name: Lint
         run: |
             docker run \
+              --env UID=$(id -u) \
+              --env GID=$(id -g) \
+              -v "$(pwd):$(pwd)" \
+              -w "$(pwd)" \
               yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
               bash -c '
-                sudo -H -u yugabyteci bash -c "
                   set -euo pipefail
                   export PATH=/usr/local/bin:\$HOME/yb-cpplint/cpplint:\$PATH
                   echo ::group::Lint
@@ -34,5 +37,4 @@ jobs:
                     echo No base reference: Skipping Lint Step
                     exit
                   fi
-                "
               '
