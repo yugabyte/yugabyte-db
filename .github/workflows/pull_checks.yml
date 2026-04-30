@@ -8,7 +8,7 @@ on:
       - 'docs/**'
 
 jobs:
-  validate-pr-title:
+  gh-pr-title:
     runs-on: ubuntu-latest
     steps:
       - name: Check PR title
@@ -27,7 +27,7 @@ jobs:
             exit 1
           fi
 
-  lint:
+  gh-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,15 +37,9 @@ jobs:
 
       - name: Lint
         run: |
-            build_dir_in_container=/opt/yb-build/yugabyte-db
             docker run \
-              --user root \
-              -i \
-              "-w=$build_dir_in_container" \
-              --mount type=bind,source="$PWD",target="$build_dir_in_container" \
               yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
               bash -c '
-                chown -R yugabyteci .
                 sudo -H -u yugabyteci bash -c "
                   set -euo pipefail
                   export PATH=/usr/local/bin:\$HOME/yb-cpplint/cpplint:\$PATH
