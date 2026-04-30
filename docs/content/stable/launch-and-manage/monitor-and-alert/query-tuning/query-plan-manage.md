@@ -31,14 +31,20 @@ Because plans can change over time (you turn on the cost-based optimizer, for ex
 
 QPM features are available in v2025.2.3 and later.
 
+## Prerequisites
+
+QPM is available in v2025.2.3.0 and later. While in Early Access, QPM is disabled by default.
+
+To enable QPM, you set the `yb_pg_stat_plans_track` configuration parameter to `top` or `all`. For more information on configuring QPM, see [Configure QPM](#configure-qpm).
+
 ## Using QPM
 
-QPM is enabled by default (v2025.2.3 and later only), and you view QPM data using two views:
+You view QPM data using two views:
 
 - [yb_pg_stat_plans](#yb-pg-stat-plans)
 - [yb_pg_stat_plans_insights](#yb-pg-stat-plans-insights)
 
-If you notice a query is performing poorly, you can run [EXPLAIN](../../../../api/ysql/the-sql-language/statements/perf_explain/) to get its current query ID and/or plan ID, and then use this ID to look up the query in the yb_pg_stat_plans view to see if this is a new plan, or if its execution time has recently increased. To have EXPLAIN include the query and plan IDs, use the QUERYID and PLANID options. For example:
+If you notice a query is performing poorly, you can run [EXPLAIN](../../../../api/ysql/the-sql-language/statements/perf_explain/) to get its current query ID and/or plan ID, and then use the query ID to look up the query in the yb_pg_stat_plans view to see if this is a new plan, or if its execution time has recently increased. To have EXPLAIN include the query and plan IDs, use the QUERYID and PLANID options. For example:
 
 ```sql
 EXPLAIN (queryid on, planid on) SELECT count(*) FROM t0, t1 WHERE a0=a1;
@@ -50,7 +56,7 @@ If hints cannot be generated for a plan, then the plan is not stored. (For examp
 
 Nested queries and queries referencing catalog tables may or may not be tracked, depending on the settings of the `yb_pg_stat_plans_track` and `yb_pg_stat_plans_track_catalog_queries` parameters.
 
-If the string `__YB_STAT_PLANS_SKIP` is encountered in an SQL comment of a statement, the planner will not process the query. This provides a way to prevent QPM entries for selected queries.
+If the string `__YB_STAT_PLANS_SKIP` is encountered in an SQL comment of a statement, the planner will not store plans for the query in QPM. This provides a way to prevent QPM entries for selected queries.
 
 A query may have multiple plans, such as when optimizer statistics change, or a new execution method becomes available.
 
@@ -62,7 +68,7 @@ For example, running the following two queries results in two entries in the QPM
 /*+ HashJoin(t0 t3) */ SELECT 1 FROM t0, t3 WHERE pk0_0 = pk3_0;
 ```
 
-Multiple QueryIDs can also have the same plan:
+Multiple query IDs can also have the same plan:
 
 ```sql
 EXPLAIN (queryid on, planid on) SELECT count(*) FROM t0, t1 WHERE a0=a1;
@@ -145,132 +151,213 @@ yugabyte=# explain (queryid on, planid on) select count(*) from t1, t0 where a1=
 
 ### Pin a plan using QPM
 
-The following example shows how you can use QPM features to pin a plan.
-
-Assume a simple order and order_details schema with an initial state of 1000 accounts each with 20 orders. The join query uses a batched nested loop join as expected.
-
-Then suppose a lot of accounts are added, each with a single order. After statistics are refreshed, the optimizer estimates about one order per account and may switch to a regular nested loop join even for the original accounts with 20 orders each. This would be considered a plan regression for those accounts.
-
-You can use QPM to:
+To force a particular execution plan for a query, you "pin" the plan. You can use QPM to:
 
 - Detect the plan change/regression
 - Revert to a previous (good) plan
 - Optionally, pin other known good plans to prevent any future regressions
 
-First create the tables and add orders:
+The following example shows how you can use QPM features to pin a plan.
 
-```sql
-CREATE TABLE orders (
-    account_id INT,
-    order_no INT,
-    order_id TEXT,
-    PRIMARY KEY (account_id, order_no));
-CREATE TABLE order_details (
-    order_id TEXT PRIMARY KEY,
-    details json);
-INSERT INTO orders (account_id, order_no, order_id)
-   SELECT a,o, a::text || '_' || o::text FROM generate_series(1,1000) a, generate_series(1,20) o;
-INSERT INTO order_details (order_id, details) SELECT order_id, '{}' from orders;
-ANALYZE orders;
-ANALYZE order_details;
+Assume a simple order and `order_details` schema with an initial state of 1000 accounts each with 20 orders. The join query uses a batched nested loop join as expected.
 
-CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
-SET yb_enable_cbo = on;
-SET yb_pg_stat_plans_track = 'all';
-SELECT pg_stat_statements_reset();
-SELECT yb_pg_stat_plans_reset(NULL, NULL, NULL, NULL);
-\pset pager off
-\timing
-```
+Then suppose a lot of accounts are added, each with a single order. After statistics are refreshed, the optimizer estimates about one order per account and may switch to a regular nested loop join even for the original accounts with 20 orders each. This would be considered a plan regression for those accounts.
 
-Use EXPLAIN ANALYZE to inspect the plan, then run the SELECT repeatedly to populate pg_stat_statements and QPM statistics:
+1. Create the tables and add orders:
 
-```sql
-EXPLAIN ANALYZE SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
-SELECT pg_stat_statements_reset();
-SELECT 'SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;' FROM generate_series(1,100); \gexec
-SELECT queryid, mean_exec_time, query from pg_stat_statements
-    WHERE query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
-```
+    ```sql
+    CREATE TABLE orders (
+        account_id INT,
+        order_no INT,
+        order_id TEXT,
+        PRIMARY KEY (account_id, order_no));
+    CREATE TABLE order_details (
+        order_id TEXT PRIMARY KEY,
+        details json);
+    ```
 
-Load new data (many small accounts with just 1 order each):
+1. Insert some data.
 
-```sql
-INSERT INTO orders (account_id, order_no, order_id)
-   SELECT a, 1, a::text || '_1' FROM generate_series(1001,1000000) a;
-INSERT INTO order_details (order_id, details)
-SELECT order_id, '{}' from orders WHERE account_id > 1000;
-ANALYZE orders;
-ANALYZE order_details;
-```
+    ```sql
+    INSERT INTO orders (account_id, order_no, order_id)
+    SELECT a,o, a::text || '_' || o::text FROM generate_series(1,1000) a, generate_series(1,20) o;
+    INSERT INTO order_details (order_id, details) SELECT order_id, '{}' from orders;
+    ANALYZE orders;
+    ANALYZE order_details;
+    ```
 
-Re-run the query and workload:
+1. Set the necessary parameters to enable QPM, and delete all entries from pg_stat_statements and the QPM table.
 
-```sql
-EXPLAIN ANALYZE SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
-SELECT pg_stat_statements_reset();
-SELECT 'SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;' FROM generate_series(1,100); \gexec
-SELECT queryid, mean_exec_time, query from pg_stat_statements
-    WHERE query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
-```
+    ```sql
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    SET yb_enable_cbo = on;
+    SET yb_pg_stat_plans_track = 'all';
+    SELECT pg_stat_statements_reset();
+    SELECT yb_pg_stat_plans_reset(NULL, NULL, NULL, NULL);
+    \pset pager off
+    \timing
+    ```
 
-Get the plans used and their statistics (average execution time and first/last used time):
+1. Use EXPLAIN ANALYZE to inspect the plan, then run the SELECT repeatedly to populate pg_stat_statements and QPM statistics:
 
-```sql
-SELECT s.queryid, s.query, p.planid, p.first_used, p.last_used,
-       p.avg_exec_time, p.avg_est_cost, p.plan FROM
-    pg_stat_statements s JOIN yb_pg_stat_plans p ON s.queryid = p.queryid
-    WHERE s.query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
-```
+    ```sql
+    EXPLAIN ANALYZE SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
+    SELECT pg_stat_statements_reset();
+    SELECT 'SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;' FROM generate_series(1,100); \gexec
+    SELECT queryid, mean_exec_time, query, calls FROM pg_stat_statements
+        WHERE query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
+    ```
 
-Get hints for the plans:
+1. Examine the QPM entries.
 
-```sql
-SELECT s.queryid, s.query, p.planid, p.first_used, p.hints FROM
-    pg_stat_statements s JOIN yb_pg_stat_plans p ON s.queryid = p.queryid
-    WHERE s.query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
-```
+    ```sql
+    SELECT s.queryid, s.query, p.planid, p.first_used, p.last_used,
+        p.avg_exec_time, p.avg_est_cost, p.plan, p.calls FROM
+        pg_stat_statements s JOIN yb_pg_stat_plans p ON s.queryid = p.queryid /* __YB_STAT_PLANS_SKIP */;
+    ```
 
-Inspect the current plan before pinning:
+    You should see a BNL plan that was executed 100 times.
 
-```sql
-EXPLAIN ANALYZE SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
-```
+1. Load new data (many small accounts with just 1 order each):
 
-Enable and set up the hint table:
+    ```sql
+    INSERT INTO orders (account_id, order_no, order_id)
+    SELECT a, 1, a::text || '_1' FROM generate_series(1001,1000000) a;
+    INSERT INTO order_details (order_id, details)
+    SELECT order_id, '{}' from orders WHERE account_id > 1000 /* __YB_STAT_PLANS_SKIP */;
+    ANALYZE orders;
+    ANALYZE order_details;
+    ```
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_hint_plan;
-SET pg_hint_plan.enable_hint_table = on;
-SET pg_hint_plan.yb_use_query_id_for_hinting = on;
-```
+1. Examine the plan:
 
-Insert the hints for the earliest plan into the hint table:
+    ```sql
+    EXPLAIN ANALYZE SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
+    ```
 
-```sql
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
-SELECT s.queryid::text, '', substring(p.hints from 5 for char_length(p.hints) - 7) FROM
-    pg_stat_statements s JOIN yb_pg_stat_plans p ON s.queryid = p.queryid
-    WHERE s.query LIKE 'SELECT d.details FROM orders o JOIN order_details%'
-    ORDER BY first_used ASC LIMIT 1
-ON CONFLICT (norm_query_string, application_name) DO UPDATE
-    SET hints = EXCLUDED.hints;
-```
+    The plan now uses nested loop, and performance is worse.
 
-Check that EXPLAIN plan is updated:
+1. Re-run the query and workload:
 
-```sql
-EXPLAIN (ANALYZE, HINTS) SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
-```
+    ```sql
+    SELECT pg_stat_statements_reset();
+    SELECT 'SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;' FROM generate_series(1,100); \gexec
+    ```
 
-Reset the statistics and re-run the workload:
+    Now there should be 200 executions of the query.
 
-```sql
-SELECT pg_stat_statements_reset();
-SELECT 'SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;' FROM generate_series(1,100); \gexec
-SELECT queryid, mean_exec_time, query from pg_stat_statements
-    WHERE query LIKE 'SELECT d.details FROM orders o JOIN order_details%';
-```
+1. Run the following:
+
+    ```sql
+    SELECT queryid, mean_exec_time, query from pg_stat_statements
+        WHERE query LIKE 'SELECT d.details FROM orders o JOIN order_details%' /* __YB_STAT_PLANS_SKIP */;
+    ```
+
+    Now there should be 2 plans, each with 100 executions.
+
+1. Get the plans used and their statistics (average execution time and first/last used time):
+
+    ```sql
+    SELECT s.queryid, s.query, p.planid, p.first_used, p.last_used,
+        p.avg_exec_time, p.avg_est_cost, p.plan FROM
+        yb_pg_stat_plans p LEFT JOIN pg_stat_statements s ON s.queryid = p.queryid
+        WHERE s.query LIKE 'SELECT d.details FROM orders o JOIN order_details%' /* __YB_STAT_PLANS_SKIP */;
+    ```
+
+1. Get hints for the plans:
+
+    ```sql
+    SELECT s.queryid, s.query, p.planid, p.first_used, p.hints FROM
+        yb_pg_stat_plans p LEFT JOIN pg_stat_statements s ON s.queryid = p.queryid
+        WHERE s.query LIKE 'SELECT d.details FROM orders o JOIN order_details%' /* __YB_STAT_PLANS_SKIP */;
+    ```
+
+1. Inspect the current plan before pinning:
+
+    ```sql
+    EXPLAIN ANALYZE SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;
+    ```
+
+1. Enable and set up the hint table:
+
+    ```sql
+    CREATE EXTENSION IF NOT EXISTS pg_hint_plan;
+    SET pg_hint_plan.enable_hint_table = on;
+    SET pg_hint_plan.yb_use_query_id_for_hinting = on;
+    ```
+
+1. Remove all hints from hint table:
+
+    ```sql
+    DELETE FROM hint_plan.hints;
+    ```
+
+1. Insert the hints for the earliest plan into the hint table:
+
+    ```sql
+    INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+    SELECT s.queryid::text, '', substring(p.hints from 5 for char_length(p.hints) - 7) FROM
+        pg_stat_statements s JOIN yb_pg_stat_plans p ON s.queryid = p.queryid
+        WHERE s.query LIKE 'SELECT d.details FROM orders o JOIN order_details%'
+        ORDER BY first_used ASC LIMIT 1
+    ON CONFLICT (norm_query_string, application_name) DO UPDATE
+        SET hints = EXCLUDED.hints;
+    ```
+
+1. Verify the hints are in the hint table.
+
+    ```sql
+    SELECT * from hint_plan.hints; 
+    ```
+
+1. Check that EXPLAIN plan is updated:
+
+    ```sql
+    EXPLAIN (ANALYZE, HINTS) SELECT d.details FROM orders o JOIN
+        order_details d ON o.order_id = d.order_id WHERE account_id = 10;
+    ```
+
+1. Reset the statistics and re-run the workload:
+
+    ```sql
+    SELECT yb_pg_stat_plans_reset(null, null, null, null);
+    SELECT 'SELECT d.details FROM orders o JOIN order_details d ON o.order_id = d.order_id WHERE account_id = 10;' FROM generate_series(1,100); \gexec
+    SELECT s.queryid, s.query, p.planid, p.first_used, p.last_used,
+        p.avg_exec_time, p.avg_est_cost, p.plan, p.calls FROM
+        pg_stat_statements s JOIN yb_pg_stat_plans p ON s.queryid = p.queryid /* __YB_STAT_PLANS_SKIP */;
+    ```
+
+## Configure QPM
+
+Use the following [YSQL configuration parameters](../../../../reference/configuration/yb-tserver/#ysql-configuration-parameters) to configure QPM and how the yb_pg_stat_plans view is populated.
+
+| Option | Description | Default |
+| :----- | :---------- | :------ |
+| `yb_pg_stat_plans_track` | Turns tracking on or off. Valid values are:<ul><li>none: no plans are tracked, disables QPM.</li><li>top: track only top-level (non-nested) statements.</li><li>all: track all statements.</li></ul> | none |
+| `yb_pg_stat_plans_max_cache_size` | Specifies the Maximum number of entries to store (1-50000). | 5000 |
+| `yb_pg_stat_plans_cache_replacement_algorithm` | Controls the eviction policy used by QPM once the number of entries reaches yb_pg_stat_plans_max_cache_size. Valid values are `simple_clock_lru` - uses an efficient simulation of clock-based Least Recently Used (LRU) algorithm to find the entry to evict; or `true_lru` - evicts the entry with the oldest last_used value (less efficient but finds the actual oldest entry). Requires restart. | simple_clock_lru |
+| `yb_pg_stat_plans_track_catalog_queries` | Controls tracking of statements referencing catalog tables. | true |
+| `yb_pg_stat_plans_verbose_plans` | Set to `true` to generate and store verbose plans. | false |
+| `yb_pg_stat_plans_plan_format` | Controls text format for plans.<br/>Valid values are `text`, `json`, `yaml`, and `xml`. | json |
+
+The yb_pg_stat_plans data is stored per node; all backends on a specific node read and write to the same table. The data is persisted across restarts.
+
+The table is fixed size (default 5000 unique pairs), set using `yb_pg_stat_plans_max_cache_size`.
+
+When the limit on the number of entries is reached, the oldest entry is dropped using a replacement strategy, set using `yb_pg_stat_plans_cache_replacement_algorithm`.
+
+If the hint or plan text does not fit into the fixed size memory slot (4096 bytes for plan text, 2048 bytes for hint text), the text is compressed. If the hint or plan text does not fit after compression, then the text payload is truncated. Truncated hints can not be used to pin the plan.
+
+### Reset QPM entries
+
+Use the `yb_pg_stat_plans_reset(dbid OID, userid OID, queryid BIGINT, planid BIGINT)` function to manually remove entries from the table.
+
+- If dbid is NULL, the function uses the current database.
+- If userid is NULL, the function uses the current user.
+- If queryid is NULL, the function removes all entries matching planid, or all entries if planid is also NULL.
+- If planid is NULL, removes all entries matching queryid, or all entries if queryid is also NULL.
+
+The function returns the number of entries removed.
 
 ## Views
 
@@ -346,34 +433,6 @@ yb_pg_stat_plans does not store query text. You can retrieve query text by joini
 SELECT CASE WHEN ss.query IS NOT NULL THEN ss.query ELSE '<NULL>' END as query_string, hints, … 
 FROM yb_pg_stat_plans qpm LEFT JOIN pg_stat_statements ss ON qpm.queryid=ss.queryid;
 ```
-
-yb_pg_stat_plans is pre-configured, and enabled by default. The following [YSQL configuration parameters](../../../../reference/configuration/yb-tserver/#ysql-configuration-parameters) control yb_pg_stat_plans:
-
-| Option | Description | Default |
-| :----- | :---------- | :------ |
-| `yb_pg_stat_plans_track` | Turns tracking on or off. Valid values are:<ul><li>none: no plans are tracked, disables QPM.</li><li>top: track only top-level (non-nested) statements.</li><li>all: track all statements.</li></ul> | all |
-| `yb_pg_stat_plans_max_cache_size` | Specifies the Maximum number of entries to store (1-50000). | 5000 |
-| `yb_pg_stat_plans_cache_replacement_algorithm` | Controls the eviction policy used by QPM once the number of entries reaches yb_pg_stat_plans_max_cache_size. Valid values are `simple_clock_lru` - uses an efficient simulation of clock-based Least Recently Used (LRU) algorithm to find the entry to evict; or `true_lru` - evicts the entry with the oldest last_used value (less efficient but finds the actual oldest entry). Requires restart. | simple_clock_lru |
-| `yb_pg_stat_plans_track_catalog_queries` | Controls tracking of statements referencing catalog tables. | true |
-| `yb_pg_stat_plans_verbose_plans` | Set to `true` to generate and store verbose plans. | false |
-| `yb_pg_stat_plans_plan_format` | Controls text format for plans.<br/>Valid values are `text`, `json`, `yaml`, and `xml`. | json |
-
-The yb_pg_stat_plans data is stored per node; all backends on a specific node read and write to the same table. The data is persisted across restarts.
-
-The table is fixed size (default 5000 unique pairs), set using `yb_pg_stat_plans_max_cache_size`.
-
-When the limit on the number of entries is reached, the oldest entry is dropped using a replacement strategy, set using `yb_pg_stat_plans_cache_replacement_algorithm`.
-
-If the hint or plan text does not fit into the fixed size memory slot (4096 bytes for plan text, 2048 bytes for hint text), the text is compressed. If the hint or plan text does not fit after compression, then the text payload is truncated. Truncated hints can not be used to pin the plan.
-
-Use the `yb_pg_stat_plans_reset(dbid OID, userid OID, queryid BIGINT, planid BIGINT)` function to manually remove entries from the table.
-
-- If dbid is NULL, the function uses the current database.
-- If userid is NULL, the function uses the current user.
-- If queryid is NULL, the function removes all entries matching planid, or all entries if planid is also NULL.
-- If planid is NULL, removes all entries matching queryid, or all entries if queryid is also NULL.
-
-The function returns the number of entries removed.
 
 ### yb_pg_stat_plans_insights
 
