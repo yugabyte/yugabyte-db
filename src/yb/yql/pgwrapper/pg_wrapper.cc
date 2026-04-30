@@ -478,6 +478,9 @@ DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VAL
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_mage, false, "Enable the use of mage extension.");
+TAG_FLAG(ysql_yb_enable_mage, hidden);
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;

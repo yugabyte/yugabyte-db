@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import java.io.File;
+import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -24,6 +25,13 @@ public class TestPgRegressThirdPartyExtensionsMage extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_yb_enable_mage", "true");
+    return flagMap;
   }
 
   @Test
