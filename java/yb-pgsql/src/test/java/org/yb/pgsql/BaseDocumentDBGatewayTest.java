@@ -78,24 +78,27 @@ public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
 
   @Before
   public void setUp() throws Exception {
+    String host = getPgHost(0);
+
     if (!gatewayInitialized) {
       // Create the documentdb extension via YSQL.
       try (Statement statement = connection.createStatement()) {
         statement.execute("CREATE EXTENSION IF NOT EXISTS documentdb CASCADE");
       }
 
-      // The gateway background worker starts with PostgreSQL but cannot serve requests
+      // TODO(#31353) The gateway background worker starts with PostgreSQL but cannot serve requests
       // until the extension schemas exist. Restart the cluster so the gateway initializes
       // with the schemas already in place.
       restartForGateway();
 
       // Wait for the gateway to start accepting connections (first tserver).
-      String host = getPgHost(0);
       waitForGateway(host);
 
-      mongoClient = createMongoClient(host);
       gatewayInitialized = true;
     }
+
+    // mongoClient is recreated per test (tearDown closes and nulls it).
+    mongoClient = createMongoClient(host);
   }
 
   @After
@@ -151,9 +154,10 @@ public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
 
   /**
    * Restart the cluster so the gateway background workers pick up the newly created extension.
-   * This is needed because the gateway starts with PostgreSQL before CREATE EXTENSION runs
-   * and caches the missing schema state. A clean restart ensures the gateway initializes
-   * with the extension schemas already in place.
+   * The gateway starts with PostgreSQL before CREATE EXTENSION runs and caches the missing
+   * schema state, so a clean restart is required. This is a known limitation tracked by
+   * yugabyte/yugabyte-db#31353; once the gateway can pick up the extension without a restart,
+   * this helper and its callers should be removed.
    */
   protected void restartForGateway() throws Exception {
     LOG.info("Restarting cluster so gateway workers pick up the documentdb extension");

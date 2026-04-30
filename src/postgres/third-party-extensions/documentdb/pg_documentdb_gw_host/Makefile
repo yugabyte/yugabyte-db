@@ -68,7 +68,7 @@ endif
 
 all:
 
-# YB: OpenSSL from thirdparty for the openssl-sys crate.
+# OpenSSL from thirdparty for the openssl-sys crate.
 # The common dir has headers+libs; fall back to uninstrumented if common doesn't have them.
 YB_OPENSSL_DIR := $(YB_THIRDPARTY_DIR)/installed/common
 

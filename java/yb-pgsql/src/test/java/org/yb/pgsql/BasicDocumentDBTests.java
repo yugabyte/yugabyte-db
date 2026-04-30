@@ -128,9 +128,12 @@ public class BasicDocumentDBTests extends BaseDocumentDBGatewayTest {
     assertEquals(2, collection.countDocuments(Filters.eq("status", "senior")));
 
     // --- distinct ---
+    // 5 documents have a top-level city field, each unique: New York, Chicago,
+    // Portland (was Boston, overwritten by replaceOne), Seattle, Denver. Frank's
+    // city is nested under address.city, so doesn't contribute.
     List<String> cities = new ArrayList<>();
     collection.distinct("city", String.class).into(cities);
-    assertTrue(cities.size() >= 5);
+    assertEquals(5, cities.size());
     assertTrue(cities.contains("Portland"));
 
     // --- deleteOne ---
