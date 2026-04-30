@@ -19,8 +19,8 @@ jobs:
       - name: Lint
         run: |
             docker run \
-              --env UID=$(id -u) \
-              --env GID=$(id -g) \
+              --env UID=$(id -u yugabyte-ci) \
+              --env GID=$(id -g yugabyte-ci) \
               -v "$(pwd):$(pwd)" \
               -w "$(pwd)" \
               yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
