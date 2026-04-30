@@ -1,0 +1,38 @@
+name: "Lint"
+
+on:
+  pull_request:
+    types: [opened, edited]
+    paths-ignore:
+      - README.md
+      - 'docs/**'
+
+jobs:
+  gh-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: 'false'
+
+      - name: Lint
+        run: |
+            docker run \
+              yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
+              bash -c '
+                sudo -H -u yugabyteci bash -c "
+                  set -euo pipefail
+                  export PATH=/usr/local/bin:\$HOME/yb-cpplint/cpplint:\$PATH
+                  echo ::group::Lint
+                  # Base reference should not be set for non-PR actions.
+                  if [[ -n \"${{ github.base_ref }}\" ]]; then
+                    echo Base reference: ${{ github.base_ref }}
+                    git fetch origin ${{ github.base_ref }}
+                    ./build-support/lint.py --rev origin/${{ github.base_ref }}
+                  else
+                    echo No base reference: Skipping Lint Step
+                    exit
+                  fi
+                "
+              '
