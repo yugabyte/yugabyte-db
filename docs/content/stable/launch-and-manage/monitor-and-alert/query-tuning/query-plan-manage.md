@@ -163,6 +163,8 @@ Assume a simple order and `order_details` schema with an initial state of 1000 a
 
 Then suppose a lot of accounts are added, each with a single order. After statistics are refreshed, the optimizer estimates about one order per account and may switch to a regular nested loop join even for the original accounts with 20 orders each. This would be considered a plan regression for those accounts.
 
+#### Setup
+
 1. Create the tables and add orders:
 
     ```sql
@@ -198,6 +200,8 @@ Then suppose a lot of accounts are added, each with a single order. After statis
     \timing
     ```
 
+#### Inspect the plan
+
 1. Use EXPLAIN ANALYZE to inspect the plan, then run the SELECT repeatedly to populate pg_stat_statements and QPM statistics:
 
     ```sql
@@ -217,6 +221,8 @@ Then suppose a lot of accounts are added, each with a single order. After statis
     ```
 
     You should see a BNL plan that was executed 100 times.
+
+#### Add new orders
 
 1. Load new data (many small accounts with just 1 order each):
 
@@ -254,6 +260,8 @@ Then suppose a lot of accounts are added, each with a single order. After statis
     ```
 
     Now there should be 2 plans, each with 100 executions.
+
+#### Pin the plan
 
 1. Get the plans used and their statistics (average execution time and first/last used time):
 
