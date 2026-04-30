@@ -5304,12 +5304,7 @@ CREATE TABLE t1_default PARTITION OF t1 DEFAULT;
   conn = ASSERT_RESULT(ConnectToDB("test_en_us_utf8_db"));
   result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
   LOG(INFO) << "test_en_us_utf8_db result: " << result;
-  // MacOS and Linux have different sort order of en_US.UTF-8 collation.
-#if defined(__linux__)
   ASSERT_EQ(result, utf8_expected);
-#else
-  ASSERT_EQ(result, c_expected);
-#endif
   conn = ASSERT_RESULT(ConnectToDB("test_en_us_x_icu_db"));
   result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
   LOG(INFO) << "test_en_us_x_icu_db result: " << result;
