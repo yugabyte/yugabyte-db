@@ -2,7 +2,7 @@ name: "Lint"
 
 on:
   pull_request:
-    types: [opened, edited]
+    types: [opened, synchronize, reopened, edited ]
     paths-ignore:
       - README.md
       - 'docs/**'
