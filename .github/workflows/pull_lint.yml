@@ -28,6 +28,8 @@ jobs:
                   export PATH=/usr/local/bin:$HOME/yb-cpplint/cpplint:$PATH
                   echo ::group::Lint
                   # Base reference should not be set for non-PR actions.
+                  set -x
+                  git config --global --add safe.directory $(pwd)
                   if [[ -n "${{ github.base_ref }}" ]]; then
                     echo Base reference: ${{ github.base_ref }}
                     git fetch origin ${{ github.base_ref }}
