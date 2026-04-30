@@ -703,11 +703,7 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(
     verifier_state->processed_tables.insert(table->id());
   }
 
-  RETURN_NOT_OK(DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch));
-  if (is_rollback_to_subtxn) {
-    RemoveDdlRollbackToSubTxnState(table->id(), txn_data.ddl_txn_id);
-  }
-  return Status::OK();
+  return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch);
 }
 
 Status CatalogManager::IsYsqlDdlVerificationDone(
