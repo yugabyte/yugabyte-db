@@ -25,6 +25,7 @@ import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -73,6 +74,7 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.libs.Json;
 
 public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   private static final String CERTS_DIR = "/tmp/yugaware_tests/kcet_certs";
@@ -1288,6 +1290,107 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  @Test
+  public void testHelmInstallNewlyAddedAZUsesNewDeviceInfo() throws IOException {
+    // Saved universe is single AZ (defaultAZ in defaultRegion). Add a new
+    // region/AZ to the provider that simulates the multi-AZ migration target.
+    AvailabilityZone newAZ =
+        AvailabilityZone.createOrThrow(defaultRegion, "az-2", "PlacementAZ 2", "subnet-2");
+    Map<String, String> newAzConfig = new HashMap<>();
+    newAzConfig.put("KUBECONFIG", "test");
+    newAZ.updateConfig(newAzConfig);
+    newAZ.save();
+
+    // Build the new (task) UniverseDetails that contains:
+    //  - a new userIntent with per-AZ deviceInfo overrides for the newly added AZ
+    //  - a placementInfo containing both AZs
+    UniverseDefinitionTaskParams taskUniverseDetails =
+        Json.fromJson(
+            Json.toJson(defaultUniverse.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        taskUniverseDetails.getPrimaryCluster().userIntent;
+    newUserIntent.regionList = ImmutableList.of(defaultRegion.getUuid());
+
+    DeviceInfo newAzTserverDeviceInfo = new DeviceInfo();
+    newAzTserverDeviceInfo.numVolumes = 3;
+    newAzTserverDeviceInfo.volumeSize = 200;
+    newAzTserverDeviceInfo.storageClass = "new-tserver-sc";
+
+    DeviceInfo newAzMasterDeviceInfo = new DeviceInfo();
+    newAzMasterDeviceInfo.numVolumes = 2;
+    newAzMasterDeviceInfo.volumeSize = 150;
+    newAzMasterDeviceInfo.storageClass = "new-master-sc";
+
+    newUserIntent.updateUserIntentOverrides(
+        uIO ->
+            uIO.updateAZOverride(
+                newAZ.getUuid(),
+                azO -> {
+                  azO.updatePerProcess(
+                      ServerType.TSERVER, perProc -> perProc.setDeviceInfo(newAzTserverDeviceInfo));
+                  azO.updatePerProcess(
+                      ServerType.MASTER, perProc -> perProc.setDeviceInfo(newAzMasterDeviceInfo));
+                }));
+
+    PlacementInfo newPi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(defaultAZ.getUuid(), newPi);
+    PlacementInfoUtil.addPlacementZone(newAZ.getUuid(), newPi);
+    taskUniverseDetails.getPrimaryCluster().placementInfo = newPi;
+
+    // Initialize the executor targeted at the newly added AZ.
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix + "-az-2";
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = taskUniverseDetails;
+    params.placementInfo = newPi;
+    params.azCode = newAZ.getCode();
+    params.namespace = "demo-ns-az-2";
+    // Non-empty masterAddresses signals an AZ-scoped (multi-AZ) deployment.
+    params.masterAddresses = "fake-master:7100";
+    kubernetesCommandExecutor.initialize(params);
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            expectedOverrideFile.capture());
+
+    Yaml yaml = new Yaml();
+    InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
+    Map<String, Object> overrides = yaml.loadAs(is, Map.class);
+
+    // The storage block must reflect the new userIntent overrides for the
+    // newly added AZ, NOT the saved userIntent's defaults.
+    Map<String, Object> storage = (Map<String, Object>) overrides.get("storage");
+    assertNotNull(storage);
+    Map<String, Object> tserverDiskSpecs = (Map<String, Object>) storage.get("tserver");
+    Map<String, Object> masterDiskSpecs = (Map<String, Object>) storage.get("master");
+
+    assertEquals(newAzTserverDeviceInfo.numVolumes, tserverDiskSpecs.get("count"));
+    assertEquals(
+        String.format("%dGi", newAzTserverDeviceInfo.volumeSize), tserverDiskSpecs.get("size"));
+    assertEquals(newAzTserverDeviceInfo.storageClass, tserverDiskSpecs.get("storageClass"));
+
+    assertEquals(newAzMasterDeviceInfo.numVolumes, masterDiskSpecs.get("count"));
+    assertEquals(
+        String.format("%dGi", newAzMasterDeviceInfo.volumeSize), masterDiskSpecs.get("size"));
+    assertEquals(newAzMasterDeviceInfo.storageClass, masterDiskSpecs.get("storageClass"));
   }
 
   @Test
