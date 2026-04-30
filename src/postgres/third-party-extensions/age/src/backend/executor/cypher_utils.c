@@ -230,7 +230,7 @@ static HeapTuple yb_insert_entity_tuple(ResultRelInfo *resultRelInfo,
     }
 
     YBCHeapInsert(resultRelInfo, elemTupleSlot, NULL /* blockInsertStmt */,
-                  estate);
+                  estate, ONCONFLICT_NONE);
 
     if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
     {

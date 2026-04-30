@@ -533,7 +533,7 @@ static void yb_insert_edge_simple(Relation label_relation, graphid edge_id,
     slot->tts_isnull[3] = false;
 
     ExecStoreVirtualTuple(slot);
-    YBCHeapInsert(resultRelInfo, slot, NULL, estate);
+    YBCHeapInsert(resultRelInfo, slot, NULL, estate, ONCONFLICT_NONE);
 
     ExecDropSingleTupleTableSlot(slot);
     FreeExecutorState(estate);
@@ -560,7 +560,7 @@ static void yb_insert_vertex_simple(Relation label_relation, graphid vertex_id,
     slot->tts_isnull[1] = false;
 
     ExecStoreVirtualTuple(slot);
-    YBCHeapInsert(resultRelInfo, slot, NULL, estate);
+    YBCHeapInsert(resultRelInfo, slot, NULL, estate, ONCONFLICT_NONE);
 
     ExecDropSingleTupleTableSlot(slot);
     FreeExecutorState(estate);
