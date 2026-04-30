@@ -5186,10 +5186,7 @@ ppk_buffer_fetch_callback(void *param, const char *key, size_t key_size)
 		if (added)
 			ConditionVariableSignal(&ppk->cv_empty);
 		else
-		{
-			ppk->fetch_status = FETCH_STATUS_IDLE;
 			++fkp->discarded;
-		}
 	}
 	else
 	{
@@ -5276,7 +5273,7 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	if (ppk->fetch_status == FETCH_STATUS_WORKING)
 		ppk->fetch_status = FETCH_STATUS_IDLE;
 	else
-		Assert(ppk->fetch_status == FETCH_STATUS_DONE || fkp.discarded);
+		Assert(ppk->fetch_status == FETCH_STATUS_DONE);
 	SpinLockRelease(&ppk->mutex);
 	/* Log results for debugging and fine tuning */
 	if (fkp.discarded)
@@ -5433,7 +5430,7 @@ ybParallelNextRange(YBParallelPartitionKeys ppk,
 					const char **high_bound,
 					size_t *high_bound_size)
 {
-	YbNextRangeResult result = NEXT_RANGE_WAIT;
+	YbNextRangeResult result;
 
 	while (true)
 	{
@@ -5496,7 +5493,11 @@ ybParallelNextRange(YBParallelPartitionKeys ppk,
 				/* The buffer should be empty now. */
 				Assert(ppk->key_count == 0);
 			}
-			/* Wait otherwise. */
+			else
+			{
+				/* Wait otherwise. */
+				result = NEXT_RANGE_WAIT;
+			}
 		}
 		SpinLockRelease(&ppk->mutex);
 		if (result == NEXT_RANGE_SUCCESS || result == NEXT_RANGE_DONE)
