@@ -19,7 +19,7 @@ jobs:
           TITLE_RE+=' \S.{8,98}\S$'
 
           if [[ ! "${{ github.event.pull_request.title }}" =~ $TITLE_RE ]]; then
-            echo "::error ::PR title must include issue ID, code area (no extra whitespace), and short description.)
+            echo "::error ::PR title must include issue ID, code area (no extra whitespace), and short description.)"
             echo "::error ::  [#12345,#12367] area: Cool feature xyz"
             echo "::error ::  [BACKPORT branch][#12345] area1,area2: Must have fix"
             echo "::error ::Issue referenced must be a github issue or YB-internal Jira ID"
