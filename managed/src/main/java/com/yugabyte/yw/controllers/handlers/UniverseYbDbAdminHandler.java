@@ -210,8 +210,14 @@ public class UniverseYbDbAdminHandler {
 
   public UUID configureYSQL(
       ConfigureDBApiParams requestParams, Customer customer, Universe universe) {
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return configureYSQL(requestParams, customer, universe, false /* validateParamsOnly */);
+  }
+
+  public UUID configureYSQL(
+      ConfigureDBApiParams requestParams,
+      Customer customer,
+      Universe universe,
+      boolean validateParamsOnly) {
 
     if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
       throw new PlatformServiceException(
@@ -278,8 +284,19 @@ public class UniverseYbDbAdminHandler {
         universe, requestParams.connectionPoolingGflags);
     requestParams.validatePassword(policyService);
     requestParams.validateYSQLTables(universe, tableHandler);
+    if (validateParamsOnly) {
+      LOG.debug(
+          "Skipping configure YSQL task submission for universe {} as validateParams is true.",
+          universe.getName());
+      return null;
+    }
     TaskType taskType =
-        userIntent.providerType.equals(Common.CloudType.kubernetes)
+        universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .providerType
+                .equals(Common.CloudType.kubernetes)
             ? TaskType.ConfigureDBApisKubernetes
             : TaskType.ConfigureDBApis;
     UUID taskUUID = commissioner.submit(taskType, requestParams);

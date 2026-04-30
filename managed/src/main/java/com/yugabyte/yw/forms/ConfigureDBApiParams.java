@@ -150,7 +150,7 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
               BAD_REQUEST, "Cannot disable YSQL if connection pooling is enabled");
         }
       }
-      validateMultiTenancy(universe, enableYSQL);
+      validateMultiTenancy(universe, enableYSQL, runtimeConfGetter);
     } else if (configureServer.equals(ServerType.YQLSERVER)) {
       if (changeInYsql) {
         throw new PlatformServiceException(
@@ -258,11 +258,18 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
     }
   }
 
-  private void validateMultiTenancy(Universe universe, boolean enableYSQL) {
+  private void validateMultiTenancy(
+      Universe universe, boolean enableYSQL, RuntimeConfGetter runtimeConfGetter) {
     if (multiTenancy == null) {
       return;
     }
     if (multiTenancy.isEnableQos()) {
+      if (!runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.allowMultiTenancy)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Multi-tenancy is not allowed. Please set runtime flag"
+                + " 'yb.universe.allow_multi_tenancy' to true.");
+      }
       if (!enableYSQL) {
         throw new PlatformServiceException(
             BAD_REQUEST,

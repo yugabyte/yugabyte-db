@@ -17,8 +17,12 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
@@ -346,6 +350,55 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
         result,
         "Disabling YSQL is not allowed. Please set yb.configure_db_api.allow_disable to allow"
             + " disable DB API");
+  }
+
+  @Test
+  public void testConfigureYSQLValidateParamsOnly() {
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYSQL", true)
+            .put("enableYSQLAuth", true)
+            .put("ysqlPassword", "Admin@123")
+            .put("validateParams", true);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertNull("No taskUUID expected when validateParams is true", resultJson.get("taskUUID"));
+    verify(mockCommissioner, never()).submit(any(), any());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testConfigureYSQLRunOnlyPrechecks() {
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYSQL", true)
+            .put("enableYSQLAuth", true)
+            .put("ysqlPassword", "Admin@123")
+            .put("runOnlyPrechecks", true);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureDBApis);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertNotNull("taskUUID expected when runOnlyPrechecks is true", resultJson.get("taskUUID"));
+    verify(mockCommissioner, times(1)).submit(any(), any());
   }
 
   @Test

@@ -53,6 +53,22 @@ public class ConfigureYSQLFormData {
   @Nullable
   public MultiTenancyConfig multiTenancy;
 
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "If true, only run the prechecks for the configure YSQL task without performing the"
+              + " actual upgrade. Cannot be set together with validateParams.")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0")
+  public boolean runOnlyPrechecks = false;
+
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. If true, only validate the request"
+              + " parameters without submitting any task or running prechecks. Cannot be set"
+              + " together with runOnlyPrechecks.")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0")
+  public boolean validateParams = false;
+
   @JsonIgnore
   public void mergeWithConfigureDBApiParams(ConfigureDBApiParams params) {
     params.enableYSQL = this.enableYSQL;
@@ -66,5 +82,6 @@ public class ConfigureYSQLFormData {
         this.communicationPorts.internalYsqlServerRpcPort;
     params.multiTenancy = this.multiTenancy;
     params.configureServer = UniverseTaskBase.ServerType.YSQLSERVER;
+    params.runOnlyPrechecks = this.runOnlyPrechecks;
   }
 }

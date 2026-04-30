@@ -1919,4 +1919,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " payload.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowMultiTenancy =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_multi_tenancy",
+          ScopeType.UNIVERSE,
+          "Allow users to enable multi-tenancy",
+          "If this flag is enabled, user will be able to enable the multi-tenancy QoS feature on"
+              + " universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

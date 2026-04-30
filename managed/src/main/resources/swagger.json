@@ -6640,6 +6640,14 @@
           "$ref" : "#/definitions/MultiTenancyConfig",
           "description" : "WARNING: This is a preview API that could change. Multi-tenancy configuration for QoS. Cgroup provisioning must already be completed on the nodes before enabling."
         },
+        "runOnlyPrechecks" : {
+          "description" : "WARNING: This is a preview API that could change. If true, only run the prechecks for the configure YSQL task without performing the actual upgrade. Cannot be set together with validateParams.",
+          "type" : "boolean"
+        },
+        "validateParams" : {
+          "description" : "WARNING: This is a preview API that could change. If true, only validate the request parameters without submitting any task or running prechecks. Cannot be set together with runOnlyPrechecks.",
+          "type" : "boolean"
+        },
         "ysqlPassword" : {
           "description" : "YSQL Auth password",
           "type" : "string"
