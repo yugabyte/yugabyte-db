@@ -167,8 +167,8 @@ Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
 
 Clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
 
-- Extended - Has less frequent updates, using mature [LTS releases](../../releases/versioning/#stable-release-support-policy) that have been tested longer in YugabyteDB Aeon.
-- Rapid - Updated more frequently, providing quicker access to new features. Rapid can include [STS and LTS releases](../../releases/versioning/#stable-release-support-policy), depending on which is more recent.
+- Extended - Has less frequent updates, using mature [LTS releases](../../../releases/versioning/#stable-release-support-policy) that have been tested longer in YugabyteDB Aeon.
+- Rapid - Updated more frequently, providing quicker access to new features. Rapid can include [STS and LTS releases](../../../releases/versioning/#stable-release-support-policy), depending on which is more recent.
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
 
