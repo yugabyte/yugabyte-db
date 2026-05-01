@@ -20,6 +20,13 @@ jobs:
       - name: Lint
         run: |
           docker run \
+            --user root \
+            -v "$(pwd):$(pwd)" \
+            -w "$(pwd)" \
+            yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
+            bash -c 'chown -R yugabyteci .'
+          docker run \
+            --user yugabyteci \
             -v "$(pwd):$(pwd)" \
             -w "$(pwd)" \
             yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
