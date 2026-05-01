@@ -25,6 +25,7 @@
 #include "executor/cypher_utils.h"
 
 /* YB includes */
+#include "catalog/ag_label.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "utils/age_global_graph.h"
@@ -603,7 +604,12 @@ static void process_update_list(CustomScanState *node)
                                      CStringGetDatum(label_name),
                                      AGTYPE_P_GET_DATUM(agtype_value_to_agtype(altered_properties)));
 
-            slot = populate_vertex_tts(slot, id, altered_properties);
+            /*
+             * YB: pass a zeroed YbMekoDp; the meko_* tenant columns are
+             * re-populated below from the existing on-disk tuple.
+             */
+            slot = populate_vertex_tts(slot, id, altered_properties,
+                                       (YbMekoDp){0});
         }
         else if (original_entity_value->type == AGTV_EDGE)
         {
@@ -616,8 +622,13 @@ static void process_update_list(CustomScanState *node)
                                    CStringGetDatum(label_name),
                                    AGTYPE_P_GET_DATUM(agtype_value_to_agtype(altered_properties)));
 
+            /*
+             * YB: pass a zeroed YbMekoDp; the meko_* tenant columns are
+             * re-populated below from the existing on-disk tuple.
+             */
             slot = populate_edge_tts(slot, id, startid, endid,
-                                     altered_properties);
+                                     altered_properties,
+                                     (YbMekoDp){0});
         }
         else
         {
@@ -667,6 +678,67 @@ static void process_update_list(CustomScanState *node)
              */
             if (HeapTupleIsValid(heap_tuple))
             {
+                /*
+                 * YB: For vertex/edge updates, carry over the meko tenant
+                 * columns from the existing tuple since SET only modifies
+                 * properties. The meko_* columns only exist on
+                 * YugabyteDB-hosted tables, so skip in vanilla PG.
+                 */
+                if (IsYugaByteEnabled() &&
+                    (original_entity_value->type == AGTV_VERTEX ||
+                     original_entity_value->type == AGTV_EDGE))
+                {
+                    TupleTableSlot *oldSlot;
+                    bool isnull;
+                    int dp_anum, user_anum, ag_anum, conv_anum;
+                    int dp_off, user_off, ag_off, conv_off;
+
+                    if (original_entity_value->type == AGTV_VERTEX)
+                    {
+                        dp_anum = Anum_ag_label_vertex_table_meko_datapack_id;
+                        user_anum = Anum_ag_label_vertex_table_meko_user_id;
+                        ag_anum = Anum_ag_label_vertex_table_meko_agent_id;
+                        conv_anum = Anum_ag_label_vertex_table_meko_conversation_id;
+                        dp_off = vertex_tuple_meko_datapack_id;
+                        user_off = vertex_tuple_meko_user_id;
+                        ag_off = vertex_tuple_meko_agent_id;
+                        conv_off = vertex_tuple_meko_conversation_id;
+                    }
+                    else
+                    {
+                        dp_anum = Anum_ag_label_edge_table_meko_datapack_id;
+                        user_anum = Anum_ag_label_edge_table_meko_user_id;
+                        ag_anum = Anum_ag_label_edge_table_meko_agent_id;
+                        conv_anum = Anum_ag_label_edge_table_meko_conversation_id;
+                        dp_off = edge_tuple_meko_datapack_id;
+                        user_off = edge_tuple_meko_user_id;
+                        ag_off = edge_tuple_meko_agent_id;
+                        conv_off = edge_tuple_meko_conversation_id;
+                    }
+
+                    oldSlot = ExecInitExtraTupleSlot(
+                        estate,
+                        RelationGetDescr(resultRelInfo->ri_RelationDesc),
+                        &TTSOpsHeapTuple);
+                    ExecStoreHeapTuple(heap_tuple, oldSlot, false);
+
+                    slot->tts_values[dp_off] =
+                        slot_getattr(oldSlot, dp_anum, &isnull);
+                    slot->tts_isnull[dp_off] = isnull;
+
+                    slot->tts_values[user_off] =
+                        slot_getattr(oldSlot, user_anum, &isnull);
+                    slot->tts_isnull[user_off] = isnull;
+
+                    slot->tts_values[ag_off] =
+                        slot_getattr(oldSlot, ag_anum, &isnull);
+                    slot->tts_isnull[ag_off] = isnull;
+
+                    slot->tts_values[conv_off] =
+                        slot_getattr(oldSlot, conv_anum, &isnull);
+                    slot->tts_isnull[conv_off] = isnull;
+                }
+
                 heap_tuple = update_entity_tuple(resultRelInfo, slot, estate,
                                                  heap_tuple);
             }

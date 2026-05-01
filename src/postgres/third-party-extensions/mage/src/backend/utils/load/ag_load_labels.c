@@ -114,6 +114,20 @@ void vertex_row_cb(int delim __attribute__((unused)), void *data)
         slot->tts_isnull[0] = false;
         slot->tts_isnull[1] = false;
 
+        /*
+         * YB: TODO(#31338) bulk CSV load is not wired up for YB
+         * (insert_batch uses heap_multi_insert). meko_* tenant columns
+         * are left NULL until the insert path is made YB-aware.
+         */
+        slot->tts_values[2] = (Datum) 0;
+        slot->tts_isnull[2] = true;
+        slot->tts_values[3] = (Datum) 0;
+        slot->tts_isnull[3] = true;
+        slot->tts_values[4] = (Datum) 0;
+        slot->tts_isnull[4] = true;
+        slot->tts_values[5] = (Datum) 0;
+        slot->tts_isnull[5] = true;
+
         /* Make the slot as containing virtual tuple */
         ExecStoreVirtualTuple(slot);
 

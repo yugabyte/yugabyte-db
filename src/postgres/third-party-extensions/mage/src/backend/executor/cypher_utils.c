@@ -34,7 +34,12 @@
 
 /* YB includes */
 #include "executor/ybModifyTable.h"
+#include "fmgr.h"
 #include "pg_yb_utils.h"
+#include "utils/builtins.h"
+#include "utils/uuid.h"
+
+extern Datum uuid_in(PG_FUNCTION_ARGS); /* YB: for yb_extract_meko_columns_from_properties */
 
 /*
  * Given the graph name and the label name, create a ResultRelInfo for the table
@@ -85,8 +90,40 @@ void destroy_entity_result_rel_info(ResultRelInfo *result_rel_info)
     table_close(result_rel_info->ri_RelationDesc, RowExclusiveLock);
 }
 
-TupleTableSlot *populate_vertex_tts(
-    TupleTableSlot *elemTupleSlot, agtype_value *id, agtype_value *properties)
+/*
+ * YB: Copy meko_* tenant column values from `meko` into the four
+ * corresponding slot offsets on a vertex tuple. Caller is expected to gate
+ * the call with IsYugaByteEnabled().
+ */
+void yb_populate_vertex_meko_columns(TupleTableSlot *slot, YbMekoDp meko)
+{
+    slot->tts_values[vertex_tuple_meko_datapack_id]     = meko.datapack_id;
+    slot->tts_isnull[vertex_tuple_meko_datapack_id]     = meko.datapack_id_isnull;
+    slot->tts_values[vertex_tuple_meko_user_id]         = meko.user_id;
+    slot->tts_isnull[vertex_tuple_meko_user_id]         = meko.user_id_isnull;
+    slot->tts_values[vertex_tuple_meko_agent_id]        = meko.agent_id;
+    slot->tts_isnull[vertex_tuple_meko_agent_id]        = meko.agent_id_isnull;
+    slot->tts_values[vertex_tuple_meko_conversation_id] = meko.conversation_id;
+    slot->tts_isnull[vertex_tuple_meko_conversation_id] = meko.conversation_id_isnull;
+}
+
+/* YB: edge counterpart of yb_populate_vertex_meko_columns. */
+void yb_populate_edge_meko_columns(TupleTableSlot *slot, YbMekoDp meko)
+{
+    slot->tts_values[edge_tuple_meko_datapack_id]     = meko.datapack_id;
+    slot->tts_isnull[edge_tuple_meko_datapack_id]     = meko.datapack_id_isnull;
+    slot->tts_values[edge_tuple_meko_user_id]         = meko.user_id;
+    slot->tts_isnull[edge_tuple_meko_user_id]         = meko.user_id_isnull;
+    slot->tts_values[edge_tuple_meko_agent_id]        = meko.agent_id;
+    slot->tts_isnull[edge_tuple_meko_agent_id]        = meko.agent_id_isnull;
+    slot->tts_values[edge_tuple_meko_conversation_id] = meko.conversation_id;
+    slot->tts_isnull[edge_tuple_meko_conversation_id] = meko.conversation_id_isnull;
+}
+
+TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
+                                    agtype_value *id,
+                                    agtype_value *properties,
+                                    YbMekoDp meko)
 {
     bool properties_isnull;
 
@@ -105,12 +142,20 @@ TupleTableSlot *populate_vertex_tts(
         AGTYPE_P_GET_DATUM(agtype_value_to_agtype(properties));
     elemTupleSlot->tts_isnull[vertex_tuple_properties] = properties_isnull;
 
+    /*
+     * YB: populate tenant-scope meko_* columns on the vertex tuple. These
+     * columns only exist on YugabyteDB-hosted vertex tables, so skip in
+     * vanilla PG.
+     */
+    if (IsYugaByteEnabled())
+        yb_populate_vertex_meko_columns(elemTupleSlot, meko);
+
     return elemTupleSlot;
 }
 
 TupleTableSlot *populate_edge_tts(
     TupleTableSlot *elemTupleSlot, agtype_value *id, agtype_value *startid,
-    agtype_value *endid, agtype_value *properties)
+    agtype_value *endid, agtype_value *properties,YbMekoDp meko)
 {
     bool properties_isnull;
 
@@ -148,6 +193,14 @@ TupleTableSlot *populate_edge_tts(
     elemTupleSlot->tts_values[edge_tuple_properties] =
         AGTYPE_P_GET_DATUM(agtype_value_to_agtype(properties));
     elemTupleSlot->tts_isnull[edge_tuple_properties] = properties_isnull;
+
+    /*
+     * YB: populate tenant-scope meko_* columns on the edge tuple. These
+     * columns only exist on YugabyteDB-hosted edge tables, so skip in
+     * vanilla PG.
+     */
+    if (IsYugaByteEnabled())
+        yb_populate_edge_meko_columns(elemTupleSlot, meko);
 
     return elemTupleSlot;
 }
@@ -278,6 +331,103 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
     }
 
     return tuple;
+}
+
+/*
+ * Read meko_datapack_id, meko_user_id, meko_agent_id, meko_conversation_id
+ * from a vertex or edge properties map and materialize them as column
+ * Datums for the caller.
+ *
+ * The meko_* keys are intentionally left inside the properties map so that
+ * Cypher MATCH/MERGE containment predicates against those keys continue to
+ * work without parser-level changes. Callers that mutate the map (for
+ * example SET) are responsible for keeping the map and the columns in sync.
+ *
+ * If a key is missing from the properties map, the corresponding isnull is
+ * set to true and the Datum is left at 0.
+ */
+YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
+                                                 bool props_isnull)
+{
+    YbMekoDp result;
+    agtype *props_agtype;
+    agtype_value *val;
+
+    result.datapack_id = (Datum) 0;
+    result.datapack_id_isnull = true;
+    result.user_id = (Datum) 0;
+    result.user_id_isnull = true;
+    result.agent_id = (Datum) 0;
+    result.agent_id_isnull = true;
+    result.conversation_id = (Datum) 0;
+    result.conversation_id_isnull = true;
+
+    if (props_isnull)
+    {
+        return result;
+    }
+
+    props_agtype = DATUM_GET_AGTYPE_P(props_datum);
+    if (!AGT_ROOT_IS_OBJECT(props_agtype))
+    {
+        return result;
+    }
+
+    /* Look up each meko key directly from the root container. */
+    {
+        agtype_value search_key;
+
+        search_key.type = AGTV_STRING;
+
+        search_key.val.string.val = "meko_datapack_id";
+        search_key.val.string.len = 16;
+        val = find_agtype_value_from_container(&props_agtype->root,
+                                               AGT_FOBJECT, &search_key);
+        if (val != NULL && val->type == AGTV_STRING)
+        {
+            char *str = pnstrdup(val->val.string.val, val->val.string.len);
+            result.datapack_id = DirectFunctionCall1(uuid_in,
+                                                     CStringGetDatum(str));
+            result.datapack_id_isnull = false;
+        }
+
+        search_key.val.string.val = "meko_user_id";
+        search_key.val.string.len = 12;
+        val = find_agtype_value_from_container(&props_agtype->root,
+                                               AGT_FOBJECT, &search_key);
+        if (val != NULL && val->type == AGTV_STRING)
+        {
+            char *str = pnstrdup(val->val.string.val, val->val.string.len);
+            result.user_id = DirectFunctionCall1(uuid_in,
+                                                 CStringGetDatum(str));
+            result.user_id_isnull = false;
+        }
+
+        search_key.val.string.val = "meko_agent_id";
+        search_key.val.string.len = 13;
+        val = find_agtype_value_from_container(&props_agtype->root,
+                                               AGT_FOBJECT, &search_key);
+        if (val != NULL && val->type == AGTV_STRING)
+        {
+            char *str = pnstrdup(val->val.string.val, val->val.string.len);
+            result.agent_id = CStringGetTextDatum(str);
+            result.agent_id_isnull = false;
+        }
+
+        search_key.val.string.val = "meko_conversation_id";
+        search_key.val.string.len = 20;
+        val = find_agtype_value_from_container(&props_agtype->root,
+                                               AGT_FOBJECT, &search_key);
+        if (val != NULL && val->type == AGTV_STRING)
+        {
+            char *str = pnstrdup(val->val.string.val, val->val.string.len);
+            result.conversation_id = DirectFunctionCall1(uuid_in,
+                                                         CStringGetDatum(str));
+            result.conversation_id_isnull = false;
+        }
+    }
+
+    return result;
 }
 
 /*

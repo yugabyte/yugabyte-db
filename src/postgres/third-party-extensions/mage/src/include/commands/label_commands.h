@@ -28,6 +28,11 @@
 
 #define AG_VERTEX_COLNAME_ID "id"
 #define AG_VERTEX_COLNAME_PROPERTIES "properties"
+/* YB: vertex label tenant-column names (meko_*) */
+#define AG_VERTEX_COLNAME_MEKO_DATAPACK_ID "meko_datapack_id"
+#define AG_VERTEX_COLNAME_MEKO_USER_ID "meko_user_id"
+#define AG_VERTEX_COLNAME_MEKO_AGENT_ID "meko_agent_id"
+#define AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID "meko_conversation_id"
 
 #define AG_ACCESS_FUNCTION_ID "age_id"
 
@@ -38,6 +43,11 @@
 #define AG_EDGE_COLNAME_START_ID "start_id"
 #define AG_EDGE_COLNAME_END_ID "end_id"
 #define AG_EDGE_COLNAME_PROPERTIES "properties"
+/* YB: edge label tenant-column names (meko_*) */
+#define AG_EDGE_COLNAME_MEKO_DATAPACK_ID "meko_datapack_id"
+#define AG_EDGE_COLNAME_MEKO_USER_ID "meko_user_id"
+#define AG_EDGE_COLNAME_MEKO_AGENT_ID "meko_agent_id"
+#define AG_EDGE_COLNAME_MEKO_CONVERSATION_ID "meko_conversation_id"
 
 #define AG_EDGE_ACCESS_FUNCTION_ID "age_id"
 #define AG_EDGE_ACCESS_FUNCTION_START_ID "age_start_id"

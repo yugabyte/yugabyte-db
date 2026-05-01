@@ -109,11 +109,41 @@ typedef struct cypher_merge_custom_scan_state
     struct created_path *created_paths_list;
 } cypher_merge_custom_scan_state;
 
+/*
+ * YB: Bundle of meko_* tenant column values extracted from a vertex/edge
+ * properties map by yb_extract_meko_columns_from_properties(). Each column has
+ * a Datum value and an accompanying isnull flag. Keys missing from the
+ * source map are reported as isnull = true with the Datum left at 0.
+ */
+typedef struct YbMekoDp
+{
+    Datum datapack_id;
+    bool  datapack_id_isnull;
+    Datum user_id;
+    bool  user_id_isnull;
+    Datum agent_id;
+    bool  agent_id_isnull;
+    Datum conversation_id;
+    bool  conversation_id_isnull;
+} YbMekoDp;
+
+YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
+                                                 bool props_isnull);
+
+/*
+ * YB: Copy meko_* tenant column values from `meko` into the four corresponding
+ * slot offsets on a vertex/edge tuple. Caller is expected to gate the call
+ * with IsYugaByteEnabled() since the meko_* columns only exist on YB-hosted
+ * tables.
+ */
+void yb_populate_vertex_meko_columns(TupleTableSlot *slot, YbMekoDp meko);
+void yb_populate_edge_meko_columns(TupleTableSlot *slot, YbMekoDp meko);
+
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
-                                    agtype_value *id, agtype_value *properties);
+    agtype_value *id, agtype_value *properties, YbMekoDp meko); /* YB: tenant cols */
 TupleTableSlot *populate_edge_tts(
     TupleTableSlot *elemTupleSlot, agtype_value *id, agtype_value *startid,
-    agtype_value *endid, agtype_value *properties);
+    agtype_value *endid, agtype_value *properties, YbMekoDp meko); /* YB: tenant cols */
 
 ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name,
                                              char *label_name);

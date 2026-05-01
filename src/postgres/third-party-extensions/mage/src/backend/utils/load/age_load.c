@@ -241,8 +241,9 @@ void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
                         agtype *edge_properties)
 {
 
-    Datum values[6];
-    bool nulls[4] = {false, false, false, false};
+    /* YB: 4 extra slots hold meko_* tenant columns (all NULL by default) */
+    Datum values[8];
+    bool nulls[8] = {false, false, false, false, true, true, true, true};
     Relation label_relation;
     HeapTuple tuple;
 
@@ -262,6 +263,11 @@ void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
     values[1] = GRAPHID_GET_DATUM(start_id);
     values[2] = GRAPHID_GET_DATUM(end_id);
     values[3] = AGTYPE_P_GET_DATUM((edge_properties));
+    /* YB: TODO(#31338) caller does not yet supply meko_* tenant values. */
+    values[4] = (Datum) 0;
+    values[5] = (Datum) 0;
+    values[6] = (Datum) 0;
+    values[7] = (Datum) 0;
 
     if (IsYBRelation(label_relation))
     {
@@ -532,6 +538,16 @@ static void yb_insert_edge_simple(Relation label_relation, graphid edge_id,
     slot->tts_values[3] = AGTYPE_P_GET_DATUM(edge_properties);
     slot->tts_isnull[3] = false;
 
+    /* YB: TODO(#31338) caller does not yet supply meko_* tenant values. */
+    slot->tts_values[4] = (Datum) 0;
+    slot->tts_isnull[4] = true;
+    slot->tts_values[5] = (Datum) 0;
+    slot->tts_isnull[5] = true;
+    slot->tts_values[6] = (Datum) 0;
+    slot->tts_isnull[6] = true;
+    slot->tts_values[7] = (Datum) 0;
+    slot->tts_isnull[7] = true;
+
     ExecStoreVirtualTuple(slot);
     YBCHeapInsert(resultRelInfo, slot, NULL, estate, ONCONFLICT_NONE);
 
@@ -558,6 +574,16 @@ static void yb_insert_vertex_simple(Relation label_relation, graphid vertex_id,
     slot->tts_isnull[0] = false;
     slot->tts_values[1] = AGTYPE_P_GET_DATUM(vertex_properties);
     slot->tts_isnull[1] = false;
+
+    /* YB: TODO(#31338) caller does not yet supply meko_* tenant values. */
+    slot->tts_values[2] = (Datum) 0;
+    slot->tts_isnull[2] = true;
+    slot->tts_values[3] = (Datum) 0;
+    slot->tts_isnull[3] = true;
+    slot->tts_values[4] = (Datum) 0;
+    slot->tts_isnull[4] = true;
+    slot->tts_values[5] = (Datum) 0;
+    slot->tts_isnull[5] = true;
 
     ExecStoreVirtualTuple(slot);
     YBCHeapInsert(resultRelInfo, slot, NULL, estate, ONCONFLICT_NONE);
