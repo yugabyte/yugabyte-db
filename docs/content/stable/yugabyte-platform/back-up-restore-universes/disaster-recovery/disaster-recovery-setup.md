@@ -53,17 +53,17 @@ After DR is configured, the DR replica is only available for reads.
 - [Set a replication lag alert](#manage-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
 
-## Universe runtime configuration for DB-scoped DR
+## Runtime configuration for schema modes
 
-DB-scoped [xCluster Disaster Recovery](../) in YugabyteDB Anywhere means you select whole YSQL databases to protect, and the platform manages replication at the database level.
+[xCluster Disaster Recovery](../) in YugabyteDB Anywhere uses database-level replication, which means you select whole YSQL databases to protect, and the platform manages replication for those databases.
 
-When you create a new DR configuration, the platform determines the [schema change mode](../#schema-change-modes) (automatic or semi-automatic) based on the YugabyteDB version and the runtime configuration on the DR primary universe. The values below are **universe-scoped** keys; they can be set on the DR primary or inherited from Customer or Global configuration:
+When you create a new DR configuration, YugabyteDB Anywhere selects semi-automatic or automatic mode as the [schema change mode](../#schema-change-modes), based on the YugabyteDB version and universe-scoped runtime configuration on the DR primary universe (values can be set on the universe or inherited from Customer or Global configuration). For how each mode behaves at the database layer, refer to [Automatic Mode](../../../../architecture/docdb-replication/async-replication/#automatic-mode) and [Semi-automatic Mode](../../../../architecture/docdb-replication/async-replication/#semi-automatic-mode) in xCluster replication (architecture).
 
-- **`yb.xcluster.db_scoped.creationEnabled`** — Must be `true` for DB-scoped DR. In the YugabyteDB Anywhere UI (runtime configuration search), this option is labeled **Enable xCluster DR Semi-automatic Mode**. When it is `true` and automatic DDL is not in effect, new DR configurations use semi-automatic mode (for YugabyteDB versions that support it).
+- **`yb.xcluster.db_scoped.creationEnabled`** — Must be `true` for database-level DR in YugabyteDB Anywhere. In the UI (runtime configuration search), this option is labeled **Enable xCluster DR Semi-automatic Mode**; it turns on Semi-automatic mode for new DR configurations when the YugabyteDB version supports it. If Automatic Mode is not enabled (see the next key), new configurations use Semi-automatic Mode.
 
 - **`yb.xcluster.db_scoped.automatic_ddl.creationEnabled`** — In the UI, **Enable xCluster DR Automatic Mode**. When this flag **and** `yb.xcluster.db_scoped.creationEnabled` are both `true` on the DR primary, **and** both universes run YugabyteDB {{<release "2025.2.1">}} or later, YugabyteDB Anywhere creates new DR configurations in **automatic** mode so that DDL from the primary is replicated without manual steps on the replica.
 
-Defaults for new installs follow `reference.conf` (both flags default to `true`). If automatic mode does not apply when you create a DR configuration, confirm these keys on the DR primary universe (and inherited scopes), not only the YugabyteDB version.
+If automatic mode does not apply when you create a DR configuration, confirm these keys on the DR primary universe (and inherited scopes), not only the YugabyteDB version.
 
 To view or edit runtime configuration, navigate to **Admin** > **Advanced** and use the appropriate scope tab. For scope hierarchy and permissions, refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
