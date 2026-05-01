@@ -379,6 +379,13 @@ class TransactionParticipant::Impl
     return closing_.load(std::memory_order_acquire);
   }
 
+  Status CheckClosing() const override {
+    if (Closing()) {
+      return STATUS(ShutdownInProgress, "Tablet is shutting down");
+    }
+    return Status::OK();
+  }
+
   void Start() {
     LOG_WITH_PREFIX(INFO) << "Start";
 
@@ -600,9 +607,12 @@ class TransactionParticipant::Impl
 
   // Registers a request, giving it a newly allocated id and returning this id.
   Result<int64_t> RegisterRequest(bool allow_when_closing) {
-    if (!allow_when_closing && Closing()) {
-      LOG_WITH_PREFIX(INFO) << "Closing, not allow request to be registered";
-      return STATUS(ShutdownInProgress, "Tablet is shutting down");
+    if (!allow_when_closing) {
+      auto closing_status = CheckClosing();
+      if (!closing_status.ok()) {
+        LOG_WITH_PREFIX(INFO) << "Closing, not allow request to be registered";
+        return closing_status;
+      }
     }
 
     std::lock_guard lock(mutex_);
