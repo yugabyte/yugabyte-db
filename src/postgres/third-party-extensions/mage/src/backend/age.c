@@ -23,18 +23,12 @@
 #include "parser/cypher_analyze.h"
 #include "utils/ag_guc.h"
 
-/* YB includes */
-#include "utils/guc.h"
-
 PG_MODULE_MAGIC;
 
 void _PG_init(void);
 
 void _PG_init(void)
 {
-    if (!yb_enable_mage)
-        elog(ERROR, "Mage is not enabled");
-
     register_ag_nodes();
     set_rel_pathlist_init();
     object_access_hook_init();
