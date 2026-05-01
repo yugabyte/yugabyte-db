@@ -154,10 +154,10 @@ Although these are the same query (that is, they are logically equivalent and re
 - The order of tables in the FROM clause: `FROM t1, t0` is not considered to be equivalent to `FROM t0, t1`.
 - The order of clauses in predicates (conditions): `a1=a0` is not considered to be equivalent to `a1=a1`, or `a1=a2 AND b2=1` and `b2=1 AND a2=a1`.
 
-These queries do however get the same plan, and the Plan IDs will be the same. Plan ID does not care about the order of:
+These queries do however get the same plan, and the Plan IDs will be the same. Plan ID _does not_ care about the order of:
 
-- FROM list items
-- clauses of ANDs
+- FROM list items;
+- clauses of ANDs; or
 - a1 and a2 in a1=a2
 
 
