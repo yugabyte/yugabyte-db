@@ -91,7 +91,7 @@ EXPLAIN (queryid on, planid on) SELECT count(*) FROM t0, t1 WHERE a0=a1;
 ```
 
 ```sql
-yugabyte=# explain (queryid on, planid on) select count(*) from t1, t0 where a0=a1;
+EXPLAIN (queryid on, planid on) SELECT count(*) FROM t1, t0 WHERE a0=a1;
 ```
 
 ```caddyfile{.nocopy}
@@ -111,7 +111,7 @@ yugabyte=# explain (queryid on, planid on) select count(*) from t1, t0 where a0=
 ```
 
 ```sql
-yugabyte=# explain (queryid on, planid on) select count(*) from t0, t1 where a1=a0;
+EXPLAIN (queryid on, planid on) SELECT count(*) FROM t0, t1 WHERE a1=a0;
 ```
 
 ```caddyfile{.nocopy}
@@ -131,7 +131,7 @@ yugabyte=# explain (queryid on, planid on) select count(*) from t0, t1 where a1=
 ```
 
 ```sql
-yugabyte=# explain (queryid on, planid on) select count(*) from t1, t0 where a1=a0;
+EXPLAIN (queryid on, planid on) SELECT count(*) FROM t1, t0 WHERE a1=a0;
 ```
 
 ```caddyfile{.nocopy}
@@ -148,6 +148,18 @@ yugabyte=# explain (queryid on, planid on) select count(*) from t1, t0 where a1=
  Query Identifier: 8157648196979716971
  Plan Identifier: 1344843950213355732
 ```
+
+Although these are the same query (that is, they are logically equivalent and return the same set of rows, just written differently), they are assigned different Query IDs. This is because query ID assignment is sensitive to the following:
+
+- The order of tables in the FROM clause: `FROM t1, t0` is not considered to be equivalent to `FROM t0, t1`.
+- The order of clauses in predicates (conditions): `a1=a0` is not considered to be equivalent to `a1=a1`, or `a1=a2 AND b2=1` and `b2=1 AND a2=a1`.
+
+These queries do however get the same plan, and the Plan IDs will be the same. Plan ID does not care about the order of:
+
+- FROM list items
+- clauses of ANDs
+- a1 and a2 in a1=a2
+
 
 ### Pin a plan using QPM
 
@@ -354,7 +366,7 @@ The table is fixed size (default 5000 unique pairs), set using `yb_pg_stat_plans
 
 When the limit on the number of entries is reached, the oldest entry is dropped using a replacement strategy, set using `yb_pg_stat_plans_cache_replacement_algorithm`.
 
-If the hint or plan text does not fit into the fixed size memory slot (4096 bytes for plan text, 2048 bytes for hint text), the text is compressed. If the hint or plan text does not fit after compression, then the text payload is truncated. Truncated hints can not be used to pin the plan.
+If the hint or plan text does not fit after compression, then the text payload is truncated. Truncated hints cannot be used to pin the plan.
 
 ### Reset QPM entries
 
@@ -492,7 +504,7 @@ View definition:
     cte.min_avg_exec_time,
     cte.min_avg_est_cost,
         CASE
-            WHEN cte.avg_exec_time = cte.min_avg_exec_time AND cte.min_avg_est_cost <> cte.avg_est_cost OR cte.avg_exec_time <> cte.min_avg_exec_time AND cte.min_avg_est_cost = cte.avg_est_cost THEN 'Yes'::text
+            WHEN (cte.avg_exec_time = cte.min_avg_exec_time AND cte.min_avg_est_cost <> cte.avg_est_cost) OR (cte.avg_exec_time <> cte.min_avg_exec_time AND cte.min_avg_est_cost = cte.avg_est_cost) THEN 'Yes'::text
             ELSE 'No'::text
         END AS plan_require_evaluation,
         CASE
