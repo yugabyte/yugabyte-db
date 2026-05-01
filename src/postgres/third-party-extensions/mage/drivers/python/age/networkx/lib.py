@@ -28,7 +28,7 @@ def checkIfGraphNameExistInAGE(connection: psycopg.connect,
     with connection.cursor() as cursor:
         cursor.execute(sql.SQL("""
                     SELECT count(*) 
-                    FROM ag_catalog.ag_graph 
+                    FROM mag_catalog.ag_graph 
                     WHERE name='%s'
                 """ % (graphName)))
         if cursor.fetchone()[0] == 0:
@@ -41,7 +41,7 @@ def getOidOfGraph(connection: psycopg.connect,
     try:
         with connection.cursor() as cursor:
             cursor.execute(sql.SQL("""
-                        SELECT graphid FROM ag_catalog.ag_graph WHERE name='%s' ;
+                        SELECT graphid FROM mag_catalog.ag_graph WHERE name='%s' ;
                     """ % (graphName)))
             oid = cursor.fetchone()[0]
             return oid
@@ -56,7 +56,7 @@ def get_vlabel(connection: psycopg.connect,
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT name FROM ag_catalog.ag_label WHERE kind='v' AND graph=%s;""" % oid)
+                """SELECT name FROM mag_catalog.ag_label WHERE kind='v' AND graph=%s;""" % oid)
             for row in cursor:
                 node_label_list.append(row[0])
 
@@ -92,7 +92,7 @@ def get_elabel(connection: psycopg.connect,
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT name FROM ag_catalog.ag_label WHERE kind='e' AND graph=%s;""" % oid)
+                """SELECT name FROM mag_catalog.ag_label WHERE kind='e' AND graph=%s;""" % oid)
             for row in cursor:
                 edge_label_list.append(row[0])
     except Exception as ex:
