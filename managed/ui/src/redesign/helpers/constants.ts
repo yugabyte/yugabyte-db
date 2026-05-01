@@ -5,7 +5,7 @@ export const QueryApi = {
   YSQL: 'ysql',
   YCQL: 'ycql'
 } as const;
-export type QueryApi = typeof QueryApi[keyof typeof QueryApi];
+export type QueryApi = (typeof QueryApi)[keyof typeof QueryApi];
 
 export const YBTableRelationType = {
   SYSTEM_TABLE_RELATION: 'SYSTEM_TABLE_RELATION',
@@ -14,7 +14,7 @@ export const YBTableRelationType = {
   MATVIEW_TABLE_RELATION: 'MATVIEW_TABLE_RELATION',
   COLOCATED_PARENT_TABLE_RELATION: 'COLOCATED_PARENT_TABLE_RELATION'
 } as const;
-export type YBTableRelationType = typeof YBTableRelationType[keyof typeof YBTableRelationType];
+export type YBTableRelationType = (typeof YBTableRelationType)[keyof typeof YBTableRelationType];
 
 export const YBAHost = {
   GCP: 'gcp',
@@ -33,7 +33,7 @@ export const SortOrder = {
   ASCENDING: 'asc',
   DESCENDING: 'desc'
 } as const;
-export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
+export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder];
 
 export const RuntimeConfigKey = {
   PROVIDER_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
@@ -91,6 +91,8 @@ export const RuntimeConfigKey = {
   METRICS_EXPORT_FEATURE_FLAG: 'yb.universe.metrics_export_enabled',
   ENABLE_V2_EDIT_UNIVERSE_UI: 'yb.ui.feature_flags.edit_universe_v2_ui_enabled',
   ENABLE_NEW_PERF_ADVISOR_UI: 'yb.ui.feature_flags.enable_new_perf_advisor_ui',
+  ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION:
+    'yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option',
   ENABLE_AZ_OVERRIDES_K8S: 'yb.ui.feature_flags.enable_az_overrides_k8s',
   ENABLE_CANARY_UPGRADE: 'yb.upgrade.enable_canary_upgrade',
   SKIP_XCLUSTER_SNAPSHOT_SCHEDULES: 'yb.xcluster.db_scoped.skip_snapshot_schedules'

@@ -51,6 +51,18 @@ public class GFlagDetails {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.9.0")
   public String tags;
 
+  /**
+   * Whether changing this gflag requires a restart (or rolling restart) to take effect. False when
+   * tags contain "runtime" (flag can be applied at runtime); true otherwise.
+   */
+  @JsonProperty(value = "requiresRestart")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. True if a restart or rolling restart"
+              + " is needed for the gflag change to take effect; false for runtime flags.")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0")
+  public Boolean requiresRestart;
+
   @JsonProperty(value = "initial")
   @ApiModelProperty(
       value = "WARNING: This is a preview API that could change. Initial value of the gflag")

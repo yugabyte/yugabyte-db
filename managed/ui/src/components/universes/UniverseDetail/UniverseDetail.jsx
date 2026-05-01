@@ -552,6 +552,11 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.ENABLE_AZ_OVERRIDES_K8S
       )?.value === 'true';
 
+    const isNonRestartGFlagUpgradeOptionEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION
+      )?.value === 'true';
+
     const isV2EditUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
 
     if (
@@ -1790,6 +1795,7 @@ class UniverseDetail extends Component {
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
           isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
+          isNonRestartGFlagUpgradeOptionEnabled={isNonRestartGFlagUpgradeOptionEnabled}
           universeData={currentUniverse.data}
         />
         <UpgradeLinuxVersionModal

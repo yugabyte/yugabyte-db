@@ -207,6 +207,7 @@
 | "Node Agent Server Log Level Per Request" | "yb.node_agent.server.request_log_level" | "GLOBAL" | "Log level for Node Agent server per request (0 for debug, -1 for default)" | "Integer" |
 | "Disable Platform HA Restore Transaction" | "yb.ha.disable_platform_ha_restore_transaction" | "GLOBAL" | "Disable running platform HA restore operations in a transaction" | "Boolean" |
 | "Enable Connectivity Metric Collection" | "yb.metrics.enable_connectivity_metric_collection" | "GLOBAL" | "Enable connectivity metric collection for all universes" | "Boolean" |
+| "Enable Non-Restart GFlag Upgrade Option" | "yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option" | "GLOBAL" | "Enable the option to upgrade GFlags without restarting the nodes" | "Boolean" |
 | "Allow Duplicates in Existing AZs" | "yb.provider.allow_existing_duplicate_az" | "GLOBAL" | "Allow duplicates in already existing availability zones" | "Boolean" |
 | "Disable YNP Node Preflight Check" | "yb.node_agent.disable_ynp_node_preflight_check" | "GLOBAL" | "Disable preflight check in YNP node agent provision" | "Boolean" |
 | "Enable YNP Version Check" | "yb.node_agent.enable_ynp_version_check" | "GLOBAL" | "Enable YNP version check when adding nodes to a universe. When enabled, the node's YNP major version must match the expected version." | "Boolean" |

@@ -2149,6 +2149,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable connectivity metric collection for all universes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableNonRestartGFlagUpgradeOption =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option",
+          ScopeType.GLOBAL,
+          "Enable Non-Restart GFlag Upgrade Option",
+          "Enable the option to upgrade GFlags without restarting the nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowExistingDuplicateAz =
       new ConfKeyInfo<>(
           "yb.provider.allow_existing_duplicate_az",

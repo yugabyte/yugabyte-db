@@ -605,6 +605,10 @@ export interface Gflag {
   MASTER?: string | boolean | number;
   TSERVER?: string | boolean | number;
   tags?: string;
+  /** True if changing this flag requires a restart/rolling restart; from gflag metadata (list_gflags). */
+  requiresRestart?: boolean;
+  /** True when the flag was added in this session via the Add GFlag modal; undefined/false for flags loaded from the universe. */
+  isNewlyAdded?: boolean;
 }
 
 export interface UniverseFormData {

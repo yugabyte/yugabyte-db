@@ -837,6 +837,7 @@
         "selectedDBVersion": "Selected DB Version : ",
         "title": "G-Flags",
         "tServerValue": "T-SERVER VALUE",
+        "requiresRestart": "RESTART REQUIRED",
         "addRow": "Add Row",
         "addKeyset": "Add JSON web key set(JWKS)",
         "inheritFlagsMsg": "Apply the same Flags to primary cluster and Read Replica.",

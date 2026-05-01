@@ -9080,6 +9080,10 @@
           "description" : "WARNING: This is a preview API that could change. Name of the gflag",
           "type" : "string"
         },
+        "requiresRestart" : {
+          "description" : "WARNING: This is a preview API that could change. True if a restart or rolling restart is needed for the gflag change to take effect; false for runtime flags.",
+          "type" : "boolean"
+        },
         "tags" : {
           "description" : "WARNING: This is a preview API that could change. Tags of the gflag",
           "type" : "string"
