@@ -19,13 +19,6 @@ jobs:
       # TODO: Create GH custom image with pycodestyle & golint installed
       - name: Lint
         run: |
-          #docker run \
-          #  --user root \
-          #  -v "$(pwd):$(pwd)" \
-          #  -w "$(pwd)" \
-          #  yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
-          #  bash -c 'chown -R yugabyteci .'
-            #--user yugabyteci \
           docker run \
             -v "$(pwd):$(pwd)" \
             -w "$(pwd)" \
