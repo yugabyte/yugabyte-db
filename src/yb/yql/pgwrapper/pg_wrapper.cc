@@ -479,7 +479,8 @@ DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
 
 DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_mage, false,
-                           "Enable the use of mage extension. NOTE: This is for internal use only.");
+                           "Enable the use of mage extension. "
+                           "NOTE: This is for internal use only.");
 TAG_FLAG(ysql_yb_enable_mage, hidden);
 
 using gflags::CommandLineFlagInfo;
