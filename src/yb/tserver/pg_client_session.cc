@@ -3821,6 +3821,10 @@ class PgClientSession::Impl {
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
       ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
       EnsureSession(kSessionKind, deadline, arena)->SetTransaction(txn);
+      auto& read_point = txn->read_point();
+      read_point.SetCurrentReadTime(ClampUncertaintyWindow::kFalse);
+      VLOG(1) << "For autonomous DDL txn, setting current ht as read point "
+          << read_point.GetReadTime();
     }
 
     return &ddl_txn_metadata_;
