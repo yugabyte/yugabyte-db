@@ -9,6 +9,7 @@ on:
 
 jobs:
   gh-lint:
+    # TODO: rebase w/ cpplint change and lint without build-infra image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
