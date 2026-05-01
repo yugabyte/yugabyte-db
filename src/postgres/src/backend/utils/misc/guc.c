@@ -4043,8 +4043,8 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_enable_mage", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("Allow CREATE EXTENSION mage and preload mage into "
-						 "all backends."),
+			gettext_noop("Enable the use of mage extension. "
+						 "NOTE: This is for internal use only."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
