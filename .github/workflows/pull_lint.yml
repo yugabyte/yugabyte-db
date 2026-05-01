@@ -19,24 +19,13 @@ jobs:
 
       - name: Lint
         run: |
-            docker run \
-              --user yugabyteci \
-              -v "$(pwd):$(pwd)" \
-              -w "$(pwd)" \
-              yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
-              bash -c '
-                  set -euo pipefail
-                  export PATH=/usr/local/bin:$HOME/yb-cpplint/cpplint:$PATH
-                  echo ::group::Lint
-                  # Base reference should not be set for non-PR actions.
-                  set -x
-                  git config --global --add safe.directory $(pwd)
-                  if [[ -n "${{ github.base_ref }}" ]]; then
-                    echo Base reference: ${{ github.base_ref }}
-                    git fetch origin ${{ github.base_ref }}
-                    ./build-support/lint.py --rev origin/${{ github.base_ref }}
-                  else
-                    echo No base reference: Skipping Lint Step
-                    exit 1
-                  fi
-              '
+          set -euo pipefail
+          # Base reference should be set for PR actions.
+          set -x
+          if [[ -n "${{ github.base_ref }}" ]]; then
+            git fetch origin ${{ github.base_ref }}
+            ./build-support/lint.py --rev origin/${{ github.base_ref }}
+          else
+            echo No base reference to compare
+            exit 1
+          fi
