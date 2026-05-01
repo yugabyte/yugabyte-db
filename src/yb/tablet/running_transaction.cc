@@ -396,11 +396,13 @@ void RunningTransaction::DoStatusReceived(const TabletId& status_tablet,
   {
     MinRunningNotifier min_running_notifier(&context_.applier_);
     std::unique_lock<std::mutex> lock(context_.mutex_);
-    if (!ok) {
+    auto closing_status = context_.CheckClosing();
+    if (!closing_status.ok() || !ok) {
       status_waiters_.swap(status_waiters);
       lock.unlock();
+      auto notify_status = ok ? closing_status : status;
       for (const auto& waiter : status_waiters) {
-        waiter.callback(status);
+        waiter.callback(notify_status);
       }
       return;
     }
@@ -577,7 +579,7 @@ void RunningTransaction::AbortReceived(const TabletId& status_tablet,
     abort_waiters_.swap(abort_waiters);
     // kMax status_time means that this status is not yet replicated and could be rejected.
     // So we could use it as reply to Abort, but cannot store it as transaction status.
-    if (result.ok() && result->status_time != HybridTime::kMax) {
+    if (!context_.Closing() && result.ok() && result->status_time != HybridTime::kMax) {
       auto coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time());
       did_abort_txn = UpdateStatus(
           status_tablet, result->status, result->status_time, coordinator_safe_time,
