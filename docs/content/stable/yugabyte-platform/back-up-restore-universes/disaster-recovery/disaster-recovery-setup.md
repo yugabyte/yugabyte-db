@@ -65,7 +65,7 @@ When you create a new DR configuration, YugabyteDB Anywhere selects semi-automat
 
 If automatic mode does not apply when you create a DR configuration, confirm these keys on the DR primary universe (and inherited scopes), not only the YugabyteDB version.
 
-To view or edit runtime configuration, navigate to **Admin** > **Advanced** and use the appropriate scope tab. For scope hierarchy and permissions, refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+To view or edit runtime configuration, navigate to **Admin** > **Advanced** and use the appropriate scope tab. For scope hierarchy and permissions, refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/).
 
 ## Set up disaster recovery
 

@@ -89,12 +89,12 @@ You don't need to make any changes to the DR configuration.
 
 Automatic mode is recommended for all new DR configurations. When possible, you should delete existing DR configurations and re-create them using automatic mode to reduce the operational burden of DDL changes.
 
-For new DR configurations, YugabyteDB Anywhere uses automatic mode when **all** of the following are true:
+For new DR configurations, YugabyteDB Anywhere uses automatic mode when the following are true:
 
 - On the DR primary universe, the **Enable xCluster DR Semi-automatic Mode** Universe Runtime Configuration option (config key `yb.xcluster.db_scoped.creationEnabled`) and the **Enable xCluster DR Automatic Mode** Universe Runtime Configuration option (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`) are both set to `true`.
 - Both DR primary and replica are running YugabyteDB {{<release "2025.2.1">}} or later.
 
-If **Enable xCluster DR Automatic Mode** (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`) is `false` on the DR primary while **Enable xCluster DR Semi-automatic Mode** (config key `yb.xcluster.db_scoped.creationEnabled`) remains `true`, new configurations use semi-automatic mode for supported versions. For earlier YugabyteDB versions than {{<release "2025.2.1">}}, semi-automatic applies as described in the following section. To set these options and their default behavior, refer to [Runtime configuration for schema modes](./disaster-recovery-setup/#runtime-configuration-for-schema-modes) and [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+If **Enable xCluster DR Automatic Mode** is `false` on the DR primary while **Enable xCluster DR Semi-automatic Mode** remains `true`, new configurations use semi-automatic mode for supported versions. For earlier YugabyteDB versions than {{<release "2025.2.1">}}, semi-automatic applies as described in the following section. To set these options and their default behavior, refer to [Runtime configuration for schema modes](./disaster-recovery-setup/#runtime-configuration-for-schema-modes) and [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
 ### Semi-automatic mode
 
