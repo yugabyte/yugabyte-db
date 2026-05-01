@@ -46,12 +46,16 @@ class AgeLoader(psycopg.adapt.Loader):
 
 def setUpAge(conn:psycopg.connection, graphName:str, load_from_plugins:bool=False):
     with conn.cursor() as cursor:
-        if load_from_plugins:
-            cursor.execute("LOAD '$libdir/plugins/age';")
-        else:
-            cursor.execute("LOAD 'age';")
+        # YugabyteDB does not support LOAD; CREATE EXTENSION mage suffices.
+        try:
+            if load_from_plugins:
+                cursor.execute("LOAD '$libdir/plugins/mage';")
+            else:
+                cursor.execute("LOAD 'mage';")
+        except psycopg.errors.FeatureNotSupported:
+            conn.rollback()
 
-        cursor.execute("SET search_path = ag_catalog, '$user', public;")
+        cursor.execute("SET search_path = mag_catalog, '$user', public;")
 
         ag_info = TypeInfo.fetch(conn, 'agtype')
 
