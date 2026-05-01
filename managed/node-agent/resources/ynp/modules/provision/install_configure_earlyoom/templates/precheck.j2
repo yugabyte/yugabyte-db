@@ -1,5 +1,5 @@
-systemd_dir="{{yb_home_dir}}/.config/systemd/user"
-config_dir="{{yb_home_dir}}/bin"
+systemd_dir="{{ yb_user_home }}/.config/systemd/user"
+config_dir="{{ yb_home_dir }}/bin"
 if grep -q "DefaultLimitMEMLOCK=500000" "/etc/systemd/system.conf"; then
     echo "[PASS] DefaultLimitMEMLOCK is set in /etc/systemd/system.conf"
     add_result "DefaultLimitMEMLOCK in /etc/systemd/system.conf" "PASS" \

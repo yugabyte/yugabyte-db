@@ -657,7 +657,7 @@ func (pc *ProvisionCommand) buildScript(
 	phase string,
 	createSubshell bool,
 ) (string, error) {
-	f, err := pc.createTempFile("tmp*")
+	f, err := pc.createTempFile(fmt.Sprintf("tmp*_%s", phase))
 	if err != nil {
 		return "", err
 	}
@@ -793,22 +793,28 @@ func (pc *ProvisionCommand) copyTemplatesFilesForYBM(ctx map[string]any) error {
 	return nil
 }
 
+func (pc *ProvisionCommand) getYNPVersionDirPath() string {
+	ybUserHome, _ := pc.iniConfig.DefaultSectionValue()["yb_user_home"].(string)
+	if ybUserHome == "" {
+		return ""
+	}
+	return filepath.Join(ybUserHome, ".yugabyte")
+}
+
 func (pc *ProvisionCommand) saveYnpVersion() error {
 	currentYnpVersion, _ := pc.iniConfig.DefaultSectionValue()["version"].(string)
-	ybHomeDir, _ := pc.iniConfig.DefaultSectionValue()["yb_home_dir"].(string)
+	ynpVersionDirPath := pc.getYNPVersionDirPath()
 	ybUser, _ := pc.iniConfig.DefaultSectionValue()["yb_user"].(string)
-	if currentYnpVersion == "" || ybHomeDir == "" {
+	if currentYnpVersion == "" || ynpVersionDirPath == "" {
 		util.FileLogger().
 			Info(pc.ctx, "yb_home_dir or current version file is missing in the context")
 		return nil
 	}
-	// Ensure yb_home_dir exists.
-	yugabyteDir := filepath.Join(ybHomeDir, ".yugabyte")
-	if err := os.MkdirAll(yugabyteDir, 0755); err != nil {
+	// Ensure ynp version dir exists.
+	if err := os.MkdirAll(ynpVersionDirPath, 0755); err != nil {
 		return err
 	}
-
-	ynpVersionFile := filepath.Join(yugabyteDir, YNPVersionFile)
+	ynpVersionFile := filepath.Join(ynpVersionDirPath, YNPVersionFile)
 	if err := os.WriteFile(ynpVersionFile, []byte(currentYnpVersion), 0644); err != nil {
 		util.FileLogger().Errorf(pc.ctx, "Failed to write YNP version to file: %v", err)
 		return err
@@ -816,7 +822,7 @@ func (pc *ProvisionCommand) saveYnpVersion() error {
 	if details, err := util.UserInfo(ybUser); err == nil {
 		if details.CurrentUserID == 0 && !details.IsCurrent {
 			// Change ownership only if running as root and yb_user is different from current user.
-			if err := os.Chown(yugabyteDir, int(details.UserID), int(details.GroupID)); err != nil {
+			if err := os.Chown(ynpVersionDirPath, int(details.UserID), int(details.GroupID)); err != nil {
 				util.FileLogger().
 					Errorf(pc.ctx, "Cannot change ownership of .yugabyte dir: %v", err)
 				return err
@@ -855,11 +861,11 @@ func parseVersion(version string) ([3]int, error) {
 // In strict mode (preflight checks), missing file or values are errors.
 // In non-strict mode (prechecks), they are silently ignored.
 func (pc *ProvisionCommand) compareYnpVersion(strict bool) error {
-	ybHomeDir, _ := pc.iniConfig.DefaultSectionValue()["yb_home_dir"].(string)
+	ynpVersionDirPath := pc.getYNPVersionDirPath()
 	versionStr, _ := pc.iniConfig.DefaultSectionValue()["version"].(string)
-	if ybHomeDir == "" || versionStr == "" {
+	if ynpVersionDirPath == "" || versionStr == "" {
 		if strict {
-			err := fmt.Errorf("yb_home_dir or version missing in context")
+			err := fmt.Errorf("yb_user_home or version missing in context")
 			util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
 			return err
 		}
@@ -874,9 +880,7 @@ func (pc *ProvisionCommand) compareYnpVersion(strict bool) error {
 		}
 		return nil
 	}
-
-	yugabyteDir := filepath.Join(ybHomeDir, ".yugabyte")
-	ynpVersionFile := filepath.Join(yugabyteDir, YNPVersionFile)
+	ynpVersionFile := filepath.Join(ynpVersionDirPath, YNPVersionFile)
 	data, err := os.ReadFile(ynpVersionFile)
 	if err != nil {
 		if strict {

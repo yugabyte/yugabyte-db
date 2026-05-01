@@ -599,4 +599,13 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Use system-level systemd instead of user-level systemd for service management",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> ybUserHomeOverride =
+      new ConfKeyInfo<>(
+          "yb.internal.yb_user_home_override",
+          ScopeType.PROVIDER,
+          "YB User Home Override",
+          "Custom home directory for the yb user for CSPs and sudo onprem mainly for testing"
+              + " purposes",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

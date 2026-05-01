@@ -206,8 +206,8 @@ runtime_dir="/run/user/${yb_user_id}"
 xdg_runtime_env="export XDG_RUNTIME_DIR=$runtime_dir"
 
 # Add XDG_RUNTIME_DIR to .bashrc if not present
-if ! grep -qxF "${xdg_runtime_env}" {{ yb_home_dir }}/.bashrc >/dev/null 2>&1; then
-    su - {{ yb_user }} -c "echo '${xdg_runtime_env}' >> {{ yb_home_dir }}/.bashrc"
+if ! grep -qxF "${xdg_runtime_env}" {{ yb_user_home }}/.bashrc >/dev/null 2>&1; then
+    su - {{ yb_user }} -c "echo '${xdg_runtime_env}' >> {{ yb_user_home }}/.bashrc"
 fi
 
 # Determine the PLATFORM_ID

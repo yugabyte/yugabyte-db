@@ -39,6 +39,7 @@ import lombok.Getter;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * This class generates the configuration file for YugaByte Node Agent based on the provided
@@ -271,7 +272,14 @@ public class YNPConfigGenerator {
     ynpNode.put("is_yb_prebuilt_image", params.isYbPrebuiltImage());
     loggingNode.put("level", "INFO");
     loggingNode.put("directory", params.getNodeAgentHome().resolve("logs").toString());
-
+    String ybUserHomeOverride =
+        confGetter
+            .getConfForScope(params.getProvider(), ProviderConfKeys.ybUserHomeOverride)
+            .trim();
+    if (StringUtils.isNotEmpty(ybUserHomeOverride)) {
+      log.info("Using yb_user_home override value from provider config: {}", ybUserHomeOverride);
+      ynpNode.put("yb_user_home", ybUserHomeOverride);
+    }
     // Set up provider specific fields.
     populateFromProvider(params, rootNode);
     if (params.getNodeInstance() != null) {

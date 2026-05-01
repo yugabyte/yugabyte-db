@@ -34,10 +34,11 @@ is_airgap = {{ ynp_config['ynp'].is_airgap }}
 ynp_dir = {{ ynp_dir }}
 execution_start_time = {{ start_time }}
 yb_home_dir = {{ ynp_config['ynp'].yb_home_dir }}
+yb_user_home = {{ ynp_config['ynp'].yb_user_home | default(ynp_config['ynp'].yb_home_dir) }}
 yb_user = yugabyte
 # User name is used in systemd unit files.
 user_name = yugabyte
-is_install_node_agent = {{ ynp_config['ynp'].is_install_node_agent }}
+is_install_node_agent = {{ ynp_config['ynp'].is_install_node_agent | default(false) }}
 tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
 # empty is null in ini, hence that syntax
 {% if ynp_config['ynp'].no_proxy_list is not defined or not ynp_config['ynp'].no_proxy_list %}
@@ -49,6 +50,8 @@ no_proxy = {{ ynp_config['ynp'].no_proxy_list| join(', ') }}
 min_mount_point_dir_space_gb = {{ ynp_config['ynp'].min_mount_point_dir_space_gb | default(49) }}
 # Minimum required space in home directory in gigabytes. Default is 3GB.
 min_home_dir_space_gb = {{ ynp_config['ynp'].min_home_dir_space_gb | default(3) }}
+# Minimum required space in user home directory in gigabytes. Default is 3GB.
+min_user_home_space_gb = {{ ynp_config['ynp'].min_user_home_space_gb | default(3) }}
 # Minimum required space in temp directory in gigabytes. Default is 1GB.
 min_tmp_dir_space_gb = {{ ynp_config['ynp'].min_tmp_dir_space_gb | default(1) }}
 # Minimum required space for prometheus in gigabytes. Default is 1GB.

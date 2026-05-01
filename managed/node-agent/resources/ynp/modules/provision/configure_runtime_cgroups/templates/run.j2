@@ -1,9 +1,9 @@
 # Detect cgroup layout, create v1 CPU cgroup leaf (world-writable per policy), persist cgroup type only.
 set -euo pipefail
 
-YB_HOME="{{ yb_home_dir }}"
+YB_USER_HOME="{{ yb_user_home }}"
 YB_USER="{{ yb_user }}"
-STATE_DIR="${YB_HOME}/.yugabyte"
+STATE_DIR="${YB_USER_HOME}/.yugabyte"
 CGROUP_V1_NAME="yugabyte-db"
 
 detect_cgroup_mode() {
