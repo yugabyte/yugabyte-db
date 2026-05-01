@@ -128,9 +128,9 @@ To upgrade schema change mode for an existing DR configuration:
 
 When you create a new DR configuration, YugabyteDB Anywhere selects semi-automatic or automatic mode based on the YugabyteDB version _and_ the following universe runtime parameters:
 
-- **Enable xCluster DR Automatic Mode** (config key `yb.xcluster.db_scoped.creationEnabled`)
+- **Enable xCluster DR Semi-automatic Mode** (config key `yb.xcluster.db_scoped.creationEnabled`)
 
-- **Enable xCluster DR Semi-automatic Mode** (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`)
+- **Enable xCluster DR Automatic Mode** (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`)
 
 For new DR configurations, YugabyteDB Anywhere uses automatic mode when both universes are running YugabyteDB {{<release "2025.2.1">}} or later and _both parameters_ are true (the default in {{<release "2025.2.1">}} and later) on the DR primary.
 
