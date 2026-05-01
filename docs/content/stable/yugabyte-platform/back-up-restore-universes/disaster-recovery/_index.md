@@ -78,6 +78,8 @@ xCluster DR can be set up to perform schema changes in the following ways:
 | [Semi-automatic](#semi-automatic-mode) | Compared to manual mode, provides operationally simpler setup and management of replication, and fewer steps for performing DDL changes. | v2025.1.0 | v2025.2.1 |
 | [Manual](#manual-mode) | Deprecated. Manual setup and management of replication. DDL changes require manually updating the xCluster configuration. | v2024.2 | v2025.1 |
 
+For information on how each mode behaves at the database layer, refer to [xCluster replication](../../../architecture/docdb-replication/async-replication/).
+
 ### Automatic mode
 
 In automatic mode, all table and index-level schema changes made to the DR primary universe are automatically replicated to the DR replica.
@@ -122,7 +124,7 @@ If you are running manual mode and you are running a compatible version of Yugab
 To upgrade schema change mode for an existing DR configuration:
 
 1. [Remove disaster recovery](./disaster-recovery-setup/#remove-disaster-recovery).
-1. Set up a new DR configuration.
+1. [Set up a new DR configuration](./disaster-recovery-setup/#set-up-disaster-recovery).
 
 ### Schema change mode runtime configuration
 
@@ -137,8 +139,6 @@ For new DR configurations, YugabyteDB Anywhere uses automatic mode when both uni
 If **Enable xCluster DR Automatic Mode** is `false` while **Enable xCluster DR Semi-automatic Mode** remains `true`, new configurations use semi-automatic mode for supported versions.
 
 To set these options and their default behavior, refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
-
-For information on how each mode behaves at the database layer, refer to [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 
 ## Upgrading universes in DR
 
