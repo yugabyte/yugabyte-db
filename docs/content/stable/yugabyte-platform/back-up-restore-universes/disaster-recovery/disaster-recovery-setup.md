@@ -24,7 +24,7 @@ Create two universes, the DR primary universe which will serve reads and writes,
 
 Ensure the universes have the following characteristics:
 
-- Both universes are running the same version of YugabyteDB (v2.18.0.0 or later).
+- Both universes are running the same version of YugabyteDB (v2.18.0.0 or later). The schema change mode used by your new configuration depends on the version you are running, and runtime configuration. Refer to [Schema change modes](../#schema-change-modes).
 - Both universes have the same [encryption in transit](../../../security/enable-encryption-in-transit/) settings. Encryption in transit is recommended, and you should create the DR primary and DR replica universes with TLS enabled.
 - They can be backed up and restored using the same [storage configuration](../../configure-backup-storage/).
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the DR replica universe. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
@@ -52,20 +52,6 @@ After DR is configured, the DR replica is only available for reads.
 
 - [Set a replication lag alert](#manage-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
-
-## Runtime configuration for schema modes
-
-[xCluster Disaster Recovery](../) in YugabyteDB Anywhere uses database-level replication, which means you select whole YSQL databases to protect, and the platform manages replication for those databases.
-
-When you create a new DR configuration, YugabyteDB Anywhere selects semi-automatic or automatic mode as the [schema change mode](../#schema-change-modes), based on the YugabyteDB version and universe-scoped runtime configuration on the DR primary universe (values can be set on the universe or inherited from Customer or Global configuration). For how each mode behaves at the database layer, refer to [Automatic mode](../../../../architecture/docdb-replication/async-replication/#automatic-mode) and [Semi-automatic mode](../../../../architecture/docdb-replication/async-replication/#semi-automatic-mode) in xCluster replication (architecture).
-
-- Set the **Enable xCluster DR Semi-automatic Mode** Universe Runtime Configuration option (config key `yb.xcluster.db_scoped.creationEnabled`) to `true` for semi-automatic mode. When you have set this option not enabled the automatic mode via **Enable xCluster DR Automatic Mode**, new configurations use semi-automatic mode.
-
-- Set the **Enable xCluster DR Automatic Mode** Universe Runtime Configuration option (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`) to `true` to use automatic schema replication for new DR configurations. When this option and **Enable xCluster DR Semi-automatic Mode** are both `true` on the DR primary, and both universes run YugabyteDB {{<release "2025.2.1">}} or later, YugabyteDB Anywhere creates new DR configurations in automatic mode so that DDL from the primary is replicated without manual steps on the replica.
-
-If automatic mode does not apply when you create a DR configuration, confirm these keys on the DR primary universe (and inherited scopes), not only the YugabyteDB version.
-
-To view or edit runtime configuration, navigate to **Admin** > **Advanced** and use the appropriate scope tab. For scope hierarchy and permissions, refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/).
 
 ## Set up disaster recovery
 
