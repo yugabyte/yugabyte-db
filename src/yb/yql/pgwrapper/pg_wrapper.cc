@@ -469,6 +469,11 @@ DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VAL
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
 
+DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_mage, false,
+                           "Enable the use of mage extension. "
+                           "NOTE: This is for internal use only.");
+TAG_FLAG(ysql_yb_enable_mage, hidden);
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
@@ -692,6 +697,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (FLAGS_ysql_enable_documentdb) {
     metricsLibs.push_back("pg_documentdb_core");
     metricsLibs.push_back("pg_documentdb");
+  }
+
+  if (FLAGS_ysql_yb_enable_mage) {
+    metricsLibs.push_back("mage");
   }
 
   vector<string> lines;

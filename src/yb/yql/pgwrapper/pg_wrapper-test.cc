@@ -664,6 +664,11 @@ TEST_F(PgWrapperFlagsTest, VerifyGFlagDefaults) {
     if (!tags.contains(FlagTag::kPg)) {
       continue;
     }
+    // Hidden gFlags use GUC_NO_SHOW_ALL on the corresponding GUC, which excludes them from
+    // pg_settings, so ValidateDefaultGucValue cannot read boot_val.
+    if (tags.contains(FlagTag::kHidden)) {
+      continue;
+    }
 
     auto expected_val = flag.default_value;
 
@@ -693,6 +698,11 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
     std::unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
     if (!tags.contains(FlagTag::kPg)) {
+      continue;
+    }
+    // Hidden gFlags use GUC_NO_SHOW_ALL on the corresponding GUC, which excludes them from
+    // pg_settings, so ValidateGucIsRuntime cannot read context.
+    if (tags.contains(FlagTag::kHidden)) {
       continue;
     }
 
