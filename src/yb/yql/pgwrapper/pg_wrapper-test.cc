@@ -621,18 +621,10 @@ class PgWrapperFlagsTest : public PgWrapperTest {
   // Returns the lowercased names of all GUCs visible in pg_settings. Hidden GUCs
   // (those tagged GUC_NO_SHOW_ALL) are excluded from this view.
   Result<std::unordered_set<string>> GetVisibleGucNames() {
-    auto output = VERIFY_RESULT(
-        RunPsqlCommand("SELECT LOWER(name) FROM pg_settings", TuplesOnly::kTrue));
-    std::unordered_set<string> names;
-    vector<string> lines;
-    boost::split(lines, output, boost::is_any_of("\n"));
-    for (auto& line : lines) {
-      boost::trim(line);
-      if (!line.empty()) {
-        names.insert(line);
-      }
-    }
-    return names;
+    auto conn = VERIFY_RESULT(ConnectToDB(/* dbname= */ ""));
+    auto rows = VERIFY_RESULT(
+        conn.FetchRows<std::string>("SELECT LOWER(name) FROM pg_settings"));
+    return std::unordered_set<string>(rows.begin(), rows.end());
   }
 
   void ValidateGucIsRuntime(const string& guc_name, const bool runtime_expected) {
