@@ -2312,8 +2312,27 @@ lreplace:
 	 * before inserting into the new partition, rather than doing it here.
 	 * This is because a trigger on that partition might again change the row.
 	 * So skip the WCO checks if the partition constraint fails.
+	 *
+	 * YB: Single shard updates cannot modify partitioning key columns and hence
+	 * cannot violate the partition constraint (ie. cause a row to move to a
+	 * different partition). There are two cases to consider:
+	 *  - (Common case) When the partition key is a subset of the primary (clustering) key.
+	 *    This happens when the root and leaf partitions share a common primary
+	 *    key. The planner disallows modifying the primary key columns in single
+	 *    shard updates and hence it is safe to skip the partition check.
+	 *  - (Rare case) When the partition key and primary (clustering) key do not overlap.
+	 *    This occurs if the root partition lacks a primary key, but a leaf
+	 *    partition defines a primary key that differs from the partition key.
+	 *    Here, the planner detects changes to partition keys and routes the
+	 *    update via the distributed transaction path. In such cases, there may
+	 *    not be enough information to check the partition constraint -- the row
+	 *    being updated is uniquely identified by its primary key, and since the
+	 *    partition and primary keys do not overlap, a single-shard update may
+	 *    not have enough information about the partition key, as it skips
+	 *    reading the row from storage.
 	 */
 	partition_constraint_failed =
+		!estate->yb_es_is_single_row_modify_txn &&
 		resultRelationDesc->rd_rel->relispartition &&
 		!ExecPartitionCheck(resultRelInfo, slot, estate, false);
 
