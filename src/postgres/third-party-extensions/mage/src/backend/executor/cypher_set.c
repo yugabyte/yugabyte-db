@@ -695,10 +695,11 @@ static void process_update_list(CustomScanState *node)
                     (original_entity_value->type == AGTV_VERTEX ||
                      original_entity_value->type == AGTV_EDGE))
                 {
-                    TupleTableSlot *oldSlot;
                     bool isnull;
                     int dp_anum, user_anum, ag_anum, conv_anum;
                     int dp_off, user_off, ag_off, conv_off;
+                    TupleDesc desc =
+                        RelationGetDescr(resultRelInfo->ri_RelationDesc);
 
                     if (original_entity_value->type == AGTV_VERTEX)
                     {
@@ -723,12 +724,6 @@ static void process_update_list(CustomScanState *node)
                         conv_off = edge_tuple_meko_conversation_id;
                     }
 
-                    oldSlot = ExecInitExtraTupleSlot(
-                        estate,
-                        RelationGetDescr(resultRelInfo->ri_RelationDesc),
-                        &TTSOpsHeapTuple);
-                    ExecStoreHeapTuple(heap_tuple, oldSlot, false);
-
                     /*
                      * YB: meko_datapack_id, meko_user_id and meko_agent_id
                      * are NOT NULL columns on the table, so the existing
@@ -736,24 +731,27 @@ static void process_update_list(CustomScanState *node)
                      * for them. Assert this and propagate the values
                      * unconditionally as not-null. meko_conversation_id is
                      * nullable, so its isnull flag is carried through.
+                     *
+                     * Read straight from heap_tuple via heap_getattr to
+                     * avoid allocating a TupleTableSlot per updated row.
                      */
                     slot->tts_values[dp_off] =
-                        slot_getattr(oldSlot, dp_anum, &isnull);
+                        heap_getattr(heap_tuple, dp_anum, desc, &isnull);
                     Assert(!isnull);
                     slot->tts_isnull[dp_off] = false;
 
                     slot->tts_values[user_off] =
-                        slot_getattr(oldSlot, user_anum, &isnull);
+                        heap_getattr(heap_tuple, user_anum, desc, &isnull);
                     Assert(!isnull);
                     slot->tts_isnull[user_off] = false;
 
                     slot->tts_values[ag_off] =
-                        slot_getattr(oldSlot, ag_anum, &isnull);
+                        heap_getattr(heap_tuple, ag_anum, desc, &isnull);
                     Assert(!isnull);
                     slot->tts_isnull[ag_off] = false;
 
                     slot->tts_values[conv_off] =
-                        slot_getattr(oldSlot, conv_anum, &isnull);
+                        heap_getattr(heap_tuple, conv_anum, desc, &isnull);
                     slot->tts_isnull[conv_off] = isnull;
                 }
 

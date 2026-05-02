@@ -1067,11 +1067,7 @@ static Datum merge_vertex(cypher_merge_custom_scan_state *css,
         elemTupleSlot->tts_values[vertex_tuple_properties] = prop;
         elemTupleSlot->tts_isnull[vertex_tuple_properties] = isNull;
 
-        /*
-         * YB: populate tenant-scope meko_* columns on the vertex tuple.
-         * These columns only exist on YugabyteDB-hosted vertex tables, so
-         * skip in vanilla PG.
-         */
+        /* YB: populate tenant-scope meko_* columns */
         if (IsYugaByteEnabled())
             yb_populate_vertex_meko_columns(elemTupleSlot,
                 yb_extract_meko_columns_from_properties(prop, isNull));
@@ -1418,11 +1414,7 @@ static void merge_edge(cypher_merge_custom_scan_state *css,
     elemTupleSlot->tts_values[edge_tuple_properties] = prop;
     elemTupleSlot->tts_isnull[edge_tuple_properties] = isNull;
 
-    /*
-     * YB: populate tenant-scope meko_* columns on the edge tuple. These
-     * columns only exist on YugabyteDB-hosted edge tables, so skip in
-     * vanilla PG.
-     */
+    /* YB: populate tenant-scope meko_* columns */
     if (IsYugaByteEnabled())
         yb_populate_edge_meko_columns(elemTupleSlot,
             yb_extract_meko_columns_from_properties(prop, isNull));

@@ -142,11 +142,7 @@ TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
         AGTYPE_P_GET_DATUM(agtype_value_to_agtype(properties));
     elemTupleSlot->tts_isnull[vertex_tuple_properties] = properties_isnull;
 
-    /*
-     * YB: populate tenant-scope meko_* columns on the vertex tuple. These
-     * columns only exist on YugabyteDB-hosted vertex tables, so skip in
-     * vanilla PG.
-     */
+    /* YB: populate tenant-scope meko_* columns */
     if (IsYugaByteEnabled())
         yb_populate_vertex_meko_columns(elemTupleSlot, meko);
 
@@ -194,11 +190,7 @@ TupleTableSlot *populate_edge_tts(
         AGTYPE_P_GET_DATUM(agtype_value_to_agtype(properties));
     elemTupleSlot->tts_isnull[edge_tuple_properties] = properties_isnull;
 
-    /*
-     * YB: populate tenant-scope meko_* columns on the edge tuple. These
-     * columns only exist on YugabyteDB-hosted edge tables, so skip in
-     * vanilla PG.
-     */
+    /* YB: populate tenant-scope meko_* columns */
     if (IsYugaByteEnabled())
         yb_populate_edge_meko_columns(elemTupleSlot, meko);
 
@@ -334,6 +326,29 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
 }
 
 /*
+ * YB: Look up `key` in the agtype object `props` and, if present and a
+ * string, palloc a NUL-terminated copy of the value via pnstrdup() and
+ * return it through *out_str. Returns true if the lookup succeeded; the
+ * caller owns the returned cstring and is responsible for pfreeing it.
+ */
+static bool yb_lookup_meko_string(agtype *props, const char *key,
+                                  char **out_str)
+{
+    agtype_value search_key;
+    agtype_value *val;
+
+    search_key.type = AGTV_STRING;
+    search_key.val.string.val = (char *) key;
+    search_key.val.string.len = strlen(key);
+    val = find_agtype_value_from_container(&props->root, AGT_FOBJECT,
+                                           &search_key);
+    if (val == NULL || val->type != AGTV_STRING)
+        return false;
+    *out_str = pnstrdup(val->val.string.val, val->val.string.len);
+    return true;
+}
+
+/*
  * Read meko_datapack_id, meko_user_id, meko_agent_id, meko_conversation_id
  * from a vertex or edge properties map and materialize them as column
  * Datums for the caller.
@@ -351,7 +366,6 @@ YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
 {
     YbMekoDp result;
     agtype *props_agtype;
-    agtype_value *val;
 
     result.datapack_id = (Datum) 0;
     result.datapack_id_isnull = true;
@@ -373,57 +387,43 @@ YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
         return result;
     }
 
-    /* Look up each meko key directly from the root container. */
+    /*
+     * Look up each meko key from the root container. yb_lookup_meko_string()
+     * does the find + pnstrdup; the caller is responsible for parsing and
+     * pfreeing the returned cstring.
+     */
     {
-        agtype_value search_key;
+        char *str;
 
-        search_key.type = AGTV_STRING;
-
-        search_key.val.string.val = "meko_datapack_id";
-        search_key.val.string.len = 16;
-        val = find_agtype_value_from_container(&props_agtype->root,
-                                               AGT_FOBJECT, &search_key);
-        if (val != NULL && val->type == AGTV_STRING)
+        if (yb_lookup_meko_string(props_agtype, "meko_datapack_id", &str))
         {
-            char *str = pnstrdup(val->val.string.val, val->val.string.len);
-            result.datapack_id = DirectFunctionCall1(uuid_in,
-                                                     CStringGetDatum(str));
+            result.datapack_id =
+                DirectFunctionCall1(uuid_in, CStringGetDatum(str));
             result.datapack_id_isnull = false;
+            pfree(str);
         }
 
-        search_key.val.string.val = "meko_user_id";
-        search_key.val.string.len = 12;
-        val = find_agtype_value_from_container(&props_agtype->root,
-                                               AGT_FOBJECT, &search_key);
-        if (val != NULL && val->type == AGTV_STRING)
+        if (yb_lookup_meko_string(props_agtype, "meko_user_id", &str))
         {
-            char *str = pnstrdup(val->val.string.val, val->val.string.len);
-            result.user_id = DirectFunctionCall1(uuid_in,
-                                                 CStringGetDatum(str));
+            result.user_id =
+                DirectFunctionCall1(uuid_in, CStringGetDatum(str));
             result.user_id_isnull = false;
+            pfree(str);
         }
 
-        search_key.val.string.val = "meko_agent_id";
-        search_key.val.string.len = 13;
-        val = find_agtype_value_from_container(&props_agtype->root,
-                                               AGT_FOBJECT, &search_key);
-        if (val != NULL && val->type == AGTV_STRING)
+        if (yb_lookup_meko_string(props_agtype, "meko_agent_id", &str))
         {
-            char *str = pnstrdup(val->val.string.val, val->val.string.len);
             result.agent_id = CStringGetTextDatum(str);
             result.agent_id_isnull = false;
+            pfree(str);
         }
 
-        search_key.val.string.val = "meko_conversation_id";
-        search_key.val.string.len = 20;
-        val = find_agtype_value_from_container(&props_agtype->root,
-                                               AGT_FOBJECT, &search_key);
-        if (val != NULL && val->type == AGTV_STRING)
+        if (yb_lookup_meko_string(props_agtype, "meko_conversation_id", &str))
         {
-            char *str = pnstrdup(val->val.string.val, val->val.string.len);
-            result.conversation_id = DirectFunctionCall1(uuid_in,
-                                                         CStringGetDatum(str));
+            result.conversation_id =
+                DirectFunctionCall1(uuid_in, CStringGetDatum(str));
             result.conversation_id_isnull = false;
+            pfree(str);
         }
     }
 

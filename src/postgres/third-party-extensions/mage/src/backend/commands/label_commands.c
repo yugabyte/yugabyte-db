@@ -100,9 +100,10 @@ static void create_index_on_column(char *schema_name,
                                    char *rel_name,
                                    char *colname,
                                    bool unique);
-/* YB: composite tenant-scoped PK index helpers */
-static void yb_create_vertex_pk_index(char *schema_name, char *rel_name);
-static void yb_create_edge_pk_index(char *schema_name, char *rel_name);
+/* YB: composite tenant-scoped PK index helper (vertex and edge use the same shape) */
+static void yb_create_label_pk_index(char *schema_name, char *rel_name);
+/* YB: append meko_* tenant ColumnDefs to a vertex/edge column list */
+static List *yb_append_meko_column_defs(List *cols, bool is_edge);
 
 PG_FUNCTION_INFO_V1(age_is_valid_label_name);
 
@@ -462,14 +463,14 @@ static void create_table_for_label(char *graph_name, char *label_name,
     if (label_type == LABEL_TYPE_VERTEX)
     {
         if (IsYugaByteEnabled())
-            yb_create_vertex_pk_index(schema_name, rel_name); /* YB: tenant-scoped PK */
+            yb_create_label_pk_index(schema_name, rel_name); /* YB: tenant-scoped PK */
         else
             create_index_on_column(schema_name, rel_name, "id", true);
     }
     else if (label_type == LABEL_TYPE_EDGE)
     {
         if (IsYugaByteEnabled())
-            yb_create_edge_pk_index(schema_name, rel_name); /* YB: tenant-scoped PK */
+            yb_create_label_pk_index(schema_name, rel_name); /* YB: tenant-scoped PK */
         create_index_on_column(schema_name, rel_name, "start_id", false);
         create_index_on_column(schema_name, rel_name, "end_id", false);
     }
@@ -528,8 +529,50 @@ static void create_index_on_column(char *schema_name,
 }
 
 /*
- * YB: Create the composite primary key index for vertex tables:
- * PRIMARY KEY ((meko_datapack_id, meko_user_id) HASH, meko_agent_id ASC, id ASC)
+ * YB: Build a SORTBY_HASH IndexElem for `colname` (no opclass).
+ */
+static IndexElem *yb_make_meko_hash_elem(const char *colname)
+{
+    IndexElem *elem = makeNode(IndexElem);
+
+    elem->name = (char *) colname;
+    elem->expr = NULL;
+    elem->indexcolname = NULL;
+    elem->collation = NIL;
+    elem->opclass = NIL;
+    elem->opclassopts = NIL;
+    elem->ordering = SORTBY_HASH;
+    elem->nulls_ordering = SORTBY_NULLS_DEFAULT;
+    return elem;
+}
+
+/*
+ * YB: Build a SORTBY_ASC IndexElem for `colname`. If `opclass` is non-NULL,
+ * it is used as a single-element opclass list (needed for graphid_ops).
+ */
+static IndexElem *yb_make_meko_asc_elem(const char *colname, const char *opclass)
+{
+    IndexElem *elem = makeNode(IndexElem);
+
+    elem->name = (char *) colname;
+    elem->expr = NULL;
+    elem->indexcolname = NULL;
+    elem->collation = NIL;
+    elem->opclass = (opclass ? list_make1(makeString((char *) opclass)) : NIL);
+    elem->opclassopts = NIL;
+    elem->ordering = SORTBY_ASC;
+    elem->nulls_ordering = SORTBY_NULLS_DEFAULT;
+    return elem;
+}
+
+/*
+ * YB: Create the composite primary key index for both vertex and edge label
+ * tables:
+ *   PRIMARY KEY ((meko_datapack_id, meko_user_id) HASH,
+ *                meko_agent_id ASC, id ASC)
+ *
+ * Vertex and edge tables share the same column names for the tenant
+ * key, so a single helper covers both.
  *
  * Only meko_datapack_id and meko_user_id are part of the hash key — that is
  * the granularity at which we want to spread rows across tablets. meko_agent_id
@@ -537,61 +580,20 @@ static void create_index_on_column(char *schema_name,
  * (datapack, user) tenant land on the same tablet and can be range-scanned
  * together; hashing on agent_id would scatter them, defeating tenant locality.
  */
-static void yb_create_vertex_pk_index(char *schema_name, char *rel_name)
+static void yb_create_label_pk_index(char *schema_name, char *rel_name)
 {
     IndexStmt *index_stmt;
-    IndexElem *datapack_col;
-    IndexElem *user_col;
-    IndexElem *agent_col;
-    IndexElem *id_col;
     PlannedStmt *index_wrapper;
 
     index_stmt = makeNode(IndexStmt);
-
-    datapack_col = makeNode(IndexElem);
-    datapack_col->name = AG_VERTEX_COLNAME_MEKO_DATAPACK_ID;
-    datapack_col->expr = NULL;
-    datapack_col->indexcolname = NULL;
-    datapack_col->collation = NIL;
-    datapack_col->opclass = NIL;
-    datapack_col->opclassopts = NIL;
-    datapack_col->ordering = SORTBY_HASH;
-    datapack_col->nulls_ordering = SORTBY_NULLS_DEFAULT;
-
-    user_col = makeNode(IndexElem);
-    user_col->name = AG_VERTEX_COLNAME_MEKO_USER_ID;
-    user_col->expr = NULL;
-    user_col->indexcolname = NULL;
-    user_col->collation = NIL;
-    user_col->opclass = NIL;
-    user_col->opclassopts = NIL;
-    user_col->ordering = SORTBY_HASH;
-    user_col->nulls_ordering = SORTBY_NULLS_DEFAULT;
-
-    agent_col = makeNode(IndexElem);
-    agent_col->name = AG_VERTEX_COLNAME_MEKO_AGENT_ID;
-    agent_col->expr = NULL;
-    agent_col->indexcolname = NULL;
-    agent_col->collation = NIL;
-    agent_col->opclass = NIL;
-    agent_col->opclassopts = NIL;
-    agent_col->ordering = SORTBY_ASC;
-    agent_col->nulls_ordering = SORTBY_NULLS_DEFAULT;
-
-    id_col = makeNode(IndexElem);
-    id_col->name = AG_VERTEX_COLNAME_ID;
-    id_col->expr = NULL;
-    id_col->indexcolname = NULL;
-    id_col->collation = NIL;
-    id_col->opclass = list_make1(makeString("graphid_ops"));
-    id_col->opclassopts = NIL;
-    id_col->ordering = SORTBY_ASC;
-    id_col->nulls_ordering = SORTBY_NULLS_DEFAULT;
-
     index_stmt->relation = makeRangeVar(schema_name, rel_name, -1);
     index_stmt->accessMethod = "lsm";
     index_stmt->tableSpace = NULL;
-    index_stmt->indexParams = list_make4(datapack_col, user_col, agent_col, id_col);
+    index_stmt->indexParams = list_make4(
+        yb_make_meko_hash_elem(AG_VERTEX_COLNAME_MEKO_DATAPACK_ID),
+        yb_make_meko_hash_elem(AG_VERTEX_COLNAME_MEKO_USER_ID),
+        yb_make_meko_asc_elem(AG_VERTEX_COLNAME_MEKO_AGENT_ID, NULL),
+        yb_make_meko_asc_elem(AG_VERTEX_COLNAME_ID, "graphid_ops"));
     index_stmt->options = NIL;
     index_stmt->whereClause = NULL;
     index_stmt->excludeOpNames = NIL;
@@ -611,106 +613,65 @@ static void yb_create_vertex_pk_index(char *schema_name, char *rel_name)
     index_wrapper = makeNode(PlannedStmt);
     index_wrapper->commandType = CMD_UTILITY;
     index_wrapper->canSetTag = false;
-    index_wrapper->utilityStmt = (Node *)index_stmt;
+    index_wrapper->utilityStmt = (Node *) index_stmt;
     index_wrapper->stmt_location = -1;
     index_wrapper->stmt_len = 0;
 
     ProcessUtility(index_wrapper,
-                   "(generated CREATE INDEX command for vertex PK)", false,
+                   "(generated CREATE INDEX command for label PK)", false,
                    PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
                    NULL);
 }
 
 /*
- * YB: Create the composite primary key index for edge tables:
- * PRIMARY KEY ((meko_datapack_id, meko_user_id) HASH, meko_agent_id ASC, id ASC)
+ * YB: Append the four meko_* tenant ColumnDefs to a vertex/edge column list:
+ *   "meko_datapack_id"     UUID NOT NULL,
+ *   "meko_user_id"         UUID NOT NULL,
+ *   "meko_agent_id"        TEXT NOT NULL,
+ *   "meko_conversation_id" UUID
  *
- * See yb_create_vertex_pk_index() for why agent_id is range-key (ASC) rather
- * than part of the hash.
+ * Vertex and edge label tables use identical column names for these (only
+ * the AG_VERTEX_COLNAME_* / AG_EDGE_COLNAME_* macro names differ), so the
+ * same helper produces both. `is_edge` selects the macro family for
+ * symmetry with the rest of the file but the resulting column names are
+ * the same string either way.
  */
-static void yb_create_edge_pk_index(char *schema_name, char *rel_name)
+static List *yb_append_meko_column_defs(List *cols, bool is_edge)
 {
-    /* YB: composite tenant-scoped PK */
-    IndexStmt *index_stmt;
-    IndexElem *datapack_col;
-    IndexElem *user_col;
-    IndexElem *agent_col;
-    IndexElem *id_col;
-    PlannedStmt *index_wrapper;
+    ColumnDef *meko_datapack_id;
+    ColumnDef *meko_user_id;
+    ColumnDef *meko_agent_id;
+    ColumnDef *meko_conversation_id;
 
-    index_stmt = makeNode(IndexStmt);
+    /* "meko_datapack_id" UUID NOT NULL */
+    meko_datapack_id = makeColumnDef(is_edge ? AG_EDGE_COLNAME_MEKO_DATAPACK_ID
+                                             : AG_VERTEX_COLNAME_MEKO_DATAPACK_ID,
+                                     UUIDOID, -1, InvalidOid);
+    meko_datapack_id->constraints = list_make1(build_not_null_constraint());
 
-    datapack_col = makeNode(IndexElem);
-    datapack_col->name = AG_EDGE_COLNAME_MEKO_DATAPACK_ID;
-    datapack_col->expr = NULL;
-    datapack_col->indexcolname = NULL;
-    datapack_col->collation = NIL;
-    datapack_col->opclass = NIL;
-    datapack_col->opclassopts = NIL;
-    datapack_col->ordering = SORTBY_HASH;
-    datapack_col->nulls_ordering = SORTBY_NULLS_DEFAULT;
+    /* "meko_user_id" UUID NOT NULL */
+    meko_user_id = makeColumnDef(is_edge ? AG_EDGE_COLNAME_MEKO_USER_ID
+                                         : AG_VERTEX_COLNAME_MEKO_USER_ID,
+                                 UUIDOID, -1, InvalidOid);
+    meko_user_id->constraints = list_make1(build_not_null_constraint());
 
-    user_col = makeNode(IndexElem);
-    user_col->name = AG_EDGE_COLNAME_MEKO_USER_ID;
-    user_col->expr = NULL;
-    user_col->indexcolname = NULL;
-    user_col->collation = NIL;
-    user_col->opclass = NIL;
-    user_col->opclassopts = NIL;
-    user_col->ordering = SORTBY_HASH;
-    user_col->nulls_ordering = SORTBY_NULLS_DEFAULT;
+    /* "meko_agent_id" TEXT NOT NULL */
+    meko_agent_id = makeColumnDef(is_edge ? AG_EDGE_COLNAME_MEKO_AGENT_ID
+                                          : AG_VERTEX_COLNAME_MEKO_AGENT_ID,
+                                  TEXTOID, -1, InvalidOid);
+    meko_agent_id->constraints = list_make1(build_not_null_constraint());
 
-    agent_col = makeNode(IndexElem);
-    agent_col->name = AG_EDGE_COLNAME_MEKO_AGENT_ID;
-    agent_col->expr = NULL;
-    agent_col->indexcolname = NULL;
-    agent_col->collation = NIL;
-    agent_col->opclass = NIL;
-    agent_col->opclassopts = NIL;
-    agent_col->ordering = SORTBY_ASC;
-    agent_col->nulls_ordering = SORTBY_NULLS_DEFAULT;
+    /* "meko_conversation_id" UUID (nullable) */
+    meko_conversation_id =
+        makeColumnDef(is_edge ? AG_EDGE_COLNAME_MEKO_CONVERSATION_ID
+                              : AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID,
+                      UUIDOID, -1, InvalidOid);
 
-    id_col = makeNode(IndexElem);
-    id_col->name = AG_EDGE_COLNAME_ID;
-    id_col->expr = NULL;
-    id_col->indexcolname = NULL;
-    id_col->collation = NIL;
-    id_col->opclass = list_make1(makeString("graphid_ops"));
-    id_col->opclassopts = NIL;
-    id_col->ordering = SORTBY_ASC;
-    id_col->nulls_ordering = SORTBY_NULLS_DEFAULT;
-
-    index_stmt->relation = makeRangeVar(schema_name, rel_name, -1);
-    index_stmt->accessMethod = "lsm";
-    index_stmt->tableSpace = NULL;
-    index_stmt->indexParams = list_make4(datapack_col, user_col, agent_col, id_col);
-    index_stmt->options = NIL;
-    index_stmt->whereClause = NULL;
-    index_stmt->excludeOpNames = NIL;
-    index_stmt->idxcomment = NULL;
-    index_stmt->indexOid = InvalidOid;
-    index_stmt->unique = true;
-    index_stmt->nulls_not_distinct = false;
-    index_stmt->primary = true;
-    index_stmt->isconstraint = true;
-    index_stmt->deferrable = false;
-    index_stmt->initdeferred = false;
-    index_stmt->transformed = false;
-    index_stmt->concurrent = false;
-    index_stmt->if_not_exists = false;
-    index_stmt->reset_default_tblspc = false;
-
-    index_wrapper = makeNode(PlannedStmt);
-    index_wrapper->commandType = CMD_UTILITY;
-    index_wrapper->canSetTag = false;
-    index_wrapper->utilityStmt = (Node *)index_stmt;
-    index_wrapper->stmt_location = -1;
-    index_wrapper->stmt_len = 0;
-
-    ProcessUtility(index_wrapper,
-                   "(generated CREATE INDEX command for edge PK)", false,
-                   PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
-                   NULL);
+    cols = lappend(cols, meko_datapack_id);
+    cols = lappend(cols, meko_user_id);
+    cols = lappend(cols, meko_agent_id);
+    cols = lappend(cols, meko_conversation_id);
+    return cols;
 }
 
 /*
@@ -744,7 +705,7 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
     ColumnDef *start_id;
     ColumnDef *end_id;
     ColumnDef *props;
-    List *cols; /* YB: declared up front so we can lappend meko_* on YB */
+    List *yb_cols; /* YB: declared up front so we can lappend meko_* on YB */
 
     /* "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...) */
     id = makeColumnDef(AG_EDGE_COLNAME_ID, GRAPHIDOID, -1, InvalidOid);
@@ -765,7 +726,7 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
         id->constraints = list_make2(build_pk_constraint(),
                                      build_id_default(graph_name, label_name,
                                                       schema_name, seq_name));
-    } /* YB */
+    }
 
     /* "start_id" graphid NOT NULL */
     start_id = makeColumnDef(AG_EDGE_COLNAME_START_ID, GRAPHIDOID, -1,
@@ -782,44 +743,13 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
     props->constraints = list_make2(build_not_null_constraint(),
                                     build_properties_default());
 
-    cols = list_make4(id, start_id, end_id, props);
+    yb_cols = list_make4(id, start_id, end_id, props);
 
     /* YB: tenant columns are only added on YugabyteDB-hosted edge tables. */
     if (IsYugaByteEnabled())
-    {
-        ColumnDef *meko_datapack_id;
-        ColumnDef *meko_user_id;
-        ColumnDef *meko_agent_id;
-        ColumnDef *meko_conversation_id;
+        yb_cols = yb_append_meko_column_defs(yb_cols, true /* is_edge */);
 
-        /* "meko_datapack_id" UUID NOT NULL */
-        meko_datapack_id = makeColumnDef(AG_EDGE_COLNAME_MEKO_DATAPACK_ID,
-                                         UUIDOID, -1, InvalidOid);
-        meko_datapack_id->constraints =
-            list_make1(build_not_null_constraint());
-
-        /* "meko_user_id" UUID NOT NULL */
-        meko_user_id = makeColumnDef(AG_EDGE_COLNAME_MEKO_USER_ID,
-                                     UUIDOID, -1, InvalidOid);
-        meko_user_id->constraints = list_make1(build_not_null_constraint());
-
-        /* "meko_agent_id" TEXT NOT NULL */
-        meko_agent_id = makeColumnDef(AG_EDGE_COLNAME_MEKO_AGENT_ID,
-                                      TEXTOID, -1, InvalidOid);
-        meko_agent_id->constraints = list_make1(build_not_null_constraint());
-
-        /* "meko_conversation_id" UUID (nullable) */
-        meko_conversation_id =
-            makeColumnDef(AG_EDGE_COLNAME_MEKO_CONVERSATION_ID,
-                          UUIDOID, -1, InvalidOid);
-
-        cols = lappend(cols, meko_datapack_id);
-        cols = lappend(cols, meko_user_id);
-        cols = lappend(cols, meko_agent_id);
-        cols = lappend(cols, meko_conversation_id);
-    }
-
-    return cols;
+    return yb_cols;
 }
 
 /*
@@ -849,7 +779,7 @@ static List *create_vertex_table_elements(char *graph_name, char *label_name,
 {
     ColumnDef *id;
     ColumnDef *props;
-    List *cols; /* YB: declared up front so we can lappend meko_* on YB */
+    List *yb_cols; /* YB: declared up front so we can lappend meko_* on YB */
 
     /* "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...) */
     id = makeColumnDef(AG_VERTEX_COLNAME_ID, GRAPHIDOID, -1, InvalidOid);
@@ -863,44 +793,13 @@ static List *create_vertex_table_elements(char *graph_name, char *label_name,
     props->constraints = list_make2(build_not_null_constraint(),
                                     build_properties_default());
 
-    cols = list_make2(id, props);
+    yb_cols = list_make2(id, props);
 
     /* YB: tenant columns are only added on YugabyteDB-hosted vertex tables. */
     if (IsYugaByteEnabled())
-    {
-        ColumnDef *meko_datapack_id;
-        ColumnDef *meko_user_id;
-        ColumnDef *meko_agent_id;
-        ColumnDef *meko_conversation_id;
+        yb_cols = yb_append_meko_column_defs(yb_cols, false /* is_edge */);
 
-        /* "meko_datapack_id" UUID NOT NULL */
-        meko_datapack_id = makeColumnDef(AG_VERTEX_COLNAME_MEKO_DATAPACK_ID,
-                                         UUIDOID, -1, InvalidOid);
-        meko_datapack_id->constraints =
-            list_make1(build_not_null_constraint());
-
-        /* "meko_user_id" UUID NOT NULL */
-        meko_user_id = makeColumnDef(AG_VERTEX_COLNAME_MEKO_USER_ID,
-                                     UUIDOID, -1, InvalidOid);
-        meko_user_id->constraints = list_make1(build_not_null_constraint());
-
-        /* "meko_agent_id" TEXT NOT NULL */
-        meko_agent_id = makeColumnDef(AG_VERTEX_COLNAME_MEKO_AGENT_ID,
-                                      TEXTOID, -1, InvalidOid);
-        meko_agent_id->constraints = list_make1(build_not_null_constraint());
-
-        /* "meko_conversation_id" UUID (nullable) */
-        meko_conversation_id =
-            makeColumnDef(AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID,
-                          UUIDOID, -1, InvalidOid);
-
-        cols = lappend(cols, meko_datapack_id);
-        cols = lappend(cols, meko_user_id);
-        cols = lappend(cols, meko_agent_id);
-        cols = lappend(cols, meko_conversation_id);
-    }
-
-    return cols;
+    return yb_cols;
 }
 
 /* CREATE SEQUENCE `seq_range_var` MAXVALUE `LOCAL_ID_MAX` */

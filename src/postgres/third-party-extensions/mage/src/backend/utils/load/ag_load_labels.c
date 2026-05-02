@@ -190,14 +190,14 @@ int create_labels_from_csv_file(char *file_path,
      * YB: bulk CSV load is not wired up for YB yet (insert_batch uses
      * heap_multi_insert and the meko_* tenant columns are not supplied
      * by the loader). Fail loudly until the insert path is made
-     * YB-aware. See TODO(#31338).
+     * YB-aware. See #31338.
      */
     if (IsYugaByteEnabled())
     {
         ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                  errmsg("bulk CSV vertex load is not supported on "
-                        "YugabyteDB yet (TODO(#31338))")));
+                        "YugabyteDB yet (#31338)")));
     }
 
     if (csv_init(&p, options) != 0)
