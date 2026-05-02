@@ -530,6 +530,12 @@ static void create_index_on_column(char *schema_name,
 /*
  * YB: Create the composite primary key index for vertex tables:
  * PRIMARY KEY ((meko_datapack_id, meko_user_id) HASH, meko_agent_id ASC, id ASC)
+ *
+ * Only meko_datapack_id and meko_user_id are part of the hash key — that is
+ * the granularity at which we want to spread rows across tablets. meko_agent_id
+ * is left as a range key (ASC) so that rows for all agents owned by the same
+ * (datapack, user) tenant land on the same tablet and can be range-scanned
+ * together; hashing on agent_id would scatter them, defeating tenant locality.
  */
 static void yb_create_vertex_pk_index(char *schema_name, char *rel_name)
 {
@@ -618,6 +624,9 @@ static void yb_create_vertex_pk_index(char *schema_name, char *rel_name)
 /*
  * YB: Create the composite primary key index for edge tables:
  * PRIMARY KEY ((meko_datapack_id, meko_user_id) HASH, meko_agent_id ASC, id ASC)
+ *
+ * See yb_create_vertex_pk_index() for why agent_id is range-key (ASC) rather
+ * than part of the hash.
  */
 static void yb_create_edge_pk_index(char *schema_name, char *rel_name)
 {
@@ -705,25 +714,27 @@ static void yb_create_edge_pk_index(char *schema_name, char *rel_name)
 }
 
 /*
- * YB:CREATE TABLE `schema_name`.`rel_name` (
- * "id"                   graphid NOT NULL DEFAULT "ag_catalog"."_graphid"(...),
- * "start_id"             graphid NOT NULL,
- * "end_id"               graphid NOT NULL,
- * "properties"           agtype  NOT NULL DEFAULT "ag_catalog"."agtype_build_map"(),
- * -- YB: meko_* tenant columns (composite PK added later as a separate index)
- * "meko_datapack_id"     UUID    NOT NULL,
- * "meko_user_id"         UUID    NOT NULL,
- * "meko_agent_id"        TEXT    NOT NULL,
- * "meko_conversation_id" UUID
- * )
+ * Upstream Apache AGE layout:
+ *   CREATE TABLE `schema_name`.`rel_name` (
+ *     "id"         graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...),
+ *     "start_id"   graphid NOT NULL,
+ *     "end_id"     graphid NOT NULL,
+ *     "properties" agtype  NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
+ *   )
  *
- * YB: Diverges from upstream Apache AGE in two ways:
+ * YB: Diverges from upstream Apache AGE in two ways (only when
+ * IsYugaByteEnabled() is true; vanilla PG builds preserve the upstream
+ * 4-column layout):
  *   1. The "id" column is no longer declared PRIMARY KEY inline; the PK is
  *      created later as a composite tenant-scoped index over
  *      (meko_datapack_id, meko_user_id, meko_agent_id, id) via
  *      yb_create_edge_pk_index().
  *   2. Four meko_* tenant columns are appended so that all rows in an edge
- *      label can be partitioned/sharded by tenant.
+ *      label can be partitioned/sharded by tenant:
+ *        "meko_datapack_id"     UUID NOT NULL,
+ *        "meko_user_id"         UUID NOT NULL,
+ *        "meko_agent_id"        TEXT NOT NULL,
+ *        "meko_conversation_id" UUID
  */
 static List *create_edge_table_elements(char *graph_name, char *label_name,
                                         char *schema_name, char *rel_name,
@@ -733,11 +744,7 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
     ColumnDef *start_id;
     ColumnDef *end_id;
     ColumnDef *props;
-    /* YB: meko_* tenant columns (datapack/user/agent/conversation) */
-    ColumnDef *meko_datapack_id;
-    ColumnDef *meko_user_id;
-    ColumnDef *meko_agent_id;
-    ColumnDef *meko_conversation_id;
+    List *cols; /* YB: declared up front so we can lappend meko_* on YB */
 
     /* "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...) */
     id = makeColumnDef(AG_EDGE_COLNAME_ID, GRAPHIDOID, -1, InvalidOid);
@@ -775,51 +782,66 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
     props->constraints = list_make2(build_not_null_constraint(),
                                     build_properties_default());
 
-    /* YB: meko tenant columns attached to edge label table */
-    meko_datapack_id = makeColumnDef(AG_EDGE_COLNAME_MEKO_DATAPACK_ID,
-                                     UUIDOID, -1, InvalidOid);
-    meko_datapack_id->constraints = list_make1(build_not_null_constraint());
+    cols = list_make4(id, start_id, end_id, props);
 
-    /* "meko_user_id" UUID NOT NULL */
-    meko_user_id = makeColumnDef(AG_EDGE_COLNAME_MEKO_USER_ID,
-                                    UUIDOID, -1, InvalidOid);
-    meko_user_id->constraints = list_make1(build_not_null_constraint());
-
-    /* "meko_agent_id" TEXT NOT NULL */
-    meko_agent_id = makeColumnDef(AG_EDGE_COLNAME_MEKO_AGENT_ID,
-                                  TEXTOID, -1, InvalidOid);
-    meko_agent_id->constraints = list_make1(build_not_null_constraint());
-
-    /* "meko_conversation_id" UUID (nullable) */
-    meko_conversation_id = makeColumnDef(AG_EDGE_COLNAME_MEKO_CONVERSATION_ID,
-                                UUIDOID, -1, InvalidOid);
-
+    /* YB: tenant columns are only added on YugabyteDB-hosted edge tables. */
+    if (IsYugaByteEnabled())
     {
-        List *cols = list_make5(id, start_id, end_id, props, meko_datapack_id);
+        ColumnDef *meko_datapack_id;
+        ColumnDef *meko_user_id;
+        ColumnDef *meko_agent_id;
+        ColumnDef *meko_conversation_id;
+
+        /* "meko_datapack_id" UUID NOT NULL */
+        meko_datapack_id = makeColumnDef(AG_EDGE_COLNAME_MEKO_DATAPACK_ID,
+                                         UUIDOID, -1, InvalidOid);
+        meko_datapack_id->constraints =
+            list_make1(build_not_null_constraint());
+
+        /* "meko_user_id" UUID NOT NULL */
+        meko_user_id = makeColumnDef(AG_EDGE_COLNAME_MEKO_USER_ID,
+                                     UUIDOID, -1, InvalidOid);
+        meko_user_id->constraints = list_make1(build_not_null_constraint());
+
+        /* "meko_agent_id" TEXT NOT NULL */
+        meko_agent_id = makeColumnDef(AG_EDGE_COLNAME_MEKO_AGENT_ID,
+                                      TEXTOID, -1, InvalidOid);
+        meko_agent_id->constraints = list_make1(build_not_null_constraint());
+
+        /* "meko_conversation_id" UUID (nullable) */
+        meko_conversation_id =
+            makeColumnDef(AG_EDGE_COLNAME_MEKO_CONVERSATION_ID,
+                          UUIDOID, -1, InvalidOid);
+
+        cols = lappend(cols, meko_datapack_id);
         cols = lappend(cols, meko_user_id);
         cols = lappend(cols, meko_agent_id);
         cols = lappend(cols, meko_conversation_id);
-        return cols;
     }
+
+    return cols;
 }
 
 /*
- * YB: SCREATE TABLE `schema_name`.`rel_name` (
- * "id"                   graphid NOT NULL DEFAULT "ag_catalog"."_graphid"(...),
- * "properties"           agtype  NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
- *  -- YB only: meko_* tenant columns appended below
- * "meko_datapack_id"     UUID    NOT NULL
- * "meko_user_id"         UUID    NOT NULL
- * "meko_agent_id"        TEXT    NOT NULL
- * "meko_conversation_id" UUID
+ * Upstream Apache AGE layout:
+ *   CREATE TABLE `schema_name`.`rel_name` (
+ *     "id"         graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...),
+ *     "properties" agtype  NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
+ *   )
  *
- * YB: Four additional meko_* tenant columns (meko_datapack_id,
- * meko_user_id, meko_agent_id, meko_conversation_id) are appended to the
- * column list below. They are present in both YB and upstream PG builds;
- * only YB populates them at insert time and uses them in the composite
- * tenant-scoped primary key index built by yb_create_vertex_pk_index()
- * in create_table_for_label(). The "id" column constraints themselves
- * are unchanged from upstream Apache AGE.
+ * YB: Diverges from upstream Apache AGE in two ways (only when
+ * IsYugaByteEnabled() is true; vanilla PG builds preserve the upstream
+ * 2-column layout):
+ *   1. The "id" column is no longer declared PRIMARY KEY inline; the PK is
+ *      created later as a composite tenant-scoped index over
+ *      (meko_datapack_id, meko_user_id, meko_agent_id, id) via
+ *      yb_create_vertex_pk_index().
+ *   2. Four meko_* tenant columns are appended so that all rows in a vertex
+ *      label can be partitioned/sharded by tenant:
+ *        "meko_datapack_id"     UUID NOT NULL,
+ *        "meko_user_id"         UUID NOT NULL,
+ *        "meko_agent_id"        TEXT NOT NULL,
+ *        "meko_conversation_id" UUID
  */
 static List *create_vertex_table_elements(char *graph_name, char *label_name,
                                           char *schema_name, char *rel_name,
@@ -827,45 +849,58 @@ static List *create_vertex_table_elements(char *graph_name, char *label_name,
 {
     ColumnDef *id;
     ColumnDef *props;
-    /* YB: meko_* tenant columns (datapack/user/agent/conversation) */
-    ColumnDef *meko_datapack_id;
-    ColumnDef *meko_user_id;
-    ColumnDef *meko_agent_id;
-    ColumnDef *meko_conversation_id;
+    List *cols; /* YB: declared up front so we can lappend meko_* on YB */
 
+    /* "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...) */
     id = makeColumnDef(AG_VERTEX_COLNAME_ID, GRAPHIDOID, -1, InvalidOid);
     id->constraints = list_make2(build_not_null_constraint(),
                                  build_id_default(graph_name, label_name,
                                                   schema_name, seq_name));
 
+    /* "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"() */
     props = makeColumnDef(AG_VERTEX_COLNAME_PROPERTIES, AGTYPEOID, -1,
                           InvalidOid);
     props->constraints = list_make2(build_not_null_constraint(),
                                     build_properties_default());
 
-    /* YB: meko tenant columns attached to vertex label table */
-    meko_datapack_id = makeColumnDef(AG_VERTEX_COLNAME_MEKO_DATAPACK_ID,
-                                     UUIDOID, -1, InvalidOid);
-    meko_datapack_id->constraints = list_make1(build_not_null_constraint());
+    cols = list_make2(id, props);
 
-    meko_user_id = makeColumnDef(AG_VERTEX_COLNAME_MEKO_USER_ID,
-                                    UUIDOID, -1, InvalidOid);
-    meko_user_id->constraints = list_make1(build_not_null_constraint());
-
-    meko_agent_id = makeColumnDef(AG_VERTEX_COLNAME_MEKO_AGENT_ID,
-                                  TEXTOID, -1, InvalidOid);
-    meko_agent_id->constraints = list_make1(build_not_null_constraint());
-
-    /* "meko_conversation_id" UUID (nullable) */
-    meko_conversation_id = makeColumnDef(AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID,
-                                UUIDOID, -1, InvalidOid);
-
+    /* YB: tenant columns are only added on YugabyteDB-hosted vertex tables. */
+    if (IsYugaByteEnabled())
     {
-        List *cols = list_make5(id, props, meko_datapack_id, meko_user_id,
-                                meko_agent_id);
+        ColumnDef *meko_datapack_id;
+        ColumnDef *meko_user_id;
+        ColumnDef *meko_agent_id;
+        ColumnDef *meko_conversation_id;
+
+        /* "meko_datapack_id" UUID NOT NULL */
+        meko_datapack_id = makeColumnDef(AG_VERTEX_COLNAME_MEKO_DATAPACK_ID,
+                                         UUIDOID, -1, InvalidOid);
+        meko_datapack_id->constraints =
+            list_make1(build_not_null_constraint());
+
+        /* "meko_user_id" UUID NOT NULL */
+        meko_user_id = makeColumnDef(AG_VERTEX_COLNAME_MEKO_USER_ID,
+                                     UUIDOID, -1, InvalidOid);
+        meko_user_id->constraints = list_make1(build_not_null_constraint());
+
+        /* "meko_agent_id" TEXT NOT NULL */
+        meko_agent_id = makeColumnDef(AG_VERTEX_COLNAME_MEKO_AGENT_ID,
+                                      TEXTOID, -1, InvalidOid);
+        meko_agent_id->constraints = list_make1(build_not_null_constraint());
+
+        /* "meko_conversation_id" UUID (nullable) */
+        meko_conversation_id =
+            makeColumnDef(AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID,
+                          UUIDOID, -1, InvalidOid);
+
+        cols = lappend(cols, meko_datapack_id);
+        cols = lappend(cols, meko_user_id);
+        cols = lappend(cols, meko_agent_id);
         cols = lappend(cols, meko_conversation_id);
-        return cols;
     }
+
+    return cols;
 }
 
 /* CREATE SEQUENCE `seq_range_var` MAXVALUE `LOCAL_ID_MAX` */

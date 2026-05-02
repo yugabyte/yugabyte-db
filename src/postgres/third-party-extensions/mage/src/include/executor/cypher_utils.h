@@ -117,14 +117,14 @@ typedef struct cypher_merge_custom_scan_state
  */
 typedef struct YbMekoDp
 {
-    Datum datapack_id;
     bool  datapack_id_isnull;
-    Datum user_id;
+    Datum datapack_id;
     bool  user_id_isnull;
-    Datum agent_id;
+    Datum user_id;
     bool  agent_id_isnull;
-    Datum conversation_id;
+    Datum agent_id;
     bool  conversation_id_isnull;
+    Datum conversation_id;
 } YbMekoDp;
 
 YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,

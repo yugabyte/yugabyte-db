@@ -44,6 +44,13 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
                                      TupleTableSlot *elemTupleSlot,
                                      EState *estate, HeapTuple old_tuple);
 
+/*
+ * YB: Placeholder zero-initialized YbMekoDp passed to populate_*_tts() when
+ * the caller intends to fill the meko_* tenant columns from another source
+ * (e.g. carrying them over from the existing on-disk tuple in SET).
+ */
+static const YbMekoDp EmptyYbMekoDp = {0};
+
 const CustomExecMethods cypher_set_exec_methods = {SET_SCAN_STATE_NAME,
                                                       begin_cypher_set,
                                                       exec_cypher_set,
@@ -609,7 +616,7 @@ static void process_update_list(CustomScanState *node)
              * re-populated below from the existing on-disk tuple.
              */
             slot = populate_vertex_tts(slot, id, altered_properties,
-                                       (YbMekoDp){0});
+                                       EmptyYbMekoDp);
         }
         else if (original_entity_value->type == AGTV_EDGE)
         {
@@ -628,7 +635,7 @@ static void process_update_list(CustomScanState *node)
              */
             slot = populate_edge_tts(slot, id, startid, endid,
                                      altered_properties,
-                                     (YbMekoDp){0});
+                                     EmptyYbMekoDp);
         }
         else
         {
@@ -722,17 +729,28 @@ static void process_update_list(CustomScanState *node)
                         &TTSOpsHeapTuple);
                     ExecStoreHeapTuple(heap_tuple, oldSlot, false);
 
+                    /*
+                     * YB: meko_datapack_id, meko_user_id and meko_agent_id
+                     * are NOT NULL columns on the table, so the existing
+                     * on-disk tuple is guaranteed to have non-null values
+                     * for them. Assert this and propagate the values
+                     * unconditionally as not-null. meko_conversation_id is
+                     * nullable, so its isnull flag is carried through.
+                     */
                     slot->tts_values[dp_off] =
                         slot_getattr(oldSlot, dp_anum, &isnull);
-                    slot->tts_isnull[dp_off] = isnull;
+                    Assert(!isnull);
+                    slot->tts_isnull[dp_off] = false;
 
                     slot->tts_values[user_off] =
                         slot_getattr(oldSlot, user_anum, &isnull);
-                    slot->tts_isnull[user_off] = isnull;
+                    Assert(!isnull);
+                    slot->tts_isnull[user_off] = false;
 
                     slot->tts_values[ag_off] =
                         slot_getattr(oldSlot, ag_anum, &isnull);
-                    slot->tts_isnull[ag_off] = isnull;
+                    Assert(!isnull);
+                    slot->tts_isnull[ag_off] = false;
 
                     slot->tts_values[conv_off] =
                         slot_getattr(oldSlot, conv_anum, &isnull);

@@ -22,6 +22,9 @@
 #include "utils/load/ag_load_edges.h"
 #include "utils/load/csv.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 void edge_field_cb(void *field, size_t field_len, void *data)
 {
 
@@ -119,20 +122,6 @@ void edge_row_cb(int delim __attribute__((unused)), void *data)
         slot->tts_isnull[2] = false;
         slot->tts_isnull[3] = false;
 
-        /*
-         * YB: TODO(#31338) bulk CSV load is not wired up for YB
-         * (insert_batch uses heap_multi_insert). meko_* tenant columns
-         * are left NULL until the insert path is made YB-aware.
-         */
-        slot->tts_values[4] = (Datum) 0;
-        slot->tts_isnull[4] = true;
-        slot->tts_values[5] = (Datum) 0;
-        slot->tts_isnull[5] = true;
-        slot->tts_values[6] = (Datum) 0;
-        slot->tts_isnull[6] = true;
-        slot->tts_values[7] = (Datum) 0;
-        slot->tts_isnull[7] = true;
-
         /* Make the slot as containing virtual tuple */
         ExecStoreVirtualTuple(slot);
         batch_state->num_tuples++;
@@ -199,6 +188,20 @@ int create_edges_from_csv_file(char *file_path,
     unsigned char options = 0;
     csv_edge_reader cr;
     char *label_seq_name;
+
+    /*
+     * YB: bulk CSV load is not wired up for YB yet (insert_batch uses
+     * heap_multi_insert and the meko_* tenant columns are not supplied
+     * by the loader). Fail loudly until the insert path is made
+     * YB-aware. See TODO(#31338).
+     */
+    if (IsYugaByteEnabled())
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("bulk CSV edge load is not supported on "
+                        "YugabyteDB yet (TODO(#31338))")));
+    }
 
     if (csv_init(&p, options) != 0)
     {
