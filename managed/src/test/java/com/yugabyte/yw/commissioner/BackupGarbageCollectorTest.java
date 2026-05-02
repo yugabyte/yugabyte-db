@@ -519,6 +519,69 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     assertEquals(Backup.BackupState.QueuedForDeletion, backup.getState());
   }
 
+  private CustomerConfig createImmutableStorageConfig(String configName) {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, configName);
+    ObjectNode data = (ObjectNode) customerConfig.getData();
+    data.put("IMMUTABLE_STORAGE", true);
+    customerConfig.setData(data);
+    customerConfig.update();
+    return customerConfig;
+  }
+
+  @Test
+  public void testDeleteBackupWithImmutableStorage() {
+    CustomerConfig customerConfig = createImmutableStorageConfig("TEST_IMMUT1");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.getConfigUUID();
+    bp.setUniverseUUID(UUID.randomUUID());
+    Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    backupGC.scheduleRunner();
+    assertThrows(
+        PlatformServiceException.class,
+        () -> Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID()));
+    verify(mockStorageUtilFactory, times(0)).getCloudUtil(anyString());
+    verify(mockStorageUtilFactory, times(0)).getStorageUtil(anyString());
+  }
+
+  @Test
+  public void testDeleteBackupWithImmutableStorageNoCloudDeletion() {
+    CustomerConfig customerConfig = createImmutableStorageConfig("TEST_IMMUT2");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.getConfigUUID();
+    bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    backupGC.scheduleRunner();
+    assertThrows(
+        PlatformServiceException.class,
+        () -> Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID()));
+    verify(mockAWSUtil, times(0)).deleteKeyIfExists(any(), anyString());
+    verify(mockAWSUtil, times(0)).deleteStorage(any(), any());
+  }
+
+  @Test
+  public void testDeleteCustomerConfigWithImmutableStorage() {
+    CustomerConfig customerConfig = createImmutableStorageConfig("TEST_IMMUT3");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.getConfigUUID();
+    bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TestUtils.setFakeHttpContext(defaultUser);
+    Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    customerConfig.updateState(ConfigState.QueuedForDeletion);
+    backupGC.scheduleRunner();
+    assertThrows(
+        PlatformServiceException.class,
+        () -> Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID()));
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            customerConfigService.getOrBadRequest(
+                defaultCustomer.getUuid(), customerConfig.getConfigUUID()));
+    verify(mockStorageUtilFactory, times(0)).getCloudUtil(anyString());
+  }
+
   public static void setUniversePaused(boolean value, Universe universe) {
     Universe.UniverseUpdater updater =
         new Universe.UniverseUpdater() {
