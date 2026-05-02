@@ -215,7 +215,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         .forUniverse(defaultUniverse)
         .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     factory
-        .forUniverse(defaultUniverse)
+        .forUniverse(onPremUniverse)
         .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
 
     CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =

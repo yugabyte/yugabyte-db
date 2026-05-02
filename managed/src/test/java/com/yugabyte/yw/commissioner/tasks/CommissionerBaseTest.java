@@ -145,7 +145,6 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 import kamon.instrumentation.play.GuiceModule;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -547,85 +546,41 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
-    return waitForTask(taskUUID, null, 200, MAX_RETRY_COUNT);
+    return waitForTask(taskUUID, 200 /*sleepDurationMs*/);
   }
 
-  public TaskInfo waitForTask(UUID taskUUID, long sleepDuration) throws InterruptedException {
-    return waitForTask(taskUUID, null, sleepDuration, MAX_RETRY_COUNT);
+  public TaskInfo waitForTask(UUID taskUUID, long sleepDurationMs) throws InterruptedException {
+    return waitForTask(taskUUID, sleepDurationMs, MAX_RETRY_COUNT);
   }
 
-  /**
-   * Waits until the task reaches {@code expectedState} (e.g. {@link TaskInfo.State#Paused} for
-   * canary upgrades). Polls persisted {@link TaskInfo} state; unlike {@link #waitForTask(UUID)}
-   * this does not require a {@link TaskInfo#COMPLETED_STATES completed} state.
-   *
-   * <p>Uses a short poll interval suitable for mock/unit tests. For slow local-provider tests, use
-   * {@link #waitForTask(UUID, TaskInfo.State, long, int)} with a larger sleep and retry count.
-   */
-  public TaskInfo waitForTask(UUID taskUUID, TaskInfo.State expectedState)
-      throws InterruptedException {
-    return waitForTask(taskUUID, expectedState, 10, 2000);
-  }
-
-  /**
-   * Waits for the task to finish in a {@link TaskInfo#COMPLETED_STATES terminal success/failure
-   * state} (when {@code expectedState} is null), or until it reaches the given {@code
-   * expectedState}.
-   */
-  public TaskInfo waitForTask(
-      UUID taskUUID, @Nullable TaskInfo.State expectedState, long sleepDuration, int maxRetries)
+  public TaskInfo waitForTask(UUID taskUUID, long sleepDurationMs, int maxRetries)
       throws InterruptedException {
     int numRetries = 0;
     TaskInfo taskInfo = null;
     while (numRetries < maxRetries) {
-      if (expectedState == null) {
-        // Here is a hack to decrease amount of accidental problems for tests using this
-        // function:
-        // Surrounding the next block with try {} catch {} as sometimes h2 raises NPE
-        // inside the get() request. We are not afraid of such exception as the next
-        // request will succeeded.
-        if (!commissioner.isTaskRunning(taskUUID)) {
-          try {
-            taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-            // Also, ensure task details are set before returning.
-            if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())
-                && taskInfo.getTaskParams() != null) {
-              return taskInfo;
-            }
-          } catch (Exception e) {
-            log.error(
-                "Error while fetching task info for taskUUID: {} : {}. Retrying...",
-                taskUUID,
-                e.getMessage());
-          }
-        }
-      } else {
+      // Here is a hack to decrease amount of accidental problems for tests using this
+      // function:
+      // Surrounding the next block with try {} catch {} as sometimes h2 raises NPE
+      // inside the get() request. We are not afraid of such exception as the next
+      // request will succeeded.
+      if (!commissioner.isTaskRunning(taskUUID)) {
         try {
           taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-          if (taskInfo.getTaskState() == expectedState) {
+          // Also, ensure task details are set before returning.
+          if (TaskInfo.TERMINAL_STATES.contains(taskInfo.getTaskState())
+              && taskInfo.getTaskParams() != null) {
             return taskInfo;
           }
-          if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
-            fail(
-                "Task reached "
-                    + taskInfo.getTaskState()
-                    + " instead of "
-                    + expectedState
-                    + "; error: "
-                    + taskInfo.getTaskError());
-          }
         } catch (Exception e) {
-          // DB may not be consistent yet, retry.
+          log.error(
+              "Error while fetching task info for taskUUID: {} : {}. Retrying...",
+              taskUUID,
+              e.getMessage());
         }
       }
-      Thread.sleep(sleepDuration);
+      Thread.sleep(sleepDurationMs);
       numRetries++;
     }
-
-    if (expectedState != null) {
-      throw new RuntimeException("Task did not reach state " + expectedState + " within timeout");
-    }
-
     Optional<TaskInfo> taskInfoOptional = TaskInfo.maybeGet(taskUUID);
     if (!taskInfoOptional.isPresent()) {
       throw new RuntimeException(
@@ -681,7 +636,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         return isRunning;
       }
       TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+      if (TaskInfo.TERMINAL_STATES.contains(taskInfo.getTaskState())) {
         return false;
       }
       Thread.sleep(10);
@@ -706,7 +661,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (commissioner.isTaskPaused(taskUuid)) {
         return;
       }
-      Thread.sleep(10);
+      Thread.sleep(100);
       numRetries++;
     }
     throw new RuntimeException(

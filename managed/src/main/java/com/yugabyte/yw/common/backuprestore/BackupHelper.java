@@ -491,7 +491,7 @@ public class BackupHelper {
     int numRetries = 0;
     while (numRetries < maxRetryCount) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);
-      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+      if (TaskInfo.TERMINAL_STATES.contains(taskInfo.getTaskState())) {
         return;
       }
       Thread.sleep(1000);

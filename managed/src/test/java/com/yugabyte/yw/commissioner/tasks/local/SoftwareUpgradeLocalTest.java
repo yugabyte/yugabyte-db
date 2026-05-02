@@ -58,7 +58,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
   @Override
   protected Pair<Integer, Integer> getIpRange() {
-    return new Pair(180, 210);
+    return new Pair<>(180, 210);
   }
 
   public static final String OLD_DB_VERSION = "2.20.0.1-b1";
@@ -363,7 +363,8 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     UUID taskUuid =
         upgradeUniverseHandler.upgradeDBVersion(
             params, customer, Universe.getOrBadRequest(universe.getUniverseUUID()));
-    waitForTask(taskUuid, TaskInfo.State.Paused, 500, 3600);
+    TaskInfo taskInfo = waitForTask(taskUuid, 500, 3600);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
@@ -393,7 +394,8 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     UUID resumedUuid =
         upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
             customer.getUuid(), universe.getUniverseUUID(), taskUuid);
-    waitForTask(resumedUuid, TaskInfo.State.Paused, 500, 3600);
+    taskInfo = waitForTask(resumedUuid, 500, 3600);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
@@ -475,7 +477,8 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     UUID taskUuid =
         upgradeUniverseHandler.upgradeDBVersion(
             params, customer, Universe.getOrBadRequest(universe.getUniverseUUID()));
-    waitForTask(taskUuid, TaskInfo.State.Paused, 500, 3600);
+    TaskInfo taskInfo = waitForTask(taskUuid, 500, 3600);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
