@@ -119,6 +119,10 @@ DEFINE_test_flag(bool, skip_index_backfill, false,
 DEFINE_test_flag(bool, block_do_backfill, false,
     "Block DoBackfill from proceeding.");
 
+DEFINE_test_flag(bool, skip_ddl_requester_liveness_check, false,
+    "Skip starting the requester liveness task. Used in tests to simulate the pre-fix behavior "
+    "where master continues sending BackfillIndex RPCs after the backend is killed.");
+
 DEFINE_test_flag(bool, simulate_empty_indexes_during_backfill, false,
     "Simulates BackfillTable::indexes_to_build() to return an empty set.");
 
@@ -324,7 +328,8 @@ Status MultiStageAlterTable::StartBackfillingData(
     CatalogManager* catalog_manager,
     const scoped_refptr<TableInfo>& indexed_table,
     const std::vector<IndexInfoPB>& idx_infos,
-    std::optional<uint32_t> current_version, const LeaderEpoch& epoch) {
+    std::optional<uint32_t> current_version, const LeaderEpoch& epoch,
+    std::optional<TransactionMetadata> requester_transaction) {
   // We leave the table state as ALTERING so that a master failover can resume the backfill.
   RETURN_NOT_OK(ClearFullyAppliedAndUpdateState(
       catalog_manager, indexed_table, current_version, /* change_state to RUNNING */ false, epoch));
@@ -337,6 +342,14 @@ Status MultiStageAlterTable::StartBackfillingData(
   VLOG(0) << __func__ << " starting backfill on " << indexed_table->ToString() << " for "
           << yb::ToString(idx_infos);
 
+  // Retrieve the requester transaction if it was stored during the permission-update phase.
+  // Pass current_version so TakePendingBackfillRequesterTransaction rejects stale
+  // transactions from earlier backfill attempts.
+  if (!requester_transaction && current_version) {
+    requester_transaction =
+        indexed_table->TakePendingBackfillRequesterTransaction(*current_version);
+  }
+
   if (FLAGS_TEST_skip_index_backfill) {
     TRACE("Skipping backfill of data on tservers");
     LOG(INFO) << "Skipping backfill of data on tservers";
@@ -345,7 +358,7 @@ Status MultiStageAlterTable::StartBackfillingData(
 
   auto backfill_table = std::make_shared<BackfillTable>(
       catalog_manager->master_, catalog_manager->AsyncTaskPool(), indexed_table, idx_infos,
-      *ns_info, epoch);
+      *ns_info, epoch, std::move(requester_transaction));
   Status s = backfill_table->Launch();
   if (!s.ok()) {
     indexed_table->ClearIsBackfilling();
@@ -387,7 +400,8 @@ IndexPermissions NextPermission(IndexPermissions perm) {
 
 Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
-    uint32_t current_version, const LeaderEpoch& epoch, bool respect_backfill_deferrals,
+    uint32_t current_version, const LeaderEpoch& epoch,
+    std::optional<TransactionMetadata> requester_transaction, bool respect_backfill_deferrals,
     bool update_ysql_to_backfill) {
   DVLOG_WITH_FUNC(3)
       << Format("$0, version: $1, respect_deferrals: $2, update_ysql_to_backfill: $3",
@@ -502,6 +516,15 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
 
     if (permissions_updated.ok() && *permissions_updated) {
       VLOG(1) << "Sending alter table request with updated permissions";
+      // Store the requester transaction so StartBackfillingData can retrieve it when the
+      // permission change reaches DO_BACKFILL and the second call launches backfill.
+      // Store current_version+1 (the new version after this permission update)
+      // so TakePendingBackfillRequesterTransaction can verify the transaction
+      // belongs to this exact backfill attempt and not a stale one.
+      if (requester_transaction) {
+        indexed_table->SetPendingBackfillRequesterTransaction(
+            std::move(requester_transaction), current_version + 1);
+      }
       RETURN_NOT_OK(catalog_manager->SendAlterTableRequest(indexed_table, epoch));
       return Status::OK();
     }
@@ -530,7 +553,8 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     }
     WARN_NOT_OK(
         StartBackfillingData(
-            catalog_manager, indexed_table.get(), indexes_to_backfill, current_version, epoch),
+            catalog_manager, indexed_table.get(), indexes_to_backfill, current_version, epoch,
+            std::move(requester_transaction)),
         yb::Format("Could not launch backfill for $0", indexed_table->ToString()));
   }
 
@@ -627,7 +651,7 @@ std::string RetrieveIndexNames(CatalogManager* mgr,
 BackfillTable::BackfillTable(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TableInfo>& indexed_table,
     std::vector<IndexInfoPB> indexes, const scoped_refptr<NamespaceInfo>& ns_info,
-    LeaderEpoch epoch)
+    LeaderEpoch epoch, std::optional<TransactionMetadata> requester_transaction)
     : master_(master),
       callback_pool_(callback_pool),
       indexed_table_(indexed_table),
@@ -637,7 +661,8 @@ BackfillTable::BackfillTable(
           RetrieveIndexNames(master->catalog_manager_impl(), requested_index_ids_)),
       ns_info_(ns_info),
       epoch_(std::move(epoch)),
-      wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
+      wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()),
+      requester_transaction_(std::move(requester_transaction)) {
   if (wait_state_) {
     if (const auto& current_state = ash::WaitStateInfo::CurrentWaitState()) {
       wait_state_->UpdateMetadata(current_state->metadata());
@@ -951,6 +976,7 @@ Status BackfillTable::DoLaunchBackfill() {
 }
 
 Status BackfillTable::DoBackfill() {
+  StartRequesterLivenessMonitor();
   while (FLAGS_TEST_block_do_backfill) {
     constexpr auto kSpinWait = 100ms;
     LOG(INFO) << Format("Blocking $0 for $1", __func__, kSpinWait);
@@ -982,8 +1008,12 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
 
   // If OK then move on to READ permissions.
   if (!done() && --tablets_pending_ == 0) {
+    bool expected = false;
+    if (!done_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+      return Status::OK();
+    }
     LOG_WITH_PREFIX(INFO) << "Completed backfilling the index table.";
-    done_.store(true, std::memory_order_release);
+    StopLivenessMonitor();
     RETURN_NOT_OK_PREPEND(
         MarkAllIndexesAsSuccess(), "Failed to mark indexes as successfully backfilled.");
     RETURN_NOT_OK_PREPEND(UpdateIndexPermissionsForIndexes(), "Failed to complete backfill.");
@@ -997,6 +1027,7 @@ Status BackfillTable::MarkIndexesAsFailed(
     const std::unordered_set<TableId>& failed_indexes, const string& message) {
   if (indexes_to_build() == failed_indexes) {
     done_.store(true, std::memory_order_release);
+    StopLivenessMonitor();
     backfill_job_->SetState(MonitoredTaskState::kFailed);
   }
   return MarkIndexesAsDesired(failed_indexes, BackfillJobPB::FAILED, message);
@@ -1077,15 +1108,71 @@ Status BackfillTable::MarkIndexesAsDesired(
   return Status::OK();
 }
 
-Status BackfillTable::Abort() {
+void BackfillTable::StartRequesterLivenessMonitor() {
+  if (!requester_transaction_) {
+      return;
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_skip_ddl_requester_liveness_check)) {
+    LOG_WITH_PREFIX(INFO) << "Skipping requester liveness monitor (TEST flag set)";
+    return;
+  }
+  VLOG_WITH_PREFIX(1) << "Starting requester liveness monitor for transaction "
+                      << requester_transaction_->transaction_id;
+
+  auto self = shared_from_this();
+  BackgroundDdlCallbacks callbacks{
+      .done_ = [self] { return self->done(); },
+      .abort_ = [self]() { return self->Abort(true); },
+  };
+  auto task = DdlRequesterLivenessTask::CreateAndStartTask(
+      *master_->catalog_manager_impl(),
+      indexed_table_,
+      *requester_transaction_,
+      std::move(callbacks),
+      master_->client_future(),
+      *master_->messenger(),
+      epoch_);
+
+  std::lock_guard l(mutex_);
+  DCHECK(!liveness_task_.lock()) << "Liveness task already exists";
+  liveness_task_ = task;
+}
+
+void BackfillTable::StopLivenessMonitor() {
+  std::shared_ptr<DdlRequesterLivenessTask> task;
+  {
+    std::lock_guard l(mutex_);
+    task = liveness_task_.lock();
+    liveness_task_.reset();
+  }
+  if (task) {
+    task->AbortAndReturnPrevState(STATUS(Aborted, "BackfillTable is done"));
+  }
+}
+
+Status BackfillTable::Abort(bool from_liveness) {
+  bool expected = false;
+  if (!done_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+    return Status::OK();
+  }
+  if (from_liveness) {
+    // clear liveness_task_ the subsequent StopLivenessMonitor()
+    // call inside MarkIndexesAsFailed will then be a no-op.
+    std::lock_guard l(mutex_);
+    liveness_task_.reset();
+  } else {
+    StopLivenessMonitor();
+  }
   LOG(WARNING) << "Backfill failed/aborted.";
   RETURN_NOT_OK(MarkAllIndexesAsFailed());
+  master_->catalog_manager_impl()->IncrementBackfillAborted();
   return CheckIfDone();
 }
 
 Status BackfillTable::CheckIfDone() {
   if (indexes_to_build().empty()) {
     done_.store(true, std::memory_order_release);
+    StopLivenessMonitor();
     RETURN_NOT_OK_PREPEND(
         UpdateIndexPermissionsForIndexes(),
         "Could not update index permissions after backfill");

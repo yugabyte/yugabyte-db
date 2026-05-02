@@ -46,6 +46,9 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+METRIC_DECLARE_entity(cluster);
+METRIC_DECLARE_counter(backfill_aborted);
+
 using std::string;
 
 using namespace std::chrono_literals;
@@ -290,6 +293,12 @@ Result<int> TotalBackfillRpcMetric(ExternalMiniCluster* cluster, const char* typ
 
 Result<int> TotalBackfillRpcCalls(ExternalMiniCluster* cluster) {
   return TotalBackfillRpcMetric(cluster, "total_count");
+}
+
+Result<int64_t> BackfillAbortedCount(ExternalMiniCluster* cluster) {
+  auto* master = cluster->GetLeaderMaster();
+  return master->GetMetric<int64>(
+      &METRIC_ENTITY_cluster, nullptr, &METRIC_backfill_aborted, "value");
 }
 
 Result<double> AvgBackfillRpcLatencyInMicros(ExternalMiniCluster* cluster) {
@@ -3573,6 +3582,210 @@ TEST_P(PgIndexBackfillBlockDoBackfill, ConcurrentInplaceUpdateCoveringIndex) {
 
   // Validate that the index is consistent.
   ASSERT_OK(CheckIndexConsistency("idx_tbl"));
+}
+
+// Test class for verifying that killing the PG backend running CREATE INDEX CONCURRENTLY
+// propagates the cancellation to the master-side backfill.
+//
+// Reproduces the bug where pg_terminate_backend kills only the PG connection but leaves
+// the distributed backfill on the master running indefinitely.
+//
+// Parameterized via PgIndexBackfillTest::EnableTableLocks() (::testing::Bool()):
+//   false -- legacy mode: DDL uses an autonomous kDDL transaction
+//            (use_regular_transaction_block=false)
+//   true  -- transactional DDL mode: DDL participates in the kPlain session transaction
+//            (use_regular_transaction_block=true, ysql_yb_ddl_transaction_block_enabled=true)
+// Both paths must be tested because GetDdlTransactionMetadata fetches metadata from different
+// transactions depending on the mode.
+class PgIndexBackfillCancellationTest : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    // This test uses SPLIT INTO 1 TABLETS and only needs one tserver.  Use RF=1 so the
+    // system.transactions table (and all other system tables) can be created with a single
+    // tserver.  Also cap ysql_num_tablets=1 so user table initialization stays minimal.
+    options->replication_factor = 1;
+    options->extra_tserver_flags.push_back("--ysql_num_tablets=1");
+    // Slow down each BackfillIndex RPC so we have time to kill the backend mid-backfill
+    // and then observe whether additional chunks continue to be issued.
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_slowdown_backfill_by_ms=$0", kSlowdown.ToMilliseconds()));
+    // Limit rows scanned per BackfillIndex RPC so the master must issue multiple sequential
+    // RPCs per tablet (resume chunks).  Without this, all kNumRows fit in a single RPC and
+    // the kill always arrives after backfill is already done, leaving nothing to observe.
+    //
+    // Two flags together produce kNumRows/kFetchRowLimit sequential BackfillIndex RPCs
+    // (kFetchRowLimit rows each):
+    // - yb_fetch_row_limit=kFetchRowLimit: controls how many rows PostgreSQL fetches from
+    //   DocDB per BACKFILL INDEX SQL call.
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_yb_fetch_row_limit=$0", kFetchRowLimit));
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_backfill_paging_size=$0", kFetchRowLimit));
+    options->extra_master_flags.push_back(
+        Format("--ddl_requester_liveness_check_interval_secs=$0",
+               kLivenessInterval.ToSeconds()));
+    options->extra_master_flags.push_back(
+        Format("--transaction_rpc_timeout_ms=$0",
+               kTransactionRpcTimeout.ToMilliseconds()));
+    options->extra_tserver_flags.push_back(
+        Format("--transaction_heartbeat_usec=$0",
+               kTransactionHeartbeat.ToMicroseconds()));
+  }
+
+  int GetNumTabletServers() const override { return 1; }
+
+ protected:
+  Status SetupAndKillBackend() {
+    // Sanity check to make sure that we have enough rows for the test.
+    // Roughly it verifies that the time needed to abort the backfill is less
+    // than the time to finish the full backfill.
+    const MonoDelta abort_detection_window =
+        kLivenessInterval + kTransactionRpcTimeout + kTransactionHeartbeat
+        + kWaitForMaxDelay;
+    const MonoDelta min_remaining_backfill_time =
+        kSlowdown * (kExpectedTotalBackfillRpcs - 1);
+
+    // Added 2x factor as safety margin
+    SCHECK_GT(min_remaining_backfill_time, abort_detection_window * 2, IllegalState,
+              "kNumRows too small, the backfill could finish before "
+              "the master detects the killed backend.");
+
+    RETURN_NOT_OK(conn_->ExecuteFormat(
+        "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kTableName));
+    RETURN_NOT_OK(conn_->ExecuteFormat(
+        "INSERT INTO $0 SELECT i, i FROM generate_series(1, $1) AS i",
+        kTableName, kNumRows));
+
+    CountDownLatch pid_ready(1);
+    thread_holder_.AddThreadFunctor([this, &pid_ready] {
+      auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+      create_index_pid_.store(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()")));
+      pid_ready.CountDown();
+      auto s = conn.ExecuteFormat(
+          "CREATE INDEX CONCURRENTLY $0 ON $1 (v)", kIndexName, kTableName);
+      create_index_completed_ok_.store(s.ok());
+      LOG(INFO) << "CREATE INDEX returned: " << s;
+    });
+
+    pid_ready.Wait();
+
+    // No artificial timeout here, count on the gtest-level timeout
+    RETURN_NOT_OK(WaitFor(
+        [this]() -> Result<bool> {
+          return VERIFY_RESULT(TotalBackfillRpcCalls(cluster_.get())) >= 1;
+        },
+        MonoDelta::kMax, "first BackfillIndex RPC to complete",
+        1ms, 1.1, kWaitForMaxDelay));
+
+    SCHECK_EQ(VERIFY_RESULT(BackfillAbortedCount(cluster_.get())), 0, IllegalState,
+              "backfill_aborted counter must be 0 before the kill");
+
+    auto terminated = VERIFY_RESULT(conn_->FetchRow<bool>(
+        Format("SELECT pg_terminate_backend($0)", create_index_pid_.load())));
+    if (!terminated) {
+      return STATUS(IllegalState, "pg_terminate_backend returned false");
+    }
+    LOG(INFO) << "Terminated CREATE INDEX backend PID " << create_index_pid_.load();
+    return Status::OK();
+  }
+
+  // gflag values pinned here.
+  const MonoDelta kSlowdown = 1s;
+  const MonoDelta kTransactionRpcTimeout = 1s * kTimeMultiplier;
+  const MonoDelta kTransactionHeartbeat = 500ms;
+  const MonoDelta kLivenessInterval = 1s;
+
+  // WaitFor poll cap used to observe the abort counter in the positive test.
+  const MonoDelta kWaitForMaxDelay = 100ms;
+
+  // ceil(kNumRows / kFetchRowLimit)
+  static constexpr int kFetchRowLimit = 500;
+  static constexpr int kNumRows = 8000;
+  static constexpr int kExpectedTotalBackfillRpcs =
+      (kNumRows + kFetchRowLimit - 1) / kFetchRowLimit;
+
+  // Populated by the CREATE INDEX CONCURRENTLY thread.
+  std::atomic<int32_t> create_index_pid_{0};
+  std::atomic<bool> create_index_completed_ok_{false};
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillCancellationTest, ::testing::Bool());
+
+// Regression test: after pg_terminate_backend kills the CREATE INDEX CONCURRENTLY session,
+// the master must stop issuing new BackfillIndex RPCs to tservers.
+//
+// Without the liveness check: the master continues launching backfill chunks, visible as new
+// BackfillIndex RPC completions on tservers after the backend is gone.
+// With the liveness check: the master detects the DDL transaction is ABORTED and stops.
+TEST_P(PgIndexBackfillCancellationTest, BackfillStopsAfterBackendKill) {
+  ASSERT_OK(SetupAndKillBackend());
+
+  // Wait for the master to observe the aborted transaction after
+  // BackfillTable::Abort, which bumps backfill_aborted
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        return VERIFY_RESULT(BackfillAbortedCount(cluster_.get())) == 1;
+      },
+      20s * kTimeMultiplier, "backfill_aborted counter to reach 1",
+      1ms, 1.1, kWaitForMaxDelay));
+
+  // At most one chunk can still be in flight
+  auto rpcs = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  EXPECT_LT(rpcs + 1, kExpectedTotalBackfillRpcs)
+      << "Abort fired but already issued " << rpcs << " of "
+      << kExpectedTotalBackfillRpcs << " expected BackfillIndex RPCs";
+
+  // Maybe an overkill, we already know that Abort() was called.
+  //
+  // As an additional insurance wait for sometime (enough for ~2 RPCs),
+  // and check again. The new count must be less than rpcs + 1,
+  // +1 is in case one RPC was in-flight at the time of the kill.
+  SleepFor(kSlowdown * kTimeMultiplier * 3);
+  auto rpcs_after = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  EXPECT_LE(rpcs_after, rpcs + 1)
+      << "BackfillIndex RPC count grew after abort fired, expected: "
+      << rpcs_after << " <= " << rpcs + 1;
+
+  thread_holder_.JoinAll();
+  EXPECT_FALSE(create_index_completed_ok_.load())
+      << "CREATE INDEX completed before pg_terminate_backend interrupted it";
+}
+
+// Negative-regression test: demonstrates the pre-fix bug.
+//
+// With --TEST_skip_ddl_requester_liveness_check=true the master never starts the
+// liveness task, so it never detects the ABORTED transaction and keeps issuing
+// BackfillIndex RPCs until every chunk has completed.  The test waits until the total
+// RPC count reaches kExpectedTotalBackfillRpcs.
+class PgIndexBackfillCancellationWithoutFixTest : public PgIndexBackfillCancellationTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillCancellationTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--TEST_skip_ddl_requester_liveness_check=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillCancellationWithoutFixTest, ::testing::Values(false));
+
+TEST_P(PgIndexBackfillCancellationWithoutFixTest, BackfillContinuesAfterBackendKill) {
+  ASSERT_OK(SetupAndKillBackend());
+
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        return VERIFY_RESULT(TotalBackfillRpcCalls(cluster_.get())) >=
+               kExpectedTotalBackfillRpcs;
+      },
+      MonoDelta::kMax, "all BackfillIndex RPCs to complete"));
+
+  // With the liveness check disabled, BackfillTable::Abort must never be called.
+  EXPECT_EQ(ASSERT_RESULT(BackfillAbortedCount(cluster_.get())), 0)
+      << "backfill_aborted fired despite --TEST_skip_ddl_requester_liveness_check=true";
+
+  thread_holder_.JoinAll();
+  EXPECT_FALSE(create_index_completed_ok_.load())
+      << "CREATE INDEX completed before pg_terminate_backend interrupted it";
 }
 
 } // namespace yb::pgwrapper

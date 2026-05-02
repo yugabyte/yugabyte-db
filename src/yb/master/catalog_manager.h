@@ -1885,6 +1885,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const GetYsqlYbSystemTableInfoRequestPB* req, GetYsqlYbSystemTableInfoResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  void IncrementBackfillAborted();
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -2582,6 +2584,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_dead_;
 
   scoped_refptr<Counter> metric_create_table_too_many_tablets_;
+
+  scoped_refptr<Counter> metric_backfill_aborted_;
 
   scoped_refptr<AtomicGauge<uint64_t>> metric_max_follower_heartbeat_delay_;
 
