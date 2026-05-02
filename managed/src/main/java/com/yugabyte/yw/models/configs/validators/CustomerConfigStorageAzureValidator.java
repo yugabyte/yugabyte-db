@@ -111,7 +111,8 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
         BlobContainerClient blobContainerClient =
             factory.createBlobContainerClient(azureData, azUrl, container);
         ((AZUtil) (storageUtilFactory.getCloudUtil(Util.AZ)))
-            .validateOnBlobContainerClient(blobContainerClient, cloudPath, permissions);
+            .validateOnBlobContainerClient(
+                blobContainerClient, cloudPath, permissions, azureData.immutableStorage);
       } catch (BlobStorageException e) {
         String exceptionMsg = e.getMessage();
         throwBeanConfigDataValidatorError(fieldName, exceptionMsg);

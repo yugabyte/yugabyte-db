@@ -1549,7 +1549,12 @@ public class AWSUtil implements CloudUtil {
       }
     }
 
-    validateOnLocation(s3Client, YbcBackupUtil.DEFAULT_REGION_STRING, configData, permissions);
+    validateOnLocation(
+        s3Client,
+        YbcBackupUtil.DEFAULT_REGION_STRING,
+        configData,
+        permissions,
+        s3data.immutableStorage);
 
     if (s3data.regionLocations != null) {
       for (RegionLocations location : s3data.regionLocations) {
@@ -1560,7 +1565,8 @@ public class AWSUtil implements CloudUtil {
         s3Client = null;
         try {
           s3Client = createS3Client(s3data, location.region);
-          validateOnLocation(s3Client, location.region, configData, permissions);
+          validateOnLocation(
+              s3Client, location.region, configData, permissions, s3data.immutableStorage);
         } catch (SdkClientException e) {
           exceptionMsg = e.getMessage();
           throw new RuntimeException(exceptionMsg);
@@ -1578,9 +1584,10 @@ public class AWSUtil implements CloudUtil {
       S3Client client,
       String region,
       CustomerConfigData configData,
-      List<ExtraPermissionToValidate> permissions) {
+      List<ExtraPermissionToValidate> permissions,
+      boolean skipDelete) {
     CloudLocationInfo cLInfo = getCloudLocationInfo(region, configData, null);
-    validateOnBucket(client, cLInfo.bucket, cLInfo.cloudPath, permissions);
+    validateOnBucket(client, cLInfo.bucket, cLInfo.cloudPath, permissions, skipDelete);
   }
 
   /**
@@ -1591,7 +1598,8 @@ public class AWSUtil implements CloudUtil {
       S3Client client,
       String bucketName,
       String prefix,
-      List<ExtraPermissionToValidate> permissions) {
+      List<ExtraPermissionToValidate> permissions,
+      boolean skipDelete) {
     Optional<ExtraPermissionToValidate> unsupportedPermission =
         permissions.stream()
             .filter(
@@ -1624,8 +1632,10 @@ public class AWSUtil implements CloudUtil {
       log.debug("S3: Test object listed");
     }
 
-    validateDeleteObject(client, bucketName, completeObjectPath);
-    log.debug("S3: Test object deleted");
+    if (!skipDelete) {
+      validateDeleteObject(client, bucketName, completeObjectPath);
+      log.debug("S3: Test object deleted");
+    }
   }
 
   private void createObject(S3Client client, String bucketName, String content, String fileName) {

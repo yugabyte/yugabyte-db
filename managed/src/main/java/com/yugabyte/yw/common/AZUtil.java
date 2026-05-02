@@ -576,7 +576,7 @@ public class AZUtil implements CloudUtil {
                   YbcBackupUtil.DEFAULT_REGION_STRING, azData, azData.backupLocation);
       BlobContainerClient client =
           createBlobContainerClient(azData, YbcBackupUtil.DEFAULT_REGION_STRING);
-      validateOnBlobContainerClient(client, cLInfo.cloudPath, permissions);
+      validateOnBlobContainerClient(client, cLInfo.cloudPath, permissions, azData.immutableStorage);
       if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
         azData.regionLocations.stream()
             .forEach(
@@ -586,7 +586,8 @@ public class AZUtil implements CloudUtil {
                           getCloudLocationInfo(location.region, azData, location.location);
                   BlobContainerClient regionClient =
                       createBlobContainerClient(azData, location.region);
-                  validateOnBlobContainerClient(regionClient, cLInfoRegion.cloudPath, permissions);
+                  validateOnBlobContainerClient(
+                      regionClient, cLInfoRegion.cloudPath, permissions, azData.immutableStorage);
                 });
       }
     } else {
@@ -604,7 +605,8 @@ public class AZUtil implements CloudUtil {
   public void validateOnBlobContainerClient(
       BlobContainerClient blobContainerClient,
       String cloudPath,
-      List<ExtraPermissionToValidate> permissions) {
+      List<ExtraPermissionToValidate> permissions,
+      boolean skipDelete) {
     Optional<ExtraPermissionToValidate> unsupportedPermission =
         permissions.stream()
             .filter(
@@ -634,7 +636,9 @@ public class AZUtil implements CloudUtil {
       validateListBlobs(blobContainerClient, completeObjectPath);
     }
 
-    validateDelete(blobContainerClient, completeObjectPath);
+    if (!skipDelete) {
+      validateDelete(blobContainerClient, completeObjectPath);
+    }
   }
 
   /**
