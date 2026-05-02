@@ -617,6 +617,19 @@ class PgWrapperFlagsTest : public PgWrapperTest {
     ValidateGucValue(gflag_name, expected_value, false /* check_default_value */);
   }
 
+  void ValidateGucIsHidden(const string& gflag_name) {
+    const string pg_flag_prefix = "ysql_";
+    ASSERT_TRUE(gflag_name.starts_with(pg_flag_prefix))
+        << "Flag " << gflag_name << " does not start with prefix " << pg_flag_prefix;
+
+    auto guc_name = gflag_name.substr(pg_flag_prefix.length());
+    boost::to_lower(guc_name);
+
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format("SELECT count(*) FROM pg_settings WHERE LOWER(name)='$0'", guc_name),
+        "0", true /* tuples_only */));
+  }
+
   void ValidateGucIsRuntime(const string& guc_name, const bool runtime_expected) {
     // internal and postmaster context flags cannot be updated after process startup. See GucContext
     // in guc.h for more information
@@ -665,8 +678,10 @@ TEST_F(PgWrapperFlagsTest, VerifyGFlagDefaults) {
       continue;
     }
     // Hidden gFlags use GUC_NO_SHOW_ALL on the corresponding GUC, which excludes them from
-    // pg_settings, so ValidateDefaultGucValue cannot read boot_val.
+    // pg_settings, so ValidateDefaultGucValue cannot read boot_val. Verify the GUC is indeed
+    // not discoverable via pg_settings, then skip the boot_val comparison.
     if (tags.contains(FlagTag::kHidden)) {
+      ASSERT_NO_FATALS(ValidateGucIsHidden(flag.name));
       continue;
     }
 
