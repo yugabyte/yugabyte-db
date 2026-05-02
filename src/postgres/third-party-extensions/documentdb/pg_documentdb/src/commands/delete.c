@@ -1424,15 +1424,8 @@ DeleteOneInternal(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 		}
 	}
 
-	/*
-	 * YB (yb#26307): Bug when locking rows inside a CTE.
-	 * Error: Some of the requested ybctids are missing: 0 vs 1
-	 */
-	if (IsYugaByteEnabled())
-		appendStringInfo(&selectQuery, " LIMIT 1)");
-	else
-		appendStringInfo(&selectQuery,
-					 " LIMIT 1 FOR UPDATE)");
+	appendStringInfo(&selectQuery,
+				 " LIMIT 1 FOR UPDATE)");
 
 	StringInfoData deleteQuery;
 	initStringInfo(&deleteQuery);
