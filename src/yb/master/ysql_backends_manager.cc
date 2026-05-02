@@ -544,7 +544,7 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
 Status BackendsCatalogVersionJob::LaunchTS(TabletServerId ts_uuid, int num_lagging_backends) {
   auto task = std::make_shared<BackendsCatalogVersionTS>(
       shared_from_this(), object_lock_info_manager_, ts_uuid, num_lagging_backends);
-  Status s = threadpool()->SubmitFunc([this, &ts_uuid, task]() {
+  Status s = threadpool()->SubmitFunc([this, ts_uuid, task]() {
     Status s = task->Run();
     if (!s.ok()) {
       LOG_WITH_PREFIX(WARNING) << "got bad status " << s.ToString()
