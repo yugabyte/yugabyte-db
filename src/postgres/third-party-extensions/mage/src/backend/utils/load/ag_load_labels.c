@@ -193,12 +193,10 @@ int create_labels_from_csv_file(char *file_path,
      * YB-aware. See #31338.
      */
     if (IsYugaByteEnabled())
-    {
         ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                  errmsg("bulk CSV vertex load is not supported on "
                         "YugabyteDB yet (#31338)")));
-    }
 
     if (csv_init(&p, options) != 0)
     {

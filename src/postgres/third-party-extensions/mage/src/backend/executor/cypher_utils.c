@@ -142,7 +142,6 @@ TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
         AGTYPE_P_GET_DATUM(agtype_value_to_agtype(properties));
     elemTupleSlot->tts_isnull[vertex_tuple_properties] = properties_isnull;
 
-    /* YB: populate tenant-scope meko_* columns */
     if (IsYugaByteEnabled())
         yb_populate_vertex_meko_columns(elemTupleSlot, meko);
 
@@ -190,7 +189,6 @@ TupleTableSlot *populate_edge_tts(
         AGTYPE_P_GET_DATUM(agtype_value_to_agtype(properties));
     elemTupleSlot->tts_isnull[edge_tuple_properties] = properties_isnull;
 
-    /* YB: populate tenant-scope meko_* columns */
     if (IsYugaByteEnabled())
         yb_populate_edge_meko_columns(elemTupleSlot, meko);
 

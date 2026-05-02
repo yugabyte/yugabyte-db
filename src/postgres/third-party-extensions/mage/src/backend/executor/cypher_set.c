@@ -44,11 +44,6 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
                                      TupleTableSlot *elemTupleSlot,
                                      EState *estate, HeapTuple old_tuple);
 
-/*
- * YB: Placeholder zero-initialized YbMekoDp passed to populate_*_tts() when
- * the caller intends to fill the meko_* tenant columns from another source
- * (e.g. carrying them over from the existing on-disk tuple in SET).
- */
 static const YbMekoDp EmptyYbMekoDp = {0};
 
 const CustomExecMethods cypher_set_exec_methods = {SET_SCAN_STATE_NAME,
