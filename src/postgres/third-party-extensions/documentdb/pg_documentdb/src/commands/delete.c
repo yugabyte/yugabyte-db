@@ -1425,7 +1425,7 @@ DeleteOneInternal(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 	}
 
 	appendStringInfo(&selectQuery,
-				 " LIMIT 1 FOR UPDATE)");
+					 " LIMIT 1 FOR UPDATE)");
 
 	StringInfoData deleteQuery;
 	initStringInfo(&deleteQuery);
