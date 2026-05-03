@@ -225,15 +225,22 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | XA syntax | {{<issue 11084>}}|
 | Some ALTER TYPE variants | {{<issue 1893>}}|
 | CREATE CONVERSION | {{<issue 10866>}}|
-| Primary/Foreign key constraints on foreign tables | {{<issue 10698>}}, {{<issue 10699>}} |
 | Multi-column GIN indexes| {{<issue 10652>}}|
 | CREATE ACCESS METHOD | {{<issue 10693>}}|
 | DESC/HASH on GIN indexes (ASC supported) | {{<issue 10653>}}|
 | CREATE SCHEMA with elements | {{<issue 10865>}}|
-| transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | {{<issue 15638>}}|
 | Some ALTER TABLE variants| {{<issue 1124>}}|
 | UNLOGGED table | {{<issue 1129>}} |
 | Indexes on complex datatypes such as INET, CITEXT, JSONB, ARRAYs, and so on.| {{<issue 9698>}}, {{<issue 23829>}}, {{<issue 17017>}} |
 | %TYPE syntax in Functions/Procedures/Triggers|{{<issue 23619>}}|
-| Storage parameters on indexes or constraints|{{<issue 23467>}}|
 | REFERENCING clause for triggers | {{<issue 1668>}}|
+
+### Features that do no apply to YugabyteDB
+
+| Unsupported PostgreSQL feature | Track feature request GitHub issue |
+| ----------- | ----------- |
+| Storage parameters on indexes or constraints | {{<issue 23467>}} |
+| transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | {{<issue 15638>}}|
+<!--
+| Primary/Foreign key constraints on foreign tables | {{<issue 10698>}}, {{<issue 10699>}} | # not supported on vanilla PG
+-->
