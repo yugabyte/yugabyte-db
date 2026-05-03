@@ -682,8 +682,7 @@ TEST_F(PgWrapperFlagsTest, VerifyGFlagDefaults) {
     // pg_settings. Verify each hidden flag is not discoverable, then skip the boot_val
     // comparison since boot_val cannot be read for GUCs with GUC_NO_SHOW_ALL.
     if (tags.contains(FlagTag::kHidden)) {
-      auto guc_name = flag.name.substr(kPgFlagPrefix.size());
-      boost::to_lower(guc_name);
+      const auto guc_name = flag.name.substr(kPgFlagPrefix.size());
       EXPECT_FALSE(visible_guc_names.contains(guc_name))
           << "Hidden flag " << flag.name << " has a discoverable GUC '" << guc_name
           << "' in pg_settings; the GUC definition is missing GUC_NO_SHOW_ALL.";
