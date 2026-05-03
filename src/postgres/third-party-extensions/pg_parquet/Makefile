@@ -52,14 +52,19 @@ cargo-exists:
 cargo-pgrx-exists: cargo-exists
 	   # YB: Building cargo-pgrx and configuring pgrx.
 	   # YB: Creating empty data directory `data-15` to skip running 'initdb'
+	   # YB: Unset inherited env vars that *-sys crate build scripts read. The parent
+	   # YB: postgres build process exports CFLAGS, PKG_CONFIG_PATH, CXXFLAGS, LDFLAGS
+	   # YB: etc. with large values; if any of these change between builds (or
+	   # YB: between cargo invocations in the same build) cargo considers all *-sys
+	   # YB: crates dirty and recompiles the whole HTTP stack (ring, rustls, reqwest,
+	   # YB: zstd-sys, openssl-sys, bzip2-sys, etc.) - adding ~30s per incremental build.
 	   export PATH="$(CARGO_DIR):$$PATH" && \
 	   cd ../pgrx && \
-	   env \
+	   env -u CFLAGS -u CXXFLAGS -u LDFLAGS -u LDFLAGS_EX -u CPPFLAGS -u PKG_CONFIG_PATH \
 		   $(if $(CC),CC=$(CC),) \
 		   $(if $(CXX),CXX=$(CXX),) \
 		   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 		   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
-		   CFLAGS="$(YB_PG_PARQUET_CFLAGS)" \
 		   CARGO_INCREMENTAL=1 \
 		   cargo build --package cargo-pgrx --release && \
 	   mkdir -p $$YB_BUILD_ROOT/.pgrx/data-15 && \
@@ -76,12 +81,11 @@ pg_parquet: cargo-pgrx-exists
 install: cargo-pgrx-exists
 	   # YB: Using local cargo-pgrx binary to install pg_parquet extension.
 	   export PATH="$(CARGO_DIR):$$PATH" && \
-	   env \
+	   env -u CFLAGS -u CXXFLAGS -u LDFLAGS -u LDFLAGS_EX -u CPPFLAGS -u PKG_CONFIG_PATH \
 		   $(if $(CC),CC=$(CC),) \
 		   $(if $(CXX),CXX=$(CXX),) \
 		   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 		   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
-		   CFLAGS="$(YB_PG_PARQUET_CFLAGS)" \
 		   LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
 		   PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
 		   CARGO_INCREMENTAL=1 \
