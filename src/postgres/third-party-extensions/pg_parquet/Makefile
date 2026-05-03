@@ -65,6 +65,7 @@ cargo-pgrx-exists: cargo-exists
 		   $(if $(CXX),CXX=$(CXX),) \
 		   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 		   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
+		   CFLAGS="$(YB_PG_PARQUET_CFLAGS)" \
 		   CARGO_INCREMENTAL=1 \
 		   cargo build --package cargo-pgrx --release && \
 	   mkdir -p $$YB_BUILD_ROOT/.pgrx/data-15 && \
@@ -86,6 +87,7 @@ install: cargo-pgrx-exists
 		   $(if $(CXX),CXX=$(CXX),) \
 		   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 		   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
+		   CFLAGS="$(YB_PG_PARQUET_CFLAGS)" \
 		   LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
 		   PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
 		   CARGO_INCREMENTAL=1 \
