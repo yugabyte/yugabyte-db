@@ -964,16 +964,23 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		ScanKey		key = ybScan->keys[i];
 
 		/*
-		 * YB: A yb_hash_code subkey inside a ROW comparison has
-		 * sk_attno = InvalidAttrNumber.  Skip the normal attnum
-		 * mapping to avoid an out-of-bounds access on indkey.
+		 * yb_hash_code scan keys refer to DocDB's virtual hash-code column,
+		 * not a real index attribute.  Top-level yb_hash_code keys are kept
+		 * in ybScan->hash_code_keys; ROW-comparison subkeys stay in
+		 * ybScan->keys and need this mapping skipped.  A ROW header also has
+		 * InvalidAttrNumber when its first subkey is yb_hash_code.
 		 */
-		if (key->sk_attno == InvalidAttrNumber)
+		if (key->sk_flags & YB_SK_SEARCHHASHCODE ||
+			((key->sk_flags & SK_ROW_HEADER) &&
+			 key->sk_attno == InvalidAttrNumber))
 		{
 			ybScan->target_key_attnums[i] = InvalidAttrNumber;
 			scan_plan->bind_key_attnums[i] = InvalidAttrNumber;
 			continue;
 		}
+
+		if (key->sk_attno == InvalidAttrNumber)
+			elog(ERROR, "unexpected scan key without attribute number");
 
 		if (!index)
 		{
@@ -1039,17 +1046,7 @@ ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int op_strategy)
 static bool
 YbIsHashCodeSearch(ScanKey key)
 {
-	bool		is_hash_search = (key->sk_flags & YB_SK_SEARCHHASHCODE) != 0;
-
-	/*
-	 * We currently don't support hash code search with any other flags,
-	 * except SK_ROW_MEMBER which is set on yb_hash_code subkeys inside
-	 * a RowCompareExpr.
-	 */
-	Assert(!is_hash_search ||
-		   key->sk_flags == YB_SK_SEARCHHASHCODE ||
-		   key->sk_flags == (YB_SK_SEARCHHASHCODE | SK_ROW_MEMBER));
-	return is_hash_search;
+	return (key->sk_flags & YB_SK_SEARCHHASHCODE) != 0;
 }
 
 /*
@@ -1607,7 +1604,6 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 						int skey_index, bool is_not_null[],
 						bool is_for_precheck)
 {
-	int			last_att_no = YBFirstLowInvalidAttributeNumber;
 	Relation	index = ybScan->index;
 	int			length_of_key = YbGetLengthOfKey(&ybScan->keys[skey_index]);
 
@@ -1616,18 +1612,20 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	ScanKey    *subkeys = &ybScan->keys[skey_index + 1];
 
 	/*
-	 * We can only push down right now if the key columns are specified in the
-	 * correct order and the key has no hashed columns. We also need to ensure
-	 * that the same comparison operation is done to all subkeys.
+	 * We can only push down right now if the key columns form a contiguous
+	 * index-key sequence and the same comparison operation is done to all
+	 * subkeys.
 	 *
 	 * YB: A leading yb_hash_code subkey (sk_attno = InvalidAttrNumber,
 	 * YB_SK_SEARCHHASHCODE flag) is allowed but not yet pushed down as a
-	 * DocDB bound.  Skip it in validation to avoid an out-of-bounds access
-	 * on rd_indoption, and disable pushdown so the condition is rechecked
-	 * at the Postgres level.
+	 * DocDB bound.  Disable pushdown so the condition is rechecked at the
+	 * Postgres level.
 	 */
-	bool		can_pushdown = true;
+	bool		can_pushdown_bound = true;
 	bool		has_yb_hash_code_subkey = false;
+	bool		is_hash_index = (index->rd_indoption[0] & INDOPTION_HASH) != 0;
+	bool		have_last_attno = false;
+	AttrNumber	last_attno = InvalidAttrNumber;
 
 	int			strategy = header_key->sk_strategy;
 	int			subkey_count = length_of_key - 1;
@@ -1636,21 +1634,29 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	{
 		ScanKey		key = subkeys[j];
 
-		/*
-		 * Skip the leading yb_hash_code subkey.  It has sk_attno =
-		 * InvalidAttrNumber and cannot be validated against rd_indoption.
-		 */
-		if (j == 0 && YbIsHashCodeSearch(key))
+		if (YbIsHashCodeSearch(key))
 		{
+			if (!is_hash_index || j != 0)
+			{
+				can_pushdown_bound = false;
+				break;
+			}
 			has_yb_hash_code_subkey = true;
-			last_att_no = key->sk_attno;
+			have_last_attno = true;
+			last_attno = InvalidAttrNumber;
 			continue;
 		}
 
-		/* Make sure that the specified keys are in the right order. */
-		if (key->sk_attno <= last_att_no)
+		if (is_hash_index && j == 0)
 		{
-			can_pushdown = false;
+			can_pushdown_bound = false;
+			break;
+		}
+
+		/* Make sure that the specified keys are contiguous. */
+		if (have_last_attno && key->sk_attno != last_attno + 1)
+		{
+			can_pushdown_bound = false;
 			break;
 		}
 
@@ -1660,10 +1666,11 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		 */
 		if (strategy != key->sk_strategy)
 		{
-			can_pushdown = false;
+			can_pushdown_bound = false;
 			break;
 		}
-		last_att_no = key->sk_attno;
+		have_last_attno = true;
+		last_attno = key->sk_attno;
 
 		/* Make sure that there are no hash key columns. */
 		if (index->rd_indoption[key->sk_attno - 1]
@@ -1675,7 +1682,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 			 */
 			if (has_yb_hash_code_subkey)
 				continue;
-			can_pushdown = false;
+			can_pushdown_bound = false;
 			break;
 		}
 	}
@@ -1687,18 +1694,18 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	 * row bounds.  The condition will be rechecked at the Postgres level.
 	 */
 	if (has_yb_hash_code_subkey)
-		can_pushdown = false;
+		can_pushdown_bound = false;
 
 	/* Make sure that there are no hash keys in order to push down. */
-	for (int i = 0; (i < index->rd_index->indnkeyatts) && can_pushdown; i++)
+	for (int i = 0; (i < index->rd_index->indnkeyatts) && can_pushdown_bound; i++)
 	{
 		if (index->rd_indoption[i] & INDOPTION_HASH)
-			can_pushdown = false;
+			can_pushdown_bound = false;
 	}
 
 	bool		needs_recheck = true;
 
-	if (can_pushdown)
+	if (can_pushdown_bound)
 	{
 
 		YbcPgExpr  *col_values = palloc(sizeof(YbcPgExpr) *

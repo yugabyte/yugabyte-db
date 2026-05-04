@@ -5184,6 +5184,9 @@ yb_match_clause_to_index(PlannerInfo *root,
 		{
 			IndexClause *iclause = makeNode(IndexClause);
 
+			if (!is_pseudo_constant_for_index(root, rightop, index))
+				return NULL;
+
 			iclause->rinfo = rinfo;
 			iclause->indexquals = list_make1(rinfo);
 			iclause->lossy = false;
@@ -5194,6 +5197,9 @@ yb_match_clause_to_index(PlannerInfo *root,
 		else if (yb_hash_code_match_index(rightop, index))
 		{
 			Oid			comm_op = get_commutator(clause->opno);
+
+			if (!is_pseudo_constant_for_index(root, leftop, index))
+				return NULL;
 
 			if (OidIsValid(comm_op) &&
 				op_in_opfamily(comm_op, INTEGER_LSM_FAM_OID))
@@ -5249,16 +5255,8 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 	int			indexcol;
 	bool		var_on_left;
 
-	/* Only btree/lsm indexes support row comparisons. */
-	if (index->relam != BTREE_AM_OID && index->relam != LSM_AM_OID)
-		return NULL;
-
 	/* Only useful for hash indexes. */
 	if (index->nhashcolumns == 0)
-		return NULL;
-
-	/* Need at least yb_hash_code + one column. */
-	if (list_length(clause->largs) < 2)
 		return NULL;
 
 	/*
@@ -5305,16 +5303,14 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 			return NULL;
 	}
 	hc_strategy = get_op_opfamily_strategy(first_opno, INTEGER_LSM_FAM_OID);
-	switch (hc_strategy)
-	{
-		case BTLessStrategyNumber:
-		case BTLessEqualStrategyNumber:
-		case BTGreaterEqualStrategyNumber:
-		case BTGreaterStrategyNumber:
-			break;
-		default:
-			return NULL;
-	}
+	if (hc_strategy == InvalidStrategy ||
+		hc_strategy == BTEqualStrategyNumber)
+		return NULL;
+
+	if (!is_pseudo_constant_for_index(root,
+									  (Node *) linitial(non_var_args),
+									  index))
+		return NULL;
 
 	/*
 	 * Walk the remaining ROW elements.  Each must reference the next index
@@ -5406,12 +5402,14 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 			List	   *new_largs = NIL;
 			List	   *new_rargs = NIL;
 			List	   *new_collids = NIL;
+			List	   *new_opfamilies = NIL;
 			RowCompareExpr *rc;
 			RestrictInfo *new_rinfo;
 
 			for (i = 0; i < matching_cols; i++)
 			{
 				Oid			new_opno;
+				Oid			opfamily;
 
 				new_opno = get_commutator(list_nth_oid(clause->opnos, i));
 				if (!OidIsValid(new_opno))
@@ -5425,12 +5423,15 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 									list_nth(clause->largs, i));
 				new_collids = lappend_oid(new_collids,
 										  list_nth_oid(clause->inputcollids, i));
+				opfamily = (i == 0) ? INTEGER_LSM_FAM_OID :
+					index->opfamily[i - 1];
+				new_opfamilies = lappend_oid(new_opfamilies, opfamily);
 			}
 
 			rc = makeNode(RowCompareExpr);
 			rc->rctype = (RowCompareType) hc_strategy;
 			rc->opnos = new_ops;
-			rc->opfamilies = NIL;
+			rc->opfamilies = new_opfamilies;
 			rc->inputcollids = new_collids;
 			rc->largs = new_largs;
 			rc->rargs = (Node *) new_rargs;
