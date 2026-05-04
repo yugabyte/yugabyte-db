@@ -906,6 +906,7 @@ class MasterSnapshotCoordinator::Impl {
       if (time) {
         out_schedule->set_last_snapshot_hybrid_time(time.ToUint64());
       }
+      out_schedule->set_retention_duration_sec(schedule->options().retention_duration_sec());
     }
     out->set_last_restorations_update_ht(last_restorations_update_ht_.ToUint64());
     for (const auto& restoration : restorations_) {

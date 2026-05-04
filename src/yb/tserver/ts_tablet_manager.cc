@@ -3407,13 +3407,16 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
   bool restorations_updated;
   RestorationCompleteTimeMap restoration_complete_time;
   {
-    std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+    std::lock_guard lock(snapshot_schedule_info_mutex_);
     ++snapshot_schedules_version_;
-    snapshot_schedule_allowed_history_cutoff_.clear();
+    snapshot_schedule_info_.clear();
     for (const auto& schedule : info.schedules()) {
       auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
-      snapshot_schedule_allowed_history_cutoff_.emplace(
-          schedule_id, HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+      snapshot_schedule_info_.emplace(schedule_id, SnapshotScheduleInfo{
+          .last_snapshot_ht = HybridTime::FromPB(schedule.last_snapshot_hybrid_time()),
+          .retention_duration_sec = schedule.has_retention_duration_sec()
+              ? schedule.retention_duration_sec() : 0,
+      });
       missing_snapshot_schedules_.erase(schedule_id);
     }
     HybridTime restorations_update_ht(info.last_restorations_update_ht());
@@ -3445,6 +3448,13 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
     RETURN_NOT_OK(tablet->CheckRestorations(restoration_complete_time));
   }
   return Status::OK();
+}
+
+HybridTime TSTabletManager::TEST_LastSnapshotHybridTime(
+    const SnapshotScheduleId& schedule_id) const {
+  std::lock_guard lock(snapshot_schedule_info_mutex_);
+  auto it = snapshot_schedule_info_.find(schedule_id);
+  return it != snapshot_schedule_info_.end() ? it->second.last_snapshot_ht : HybridTime::kMin;
 }
 
 docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
@@ -3484,10 +3494,19 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
   auto schedules = metadata->SnapshotSchedules();
   if (!schedules.empty()) {
     std::vector<SnapshotScheduleId> schedules_to_remove;
+    bool is_sequences_data = metadata->table_id() == kPgSequencesDataTableId;
     {
-      std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+      std::lock_guard lock(snapshot_schedule_info_mutex_);
+      // The sequences_data table is shared across all YSQL databases but its tablets only track
+      // last_snapshot_ht_ (which advances with each new snapshot). For clone/restore at an older
+      // timestamp, we need to retain history back to now - retention_duration_sec.
+      uint64_t max_retention_sec = 0;
       for (const auto& schedule_id : schedules) {
-        if (snapshot_schedule_allowed_history_cutoff_.contains(schedule_id)) {
+        auto it = snapshot_schedule_info_.find(schedule_id);
+        if (it != snapshot_schedule_info_.end()) {
+          if (is_sequences_data) {
+            max_retention_sec = std::max(max_retention_sec, it->second.retention_duration_sec);
+          }
           continue;
         }
         // We don't know this schedule.
@@ -3502,6 +3521,10 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
           // master, but response not yet received on TServer.
           schedules_to_remove.push_back(schedule_id);
         }
+      }
+      if (max_retention_sec > 0) {
+        auto retention_cutoff = server_->Clock()->Now().AddSeconds(-max_retention_sec);
+        result.MakeAtMost(retention_cutoff);
       }
     }
     bool any_removed = false;

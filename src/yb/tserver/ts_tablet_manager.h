@@ -436,6 +436,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   MetricRegistry* TEST_metric_registry() const { return metric_registry_; }
 
+  // Returns the last snapshot hybrid time tracked for `schedule_id` from the most recent master
+  // heartbeat response, or HybridTime::kMin if the schedule is not (yet) known to this tserver.
+  HybridTime TEST_LastSnapshotHybridTime(const SnapshotScheduleId& schedule_id) const
+      EXCLUDES(snapshot_schedule_info_mutex_);
+
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
   friend class ::yb::XClusterSafeTimeTest;
@@ -816,16 +821,21 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Gauge tracking number of peers on this tserver actively undergoing RBS.
   scoped_refptr<yb::AtomicGauge<uint64_t>> num_tablet_peers_undergoing_rbs_;
 
-  mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
-  std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
-      snapshot_schedule_allowed_history_cutoff_
-      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
+  struct SnapshotScheduleInfo {
+    HybridTime last_snapshot_ht;
+    uint64_t retention_duration_sec = 0;
+  };
+
+  mutable simple_spinlock snapshot_schedule_info_mutex_;
+  std::unordered_map<SnapshotScheduleId, SnapshotScheduleInfo, SnapshotScheduleIdHash>
+      snapshot_schedule_info_
+      GUARDED_BY(snapshot_schedule_info_mutex_);
   // Store snapshot schedules that were missing on previous calls to AllowedHistoryCutoff.
   std::unordered_map<SnapshotScheduleId, int64_t, SnapshotScheduleIdHash>
       missing_snapshot_schedules_
-      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
-  int64_t snapshot_schedules_version_ = 0;
-  HybridTime last_restorations_update_ht_;
+      GUARDED_BY(snapshot_schedule_info_mutex_);
+  int64_t snapshot_schedules_version_ GUARDED_BY(snapshot_schedule_info_mutex_) = 0;
+  HybridTime last_restorations_update_ht_ GUARDED_BY(snapshot_schedule_info_mutex_);
 
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
