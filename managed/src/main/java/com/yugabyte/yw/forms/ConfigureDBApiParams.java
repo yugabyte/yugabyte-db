@@ -277,7 +277,11 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
                 "Universe %s will undergo disable YSQL, cannot enable multi-tenancy",
                 universe.getName()));
       }
-      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYCQL) {
+      boolean skipYcqlPrecheck =
+          runtimeConfGetter.getConfForScope(
+              universe, UniverseConfKeys.multitenancySkipYcqlPrecheck);
+      if (!skipYcqlPrecheck
+          && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYCQL) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(

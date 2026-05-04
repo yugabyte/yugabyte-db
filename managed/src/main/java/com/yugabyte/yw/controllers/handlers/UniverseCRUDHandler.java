@@ -1038,7 +1038,16 @@ public class UniverseCRUDHandler {
               "Current software version is below minimum supported DB version for"
                   + " multi-tenancy.");
         }
-        if (!(userIntent.enableYSQL && !userIntent.enableYCQL)) {
+        boolean skipYcqlPrecheck =
+            confGetter
+                .getCustomerConf(customer)
+                .getBoolean(UniverseConfKeys.multitenancySkipYcqlPrecheck.getKey());
+        if (skipYcqlPrecheck) {
+          if (!userIntent.enableYSQL) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "YSQL API should be enabled to enable multi-tenancy");
+          }
+        } else if (!(userIntent.enableYSQL && !userIntent.enableYCQL)) {
           throw new PlatformServiceException(
               BAD_REQUEST,
               "YSQL API should be enabled and YCQL api disabled to enable multi-tenancy");
