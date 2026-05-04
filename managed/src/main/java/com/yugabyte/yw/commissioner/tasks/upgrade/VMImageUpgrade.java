@@ -12,12 +12,16 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -61,6 +65,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private final XClusterUniverseService xClusterUniverseService;
 
   private volatile RuntimeInfo runtimeInfo;
+
+  private volatile boolean enableEarlyoom;
 
   @Inject
   protected VMImageUpgrade(
@@ -124,6 +130,33 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     }
     addBasicPrecheckTasks();
     runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
+
+    Customer customer = Customer.get(universe.getCustomerId());
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+
+    enableEarlyoom =
+        UpdateOOMServiceState.isEarlyoomInstallationPossible(
+                confGetter, universe.getUniverseDetails(), customer)
+            && (universe.getUniverseDetails().additionalServicesStateData == null
+                || !universe.getUniverseDetails().additionalServicesStateData.isEarlyoomEnabled())
+            && confGetter.getConfForScope(
+                provider, ProviderConfKeys.enableEarlyoomByDefaultForProvider)
+            && confGetter.getConfForScope(provider, ProviderConfKeys.enableEarlyoomOnOSUpgrade);
+
+    if (enableEarlyoom) {
+      Set<String> nodesWithoutNA =
+          universe.getUniverseDetails().nodeDetailsSet.stream()
+              .map(n -> new Pair<>(n, nodeUniverseManager.maybeUpgradeAndGetNodeAgent(universe, n)))
+              .filter(p -> p.getSecond().isEmpty())
+              .map(p -> p.getFirst().nodeName)
+              .collect(Collectors.toSet());
+      if (!nodesWithoutNA.isEmpty()) {
+        log.warn("Cannot install earlyoom: found nodes without node agent: {}", nodesWithoutNA);
+        enableEarlyoom = false;
+      }
+    }
   }
 
   @Override
@@ -159,6 +192,33 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             // Update software version in the universe metadata.
             createUpdateSoftwareVersionTask(newVersion, true /*isSoftwareUpdateViaVm*/)
                 .setSubTaskGroupType(getTaskSubGroupType());
+          }
+
+          if (enableEarlyoom) {
+            Universe universe = getUniverse();
+            AdditionalServicesStateData servicesStateData =
+                universe.getUniverseDetails().additionalServicesStateData;
+            if (servicesStateData == null) {
+              servicesStateData = new AdditionalServicesStateData();
+              Provider p =
+                  Provider.getOrBadRequest(
+                      UUID.fromString(
+                          getUniverse()
+                              .getUniverseDetails()
+                              .getPrimaryCluster()
+                              .userIntent
+                              .provider));
+              String earlyoomArgs =
+                  confGetter.getConfForScope(p, ProviderConfKeys.earlyoomDefaultArgs);
+              servicesStateData.setEarlyoomConfig(
+                  AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
+            }
+            servicesStateData.setEarlyoomEnabled(true);
+
+            createConfigureOOMServiceSubtasks(servicesStateData, universe.getNodes());
+            AdditionalServicesStateData finalServicesStateData = servicesStateData;
+            createUpdateUniverseFieldsTask(
+                u -> u.getUniverseDetails().additionalServicesStateData = finalServicesStateData);
           }
 
           createMarkUniverseForHealthScriptReUploadTask();

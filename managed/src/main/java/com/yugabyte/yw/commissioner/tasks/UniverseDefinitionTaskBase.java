@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailableForNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
@@ -92,6 +93,7 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.AZUpgradeState;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.CanaryPauseState;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
@@ -4451,5 +4453,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   protected void createClearSoftwareUpgradeProgressTask() {
     createSaveSoftwareUpgradeProgressTask(
         false, null, Collections.emptyList(), Collections.emptyList(), false);
+  }
+
+  protected TaskExecutor.SubTaskGroup createConfigureOOMServiceSubtasks(
+      AdditionalServicesStateData additionalServicesStateData, Collection<NodeDetails> nodes) {
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ConfigureOOMServiceOnNodes");
+    for (NodeDetails node : nodes) {
+      ConfigureOOMServiceOnNode.Params params = new ConfigureOOMServiceOnNode.Params();
+      params.earlyoomConfig = additionalServicesStateData.getEarlyoomConfig();
+      params.earlyoomEnabled = additionalServicesStateData.isEarlyoomEnabled();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      ConfigureOOMServiceOnNode task = createTask(ConfigureOOMServiceOnNode.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 }

@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.AppConfigHelper;
@@ -993,21 +994,16 @@ public class UniverseCRUDHandler {
           nodeDetails.otelCollectorMetricsPort = otelPort;
         }
       }
-      if (!Util.isOnPremManualProvisioning(taskParams)
-          && !Util.isKubernetesBasedUniverse(taskParams)
+      if (UpdateOOMServiceState.isEarlyoomInstallationPossible(confGetter, taskParams, customer)
           && taskParams.additionalServicesStateData == null) {
-        boolean enableEarlyoomFeature =
-            confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
-        if (enableEarlyoomFeature) {
-          AdditionalServicesStateData servicesStateData = new AdditionalServicesStateData();
-          Boolean enableEarlyoom =
-              confGetter.getConfForScope(p, ProviderConfKeys.enableEarlyoomByDefaultForProvider);
-          String earlyoomArgs = confGetter.getConfForScope(p, ProviderConfKeys.earlyoomDefaultArgs);
-          servicesStateData.setEarlyoomConfig(
-              AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
-          servicesStateData.setEarlyoomEnabled(enableEarlyoom);
-          taskParams.additionalServicesStateData = servicesStateData;
-        }
+        AdditionalServicesStateData servicesStateData = new AdditionalServicesStateData();
+        Boolean enableEarlyoom =
+            confGetter.getConfForScope(p, ProviderConfKeys.enableEarlyoomByDefaultForProvider);
+        String earlyoomArgs = confGetter.getConfForScope(p, ProviderConfKeys.earlyoomDefaultArgs);
+        servicesStateData.setEarlyoomConfig(
+            AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
+        servicesStateData.setEarlyoomEnabled(enableEarlyoom);
+        taskParams.additionalServicesStateData = servicesStateData;
       }
 
       if (taskParams.fipsEnabled
