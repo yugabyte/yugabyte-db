@@ -5484,4 +5484,81 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     stream.close();
   }
+
+  @Test
+  public void testColocatedDropPkThenDropIndex() throws Exception {
+    setFlagsForDynamicTablesTest(getTServerFlags(), getMasterFlags(),
+        false /* usePubRefresh */, true /* streamTablesWithoutPrimaryKey */);
+
+    for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tServer, "cdc_max_stream_intent_records", "100");
+    }
+
+    String slotName = "test_drop_pk_then_idx";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("DROP DATABASE IF EXISTS col_db");
+      stmt.executeUpdate("CREATE DATABASE col_db WITH colocation = true");
+    }
+
+    Connection colConn = getConnectionBuilder().withDatabase("col_db").connect();
+    Connection replConn = getConnectionBuilder()
+        .withDatabase("col_db").withTServer(0)
+        .replicationConnect();
+
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute(
+          "CREATE TABLE t1 (a int primary key, b int, c int, d text)"
+          + " WITH (colocation = true)");
+      stmt.execute("CREATE INDEX t1_b_idx ON t1(b)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    PGReplicationConnection replApi =
+        replConn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replApi, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute(
+          "INSERT INTO t1 SELECT i, i*10, i*100, 'text_' || i"
+          + " FROM generate_series(1, 250) AS s(i)");
+      stmt.execute("COMMIT");
+
+      stmt.execute("BEGIN");
+      stmt.execute(
+          "INSERT INTO t1 SELECT i, i*10, i*100, 'text_' || i"
+          + " FROM generate_series(251, 500) AS s(i)");
+      stmt.execute("COMMIT");
+
+      stmt.execute("ALTER TABLE t1 DROP CONSTRAINT t1_pkey");
+      stmt.execute("DROP INDEX t1_b_idx");
+    }
+
+    PGReplicationStream stream = replApi.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+    // Two insert txns + one from the ALTER TABLE rewrite's backfill.
+    int expectedTransactions = 3;
+    int beginCount = 0;
+    int commitCount = 0;
+
+    while (commitCount < expectedTransactions) {
+      PgOutputMessage msg = receiveMessage(stream, 1).get(0);
+      if (msg instanceof PgOutputBeginMessage) beginCount++;
+      else if (msg instanceof PgOutputCommitMessage) commitCount++;
+    }
+
+    assertEquals(beginCount, commitCount);
+    assertEquals(expectedTransactions, commitCount);
+
+    stream.close();
+    colConn.close();
+    replConn.close();
+  }
 }
