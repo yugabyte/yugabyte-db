@@ -7536,6 +7536,8 @@ bool		yb_ysql_conn_mgr_sticky_locks = false;
  */
 bool		yb_conn_mgr_selective_deallocate = true;
 
+bool		yb_enable_mage = false;
+
 bool
 YbIsSuperuserConnSticky()
 {
