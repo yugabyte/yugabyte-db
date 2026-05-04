@@ -78,9 +78,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) override;
 
-  Status TriggerRelcacheInitConnection(
+  void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
-      tserver::TriggerRelcacheInitConnectionResponsePB *resp) override;
+      StdStatusCallback callback) override;
 
   client::TransactionPool& TransactionPool() override;
 

@@ -2524,16 +2524,18 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         db_oid, is_breaking_change, new_catalog_version, message_list);
   }
 
-  Status TriggerRelcacheInitConnection(
+  void TriggerRelcacheInitConnection(
       const PgTriggerRelcacheInitConnectionRequestPB& req,
       PgTriggerRelcacheInitConnectionResponsePB* resp,
-      rpc::RpcContext* context) {
+      rpc::RpcContext context) {
     TriggerRelcacheInitConnectionRequestPB request;
-    TriggerRelcacheInitConnectionResponsePB response;
-    const auto& database_name = req.database_name();
-    request.set_database_name(database_name);
-    return const_cast<TabletServerIf&>(tablet_server_).TriggerRelcacheInitConnection(
-        request, &response);
+    request.set_database_name(req.database_name());
+    auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
+    const_cast<TabletServerIf&>(tablet_server_).TriggerRelcacheInitConnection(
+        request,
+        [resp, shared_context](const Status& status) {
+          Respond(status, resp, shared_context.get());
+        });
   }
 
   Status IsObjectPartOfXRepl(
