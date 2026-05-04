@@ -51,6 +51,14 @@ Using the pg_hint_plan extension, you can influence the query planner's decision
 To learn more, see [Optimizing YSQL queries using pg_hint_plan](./pg-hint-plan/).
 {{</lead>}}
 
+## Query plan management
+
+Because plans can change over time, there is a chance a new plan for a query degrades performance. Query plan management (QPM) provides views that capture all unique plans for a query so that you can look back and see when a plan changed. QPM records the plan history and generated hints needed to restore a known good plan when changes occur in the system. This allows you to insert those hints into the hint plan table and get the old better-performing plan back. QPM also records new plans and their execution statistics so that you can evaluate when to adopt a better plan.
+
+{{<lead link="./query-plan-manage/">}}
+To learn more, see [Query plan management](./query-plan-manage/).
+{{</lead>}}
+
 ## Log all slow queries
 
 You can set the `--ysql_log_min_duration_statement` flag to help track down slow queries. When configured, YugabyteDB logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. (Setting the value to 0 prints all statement durations.)

@@ -56,7 +56,7 @@ If hints cannot be generated for a plan, then the plan is not stored. (For examp
 
 Nested queries and queries referencing catalog tables may or may not be tracked, depending on the settings of the `yb_pg_stat_plans_track` and `yb_pg_stat_plans_track_catalog_queries` parameters.
 
-If the string `__YB_STAT_PLANS_SKIP` is encountered in an SQL comment of a statement, the planner will not store plans for the query in QPM. This provides a way to prevent QPM entries for selected queries.
+To prevent the planner from storing plans for a query in QPM, add the string `__YB_STAT_PLANS_SKIP` in an SQL comment of the statement. This provides a way to prevent QPM entries for selected queries.
 
 A query may have multiple plans, such as when optimizer statistics change, or a new execution method becomes available.
 
@@ -152,7 +152,7 @@ EXPLAIN (queryid on, planid on) SELECT count(*) FROM t1, t0 WHERE a1=a0;
 Although these are the same query (that is, they are logically equivalent and return the same set of rows, just written differently), they are assigned different Query IDs. This is because query ID assignment is sensitive to the following:
 
 - The order of tables in the FROM clause: `FROM t1, t0` is not considered to be equivalent to `FROM t0, t1`.
-- The order of clauses in predicates (conditions): `a1=a0` is not considered to be equivalent to `a1=a1`, or `a1=a2 AND b2=1` and `b2=1 AND a2=a1`.
+- The order of clauses in predicates (conditions): `a1=a0` is not considered to be equivalent to `a0=a1`, or `a1=a2 AND b2=1` and `b2=1 AND a2=a1`.
 
 These queries do however get the same plan, and the Plan IDs will be the same. Plan ID _does not_ care about the order of:
 
@@ -355,7 +355,7 @@ Use the following [YSQL configuration parameters](../../../../reference/configur
 | :----- | :---------- | :------ |
 | `yb_pg_stat_plans_track` | Turns tracking on or off. Valid values are:<ul><li>none: no plans are tracked, disables QPM.</li><li>top: track only top-level (non-nested) statements.</li><li>all: track all statements.</li></ul> | none |
 | `yb_pg_stat_plans_max_cache_size` | Specifies the Maximum number of entries to store (1-50000). | 5000 |
-| `yb_pg_stat_plans_cache_replacement_algorithm` | Controls the eviction policy used by QPM once the number of entries reaches yb_pg_stat_plans_max_cache_size. Valid values are `simple_clock_lru` - uses an efficient simulation of clock-based Least Recently Used (LRU) algorithm to find the entry to evict; or `true_lru` - evicts the entry with the oldest last_used value (less efficient but finds the actual oldest entry). Requires restart. | simple_clock_lru |
+| `yb_pg_stat_plans_cache_replacement_algorithm` | Controls the eviction policy used by QPM once the number of entries reaches yb_pg_stat_plans_max_cache_size. Valid values are:<ul><li>`simple_clock_lru` - uses an efficient simulation of clock-based Least Recently Used (LRU) algorithm to find the entry to evict.</li><li>`true_lru` - evicts the entry with the oldest last_used value (less efficient but finds the actual oldest entry).</li></ul> Requires restart. | simple_clock_lru |
 | `yb_pg_stat_plans_track_catalog_queries` | Controls tracking of statements referencing catalog tables. | true |
 | `yb_pg_stat_plans_verbose_plans` | Set to `true` to generate and store verbose plans. | false |
 | `yb_pg_stat_plans_plan_format` | Controls text format for plans.<br/>Valid values are `text`, `json`, `yaml`, and `xml`. | json |
@@ -433,8 +433,8 @@ The columns of the yb_pg_stat_plans view are described, along with their purpose
 
 | Column | Purpose | Description |
 | :----- | :------ | :---------- |
-| userid | Identify a plan | OID of user who executed the statement. |
-| dbid   |         | OID of database in which the statement was executed. |
+| dbid   | Identify a plan | OID of database in which the statement was executed. |
+| userid |         | OID of user who executed the statement. |
 | queryid |        | Hash code to identify identical normalized queries. |
 | planid |         | Hash of a query's execution plan representation. |
 | plan   |         | Text representation of the plan. |
