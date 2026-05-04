@@ -74,7 +74,6 @@
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/hnsw/hnsw_block_cache.h"
 
@@ -114,6 +113,7 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
@@ -544,7 +544,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .Build(&log_sync_pool_));
   auto num_flush_threads = FLAGS_flush_bootstrap_state_pool_max_threads;
   if (num_flush_threads < 0) {
-    num_flush_threads = base::NumCPUs();
+    num_flush_threads = NumEffectiveCPUs();
     if (num_flush_threads < 2) {
       num_flush_threads = 2;
     }
@@ -649,7 +649,7 @@ Status TSTabletManager::Init() {
   // This has to be done in Init() instead of the constructor, since the
   // FsManager isn't initialized until this point.
   int max_bootstrap_threads = FLAGS_num_tablets_to_open_simultaneously;
-  int num_cpus = base::NumCPUs();
+  int num_cpus = NumEffectiveCPUs();
   if (max_bootstrap_threads == 0) {
     if (num_cpus <= 2) {
       max_bootstrap_threads = 2;

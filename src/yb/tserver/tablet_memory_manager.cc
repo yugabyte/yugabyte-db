@@ -19,7 +19,6 @@
 
 #include "yb/gutil/bits.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/memory_monitor.h"
@@ -31,6 +30,7 @@
 #include "yb/tserver/server_main_util.h"
 
 #include "yb/util/background_task.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -438,7 +438,7 @@ int64 ComputeTabletOverheadLimit() {
 int32_t GetDbBlockCacheNumShardBits() {
   auto num_cache_shard_bits = FLAGS_db_block_cache_num_shard_bits;
   if (num_cache_shard_bits < 0) {
-    const auto num_cores = base::NumCPUs();
+    const auto num_cores = NumEffectiveCPUs();
     if (num_cores <= 16) {
       return rocksdb::kSharedLRUCacheDefaultNumShardBits;
     }

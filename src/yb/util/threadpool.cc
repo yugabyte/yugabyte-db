@@ -42,7 +42,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/cgroups.h"
@@ -71,7 +70,7 @@ using std::deque;
 ThreadPoolBuilder::ThreadPoolBuilder(std::string name)
     : options_(ThreadPoolOptions {
         .name = std::move(name),
-        .max_workers = make_unsigned(base::NumCPUs()),
+        .max_workers = make_unsigned(NumEffectiveCPUs()),
         .idle_timeout = MonoDelta::FromMilliseconds(500),
       }) {}
 

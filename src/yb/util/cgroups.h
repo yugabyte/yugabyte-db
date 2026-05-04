@@ -188,5 +188,23 @@ Result<std::string> GetThreadCpuCgroup(int64_t thread_id = -1);
 
 Status MoveProcessToCgroupPath(std::string_view cgroup_path);
 
+// Returns the effective CPU count derived from this process's cgroup CPU quota:
+// ceil(quota / period). Returns -1 if the cgroup has no CPU limit (e.g. cpu.max is "max",
+// or cgroups v1 cfs_quota_us is -1).
+Result<int> GetCgroupCpuQuota();
+
 } // namespace yb
+
 #endif // __linux__
+
+namespace yb {
+
+// Returns the effective number of CPUs available to the process. When --use_cgroups_cpu is set
+// and a cgroup CPU quota is present, returns ceil(quota / period); otherwise returns
+// base::NumCPUs(). The result is computed once and cached for the lifetime of the process.
+//
+// Prefer this over base::NumCPUs() in code outside gutil that sizes work to CPU count
+// (thread pools, partition counts, etc.).
+int NumEffectiveCPUs();
+
+} // namespace yb

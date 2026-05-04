@@ -654,7 +654,7 @@ Status TabletServer::WaitInited() {
 }
 
 void TabletServer::AutoInitServiceFlags() {
-  const int32 num_cores = base::NumCPUs();
+  const int32 num_cores = NumEffectiveCPUs();
 
   if (FLAGS_num_concurrent_backfills_allowed == -1) {
     const int32 num_threads = std::max(1, std::min(8, num_cores / 2));

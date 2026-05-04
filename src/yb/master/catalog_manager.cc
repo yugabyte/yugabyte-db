@@ -111,7 +111,6 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/master/async_rpc_tasks.h"
@@ -197,6 +196,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_validators.h"
@@ -837,7 +837,7 @@ int GetTransactionTableNumShardsPerTServer() {
   int value = 8;
   if (IsTsan()) {
     value = 2;
-  } else if (base::NumCPUs() <= 2) {
+  } else if (NumEffectiveCPUs() <= 2) {
     value = 4;
   }
   return value;
