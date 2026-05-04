@@ -35,6 +35,12 @@
 
 #include "yb/dockv/partition.h"
 #include "yb/qlexpr/ql_rowblock.h"
+
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.proxy.h"
+
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -68,6 +74,9 @@ using std::ostringstream;
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using yb::cdc::CDCServiceProxy;
+using yb::cdc::UpdateCdcReplicatedIndexRequestPB;
+using yb::cdc::UpdateCdcReplicatedIndexResponsePB;
 using yb::consensus::ConsensusServiceProxy;
 using yb::consensus::RaftConfigPB;
 using yb::rpc::Messenger;
@@ -131,6 +140,7 @@ const char* const kReleaseObjectLockOp = "release_object_lock";
 const char* const kReleaseAllLocksForSessionOp = "release_all_locks_for_session";
 const char* const kClearYCQLMetaDataCacheOnServerOp = "clear_ycql_metadatacache";
 const char* const kDumpTabletDataOp = "dump_tablet_data";
+const char* const kCdcReleaseBarriersOnTabletOp = "cdc_release_barriers_on_tablet";
 
 DEFINE_NON_RUNTIME_string(server_address, "localhost",
               "Address of server to run against");
@@ -289,6 +299,8 @@ class TsAdminClient {
   Status DumpTabletData(
       const std::string& tablet_id, const std::string& dest_path, int64_t read_ht);
 
+  Status CdcReleaseBarriersOnTablet(const TabletId& tablet_id);
+
  private:
   std::string addr_;
   MonoDelta timeout_;
@@ -299,6 +311,7 @@ class TsAdminClient {
   std::unique_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
   std::unique_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
   std::unique_ptr<consensus::ConsensusServiceProxy> cons_proxy_;
+  std::unique_ptr<cdc::CDCServiceProxy> cdc_proxy_;
 
   DISALLOW_COPY_AND_ASSIGN(TsAdminClient);
 };
@@ -334,6 +347,7 @@ Status TsAdminClient::Init() {
   ts_proxy_.reset(new TabletServerServiceProxy(&proxy_cache, host_port));
   ts_admin_proxy_.reset(new TabletServerAdminServiceProxy(&proxy_cache, host_port));
   cons_proxy_.reset(new ConsensusServiceProxy(&proxy_cache, host_port));
+  cdc_proxy_.reset(new CDCServiceProxy(&proxy_cache, host_port));
   initted_ = true;
 
   VLOG(1) << "Connected to " << addr_;
@@ -865,6 +879,40 @@ Status TsAdminClient::DumpTabletData(
   return Status::OK();
 }
 
+Status TsAdminClient::CdcReleaseBarriersOnTablet(const TabletId& tablet_id) {
+  CHECK(initted_);
+  ServerStatusPB status_pb;
+  RETURN_NOT_OK(GetStatus(&status_pb));
+  const auto& peer_uuid = status_pb.node_instance().permanent_uuid();
+
+  UpdateCdcReplicatedIndexRequestPB req;
+  UpdateCdcReplicatedIndexResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  req.add_tablet_ids(tablet_id);
+  req.add_replicated_indices(std::numeric_limits<int64_t>::max());
+  req.add_replicated_terms(std::numeric_limits<int64_t>::max());
+  OpId::Max().ToPB(req.add_cdc_sdk_consumed_ops());
+  req.add_cdc_sdk_ops_expiration_ms(0);
+  req.add_cdc_sdk_safe_times(HybridTime::kInvalid.ToUint64());
+  req.set_initial_retention_barrier(false);
+
+  RETURN_NOT_OK_PREPEND(
+      cdc_proxy_->UpdateCdcReplicatedIndex(req, &resp, &rpc),
+      "CdcReleaseBarriersOnTablet() failed");
+  if (resp.has_error()) {
+    auto status = StatusFromPB(resp.error().status());
+    std::cout << "Failed to release CDC retention barriers on tablet: " << tablet_id
+              << " at peer: " << peer_uuid << ". Reason: " << status.ToString() << std::endl;
+    return status;
+  }
+
+  std::cout << "Successfully released CDC retention barriers on tablet: " << tablet_id
+            << " at peer: " << peer_uuid << "." << std::endl;
+  return Status::OK();
+}
+
 namespace {
 
 void SetUsage(const char* argv0) {
@@ -899,7 +947,8 @@ void SetUsage(const char* argv0) {
       << "  " << kAcquireObjectLockOp << " <session id> <database_id> <object_id> <lock type>\n"
       << "  " << kReleaseObjectLockOp << " <session id> <database_id> <object_id> [<object_id>..]\n"
       << "  " << kReleaseAllLocksForSessionOp << " <session id>\n"
-      << "  " << kDumpTabletDataOp << " <tablet_id> [<dest_path> | HASH_ONLY] [read_ht]\n";
+      << "  " << kDumpTabletDataOp << " <tablet_id> [<dest_path> | HASH_ONLY] [read_ht]\n"
+      << "  " << kCdcReleaseBarriersOnTabletOp << " <tablet_id>\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -1159,6 +1208,12 @@ static int TsCliMain(int argc, char** argv) {
     }
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.DumpTabletData(argv[2], dest_path, read_ht), "Unable to dump tablet data");
+  } else if (op == kCdcReleaseBarriersOnTabletOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.CdcReleaseBarriersOnTablet(argv[2]),
+        "Unable to release CDC retention barriers on tablet");
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
