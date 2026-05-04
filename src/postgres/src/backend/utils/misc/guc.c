@@ -298,7 +298,8 @@ static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
 
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
 
-static void assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra);
+static bool check_yb_silence_advisory_locks_not_supported_error(bool *newval, void **extra,
+																GucSource source);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -2447,18 +2448,13 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
-			gettext_noop("Silence the advisory locks error message."),
-			gettext_noop("Enable this with high caution. When enabled, advisory lock requests will silently succeed "
-						 "without actually executing the lock request. It was added to avoid disruption for users who were "
-						 "already using advisory locks but seeing success messages without the lock really being "
-						 "acquired. Such users should take the necessary steps to modify their application to "
-						 "remove usage of advisory locks. See https://github.com/yugabyte/yugabyte-db/issues/3642 "
-						 "for details."),
+			gettext_noop("Deprecated. This is no-op."),
+			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_silence_advisory_locks_not_supported_error,
 		false,
-		NULL, assign_yb_silence_advisory_locks_not_supported_error, NULL
+		check_yb_silence_advisory_locks_not_supported_error, NULL, NULL
 	},
 
 	{
@@ -16301,16 +16297,14 @@ check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source)
 	return true; /* still allow usage, but warn */
 }
 
-static void
-assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra)
+static bool
+check_yb_silence_advisory_locks_not_supported_error(bool *newval, void **extra,
+													GucSource source)
 {
-	if (newval)
-	{
-		ereport(WARNING,
-				(errmsg("enable this with high caution. When enabled, advisory lock requests will silently succeed "
-						"without actually executing the lock request. It was added to avoid disruption for users who were "
-						"already using advisory locks but seeing success messages without the lock really being acquired.")));
-	}
+	ereport(WARNING,
+			(errmsg("the parameter \"yb_silence_advisory_locks_not_supported_error\" is "
+					"deprecated and has no effect. ")));
+	return true;
 }
 
 #include "guc-file.c"

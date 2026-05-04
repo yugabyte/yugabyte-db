@@ -808,8 +808,8 @@ extern bool yb_whitelist_extra_stmts_for_pl_speculative_execution;
 extern bool yb_enable_docdb_vector_type;
 
 /*
- * GUC to allow user to silence the error saying that advisory locks are not
- * supported.
+ * Deprecated no-op; kept so existing postgresql.conf / init scripts that set this
+ * parameter still load. Advisory locking ignores this variable (see lockfuncs.c).
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
 

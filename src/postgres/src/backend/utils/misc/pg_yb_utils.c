@@ -2186,6 +2186,9 @@ bool		yb_enable_nop_alter_role_optimization = true;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
+
+/* Deprecated; see pg_yb_utils.h. Value is not read for lock behavior. */
+bool		yb_silence_advisory_locks_not_supported_error = false;
 bool		yb_enable_invalidation_messages = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 4096;
@@ -2253,8 +2256,6 @@ int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
  */
 bool		yb_enable_ddl_atomicity_infra = true;
 bool		yb_ddl_rollback_enabled = false;
-
-bool		yb_silence_advisory_locks_not_supported_error = false;
 
 bool		yb_use_hash_splitting_by_default = true;
 

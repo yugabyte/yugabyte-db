@@ -219,10 +219,7 @@ TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
   ASSERT_TRUE(value.status().message().Contains("ERROR:  advisory locks are disabled"));
   ASSERT_OK(conn.RollbackTransaction());
 
-  ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = true"));
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.Fetch(query));
-  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table));
 }
 
 TEST_F(PgRowLockTest, ObjectLocksNotSupported) {
