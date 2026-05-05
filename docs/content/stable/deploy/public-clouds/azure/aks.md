@@ -32,4 +32,4 @@ type: docs
   </li>
 </ul>
 
-To deploy Kubernetes clusters, see [Azure Kubernetes Service (AKS)](../../../kubernetes/single-zone/aks/helm-chart/).
+To deploy Kubernetes clusters, see [Azure Kubernetes Service](../../../kubernetes/single-zone/aks/helm-chart/).
