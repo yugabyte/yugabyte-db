@@ -5,6 +5,7 @@ linkTitle: Amazon Web Services
 description: Deploy a YugabyteDB cluster on Amazon Web Services using AWS CloudFormation
 aliases:
   - /stable/deploy/public-clouds/aws/
+  - /stable/deploy/public-clouds/aws/terraform/
 menu:
   stable:
     identifier: deploy-in-aws-1-cloudformation
@@ -18,12 +19,6 @@ type: docs
     <a href="../cloudformation/" class="nav-link active">
       <i class="icon-shell"></i>
       CloudFormation
-    </a>
-  </li>
-  <li >
-    <a href="../terraform/" class="nav-link">
-      <i class="icon-shell"></i>
-      Terraform
     </a>
   </li>
   <li>
