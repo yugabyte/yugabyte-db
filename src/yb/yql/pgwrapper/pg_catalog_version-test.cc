@@ -2690,6 +2690,76 @@ DROP TABLE tempTable2;
   ASSERT_EQ(fingerprint, 13018684413363894454UL);
 }
 
+// Regression test for https://github.com/yugabyte/yugabyte-db/issues/31431.
+// The user-visible flag --ysql_yb_invalidation_message_expiration_secs (and
+// the matching GUC) must be transparently floored at ~10 *
+// --heartbeat_interval_ms so that deployments that increase the heartbeat
+// interval (for example multi-region clusters) do not purge invalidation
+// messages before TServers ever heartbeat.
+//
+// The test uses a long heartbeat (5s) and a tiny configured expiration (1s).
+// The first DDL inserts an invalidation message; we then sleep for longer
+// than the configured expiration but well below the heartbeat-derived floor
+// (10 * 5s = 50s). Without the fix the second DDL's "delete from
+// pg_yb_invalidation_messages where message_time < now - expiration_sec"
+// would purge the first DDL's row. With the fix the effective expiration is
+// floored to ~50s and the row survives.
+TEST_F(PgCatalogVersionTest, InvalMessageExpirationFlooredByHeartbeat) {
+  constexpr int kHeartbeatIntervalMs = 5000;
+  constexpr int kExpirationSecs = 1;
+  const string heartbeat_flag =
+      Format("--heartbeat_interval_ms=$0", kHeartbeatIntervalMs);
+  cluster_->Shutdown();
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    cluster_->master(i)->mutable_flags()->push_back(
+        "--ysql_yb_enable_invalidation_messages=true");
+    cluster_->master(i)->mutable_flags()->push_back("--log_ysql_catalog_versions=true");
+    cluster_->master(i)->mutable_flags()->push_back(heartbeat_flag);
+  }
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->mutable_flags()->push_back(
+        "--ysql_yb_enable_invalidation_messages=true");
+    cluster_->tablet_server(i)->mutable_flags()->push_back("--log_ysql_catalog_versions=true");
+    cluster_->tablet_server(i)->mutable_flags()->push_back(heartbeat_flag);
+    cluster_->tablet_server(i)->mutable_flags()->push_back(
+        Format("--ysql_yb_invalidation_message_expiration_secs=$0", kExpirationSecs));
+    cluster_->tablet_server(i)->mutable_flags()->push_back(
+        "--ysql_enable_auto_analyze=false");
+  }
+  ASSERT_OK(cluster_->Restart());
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kYugabyteDatabase));
+
+  // CREATE TABLE on 2025.2/2025.1 does not bump the catalog version, so it
+  // does not produce an invalidation message row. Use ALTER TABLE instead,
+  // which always bumps the catalog version and produces a row in
+  // pg_yb_invalidation_messages.
+  ASSERT_OK(conn.Execute("CREATE TABLE inval_floor_test (k INT)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE inval_floor_test ADD COLUMN c1 INT"));
+  // Capture the catalog version produced by the first version-bumping DDL so
+  // we can look up its invalidation message row directly.
+  const auto first_version = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      Format("SELECT current_version FROM pg_yb_catalog_version "
+             "WHERE db_oid = $0",
+             yugabyte_db_oid)));
+
+  // Sleep longer than --ysql_yb_invalidation_message_expiration_secs but well
+  // under the heartbeat-derived floor of 10 * 5s = 50s.
+  SleepFor(1s * (kExpirationSecs + 4));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE inval_floor_test ADD COLUMN c2 INT"));
+
+  // The second DDL would have purged the first DDL's invalidation message
+  // without the fix because more than kExpirationSecs has elapsed. With the
+  // fix the row is preserved.
+  const auto first_message_present = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      Format("SELECT count(*) FROM pg_yb_invalidation_messages "
+             "WHERE db_oid = $0 AND current_version = $1",
+             yugabyte_db_oid, first_version)));
+  ASSERT_EQ(first_message_present, 1);
+}
+
 TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
   RestartClusterWithInvalMessageEnabled();
   auto conn1 = ASSERT_RESULT(EnableCacheEventLog(Connect()));

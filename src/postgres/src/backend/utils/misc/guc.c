@@ -5892,7 +5892,10 @@ static struct config_int ConfigureNamesInt[] =
 		{"yb_invalidation_message_expiration_secs", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Invalidation messages expiration time in catalog table "
 						 "pg_yb_invalidation_messages."),
-			NULL,
+			gettext_noop("The effective expiration is automatically raised to "
+						 "at least 10 * --heartbeat_interval_ms so that "
+						 "messages survive long enough for every TServer to "
+						 "receive them via heartbeats."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_invalidation_message_expiration_secs,
