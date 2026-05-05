@@ -116,6 +116,7 @@
 #ifndef HAVE_GETRUSAGE
 #include "rusagestub.h"
 #endif
+#include "storage/ipc.h"
 #include "storage/procarray.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -1547,13 +1548,36 @@ YBCAbortTransaction()
 	 * Note - If you are changing the behavior to not terminate the backend,
 	 * please consider its impact on sub-transaction abort failures
 	 * (YBCRollbackToSubTransaction) as well.
+	 *
+	 * When proc_exit is already in progress (e.g. backend killed via
+	 * pg_terminate_backend), the tserver connection may already be tearing
+	 * down, so RPC failures are expected.  Escalating to FATAL here would
+	 * trigger a second proc_exit before AbortTransaction finishes resetting
+	 * PG transaction state, causing downstream assertions.  Log a warning
+	 * and return so that AbortTransaction can complete normally.
 	 */
 	if (unlikely(status))
-		elog(FATAL, "Failed to abort DDL transaction: %s", YBCMessageAsCString(status));
+	{
+		if (proc_exit_inprogress)
+			ereport(WARNING,
+					(errmsg("failed to abort DDL transaction during shutdown: %s",
+							YBCMessageAsCString(status))));
+		else
+			elog(FATAL, "Failed to abort DDL transaction: %s",
+				 YBCMessageAsCString(status));
+	}
 
 	status = YBCPgAbortPlainTransaction();
 	if (unlikely(status))
-		elog(FATAL, "Failed to abort DML transaction: %s", YBCMessageAsCString(status));
+	{
+		if (proc_exit_inprogress)
+			ereport(WARNING,
+					(errmsg("failed to abort DML transaction during shutdown: %s",
+							YBCMessageAsCString(status))));
+		else
+			elog(FATAL, "Failed to abort DML transaction: %s",
+				 YBCMessageAsCString(status));
+	}
 }
 
 void
