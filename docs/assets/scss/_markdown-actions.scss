@@ -42,8 +42,7 @@
 
       span {
         position: absolute;
-        bottom: calc(100% + 10px);
-        top: initial;
+        top: calc(100% + 15px);
         left: 50%;
         transform: translateX(-50%);
         padding: 0;
@@ -63,6 +62,18 @@
         border: 1px solid #E9EDF0;
         background: #FFF;
         box-shadow: 0 0 8px 0 rgba(0, 0, 0, 0.10);
+
+        &::before {
+          content: "";
+          position: absolute;
+          z-index: -1;
+          width: 15px;
+          height: 15px;
+          background: #FFF;
+          transform: rotate(45deg);
+          top: -5px;
+          transition: opacity 250ms 300ms ease;
+        }
       }
 
       &:hover{
