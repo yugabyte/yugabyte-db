@@ -132,6 +132,7 @@
 #include "utils/syscache.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
@@ -1315,6 +1316,22 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 		 * mapped to PG backends.
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
+
+		/*
+		 * Initialize OpenTelemetry batch span processor for distributed
+		 * tracing.
+		 * TODO(Ishan): Since this creates a thread, this can be
+		 * initialized and cleanedup based on a GUC.
+		 */
+		if (YBCIsDistTraceEnabled())
+		{
+			char		hex_uuid[2 * UUID_LEN + 1];
+
+			hex_encode((const char *) YBCGetLocalTserverUuid(), UUID_LEN, hex_uuid);
+			hex_uuid[2 * UUID_LEN] = '\0';
+
+			YBCInitDistTrace(MyProcPid, hex_uuid);
+		}
 	}
 }
 
@@ -1322,6 +1339,9 @@ void
 YBOnPostgresBackendShutdown()
 {
 	YBCDestroyPgGate();
+
+	if (YBCIsDistTraceEnabled())
+		YBCCleanupDistTrace();
 }
 
 void
