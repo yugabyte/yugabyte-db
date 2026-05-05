@@ -162,6 +162,14 @@ class StreamMetadata {
   // Returns true if this is a logical replication stream.
   bool IsLogicalReplicationStream() const EXCLUDES(mutex_);
 
+  // True iff this stream was stamped with xcluster_use_target_applied_filter at creation; controls
+  // whether the producer drops writes by WritePB.xcluster_target_applied (vs the legacy
+  // has_external_hybrid_time predicate) for loop prevention.
+  bool UseTargetAppliedFilter() const {
+    DCHECK(loaded_);
+    return use_target_applied_filter_.load(std::memory_order_acquire);
+  }
+
   std::optional<uint32_t> GetDbOidToGetSequencesFor() const {
     std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
@@ -209,6 +217,7 @@ class StreamMetadata {
   std::atomic<StreamModeTransactional> transactional_{StreamModeTransactional::kFalse};
   std::atomic<std::optional<uint64_t>> consistent_snapshot_time_;
   std::atomic<std::optional<uint64_t>> stream_creation_time_;
+  std::atomic<bool> use_target_applied_filter_{false};
 
   std::mutex load_mutex_;  // Used to ensure only a single thread performs InitOrReload.
   std::atomic<bool> loaded_ = false;

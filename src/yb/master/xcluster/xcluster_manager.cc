@@ -59,6 +59,12 @@ DEFINE_RUNTIME_uint32(xcluster_ysql_statement_timeout_sec, 120,
 DEFINE_RUNTIME_AUTO_bool(xcluster_enable_ddl_replication, kExternal, false, true,
     "Enables xCluster automatic DDL replication.");
 
+DEFINE_RUNTIME_AUTO_bool(xcluster_enable_target_applied_filter, kExternal, false, true,
+    "When promoted, new xCluster streams in unidirectional automatic-DDL-mode replication "
+    "groups use WritePB.xcluster_target_applied (instead of has_external_hybrid_time) as the "
+    "producer's loop-prevention predicate, allowing index backfill writes to replicate "
+    "end-to-end. Bi-directional and pre-existing streams are unaffected.");
+
 DEFINE_test_flag(bool, force_automatic_ddl_replication_mode, false,
     "Make XClusterCreateOutboundReplicationGroup always use automatic instead of semi-automatic "
     "xCluster replication mode.");
@@ -331,10 +337,10 @@ Status XClusterManager::GetXClusterSafeTime(
   return XClusterTargetManager::GetXClusterSafeTime(resp, epoch);
 }
 
-Result<std::optional<HybridTime>> XClusterManager::TryGetXClusterSafeTimeForBackfill(
+Result<XClusterBackfillDecision> XClusterManager::TryGetXClusterInfoForIndexBackfill(
     const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
     const LeaderEpoch& epoch) const {
-  return XClusterTargetManager::TryGetXClusterSafeTimeForBackfill(
+  return XClusterTargetManager::TryGetXClusterInfoForIndexBackfill(
       index_table_ids, indexed_table, epoch);
 }
 

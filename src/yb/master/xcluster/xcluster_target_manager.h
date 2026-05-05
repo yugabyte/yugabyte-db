@@ -176,6 +176,20 @@ class XClusterTargetManager {
 
   bool IsTableReplicated(const TableId& table_id) const;
 
+  // Returns true iff the table is replicated and every replicating stream has the
+  // xcluster_use_target_applied_filter bit set on its consumer_registry entry. Returns false when
+  // the table has no streams or any stream lacks the bit. Returns a non-OK status if the consumer
+  // registry is missing or its state is inconsistent with the in-memory stream map.
+  Result<bool> IsTableUsingTargetAppliedFilter(const TableId& consumer_table_id) const
+      EXCLUDES(table_stream_ids_map_mutex_);
+
+  // For index backfill: returns true iff every index in `index_table_ids` has all its replicating
+  // streams using the target-applied filter (see IsTableUsingTargetAppliedFilter). Colocated
+  // indexes are keyed by their colocation parent table id (since they ride the parent's stream).
+  // Returns a non-OK status on lookup failures (missing table info, inconsistent registry state).
+  Result<bool> ShouldTargetSkipLocalIndexBackfill(
+      const std::vector<TableId>& index_table_ids) const;
+
   Result<TableId> GetTableIdForStreamId(
       const xcluster::ReplicationGroupId& replication_group_id,
       const xrepl::StreamId& stream_id) const EXCLUDES(table_stream_ids_map_mutex_);
@@ -217,7 +231,7 @@ class XClusterTargetManager {
       const xrepl::StreamId& bootstrap_id, const std::optional<TableId>& target_table_id,
       const LeaderEpoch& epoch);
 
-  Result<std::optional<HybridTime>> TryGetXClusterSafeTimeForBackfill(
+  Result<XClusterBackfillDecision> TryGetXClusterInfoForIndexBackfill(
       const std::vector<TableId>& index_table_ids, const TableInfoPtr& indexed_table,
       const LeaderEpoch& epoch) const;
 

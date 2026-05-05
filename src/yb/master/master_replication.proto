@@ -75,6 +75,9 @@ message CDCStreamInfoPB {
 
   // This field decides whether the slot is an internal LISTEN/NOTIFY notifications stream.
   optional bool is_notification_slot = 17 [default = false];
+
+  // See SysCDCStreamEntryPB.xcluster_use_target_applied_filter.
+  optional bool xcluster_use_target_applied_filter = 18 [default = false];
 }
 
 message ValidateReplicationInfoRequestPB {

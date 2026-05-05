@@ -127,6 +127,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   if (client_request.has_external_hybrid_time()) {
     out_request->set_external_hybrid_time(client_request.external_hybrid_time());
   }
+  if (client_request.has_xcluster_target_applied()) {
+    out_request->set_xcluster_target_applied(client_request.xcluster_target_applied());
+  }
 }
 
 template <class Code, class Resp>
