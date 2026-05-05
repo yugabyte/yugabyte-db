@@ -22,6 +22,7 @@
 namespace rocksdb {
 
 class Arena;
+class BoundaryValuesExtractor;
 class Cache;
 class CompactionContext;
 class CompactionFeed;
@@ -43,6 +44,7 @@ struct BlockBasedTableOptions;
 struct CompactionContextOptions;
 struct CompactionInputFiles;
 struct FilterKeyCache;
+struct FileMetaData;
 struct KeyValueEntry;
 struct Options;
 struct QueryOptions;

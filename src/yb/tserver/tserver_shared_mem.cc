@@ -35,6 +35,7 @@
 #include "yb/util/shmem/shared_mem_segment.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
 
 DEFINE_RUNTIME_uint64(ts_shared_memory_setup_max_wait_ms, 10000,
@@ -113,16 +114,29 @@ class SharedExchangeHeader {
     return data() - pointer_cast<std::byte*>(this);
   }
 
+  bool busy() const {
+    return busy_.load(std::memory_order_acquire);
+  }
+
   bool ReadyToSend(bool failed_previous_request) const {
-    return ReadyToSend(state_.load(std::memory_order_acquire), failed_previous_request);
+    return ReadyToSend(
+        state_.load(std::memory_order_acquire),
+        failed_previous_request);
   }
 
   bool ReadyToSend(SharedExchangeState state, bool failed_previous_request) const {
+    if (busy_.load(std::memory_order_acquire)) {
+      return false;
+    }
     // Could use this exchange for sending request in two cases:
     // 1) it is idle, i.e. no request is being processed at this moment.
     // 2) the previous request was failed, and we received response for this request.
     return state == SharedExchangeState::kIdle ||
            (failed_previous_request && state == SharedExchangeState::kResponseSent);
+  }
+
+  void ResetBusy() {
+    busy_.store(false, std::memory_order_release);
   }
 
   Status SendRequest(bool failed_previous_request, size_t size) {
@@ -178,6 +192,7 @@ class SharedExchangeHeader {
         &request_semaphore_));
     RETURN_NOT_OK(TransferState(
         SharedExchangeState::kRequestSent, SharedExchangeState::kProcessingRequest));
+    busy_.store(true, std::memory_order_release);
     return data_size_;
   }
 
@@ -213,6 +228,7 @@ class SharedExchangeHeader {
   InterprocessSemaphore request_semaphore_{0};
   InterprocessSemaphore response_semaphore_{0};
   std::atomic<SharedExchangeState> state_{SharedExchangeState::kIdle};
+  std::atomic<bool> busy_{false};
   size_t data_size_;
   std::byte data_[0];
 };
@@ -450,6 +466,10 @@ bool SharedExchange::ReadyToSend() {
   return header_.ReadyToSend(failed_previous_request_);
 }
 
+void SharedExchange::ResetBusy() {
+  return header_.ResetBusy();
+}
+
 void SharedExchange::Respond(size_t size) {
   header_.Respond(size);
 }
@@ -534,6 +554,20 @@ class PgSessionSharedMemoryManager::Impl {
   ~Impl() {
     if (!owner_ || FLAGS_TEST_skip_remove_tserver_shared_memory_object) {
       return;
+    }
+    if (header().exchange_header.busy()) {
+      auto wait_start = CoarseMonoClock::now();
+      auto next_report = wait_start + 5s * kTimeMultiplier;
+      while (header().exchange_header.busy()) {
+        auto now = CoarseMonoClock::now();
+        if (now > next_report) {
+          LOG_WITH_FUNC(WARNING)
+              << "Long wait to release shared memory: "
+              << MonoDelta(now - wait_start).ToPrettyString();
+          next_report = now + (now - wait_start) * 2;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
     }
     shared_memory_object_.DestroyAndRemove();
   }

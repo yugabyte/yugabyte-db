@@ -58,6 +58,7 @@ YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
 struct TxnReadPoint {
   uint64_t txn; // Transaction serial number
   uint64_t read_time_serial_no; // Read time serial number
+  bool is_clamped; // Whether the uncertainty window is clamped
 };
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
@@ -67,6 +68,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       bool enable_table_locking);
 
   ~PgTxnManager();
+
+  // Abort any active transactions. Must be called before pgapi is destroyed since the abort
+  // path calls YBCIsLegacyModeForCatalogOps which dereferences the global pgapi pointer.
+  void Shutdown();
 
   Status BeginTransaction(int64_t start_time);
 

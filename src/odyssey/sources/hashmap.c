@@ -18,6 +18,8 @@ od_hashmap_list_item_t *od_hashmap_list_item_create(void)
 
 	memset(list, 0, sizeof(od_hashmap_list_item_t));
 	od_list_init(&list->link);
+	/* YB */
+	od_list_init(&list->yb_lru_link);
 	return list;
 }
 
@@ -30,6 +32,8 @@ void od_hashmap_list_item_add(od_hashmap_list_item_t *list,
 od_retcode_t od_hashmap_list_item_free(od_hashmap_list_item_t *l)
 {
 	od_list_unlink(&l->link);
+	/* YB */
+	od_list_unlink(&l->yb_lru_link);
 	if (l->key.data)
 		free(l->key.data);
 	if (l->value.data)
@@ -245,6 +249,7 @@ bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash,
 	}
 
 	if (count == 1) {
+		*matched_count = 1;
 		od_hashmap_list_item_free(matched_item);
 		pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
 		return true;

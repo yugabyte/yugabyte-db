@@ -16,6 +16,10 @@
 #include "yb/server/server_fwd.h"
 #include "yb/tserver/tserver_fwd.h"
 
+namespace yb {
+class Cgroup;
+} // namespace yb
+
 namespace yb::tserver {
 
 class ConnectivityPoller {
@@ -23,7 +27,7 @@ class ConnectivityPoller {
   explicit ConnectivityPoller(server::RpcServerBase& server, const std::string& uuid);
   ~ConnectivityPoller();
 
-  Status Start();
+  Status Start(Cgroup* cgroup = nullptr);
 
   void Shutdown();
 

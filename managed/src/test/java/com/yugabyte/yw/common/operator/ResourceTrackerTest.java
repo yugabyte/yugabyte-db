@@ -11,6 +11,7 @@ import static org.junit.Assert.assertTrue;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.OperatorResource;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.Before;
@@ -40,7 +41,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
   @Test
   public void testTrackResource() {
     KubernetesResourceDetails res = resource("my-universe", "ns1");
-    tracker.trackResource(res, null);
+    tracker.trackResource(res, null, null);
 
     assertEquals(1, tracker.getTrackedResources().size());
     assertTrue(tracker.isTracked(res));
@@ -51,8 +52,8 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails owner = resource("my-universe", "ns1");
     KubernetesResourceDetails secret = resource("db-password", "ns1");
 
-    tracker.trackResource(owner, null);
-    tracker.trackDependency(owner, secret);
+    tracker.trackResource(owner, null, null);
+    tracker.trackDependency(owner, secret, null);
 
     assertEquals(2, tracker.getTrackedResources().size());
     assertTrue(tracker.isTracked(owner));
@@ -67,7 +68,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails secret = resource("db-password", "ns1");
 
     // Don't explicitly track owner, just add a dependency
-    tracker.trackDependency(owner, secret);
+    tracker.trackDependency(owner, secret, null);
 
     assertEquals(2, tracker.getTrackedResources().size());
     assertTrue(tracker.isTracked(owner));
@@ -79,10 +80,10 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails owner = resource("my-universe", "ns1");
     KubernetesResourceDetails secret = resource("db-password", "ns1");
 
-    tracker.trackResource(owner, null);
-    tracker.trackDependency(owner, secret);
+    tracker.trackResource(owner, null, null);
+    tracker.trackDependency(owner, secret, null);
 
-    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner);
+    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner, null);
 
     assertTrue(tracker.getTrackedResources().isEmpty());
     assertEquals(1, orphaned.size());
@@ -98,14 +99,14 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails sharedSecret = resource("shared-password", "ns1");
     KubernetesResourceDetails uniqueSecret = resource("unique-secret", "ns1");
 
-    tracker.trackResource(owner1, null);
-    tracker.trackResource(owner2, null);
-    tracker.trackDependency(owner1, sharedSecret);
-    tracker.trackDependency(owner1, uniqueSecret);
-    tracker.trackDependency(owner2, sharedSecret);
+    tracker.trackResource(owner1, null, null);
+    tracker.trackResource(owner2, null, null);
+    tracker.trackDependency(owner1, sharedSecret, null);
+    tracker.trackDependency(owner1, uniqueSecret, null);
+    tracker.trackDependency(owner2, sharedSecret, null);
 
     // Untrack owner1 - sharedSecret should NOT be orphaned, uniqueSecret should be
-    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner1);
+    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner1, null);
 
     assertEquals(1, orphaned.size());
     assertTrue(orphaned.contains(uniqueSecret));
@@ -125,7 +126,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
   public void testUntrackNonExistentResource() {
     KubernetesResourceDetails res = resource("nonexistent", "ns1");
 
-    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(res);
+    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(res, null);
 
     assertTrue(orphaned.isEmpty());
     assertTrue(tracker.getTrackedResources().isEmpty());
@@ -134,9 +135,9 @@ public class ResourceTrackerTest extends FakeDBApplication {
   @Test
   public void testUntrackResourceWithNoDependencies() {
     KubernetesResourceDetails owner = resource("my-universe", "ns1");
-    tracker.trackResource(owner, null);
+    tracker.trackResource(owner, null, null);
 
-    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner);
+    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner, null);
 
     assertTrue(orphaned.isEmpty());
     assertTrue(tracker.getTrackedResources().isEmpty());
@@ -148,9 +149,9 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails secret1 = resource("secret-1", "ns1");
     KubernetesResourceDetails secret2 = resource("secret-2", "ns1");
 
-    tracker.trackResource(owner, null);
-    tracker.trackDependency(owner, secret1);
-    tracker.trackDependency(owner, secret2);
+    tracker.trackResource(owner, null, null);
+    tracker.trackDependency(owner, secret1, null);
+    tracker.trackDependency(owner, secret2, null);
 
     // Map should have entries for all 3 resources (owner + 2 deps)
     // but only the owner has dependencies
@@ -165,16 +166,16 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails awsSecret = resource("aws-key", "ns1");
     KubernetesResourceDetails gcsSecret = resource("gcs-creds", "ns1");
 
-    tracker.trackResource(release1, null);
-    tracker.trackResource(release2, null);
-    tracker.trackDependency(release1, awsSecret);
-    tracker.trackDependency(release2, gcsSecret);
+    tracker.trackResource(release1, null, null);
+    tracker.trackResource(release2, null, null);
+    tracker.trackDependency(release1, awsSecret, null);
+    tracker.trackDependency(release2, gcsSecret, null);
 
     // Total: 2 owners + 2 secrets = 4
     assertEquals(4, tracker.getTrackedResources().size());
 
     // Untrack release1 -> awsSecret should be orphaned
-    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(release1);
+    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(release1, null);
     assertEquals(1, orphaned.size());
     assertTrue(orphaned.contains(awsSecret));
 
@@ -182,7 +183,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
     assertEquals(2, tracker.getTrackedResources().size());
 
     // Untrack release2 -> gcsSecret should be orphaned
-    orphaned = tracker.untrackResource(release2);
+    orphaned = tracker.untrackResource(release2, null);
     assertEquals(1, orphaned.size());
     assertTrue(orphaned.contains(gcsSecret));
 
@@ -201,7 +202,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
   public void testTrackResourceStoresYamlData() {
     KubernetesResourceDetails res = resource("my-universe", "ns1");
     String yaml = "apiVersion: v1\nkind: Test\nmetadata:\n  name: my-universe";
-    tracker.trackResource(res, yaml);
+    tracker.trackResource(res, yaml, null);
 
     assertTrue(tracker.isTracked(res));
     // Verify the data is stored by checking the model directly
@@ -215,12 +216,12 @@ public class ResourceTrackerTest extends FakeDBApplication {
     String yamlV1 = "apiVersion: v1\nkind: Test\nmetadata:\n  name: my-universe\n  version: 1";
     String yamlV2 = "apiVersion: v1\nkind: Test\nmetadata:\n  name: my-universe\n  version: 2";
 
-    tracker.trackResource(res, yamlV1);
+    tracker.trackResource(res, yamlV1, null);
     OperatorResource stored = OperatorResource.getByName(res.toResourceName());
     assertEquals(yamlV1, stored.getData());
 
     // Re-track with updated YAML should overwrite
-    tracker.trackResource(res, yamlV2);
+    tracker.trackResource(res, yamlV2, null);
     stored = OperatorResource.getByName(res.toResourceName());
     assertEquals(yamlV2, stored.getData());
 
@@ -231,7 +232,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
   @Test
   public void testTrackResourceWithNullYamlData() {
     KubernetesResourceDetails res = resource("my-universe", "ns1");
-    tracker.trackResource(res, null);
+    tracker.trackResource(res, null, null);
 
     assertTrue(tracker.isTracked(res));
     OperatorResource stored = OperatorResource.getByName(res.toResourceName());
@@ -246,8 +247,8 @@ public class ResourceTrackerTest extends FakeDBApplication {
     String ownerYaml = "kind: Universe\nmetadata:\n  name: my-universe";
     String secretYaml = "kind: Secret\nmetadata:\n  name: db-password";
 
-    tracker.trackResource(owner, ownerYaml);
-    tracker.trackDependency(owner, secret, secretYaml);
+    tracker.trackResource(owner, ownerYaml, null);
+    tracker.trackDependency(owner, secret, secretYaml, null);
 
     // Verify both YAML payloads are stored
     OperatorResource storedOwner = OperatorResource.getByName(owner.toResourceName());
@@ -261,7 +262,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails owner = resource("my-universe", "ns1");
     KubernetesResourceDetails secret = resource("db-password", "ns1");
 
-    tracker.trackResource(owner, null);
+    tracker.trackResource(owner, null, null);
     tracker.trackDependency(owner, secret, null);
 
     assertTrue(tracker.isTracked(secret));
@@ -275,9 +276,9 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails owner = resource("my-universe", "ns1");
     KubernetesResourceDetails secret = resource("db-password", "ns1");
 
-    tracker.trackResource(owner, null);
-    tracker.trackDependency(owner, secret);
-    tracker.trackDependency(owner, secret); // Add same dependency again
+    tracker.trackResource(owner, null, null);
+    tracker.trackDependency(owner, secret, null);
+    tracker.trackDependency(owner, secret, null); // Add same dependency again
 
     // Should still have exactly 1 dependency, not duplicated
     assertEquals(1, tracker.getDependencies(owner).size());
@@ -289,8 +290,8 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails res1 = resource("my-universe", "ns1");
     KubernetesResourceDetails res2 = resource("my-universe", "ns2");
 
-    tracker.trackResource(res1, "yaml-ns1");
-    tracker.trackResource(res2, "yaml-ns2");
+    tracker.trackResource(res1, "yaml-ns1", null);
+    tracker.trackResource(res2, "yaml-ns2", null);
 
     assertEquals(2, tracker.getTrackedResources().size());
     assertTrue(tracker.isTracked(res1));
@@ -308,8 +309,8 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails universe = resource("my-resource", "ns1", "universe");
     KubernetesResourceDetails secret = resource("my-resource", "ns1", "secret");
 
-    tracker.trackResource(universe, "universe-yaml");
-    tracker.trackResource(secret, "secret-yaml");
+    tracker.trackResource(universe, "universe-yaml", null);
+    tracker.trackResource(secret, "secret-yaml", null);
 
     assertEquals(2, tracker.getTrackedResources().size());
     assertTrue(tracker.isTracked(universe));
@@ -322,18 +323,18 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails secret = resource("my-secret", "ns1");
 
     // Track resource with a dependency
-    tracker.trackResource(res, "yaml-v1");
-    tracker.trackDependency(res, secret, "secret-yaml");
+    tracker.trackResource(res, "yaml-v1", null);
+    tracker.trackDependency(res, secret, "secret-yaml", null);
     assertEquals(2, tracker.getTrackedResources().size());
 
     // Untrack everything
-    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(res);
+    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(res, null);
     assertEquals(1, orphaned.size());
     assertTrue(tracker.getTrackedResources().isEmpty());
     assertFalse(tracker.isTracked(res));
 
     // Re-track the same resource with new data
-    tracker.trackResource(res, "yaml-v2");
+    tracker.trackResource(res, "yaml-v2", null);
     assertTrue(tracker.isTracked(res));
     assertEquals(1, tracker.getTrackedResources().size());
 
@@ -342,7 +343,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
     assertEquals("yaml-v2", stored.getData());
 
     // Re-add dependency
-    tracker.trackDependency(res, secret, "secret-yaml-v2");
+    tracker.trackDependency(res, secret, "secret-yaml-v2", null);
     assertEquals(2, tracker.getTrackedResources().size());
     assertEquals(1, tracker.getDependencies(res).size());
   }
@@ -353,9 +354,9 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails dep1 = resource("secret-1", "ns1");
     KubernetesResourceDetails dep2 = resource("secret-2", "ns1");
 
-    tracker.trackResource(owner, null);
-    tracker.trackDependency(owner, dep1);
-    tracker.trackDependency(owner, dep2);
+    tracker.trackResource(owner, null, null);
+    tracker.trackDependency(owner, dep1, null);
+    tracker.trackDependency(owner, dep2, null);
 
     Map<KubernetesResourceDetails, Set<KubernetesResourceDetails>> depMap =
         tracker.getResourceDependencies();
@@ -382,17 +383,17 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails depB = resource("dep-b", "ns1");
     KubernetesResourceDetails depShared = resource("dep-shared", "ns1");
 
-    tracker.trackResource(owner1, null);
-    tracker.trackResource(owner2, null);
-    tracker.trackDependency(owner1, depA);
-    tracker.trackDependency(owner1, depShared);
-    tracker.trackDependency(owner2, depB);
-    tracker.trackDependency(owner2, depShared);
+    tracker.trackResource(owner1, null, null);
+    tracker.trackResource(owner2, null, null);
+    tracker.trackDependency(owner1, depA, null);
+    tracker.trackDependency(owner1, depShared, null);
+    tracker.trackDependency(owner2, depB, null);
+    tracker.trackDependency(owner2, depShared, null);
 
     assertEquals(5, tracker.getTrackedResources().size());
 
     // Remove owner1 -> depA orphaned, depShared still held by owner2
-    Set<KubernetesResourceDetails> orphaned1 = tracker.untrackResource(owner1);
+    Set<KubernetesResourceDetails> orphaned1 = tracker.untrackResource(owner1, null);
     assertEquals(1, orphaned1.size());
     assertTrue(orphaned1.contains(depA));
     assertFalse(orphaned1.contains(depShared));
@@ -402,7 +403,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
     assertEquals(3, tracker.getTrackedResources().size());
 
     // Remove owner2 -> depB and depShared both orphaned
-    Set<KubernetesResourceDetails> orphaned2 = tracker.untrackResource(owner2);
+    Set<KubernetesResourceDetails> orphaned2 = tracker.untrackResource(owner2, null);
     assertEquals(2, orphaned2.size());
     assertTrue(orphaned2.contains(depB));
     assertTrue(orphaned2.contains(depShared));
@@ -417,14 +418,14 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails dep2 = resource("secret-2", "ns1");
     KubernetesResourceDetails dep3 = resource("secret-3", "ns1");
 
-    tracker.trackResource(owner, null);
-    tracker.trackDependency(owner, dep1);
-    tracker.trackDependency(owner, dep2);
-    tracker.trackDependency(owner, dep3);
+    tracker.trackResource(owner, null, null);
+    tracker.trackDependency(owner, dep1, null);
+    tracker.trackDependency(owner, dep2, null);
+    tracker.trackDependency(owner, dep3, null);
 
     assertEquals(4, tracker.getTrackedResources().size());
 
-    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner);
+    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner, null);
     assertEquals(3, orphaned.size());
     assertTrue(orphaned.contains(dep1));
     assertTrue(orphaned.contains(dep2));
@@ -442,7 +443,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
   @Test
   public void testGetTrackedResourcesReturnsUnmodifiableSet() {
     KubernetesResourceDetails res = resource("my-universe", "ns1");
-    tracker.trackResource(res, null);
+    tracker.trackResource(res, null, null);
 
     Set<KubernetesResourceDetails> tracked = tracker.getTrackedResources();
     try {
@@ -463,8 +464,8 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails owner = resource("my-universe", "ns1");
     KubernetesResourceDetails dep = resource("my-secret", "ns1");
 
-    tracker.trackResource(owner, null);
-    tracker.trackDependency(owner, dep);
+    tracker.trackResource(owner, null, null);
+    tracker.trackDependency(owner, dep, null);
 
     Map<KubernetesResourceDetails, Set<KubernetesResourceDetails>> depMap =
         tracker.getResourceDependencies();
@@ -484,8 +485,8 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails owner = resource("my-universe", "ns1");
     KubernetesResourceDetails dep = resource("my-secret", "ns1");
 
-    tracker.trackResource(owner, null);
-    tracker.trackDependency(owner, dep);
+    tracker.trackResource(owner, null, null);
+    tracker.trackDependency(owner, dep, null);
 
     Set<KubernetesResourceDetails> deps = tracker.getDependencies(owner);
     try {
@@ -519,9 +520,9 @@ public class ResourceTrackerTest extends FakeDBApplication {
   public void testTrackResourceIdempotent() {
     KubernetesResourceDetails res = resource("my-universe", "ns1");
 
-    tracker.trackResource(res, "yaml-data");
-    tracker.trackResource(res, "yaml-data");
-    tracker.trackResource(res, "yaml-data");
+    tracker.trackResource(res, "yaml-data", null);
+    tracker.trackResource(res, "yaml-data", null);
+    tracker.trackResource(res, "yaml-data", null);
 
     // Still exactly one tracked resource
     assertEquals(1, tracker.getTrackedResources().size());
@@ -531,7 +532,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
   @Test
   public void testOwnerWithNoDepsHasEmptyDependencySet() {
     KubernetesResourceDetails owner = resource("my-universe", "ns1");
-    tracker.trackResource(owner, null);
+    tracker.trackResource(owner, null, null);
 
     Set<KubernetesResourceDetails> deps = tracker.getDependencies(owner);
     assertNotNull(deps);
@@ -544,7 +545,7 @@ public class ResourceTrackerTest extends FakeDBApplication {
     ResourceTracker tracker2 = new ResourceTracker();
 
     KubernetesResourceDetails res = resource("my-universe", "ns1");
-    tracker.trackResource(res, "yaml-data");
+    tracker.trackResource(res, "yaml-data", null);
 
     // tracker2 should see the resource tracked by tracker
     assertTrue(tracker2.isTracked(res));
@@ -556,14 +557,14 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails owner = resource("my-universe", "ns1");
     KubernetesResourceDetails secret = resource("db-password", "ns1");
 
-    tracker.trackResource(owner, null);
-    tracker.trackDependency(owner, secret, "secret-yaml-v1");
+    tracker.trackResource(owner, null, null);
+    tracker.trackDependency(owner, secret, "secret-yaml-v1", null);
 
     OperatorResource storedV1 = OperatorResource.getByName(secret.toResourceName());
     assertEquals("secret-yaml-v1", storedV1.getData());
 
     // Update dependency YAML
-    tracker.trackDependency(owner, secret, "secret-yaml-v2");
+    tracker.trackDependency(owner, secret, "secret-yaml-v2", null);
 
     OperatorResource storedV2 = OperatorResource.getByName(secret.toResourceName());
     assertEquals("secret-yaml-v2", storedV2.getData());
@@ -580,30 +581,30 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails owner3 = resource("owner-3", "ns1");
     KubernetesResourceDetails dep1 = resource("dep-1", "ns1");
 
-    tracker.trackResource(owner1, null);
-    tracker.trackResource(owner2, null);
-    tracker.trackResource(owner3, null);
-    tracker.trackDependency(owner1, dep1);
-    tracker.trackDependency(owner2, dep1);
-    tracker.trackDependency(owner3, dep1);
+    tracker.trackResource(owner1, null, null);
+    tracker.trackResource(owner2, null, null);
+    tracker.trackResource(owner3, null, null);
+    tracker.trackDependency(owner1, dep1, null);
+    tracker.trackDependency(owner2, dep1, null);
+    tracker.trackDependency(owner3, dep1, null);
 
     // 4 tracked: 3 owners + 1 shared dep
     assertEquals(4, tracker.getTrackedResources().size());
 
     // Untrack owner3 - dep1 still referenced by owner1 and owner2
-    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner3);
+    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner3, null);
     assertTrue(orphaned.isEmpty());
     assertTrue(tracker.isTracked(dep1));
     assertEquals(3, tracker.getTrackedResources().size());
 
     // Untrack owner2 - dep1 still referenced by owner1
-    orphaned = tracker.untrackResource(owner2);
+    orphaned = tracker.untrackResource(owner2, null);
     assertTrue(orphaned.isEmpty());
     assertTrue(tracker.isTracked(dep1));
     assertEquals(2, tracker.getTrackedResources().size());
 
     // Untrack owner1 - dep1 now orphaned
-    orphaned = tracker.untrackResource(owner1);
+    orphaned = tracker.untrackResource(owner1, null);
     assertEquals(1, orphaned.size());
     assertTrue(orphaned.contains(dep1));
     assertTrue(tracker.getTrackedResources().isEmpty());
@@ -637,24 +638,162 @@ public class ResourceTrackerTest extends FakeDBApplication {
     KubernetesResourceDetails depC = resource("dep-c", "ns1");
     KubernetesResourceDetails depShared = resource("dep-shared", "ns1");
 
-    tracker.trackResource(owner1, null);
-    tracker.trackResource(owner2, null);
-    tracker.trackResource(owner3, null);
-    tracker.trackDependency(owner1, depA);
-    tracker.trackDependency(owner1, depShared);
-    tracker.trackDependency(owner2, depShared);
-    tracker.trackDependency(owner2, depB);
-    tracker.trackDependency(owner3, depB);
-    tracker.trackDependency(owner3, depC);
+    tracker.trackResource(owner1, null, null);
+    tracker.trackResource(owner2, null, null);
+    tracker.trackResource(owner3, null, null);
+    tracker.trackDependency(owner1, depA, null);
+    tracker.trackDependency(owner1, depShared, null);
+    tracker.trackDependency(owner2, depShared, null);
+    tracker.trackDependency(owner2, depB, null);
+    tracker.trackDependency(owner3, depB, null);
+    tracker.trackDependency(owner3, depC, null);
 
     // 7 resources total
     assertEquals(7, tracker.getTrackedResources().size());
 
     // Untrack owner2: depShared held by owner1, depB held by owner3 -> no orphans
-    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner2);
+    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner2, null);
     assertTrue(orphaned.isEmpty());
     assertTrue(tracker.isTracked(depShared));
     assertTrue(tracker.isTracked(depB));
     assertEquals(6, tracker.getTrackedResources().size());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Soft-delete / tombstone tests
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void testSoftDeleteCreatesTombstoneRow() {
+    KubernetesResourceDetails res = resource("my-universe", "ns1");
+    tracker.trackResource(res, "yaml-data", null);
+
+    tracker.untrackResource(res, null);
+
+    assertFalse(tracker.isTracked(res));
+    assertTrue(tracker.getTrackedResources().isEmpty());
+
+    List<OperatorResource> deleted = OperatorResource.getDeleted();
+    assertEquals(1, deleted.size());
+    assertEquals(res.toResourceName(), deleted.get(0).getName());
+    assertTrue(deleted.get(0).isDeleted());
+  }
+
+  @Test
+  public void testSoftDeleteOrphanedDepsAlsoCreateTombstones() {
+    KubernetesResourceDetails owner = resource("my-universe", "ns1");
+    KubernetesResourceDetails secret = resource("db-password", "ns1");
+
+    tracker.trackResource(owner, "owner-yaml", null);
+    tracker.trackDependency(owner, secret, "secret-yaml", null);
+
+    Set<KubernetesResourceDetails> orphaned = tracker.untrackResource(owner, null);
+    assertEquals(1, orphaned.size());
+
+    List<OperatorResource> deleted = OperatorResource.getDeleted();
+    assertEquals(2, deleted.size());
+    Set<String> deletedNames =
+        deleted.stream()
+            .map(OperatorResource::getName)
+            .collect(java.util.stream.Collectors.toSet());
+    assertTrue(deletedNames.contains(owner.toResourceName()));
+    assertTrue(deletedNames.contains(secret.toResourceName()));
+  }
+
+  @Test
+  public void testSoftDeletePreservesYamlDataInTombstone() {
+    KubernetesResourceDetails res = resource("my-universe", "ns1");
+    tracker.trackResource(res, "important-yaml", null);
+
+    tracker.untrackResource(res, null);
+
+    List<OperatorResource> deleted = OperatorResource.getDeleted();
+    assertEquals(1, deleted.size());
+    assertEquals("important-yaml", deleted.get(0).getData());
+  }
+
+  @Test
+  public void testCreateOrUpdateRevivesSoftDeletedResource() {
+    KubernetesResourceDetails res = resource("my-universe", "ns1");
+    tracker.trackResource(res, "yaml-v1", null);
+    tracker.untrackResource(res, null);
+
+    assertFalse(tracker.isTracked(res));
+    assertEquals(1, OperatorResource.getDeleted().size());
+
+    tracker.trackResource(res, "yaml-v2", null);
+
+    assertTrue(tracker.isTracked(res));
+    assertTrue(OperatorResource.getDeleted().isEmpty());
+    OperatorResource stored = OperatorResource.getByName(res.toResourceName());
+    assertNotNull(stored);
+    assertEquals("yaml-v2", stored.getData());
+    assertFalse(stored.isDeleted());
+  }
+
+  @Test
+  public void testHardDeleteRemovesRow() {
+    KubernetesResourceDetails res = resource("my-universe", "ns1");
+    tracker.trackResource(res, "yaml-data", null);
+    tracker.untrackResource(res, null);
+
+    assertEquals(1, OperatorResource.getDeleted().size());
+
+    OperatorResource.hardDelete(res.toResourceName());
+
+    assertTrue(OperatorResource.getDeleted().isEmpty());
+    assertNull(OperatorResource.find.byId(res.toResourceName()));
+  }
+
+  @Test
+  public void testGetDeletedReturnsOnlySoftDeletedRows() {
+    KubernetesResourceDetails live = resource("live-resource", "ns1");
+    KubernetesResourceDetails toDelete = resource("deleted-resource", "ns1");
+
+    tracker.trackResource(live, "live-yaml", null);
+    tracker.trackResource(toDelete, "deleted-yaml", null);
+    tracker.untrackResource(toDelete, null);
+
+    List<OperatorResource> deleted = OperatorResource.getDeleted();
+    assertEquals(1, deleted.size());
+    assertEquals(toDelete.toResourceName(), deleted.get(0).getName());
+
+    List<OperatorResource> all = OperatorResource.getAll();
+    assertEquals(1, all.size());
+    assertEquals(live.toResourceName(), all.get(0).getName());
+  }
+
+  @Test
+  public void testSharedDepNotSoftDeletedWhenStillReferenced() {
+    KubernetesResourceDetails owner1 = resource("universe-1", "ns1");
+    KubernetesResourceDetails owner2 = resource("universe-2", "ns1");
+    KubernetesResourceDetails sharedSecret = resource("shared-password", "ns1");
+
+    tracker.trackResource(owner1, null, null);
+    tracker.trackResource(owner2, null, null);
+    tracker.trackDependency(owner1, sharedSecret, "secret-yaml", null);
+    tracker.trackDependency(owner2, sharedSecret, null);
+
+    tracker.untrackResource(owner1, null);
+
+    assertTrue(tracker.isTracked(sharedSecret));
+    assertTrue(tracker.isTracked(owner2));
+
+    List<OperatorResource> deleted = OperatorResource.getDeleted();
+    assertEquals(1, deleted.size());
+    assertEquals(owner1.toResourceName(), deleted.get(0).getName());
+  }
+
+  @Test
+  public void testDoubleUntrackIsIdempotent() {
+    KubernetesResourceDetails res = resource("my-universe", "ns1");
+    tracker.trackResource(res, "yaml-data", null);
+
+    Set<KubernetesResourceDetails> orphaned1 = tracker.untrackResource(res, null);
+    Set<KubernetesResourceDetails> orphaned2 = tracker.untrackResource(res, null);
+
+    assertTrue(orphaned1.isEmpty());
+    assertTrue(orphaned2.isEmpty());
+    assertEquals(1, OperatorResource.getDeleted().size());
   }
 }

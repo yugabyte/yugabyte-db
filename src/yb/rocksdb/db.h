@@ -733,6 +733,8 @@ class DB {
     return Flush(options, DefaultColumnFamily());
   }
 
+  virtual Status UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) = 0;
+
   // Wait for end of mem-table data flushing.
   virtual Status WaitForFlush(ColumnFamilyHandle* column_family) = 0;
   virtual Status WaitForFlush() {
@@ -939,6 +941,8 @@ class DB {
   }
 
   virtual bool NeedsDelay() { return false; }
+
+  virtual bool AreWritesStopped() { return false; }
 
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) = 0;

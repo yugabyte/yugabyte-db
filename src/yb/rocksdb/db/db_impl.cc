@@ -167,6 +167,9 @@ DEFINE_test_flag(int32, max_write_waiters, std::numeric_limits<int32_t>::max(),
 DEFINE_test_flag(double, simulated_crash_after_modify_flushed_frontier_probability, 0.0,
                  "Probability of a simulated crash at the end of DBImpl::ModifyFlushedFrontier.");
 
+DEFINE_test_flag(bool, fail_flush_mem_table, false,
+    "Fails all flush memtable requests when the flag is set.");
+
 DEFINE_RUNTIME_bool(
     rocksdb_allow_multiple_pending_compactions_for_priority_thread_pool, false,
     "Whether to allow multiple pending compactions for the same RocksDB instance. Only has effect "
@@ -305,6 +308,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         compaction_reason_(compaction_->compaction_reason()),
         priority_(CalcSizePriority()),
         metrics_(db_impl->priority_thread_pool_metrics_) {
+    SetTaskCgroup(db_impl->task_cgroup());
     db_impl->mutex_.AssertHeld();
     SetTaskInfoAndCountAsPending();
   }
@@ -643,7 +647,9 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
 class DBImpl::FlushTask : public ThreadPoolTask {
  public:
   FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd)
-      : ThreadPoolTask(db_impl), cfd_(cfd) {}
+      : ThreadPoolTask(db_impl), cfd_(cfd) {
+    SetTaskCgroup(db_impl->task_cgroup());
+  }
 
   bool ShouldRemoveWithKey(void* key) override {
     return key == db_impl_ && db_impl_->disable_flush_on_shutdown_;
@@ -2142,7 +2148,9 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
   // and EventListener callback will be called when the db_mutex
   // is unlocked by the current thread.
   auto file_number_holder = flush_job.Run(&file_meta);
-
+  if (PREDICT_FALSE(FLAGS_TEST_fail_flush_mem_table)) {
+    file_number_holder = STATUS(IOError, "TEST_fail_flush_mem_table set");
+  }
   if (file_number_holder.ok()) {
     InstallSuperVersionAndScheduleWorkWrapper(cfd, job_context,
                                               mutable_cf_options);
@@ -2159,7 +2167,7 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
       && db_options_.paranoid_checks && bg_error_.ok()) {
     // if a bad error happened (not ShutdownInProgress) and paranoid_checks is
     // true, mark DB read-only
-    bg_error_ = file_number_holder.status();
+    bg_error_.TrySet(file_number_holder.status());
   }
   RETURN_NOT_OK(file_number_holder);
   MAYBE_FAULT(FLAGS_fault_crash_after_rocksdb_flush);
@@ -2177,7 +2185,7 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
       RETURN_NOT_OK(sfm->OnAddFile(TableBaseToDataFileName(file_path)));
     }
     if (sfm->IsMaxAllowedSpaceReached() && bg_error_.ok()) {
-      bg_error_ = STATUS(IOError, "Max allowed space was reached");
+      bg_error_.TrySet(STATUS(IOError, "Max allowed space was reached"));
       DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::FlushMemTableToOutputFile:MaxAllowedSpaceReached");
     }
   }
@@ -2598,9 +2606,8 @@ Status DBImpl::CompactFilesImpl(
         "[%s] [JOB %d] Compaction error: %s",
         c->column_family_data()->GetName().c_str(), job_context->job_id,
         status.ToString().c_str());
-    if (db_options_.paranoid_checks && !allow_compaction_failures_ &&
-        bg_error_.ok()) {
-      bg_error_ = status;
+    if (db_options_.paranoid_checks && !allow_compaction_failures_ && bg_error_.ok()) {
+      bg_error_.TrySet(status);
     }
   }
 
@@ -2917,6 +2924,13 @@ Status DBImpl::WaitForFlush(ColumnFamilyHandle* column_family) {
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   // Wait until the flush completes.
   return WaitForFlushMemTable(cfh->cfd());
+}
+
+Status DBImpl::UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) {
+  InstrumentedMutexLock l(&mutex_);
+  SCHECK(column_family_memtables_->Seek(0), NotFound, "Column family not found");
+  column_family_memtables_->GetMemTable()->UpdateFrontiers(frontiers);
+  return Status::OK();
 }
 
 Status DBImpl::SyncWAL() {
@@ -4050,9 +4064,8 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
   } else {
     RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log, "Compaction error: %s",
         status.ToString().c_str());
-    if (db_options_.paranoid_checks && !allow_compaction_failures_ &&
-        bg_error_.ok()) {
-      bg_error_ = status;
+    if (db_options_.paranoid_checks && !allow_compaction_failures_ && bg_error_.ok()) {
+      bg_error_.TrySet(status);
     }
   }
 
@@ -5662,7 +5675,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
       // Is setting bg_error_ enough here?  This will at least stop
       // compaction and fail any further writes.
       if (!status.ok() && bg_error_.ok() && !w.CallbackFailed()) {
-        bg_error_ = status;
+        bg_error_.TrySet(status);
       }
     }
   }
@@ -5671,7 +5684,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   if (db_options_.paranoid_checks && !status.ok() && !w.CallbackFailed() && !status.IsBusy()) {
     mutex_.Lock();
     if (bg_error_.ok()) {
-      bg_error_ = status;  // stop compaction & fail any further writes
+      bg_error_.TrySet(status);  // stop compaction & fail any further writes
     }
     mutex_.Unlock();
   }

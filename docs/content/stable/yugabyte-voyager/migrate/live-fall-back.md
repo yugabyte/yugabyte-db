@@ -10,6 +10,8 @@ menu:
     parent: migration-types
     weight: 104
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 When migrating a database, it's prudent to have a backup strategy in case the new database doesn't work as expected. A fall-back approach involves streaming changes from the YugabyteDB (target) database back to the source database after the cutover operation, enabling you to cutover to the source database at any point.

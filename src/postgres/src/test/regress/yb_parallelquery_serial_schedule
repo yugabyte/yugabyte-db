@@ -13,4 +13,4 @@ test: yb.orig.parallel_ranged
 test: yb.orig.parallel_colocated
 test: yb.orig.select_parallel
 test: yb.orig.parallel_append
-
+test: yb.orig.parallel_snapshot_switching

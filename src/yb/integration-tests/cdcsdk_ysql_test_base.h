@@ -22,8 +22,6 @@
 #include <gtest/gtest.h>
 
 #include <boost/assign.hpp>
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.pb.h"
 
@@ -122,6 +120,7 @@ DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_uint32(cdcsdk_max_consistent_records);
 DECLARE_bool(ysql_yb_enable_replication_slot_consumption);
 DECLARE_bool(TEST_cdc_sdk_fail_setting_retention_barrier);
+DECLARE_bool(TEST_cdc_add_dynamic_index_to_state_table);
 DECLARE_uint64(cdcsdk_publication_list_refresh_interval_secs);
 DECLARE_bool(TEST_cdcsdk_use_microseconds_refresh_interval);
 DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_micros);
@@ -157,6 +156,7 @@ DECLARE_uint64(TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
 DECLARE_uint32(cdcsdk_vwal_tablets_to_poll_batch_size);
 DECLARE_uint32(TEST_cdcsdk_vwal_getchanges_rpc_delay_ms);
 DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 
 namespace yb {
 
@@ -700,7 +700,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void PollUntilTabletSplit(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      GetChangesResponsePB* change_resp,
+      GetChangesResponsePB* change_resp = nullptr,
       int tablet_idx = -1);
 
   void VerifyTabletList(
@@ -710,8 +710,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::string& context_msg);
 
   void CheckTabletsInCDCStateTable(
-      const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
+      const std::unordered_set<TabletId>& expected_tablet_ids, client::YBClient* client,
       const xrepl::StreamId& stream_id = xrepl::StreamId::Nil(),
+      const std::unordered_set<TabletId>& expected_colocated_table_ids = {},
       const std::string timeout_msg =
           "Tablets in cdc_state for the stream doesnt match the expected set",
       bool include_catalog_tables = false);
@@ -923,6 +924,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestRemovalOfColocatedTableFromCDCStream(bool start_removal_from_first_table);
 
+  void TestCleanupOfTableNotOfInterest(bool use_logical_replication);
+
+  void TestCleanupOfExpiredTable(bool use_logical_replication);
+
   void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
 
   Status CreateTables(
@@ -944,6 +949,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestStreamsDroppedOnDBDropAndMasterRestart(
       const string& sync_point_name, bool use_logical_replication);
+
+  Status CdcReleaseBarriersOnTablet(const TabletId& tablet_id);
 };
 
 }  // namespace cdc

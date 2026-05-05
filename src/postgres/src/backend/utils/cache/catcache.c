@@ -51,6 +51,7 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "nodes/pg_list.h"
 #include "pg_yb_utils.h"
+#include "portability/instr_time.h"
 #include "storage/procarray.h"
 #include "utils/catcache.h"
 #include <string.h>
@@ -100,6 +101,8 @@ static CatCacheHeader *CacheHdr = NULL;
 long		YbNumCatalogCacheMisses;
 long		YbNumCatalogCacheIdMisses[SysCacheSize] = {0};
 long		YbNumCatalogCacheTableMisses[YbNumCatalogCacheTables] = {0};
+long		YbNumCatalogCacheListMisses[YbNumCatalogCacheTables] = {0};
+long		YbNumCatalogCacheNegMisses[YbNumCatalogCacheTables] = {0};
 
 static inline HeapTuple SearchCatCacheInternal(CatCache *cache,
 											   int nkeys,
@@ -1386,13 +1389,6 @@ SetCatCacheList(CatCache *cache,
 												 hashValue, hashIndex);
 
 					/* upon failure, we must start the scan over */
-					/*
-					 * YB: failure is only expected for toasting, which YB
-					 * doesn't support.  By this assumption, we don't have to
-					 * worry about rescaning, which would be a pain since this
-					 * function assumes the scan was already done by the caller
-					 * unlike SearchCatCacheList.
-					 */
 					Assert(ct != NULL);
 				}
 
@@ -2119,6 +2115,10 @@ SearchCatCacheMiss(CatCache *cache,
 		} while (stale);
 
 		table_close(relation, AccessShareLock);
+
+		if (IsYugaByteEnabled() && ct == NULL)
+			YbNumCatalogCacheNegMisses[
+				YbGetCatalogCacheTableIdFromCacheId(cache->id)]++;
 	}
 
 	/*
@@ -2255,6 +2255,120 @@ GetCatCacheHashValue(CatCache *cache,
 
 
 /*
+ * YbBuildCatCacheListFromPreloadedCache
+ *
+ * When a CatCache is fully loaded (yb_cc_is_fully_loaded), build a CatCList
+ * by scanning local hash buckets instead of doing an RPC to the master.
+ * Returns the new CatCList with refcount incremented.
+ *
+ * Code adapted from SetCatCacheList and SearchCatCacheList.
+ *
+ * No invalidation messages are expected to arrive during this function
+ * because we never
+ * open a relation or call anything that triggers AcceptInvalidationMessages.
+ * On OOM, any CatCTup entries created by
+ * CatalogCacheCreateEntry are valid cache entries (refcount 0, c_list NULL)
+ * that remain in the hash buckets for future use.
+ */
+static CatCList *
+YbBuildCatCacheListFromPreloadedCache(CatCache *cache, int nkeys,
+									  Datum *arguments, uint32 lHashValue)
+{
+	List	   *ctlist = NIL;
+	ListCell   *ctlist_item;
+	CatCTup    *ct = NULL;
+	CatCList   *cl = NULL;
+	int			nmembers = 0;
+	int			i = 0;
+	int			scanned = 0;
+	MemoryContext oldcxt;
+	instr_time	yb_start;
+
+	Assert(cache->yb_cc_is_fully_loaded);
+	INSTR_TIME_SET_CURRENT(yb_start);
+
+	for (i = 0; i < cache->cc_nbuckets; i++)
+	{
+		dlist_iter	iter;
+
+		dlist_foreach(iter, &cache->cc_bucket[i])
+		{
+			ct = dlist_container(CatCTup, cache_elem, iter.cur);
+			scanned++;
+
+			if (ct->dead || ct->negative)
+				continue;
+
+			if (!CatalogCacheCompareTuple(cache, nkeys, ct->keys, arguments))
+				continue;
+
+			if (ct->c_list)
+			{
+				/* If the entry already belongs to a list, create a new entry */
+				ct = CatalogCacheCreateEntry(cache, &ct->tuple, NULL,
+											 ct->hash_value,
+											 HASH_INDEX(ct->hash_value,
+														cache->cc_nbuckets));
+				Assert(ct != NULL);
+			}
+
+			ctlist = lappend(ctlist, ct);
+		}
+	}
+
+	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+	nmembers = list_length(ctlist);
+	cl = (CatCList *) palloc(offsetof(CatCList, members) +
+							 nmembers * sizeof(CatCTup *));
+	CatCacheCopyKeys(cache->cc_tupdesc, nkeys, cache->cc_keyno,
+					 arguments, cl->keys);
+	MemoryContextSwitchTo(oldcxt);
+
+	cl->cl_magic = CL_MAGIC;
+	cl->my_cache = cache;
+	cl->refcount = 0;
+	cl->dead = false;
+	cl->ordered = false;
+	cl->nkeys = nkeys;
+	cl->hash_value = lHashValue;
+	cl->n_members = nmembers;
+
+	i = 0;
+	foreach(ctlist_item, ctlist)
+	{
+		cl->members[i++] = ct = (CatCTup *) lfirst(ctlist_item);
+		Assert(ct->c_list == NULL);
+		ct->c_list = cl;
+	}
+	Assert(i == nmembers);
+
+	dlist_push_head(&cache->cc_lists, &cl->cache_elem);
+
+	cl->refcount++;
+	ResourceOwnerEnlargeCatCacheListRefs(CurrentResourceOwner);
+	ResourceOwnerRememberCatCacheListRef(CurrentResourceOwner, cl);
+
+	list_free(ctlist);
+
+	{
+		instr_time	yb_duration;
+		long		duration_us;
+
+		INSTR_TIME_SET_CURRENT(yb_duration);
+		INSTR_TIME_SUBTRACT(yb_duration, yb_start);
+		duration_us = INSTR_TIME_GET_MICROSEC(yb_duration);
+
+		if (duration_us > 10000 || yb_debug_log_catcache_events)
+			elog(LOG, "Built catalog cache list from preloaded cache %d (%s): "
+				 "nkeys %d, %d members, scanned %d entries, took %ld us",
+				 cache->id, cache->cc_relname, nkeys, nmembers, scanned,
+				 duration_us);
+	}
+
+	return cl;
+}
+
+/*
  *	SearchCatCacheList
  *
  *		Generate a list of all tuples matching a partial key (that is,
@@ -2366,6 +2480,18 @@ SearchCatCacheList(CatCache *cache,
 	}
 
 	/*
+	 * YB: If the cache is fully loaded and small enough, build the list from
+	 * local buckets instead of doing an RPC to the master.
+	 */
+	if (cache->yb_cc_is_fully_loaded &&
+		yb_catcache_list_from_preloaded_limit > 0 &&
+		cache->cc_ntup <= yb_catcache_list_from_preloaded_limit)
+	{
+		return YbBuildCatCacheListFromPreloadedCache(cache, nkeys,
+													arguments, lHashValue);
+	}
+
+	/*
 	 * List was not found in cache, so we have to build it by reading the
 	 * relation.  For each matching tuple found in the relation, use an
 	 * existing cache entry if possible, else build a new one.
@@ -2422,9 +2548,11 @@ SearchCatCacheList(CatCache *cache,
 
 		if (IsYugaByteEnabled())
 		{
+			int yb_table_id = YbGetCatalogCacheTableIdFromCacheId(cache->id);
 			YbNumCatalogCacheMisses++;
 			YbNumCatalogCacheIdMisses[cache->id]++;
-			YbNumCatalogCacheTableMisses[YbGetCatalogCacheTableIdFromCacheId(cache->id)]++;
+			YbNumCatalogCacheTableMisses[yb_table_id]++;
+			YbNumCatalogCacheListMisses[yb_table_id]++;
 		}
 
 		/*
@@ -3064,6 +3192,18 @@ long *
 YbGetCatCacheTableMisses()
 {
 	return YbNumCatalogCacheTableMisses;
+}
+
+long *
+YbGetCatCacheListMisses()
+{
+	return YbNumCatalogCacheListMisses;
+}
+
+long *
+YbGetCatCacheNegMisses()
+{
+	return YbNumCatalogCacheNegMisses;
 }
 
 YbCatCListIterator

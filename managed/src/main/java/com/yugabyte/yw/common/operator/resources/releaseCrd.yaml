@@ -70,6 +70,17 @@ spec:
                         Download configugration,
                         we support GCS, S3 and HTTP as download sources for now.
                       type: object
+                      x-kubernetes-validations:
+                        - rule: >-
+                            (has(self.s3) && has(self.s3.paths) && has(self.s3.paths.x86_64) ? 1 : 0) +
+                            (has(self.gcs) && has(self.gcs.paths) && has(self.gcs.paths.x86_64) ? 1 : 0) +
+                            (has(self.http) && has(self.http.paths) && has(self.http.paths.x86_64) ? 1 : 0) == 1
+                          message: "Exactly one x86_64 path must be specified across s3, gcs, and http"
+                        - rule: >-
+                            (has(self.s3) && has(self.s3.paths) && has(self.s3.paths.helmChart) ? 1 : 0) +
+                            (has(self.gcs) && has(self.gcs.paths) && has(self.gcs.paths.helmChart) ? 1 : 0) +
+                            (has(self.http) && has(self.http.paths) && has(self.http.paths.helmChart) ? 1 : 0) == 1
+                          message: "Exactly one helmChart path must be specified across s3, gcs, and http"
                       properties:
                         s3:
                           description: S3 download configuration

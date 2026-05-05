@@ -46,8 +46,9 @@ class AdvisoryLockDocOperationTest : public DocDBTestBase {
   Status Lock(uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
                PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, bool wait) {
     auto schema = CreateSchema();
-    PgsqlLockRequestPB request;
-    PgsqlResponsePB response;
+    auto arena = SharedThreadSafeArena();
+    auto& request = *arena->NewArenaObject<LWPgsqlLockRequestPB>();
+    auto& response = *arena->NewArenaObject<LWPgsqlResponsePB>();
     request.set_lock_mode(mode);
     auto* lock_id = request.mutable_lock_id();
     lock_id->add_lock_partition_column_values()->mutable_value()->set_uint32_value(db_oid);

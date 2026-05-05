@@ -98,6 +98,15 @@ TEST(FormatPgGFlagValueTest, QuotingBehavior) {
   ASSERT_EQ(FormatPgGFlagValue("true", "bool"), "true");
 }
 
+TEST(PgWrapperPathTest, PostgresExecutablePath) {
+  const auto install_root = GetPostgresInstallRoot();
+  const auto executable_path = PgWrapper::GetPostgresExecutablePath();
+
+  ASSERT_EQ(executable_path, JoinPathSegments(install_root, "bin", "postgres"));
+  ASSERT_EQ(DirName(executable_path), JoinPathSegments(install_root, "bin"));
+  ASSERT_EQ(BaseName(executable_path), "postgres");
+}
+
 YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kFlushRegularOnly)(kCompaction));
 
 auto GetFlushCompactFlags(FlushOrCompaction flush_or_compaction) {
@@ -655,6 +664,11 @@ TEST_F(PgWrapperFlagsTest, VerifyGFlagDefaults) {
     if (!tags.contains(FlagTag::kPg)) {
       continue;
     }
+    // Hidden gFlags use GUC_NO_SHOW_ALL on the corresponding GUC, which excludes them from
+    // pg_settings, so ValidateDefaultGucValue cannot read boot_val.
+    if (tags.contains(FlagTag::kHidden)) {
+      continue;
+    }
 
     auto expected_val = flag.default_value;
 
@@ -684,6 +698,11 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
     std::unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
     if (!tags.contains(FlagTag::kPg)) {
+      continue;
+    }
+    // Hidden gFlags use GUC_NO_SHOW_ALL on the corresponding GUC, which excludes them from
+    // pg_settings, so ValidateGucIsRuntime cannot read context.
+    if (tags.contains(FlagTag::kHidden)) {
       continue;
     }
 

@@ -176,6 +176,12 @@
 #define NOTIFY_PAYLOAD_MAX_LENGTH	(BLCKSZ - NAMEDATALEN - 128)
 
 /*
+ * Payload marker for synthetic queue entries that mark the start of a
+ * replicated transaction (see ybFillBeginAsyncQueueEntry).
+ */
+#define YB_ASYNC_QUEUE_BEGIN_MARKER "__yb_begin__"
+
+/*
  * Struct representing an entry in the global notify queue
  *
  * This struct declaration has the maximal length, but in a real queue entry
@@ -341,6 +347,8 @@ static SlruCtlData NotifyCtlData;
 #define QUEUE_MAX_PAGE			(SLRU_PAGES_PER_SEGMENT * 0x10000 - 1)
 
 bool		yb_enable_listen_notify = false;
+bool		yb_test_fatal_after_notifs_queue_write = false;
+int			yb_test_notify_queue_max_pages = 0;
 int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
 int			yb_notifications_poll_sleep_duration_empty_ms = 100;
 
@@ -580,6 +588,45 @@ static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 
 /*
+ * The 'notifications poller' process batches the notifications of a transaction
+ * in-memory. On receiving the corresponding COMMIT record from virtual wal, it
+ * writes this batch to the async queue and sends an acknowledgement to CDC.
+ *
+ * The async queue can have duplicate notifications if the
+ * poller process crashes while/after writing notifications to the async queue
+ * but before sending acknowledgement to CDC. This happens because when the
+ * poller process restarts, it receives the notifications from the unack'd
+ * transaction again (which get written to the async queue again).
+ *
+ * In order to avoid sending these duplicate notifications to the client, we
+ * keep a track of the numbers of notifications scanned so far in the current
+ * txn in scanned_notifs field.
+ *
+ * If a duplicate transaction is found (duplicate txns are always adjancent), we
+ * skip the notifications that have already been scanned ('notifs_to_skip' is
+ * set to 'scanned_notifs' value of the previous transaction).
+ *
+ * begin_xid is the xid extracted from the last BEGIN marker the listener saw.
+ * It is Invalid until the first BEGIN marker is encountered. While it is
+ * Invalid, we skip all non-BEGIN entries because the listener started scanning
+ * mid-transaction and must not deliver a partial transaction (doing so would
+ * also break duplicate detection if the poller crashes and replays).
+ */
+typedef struct YbListenerQueueScanCurrentXactState
+{
+	TransactionId begin_xid;
+	int			scanned_notifs;
+	int			notifs_to_skip;
+} YbListenerQueueScanCurrentXactState;
+
+static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
+{
+	.begin_xid = InvalidTransactionId,
+	.scanned_notifs = 0,
+	.notifs_to_skip = 0
+};
+
+/*
  * Shared memory state used to communicate the initialization status of the
  * 'notifications poller' background worker back to the process that started it.
  */
@@ -642,7 +689,11 @@ static void ybNotifsPollerInit(void);
 static void ybNotifsPollerLoop(void);
 static void ybNotifsPollerProcessRecord(const YbcPgRowMessage *record);
 static void ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record);
+static bool ybTerminateSlowestListener(void);
 static void ybNotifsPollerAddPendingEntriesToQueue(void);
+static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid);
+static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
+static void ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe);
 static void ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 									  AsyncQueueEntry *qe);
 
@@ -1404,6 +1455,17 @@ Exec_ListenCommit(const char *channel)
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	listenChannels = lappend(listenChannels, pstrdup(channel));
 	MemoryContextSwitchTo(oldcontext);
+
+	/*
+	 * If connection manager is used, mark the connection as sticky. Not doing
+	 * so can cause the listening client to miss notifications, while
+	 * non-listening clients receive spurious notifications.
+	 */
+	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Incrementing sticky object count for LISTEN %s", channel);
+		increment_sticky_object_count();
+	}
 }
 
 /*
@@ -1632,6 +1694,22 @@ asyncQueueIsFull(void)
 {
 	int			nexthead;
 	int			boundary;
+
+	/*
+	 * YB test hook: treat the queue as full once the head has advanced
+	 * yb_test_notify_queue_max_pages pages beyond the tail.
+	 */
+	if (yb_test_notify_queue_max_pages > 0)
+	{
+		int			headpage = QUEUE_POS_PAGE(QUEUE_HEAD);
+		int			tailpage = QUEUE_POS_PAGE(QUEUE_TAIL);
+		int			used = (headpage >= tailpage)
+			? headpage - tailpage
+			: (QUEUE_MAX_PAGE + 1 - tailpage) + headpage;
+
+		if (used >= yb_test_notify_queue_max_pages)
+			return true;
+	}
 
 	/*
 	 * The queue is full if creating a new head page would create a page that
@@ -2429,6 +2507,35 @@ asyncQueueProcessPageEntries(volatile QueuePosition *current,
 		 */
 		reachedEndOfPage = asyncQueueAdvance(current, qe->length);
 
+		if (IsYugaByteEnabled())
+		{
+			/*
+			 * YB: txn-begin markers use InvalidOid as dboid; handle them before
+			 * the database filter so every backend can align duplicate
+			 * detection.
+			 */
+			if (ybIsAsyncQueueBeginEntry(qe))
+			{
+				ybAsyncQueueHandleBeginEntry(qe);
+				continue;
+			}
+
+			/*
+			 * Skip if we haven't seen a BEGIN marker yet (listener started
+			 * scanning mid-transaction).
+			 */
+			if (!TransactionIdIsValid(ybListenerQueueScanCurrentXactState.begin_xid))
+				continue;
+
+			if (ybListenerQueueScanCurrentXactState.notifs_to_skip > 0)
+			{
+				ybListenerQueueScanCurrentXactState.notifs_to_skip--;
+				continue;
+			}
+
+			ybListenerQueueScanCurrentXactState.scanned_notifs++;
+		}
+
 		/* Ignore messages destined for other databases */
 		if (qe->dboid == MyDatabaseId)
 		{
@@ -3110,6 +3217,7 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 			Assert(ybNotifsPollerPendingEntries == NIL);
 			StartTransactionCommand();
 			ybNotifsPollerProcessingXid = record->xid;
+			ybNotifsPollerAddRecordToPendingEntries(record);
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_INSERT:
@@ -3123,14 +3231,11 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			ybNotifsPollerAddPendingEntriesToQueue();
-			/*
-			 * TODO(arpan): If the worker crashes here (ie, after writing
-			 * to the queue but before sending ack to CDC via
-			 * YBCCalculatePersistAndGetRestartLSN()), on restart the worker
-			 * will receive the current txn's records again. Consequently, the
-			 * queue will have duplicate notifications. Handle it by adding
-			 * BEGIN and COMMIT entries in the queue.
-			 */
+			if (yb_test_fatal_after_notifs_queue_write)
+				ereport(FATAL,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("test-only: notifications poller simulated crash "
+								"before CDC ack")));
 			YBCCalculatePersistAndGetRestartLSN(record->lsn);
 			ybNotifsPollerPendingEntries = NIL;
 			ybNotifsPollerProcessingXid = InvalidTransactionId;
@@ -3159,14 +3264,118 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+static void
+ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid)
+{
+	int			payloadlen = strlen(YB_ASYNC_QUEUE_BEGIN_MARKER);
+
+	Assert(payloadlen < NOTIFY_PAYLOAD_MAX_LENGTH);
+
+	qe->xid = xid;
+	qe->dboid = InvalidOid;
+	qe->srcPid = MyProcPid;
+	/* Empty channel, then marker as payload. */
+	qe->data[0] = '\0';
+	memcpy(qe->data + 1, YB_ASYNC_QUEUE_BEGIN_MARKER, payloadlen + 1);
+	int			entryLength = AsyncQueueEntryEmptySize + payloadlen;
+
+	entryLength = QUEUEALIGN(entryLength);
+	qe->length = entryLength;
+}
+
+static bool
+ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe)
+{
+	Assert(IsYugaByteEnabled());
+	if (qe->dboid != InvalidOid)
+		return false;
+	if (qe->data[0] != '\0')
+		return false;
+	return (strcmp(qe->data + 1, YB_ASYNC_QUEUE_BEGIN_MARKER) == 0);
+}
+
+static void
+ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
+{
+	Assert(ybIsAsyncQueueBeginEntry(qe));
+
+	if (TransactionIdIsValid(ybListenerQueueScanCurrentXactState.begin_xid) &&
+		ybListenerQueueScanCurrentXactState.begin_xid == qe->xid)
+	{
+		/* found duplicate txn */
+		elog(LOG,
+			 "Listener found duplicate txn BEGIN entry in async queue (xid "
+			 "%d), skipping %d notifications",
+			 qe->xid, ybListenerQueueScanCurrentXactState.scanned_notifs);
+		ybListenerQueueScanCurrentXactState.notifs_to_skip =
+			ybListenerQueueScanCurrentXactState.scanned_notifs;
+		return;
+	}
+
+	ybListenerQueueScanCurrentXactState.begin_xid = qe->xid;
+	ybListenerQueueScanCurrentXactState.scanned_notifs = 0;
+}
+
 /*
- * Add the pending entries to the queue. If the queue is full, wait for it to
- * become empty.
+ * Find the slowest listener (the one furthest behind in the queue) and
+ * terminate it so the queue tail can advance.
+ *
+ * Only terminate if some other listener has fully caught up (position ==
+ * QUEUE_HEAD). If every listener still has scanning to do, killing the
+ * slowest one would not help the others and would just disrupt a session
+ * unnecessarily. This also naturally prevents termination when there is only a
+ * single listener.
+ *
+ * Returns true if SIGTERM was sent, false otherwise.
+ *
+ * Caller must hold NotifyQueueLock in at least SHARED mode.
+ */
+static bool
+ybTerminateSlowestListener(void)
+{
+	QueuePosition minPos = QUEUE_HEAD;
+	int32		minPid = InvalidPid;
+	bool		hasCaughtUpListener = false;
+
+	for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
+	{
+		Assert(QUEUE_BACKEND_PID(i) != InvalidPid);
+
+		if (QUEUE_POS_EQUAL(QUEUE_BACKEND_POS(i), QUEUE_HEAD))
+		{
+			hasCaughtUpListener = true;
+			continue;
+		}
+
+		/* This listener is behind; track the furthest-behind one. */
+		QueuePosition newMin = QUEUE_POS_MIN(minPos, QUEUE_BACKEND_POS(i));
+
+		if (!QUEUE_POS_EQUAL(newMin, minPos))
+		{
+			minPos = newMin;
+			minPid = QUEUE_BACKEND_PID(i);
+		}
+	}
+
+	if (minPid == InvalidPid || !hasCaughtUpListener)
+		return false;
+
+	elog(WARNING,
+		 "NOTIFY queue is full, terminating slowest listener (PID %d)",
+		 minPid);
+	kill(minPid, SIGTERM);
+	return true;
+}
+
+/*
+ * Add the pending entries to the queue. If the queue is full, terminate the
+ * slowest listener to allow the queue tail to advance.
  */
 static void
 ybNotifsPollerAddPendingEntriesToQueue(void)
 {
 	ListCell   *nextQueueEntry = list_head(ybNotifsPollerPendingEntries);
+	bool		sigtermSent = false;
 
 	while (nextQueueEntry != NULL)
 	{
@@ -3175,12 +3384,29 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
 		LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
 		if (asyncQueueIsFull())
 		{
+			/*
+			 * After sending SIGTERM, suppress further signals until the queue
+			 * drains.
+			 */
+			if (!sigtermSent)
+				sigtermSent = ybTerminateSlowestListener();
 			LWLockRelease(NotifyQueueLock);
+
+			/*
+			 * The queue can become full in the middle of writing notifications
+			 * of a transaction. Signal the backends so the fast listeners, if
+			 * any, can read till the end of the queue and the slowest listener
+			 * can be terminated in the next call to
+			 * ybTerminateSlowestListener().
+			 */
+			if (!sigtermSent)
+				SignalBackends();
 			CHECK_FOR_INTERRUPTS();
-			pg_usleep(10000L);	/* sleep for 10ms */
+			pg_usleep(sigtermSent ? 500000L : 10000L);
 			asyncQueueAdvanceTail();
 			continue;
 		}
+		sigtermSent = false;
 		nextQueueEntry = asyncQueueAddEntries(nextQueueEntry);
 		LWLockRelease(NotifyQueueLock);
 	}
@@ -3203,6 +3429,12 @@ static void
 ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 						  AsyncQueueEntry *qe)
 {
+	if (record->action == YB_PG_ROW_MESSAGE_ACTION_BEGIN)
+	{
+		ybFillBeginAsyncQueueEntry(qe, (TransactionId) record->xid);
+		return;
+	}
+
 	HeapTuple	tuple = YBGetHeapTuplesForRecord(record);
 	TupleDesc	desc =
 		CreateTupleDesc(YB_NOTIFICATIONS_NATTS, YbNotificationsAtts);
@@ -3212,6 +3444,7 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 	Assert(!isnull);
 	qe->srcPid = DatumGetInt32(sender_id);
+	qe->xid = (TransactionId) record->xid;
 
 	Datum		dbid = heap_getattr(tuple, yb_db_oid_att.attnum, desc, &isnull);
 

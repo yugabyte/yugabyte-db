@@ -836,11 +836,11 @@ using FastBackwardScanParams = std::tuple<
 
 std::string FastBackwardScanParamsToString(
     const testing::TestParamInfo<FastBackwardScanParams>& param_info) {
-  return yb::Format(
+  return Format(
     "$0_$1_$2",
     std::get<0>(param_info.param) ? "Fast" : "Slow",
     std::get<1>(param_info.param) ? "WithNulls" : "WithoutNulls",
-    yb::AsString(std::get<2>(param_info.param)));
+    AsString(std::get<2>(param_info.param)));
 }
 
 class PgFastBackwardScanTestBase : public PgSingleTServerTest {

@@ -61,6 +61,7 @@ export const usePillStyles = makeStyles((theme) => ({
     }
   },
   small: {},
+  medium: {},
   icon: {},
   ready: {},
   inProgress: {},

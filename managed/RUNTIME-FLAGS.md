@@ -20,7 +20,6 @@
 | "Enable Certificate Config Validation" | "yb.tls.enable_config_validation" | "CUSTOMER" | "Certificate configuration validation during the addition of new certificates." | "Boolean" |
 | "Default Metric Graph Point Count" | "yb.metrics.default_points" | "CUSTOMER" | "Default Metric Graph Point Count, if step is not defined in the query" | "Integer" |
 | "Fetch Batch Size of Task Info" | "yb.task_info_db_query_batch_size" | "CUSTOMER" | "Knob that can be used to make lesser number of calls to DB" | "Integer" |
-| "Use Ansible for provisioning" | "yb.node_agent.use_ansible_provisioning" | "CUSTOMER" | "If enabled use Ansible for provisioning" | "Boolean" |
 | "Notify user on password reset" | "yb.user.send_password_reset_notification" | "CUSTOMER" | "If enabled, user will be notified on password reset" | "Boolean" |
 | "Enable AZ overrides for K8s universes" | "yb.ui.feature_flags.enable_az_overrides_k8s" | "CUSTOMER" | "When enabled, allows editing asymmetric K8s universes and configuring AZ-specific volume size, volume count, and storage class for tserver and master" | "Boolean" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
@@ -44,7 +43,6 @@
 | "Default Kubernetes Memory Size" | "yb.kubernetes.default_memory_size_gb" | "PROVIDER" | "Default Kubernetes Memory Size" | "Integer" |
 | "Minimum Kubernetes Memory Size" | "yb.kubernetes.min_memory_size_gb" | "PROVIDER" | "Minimum Kubernetes Memory Size" | "Integer" |
 | "Maximum Kubernetes Memory Size" | "yb.kubernetes.max_memory_size_gb" | "PROVIDER" | "Maximum Kubernetes Memory Size" | "Integer" |
-| "Enable Ansible Offloading" | "yb.node_agent.ansible_offloading.enabled" | "PROVIDER" | "Offload ansible tasks to the DB nodes." | "Boolean" |
 | "Remote tmp directory" | "yb.filepaths.remoteTmpDirectory" | "PROVIDER" | "A remote temporary directory should be used for performing operations on nodes within the provider scope." | "String" |
 | "Polling interval for GCP Opertion status" | "yb.gcp.operations.status_polling_interval" | "PROVIDER" | "Interval to poll the status of an ongoing GCP resource creation operation." | "Duration" |
 | "GCP Operation Timeout interval" | "yb.gcp.operations.timeout_interval" | "PROVIDER" | "Timeout interval to wait for GCP resource creation operations to complete sucessfully." | "Duration" |
@@ -62,6 +60,7 @@
 | "Show Hyperdisk storage types" | "yb.gcp.show_hyperdisks_storage_type" | "PROVIDER" | "Show Hyperdisk storage types during create/edit universe flow." | "Boolean" |
 | "Configure Clockbound when using cloud providers" | "yb.provider.configure_clockbound_cloud_provisioning" | "PROVIDER" | "Configure clockbound when creating cloud provider based Universes" | "Boolean" |
 | "GCP Connection Draining Timeout" | "yb.gcp.operations.connection_draining_timeout" | "PROVIDER" | "Set the connection draining timeout for the GCP load balancer." | "Duration" |
+| "Enable cgroup configuration" | "yb.node_agent.enable_cgroup_configuration" | "PROVIDER" | "When true, TServer CPU cgroup isolation is configured during provisioning and configure-server. Only effective when user-level systemd is in use." | "Boolean" |
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
@@ -172,6 +171,7 @@
 | "Enable Per Process Metrics" | "yb.ui.feature_flags.enable_per_process_metrics" | "GLOBAL" | "Enable Per Process Metrics" | "Boolean" |
 | "Node Agent Enabler Run Installer" | "yb.node_agent.enabler.run_installer" | "GLOBAL" | "Enable or disable the background installer in node agent enabler" | "Boolean" |
 | "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |
+| "Support bundle perf advisor dump range" | "yb.support_bundle.default_pa_dump_range" | "GLOBAL" | "The start-end duration to collect the perf advisor dump inside the support bundle (in minutes)" | "Integer" |
 | "Number of cloud YBA backups to retain" | "yb.auto_yba_backups.num_cloud_retention" | "GLOBAL" | "When continuous backups feature is enabled only the most recent n backups will be retained in the storage bucket" | "Integer" |
 | "Standby Prometheus scrape interval" | "yb.metrics.scrape_interval_standby" | "GLOBAL" | "Need to increase it in case federation metrics request takes more time  than main Prometheus scrape period to complete" | "String" |
 | "Enable viewing metrics in timezone selected at the metrics page" | "yb.ui.metrics.enable_timezone" | "GLOBAL" | "Enable viewing metrics in timezone selected at the metrics page and will be preserved at session level" | "Boolean" |
@@ -179,7 +179,6 @@
 | "Enable Chunked Encoding for Amazon S3" | "yb.ui.feature_flags.enable_chunked_encoding" | "GLOBAL" | "Enable Chunked Encoding for Amazon S3, mainly used when configuring S3 compatible storage." | "Boolean" |
 | "Restore YBA postgres metadata during Yugaware container restart" | "yb.ha.k8s_restore_skip_dump_file_delete" | "GLOBAL" | "Restore YBA postgres metadata during Yugaware container restart" | "Boolean" |
 | "Node Agent Server Cert Expiry Notice" | "yb.node_agent.server_cert_expiry_notice" | "GLOBAL" | "Duration to start notifying about expiry before node agent server cert actually expires" | "Duration" |
-| "Disable Node Agent Configure Server" | "yb.node_agent.disable_configure_server" | "GLOBAL" | "Disable server configuration RPCs in node agent. Defaults to ansible if it is enabled." | "Boolean" |
 | "Enable Node Agent Message Compression" | "yb.node_agent.enable_message_compression" | "GLOBAL" | "Enable compression for message sent over node agent channel." | "Boolean" |
 | "GCP Blob Delete Retry Count" | "yb.gcp.blob_delete_retry_count" | "GLOBAL" | "Number of times to retry deleting blobs in GCP. This is used to handle the case where the blob deletion fails due to some transient error." | "Integer" |
 | "Node Agent Client Connection Cache Size" | "yb.node_agent.connection_cache_size" | "GLOBAL" | "Cache size for node agent client connections" | "Integer" |
@@ -191,8 +190,6 @@
 | "Node Agent Describe Poll Deadline" | "yb.node_agent.describe_poll_deadline" | "GLOBAL" | "Node agent describe polling deadline." | "Duration" |
 | "Allow Cloud Volume Encryption feature" | "yb.universe.allow_cloud_volume_encryption" | "GLOBAL" | "Allows enabling the volume encryption feature for new universes. Currently only supported for AWS universes." | "Boolean" |
 | "Enable YBC Background Upgrade" | "ybc.upgrade.enable_background_upgrade" | "GLOBAL" | "Enable background upgrade for YBC." | "Boolean" |
-| "Enable Systemd Debug Logging" | "yb.ansible.systemd_debug" | "GLOBAL" | "Enable systemd debug logging for systemctl service management commands." | "Boolean" |
-| "Keep Remote Files from an ansible run" | "yb.ansible.keep_remote_files" | "GLOBAL" | "Keep remote files after ansible run for debugging." | "Boolean" |
 | "Skip Runtime GFlag validation before cluster operations." | "yb.skip_runtime_gflag_validation" | "GLOBAL" | "Skip Runtime GFlag validation before cluster operations." | "Boolean" |
 | "Timeout for backup success marker download" | "ybc.success_marker_download_timeout_secs" | "GLOBAL" | "Timeout for backup success marker download from backup location" | "Integer" |
 | "Enable Performing Automatic Rollback of Edit Operation" | "yb.task.enable_edit_auto_rollback" | "GLOBAL" | "Enable performing automatic rollback of edit operation (if possible)" | "Boolean" |
@@ -246,12 +243,6 @@
 | "Query character limit" | "yb.query_stats.slow_queries.query_length" | "UNIVERSE" | "Query character limit in slow queries." | "Integer" |
 | "Slow queries retention period" | "yb.query_stats.slow_queries.retention_period_days" | "UNIVERSE" | "Data retention period (in days) if slow query aggregation is enabled." | "Integer" |
 | "Disable Slow queries aggregation" | "yb.query_stats.slow_queries.disable_aggregation" | "UNIVERSE" | "If enabled, slow queries data will be stored for universe, once per hour." | "Boolean" |
-| "Ansible Strategy" | "yb.ansible.strategy" | "UNIVERSE" | "strategy can be linear, mitogen_linear or debug" | "String" |
-| "Ansible Connection Timeout Duration" | "yb.ansible.conn_timeout_secs" | "UNIVERSE" | "This is the default timeout for connection plugins to use." | "Integer" |
-| "Ansible Verbosity Level" | "yb.ansible.verbosity" | "UNIVERSE" | "verbosity of ansible logs, 0 to 4 (more verbose)" | "Integer" |
-| "Ansible Debug Output" | "yb.ansible.debug" | "UNIVERSE" | "Debug output (can include secrets in output)" | "Boolean" |
-| "Ansible Diff Always" | "yb.ansible.diff_always" | "UNIVERSE" | "Configuration toggle to tell modules to show differences when in 'changed' status, equivalent to --diff." | "Boolean" |
-| "Ansible Local Temp Directory" | "yb.ansible.local_temp" | "UNIVERSE" | "Temporary directory for Ansible to use on the controller." | "String" |
 | "Enable Performance Advisor" | "yb.perf_advisor.enabled" | "UNIVERSE" | "Defines if performance advisor is enabled for the universe or not" | "Boolean" |
 | "Performance Advisor Run Frequency" | "yb.perf_advisor.universe_frequency_mins" | "UNIVERSE" | "Defines performance advisor run frequency for universe" | "Integer" |
 | "Performance Advisor connection skew threshold" | "yb.perf_advisor.connection_skew_threshold_pct" | "UNIVERSE" | "Defines max difference between avg connections count usage and node connection count before connection skew recommendation is raised" | "Double" |
@@ -295,6 +286,7 @@
 | "Max threshold for follower lag" | "yb.checks.follower_lag.max_threshold" | "UNIVERSE" | "The maximum time that we allow a tserver to be behind its peers" | "Duration" |
 | "Wait for server ready timeout" | "yb.checks.wait_for_server_ready.timeout" | "UNIVERSE" | "Controls the max time for server to finish locally bootstrapping" | "Duration" |
 | "Memory check timeout" | "yb.dbmem.checks.timeout" | "UNIVERSE" | "Timeout for memory check in secs" | "Long" |
+| "CPU cgroup precheck timeout" | "yb.checks.cpu_cgroup.timeout" | "UNIVERSE" | "Timeout (in seconds) for the CPU cgroup precheck script executed on each on-prem node" | "Long" |
 | "Wait time before doing restore during xCluster setup task" | "yb.xcluster.sleep_time_before_restore" | "UNIVERSE" | "The amount of time to sleep (wait) before executing restore subtask during xCluster setup; it is useful because xCluster setup also drops the database before restore and the sleep makes sure the drop operation has reached all the nodes" | "Duration" |
 | "Use server broadcast address for yb_backup" | "yb.backup.use_server_broadcast_address_for_yb_backup" | "UNIVERSE" | "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore" | "Boolean" |
 | "Slow Queries Timeout" | "yb.query_stats.slow_queries.timeout_secs" | "UNIVERSE" | "Timeout in secs for slow queries" | "Long" |
@@ -302,6 +294,7 @@
 | "YSQL Queries Timeout for Consistency Check Operations" | "yb.universe.consistency_check.ysql_timeout_secs" | "UNIVERSE" | "Timeout in secs for YSQL queries" | "Long" |
 | "Number of cores to keep" | "yb.num_cores_to_keep" | "UNIVERSE" | "Controls the configuration to set the number of cores to keep in the Ansible layer" | "Integer" |
 | "Whether to check YBA xCluster object is in sync with DB replication group" | "yb.xcluster.ensure_sync_get_replication_status" | "UNIVERSE" | "It ensures that the YBA XCluster object for tables that are in replication is in sync with replication group in DB. If they are not in sync and this is true, getting the xCluster object will throw an exception and the user has to resync the xCluster config." | "Boolean" |
+| "Skip PITR snapshot schedules for DB-scoped xCluster configs" | "yb.xcluster.db_scoped.skip_snapshot_schedules" | "UNIVERSE" | "When enabled, YBA skips creating PITR snapshot schedules during DB-scoped xCluster/DR setup. DR failover then uses the DB-side XClusterFailover RPC which creates on-demand snapshots at failover time instead of relying on continuous PITR snapshot schedules." | "Boolean" |
 | "Network Load balancer health check ports" | "yb.universe.network_load_balancer.custom_health_check_ports" | "UNIVERSE" | "Ports to use for health checks performed by the network load balancer. Invalid and duplicate ports will be ignored. For GCP, only the first health check port would be used." | "Integer List" |
 | "Network Load balancer health check protocol" | "yb.universe.network_load_balancer.custom_health_check_protocol" | "UNIVERSE" | "Protocol to use for health checks performed by the network load balancer" | "Protocol" |
 | "Network Load balancer health check paths" | "yb.universe.network_load_balancer.custom_health_check_paths" | "UNIVERSE" | "Paths probed by HTTP/HTTPS health checks performed by the network load balancer. Paths are mapped one-to-one with the custom health check ports runtime configuration." | "String List" |
@@ -322,6 +315,7 @@
 | "Verify current cluster state (from db perspective) before running task" | "yb.task.verify_cluster_state" | "UNIVERSE" | "Verify current cluster state (from db perspective) before running task" | "Boolean" |
 | "Wait time for xcluster/DR replication setup and edit RPCs" | "yb.xcluster.operation_timeout" | "UNIVERSE" | "Wait time for xcluster/DR replication setup and edit RPCs." | "Duration" |
 | "Maximum timeout for xCluster bootstrap producer RPC call" | "yb.xcluster.bootstrap_producer_timeout" | "UNIVERSE" | "If the RPC call to create the bootstrap streams on the source universe does not return before this timeout, the task will retry with exponential backoff until it fails." | "Duration" |
+| "Maximum timeout for xCluster streams to reach Running status" | "yb.xcluster.stream_running_status_wait_timeout" | "UNIVERSE" | "Maximum timeout to wait for stream statuses associated with xCluster setup tables to reach Running before failing the task." | "Duration" |
 | "Timeout for xCluster Pause RPC call" | "yb.xcluster.pause_rpc_timeout" | "UNIVERSE" | "Timeout for xCluster Pause RPC call; if the SetUniverseReplicationEnabled RPC times out, you can increase this runtime config to alleviate the issue" | "Duration" |
 | "Maximum timeout for delete replication RPC on source during failover" | "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout" | "UNIVERSE" | "If the source universe is down, this RPC call will time out during failover operation, increasing the failover task execution time; The lower the value, the less time the failover task will take to complete. If it is set to zero, this subtask during failover will be skipped providing a faster failover execution time." | "Duration" |
 | "Enable xCluster DR Semi-automatic Mode" | "yb.xcluster.db_scoped.creationEnabled" | "UNIVERSE" | "When enabled, new xCluster DR configurations use Semi-automatic mode." | "Boolean" |
@@ -354,6 +348,7 @@
 | "Queue Wait Time for Tasks" | "yb.task.queue_wait_time" | "UNIVERSE" | "Wait time for a queued task before the running task can be evicted forcefully." | "Duration" |
 | "Common Name Required for Certificates" | "yb.tls.cert_manager.common_name_required" | "UNIVERSE" | "If true, YBA will add commonName to the CertificateRequest sent to cert manager." | "Boolean" |
 | "Skip OpenTelemetry Operator Check" | "yb.universe.skip_otel_operator_check" | "UNIVERSE" | "If true, YBA will skip checking for Opentelemetry operator installation on the cluster." | "Boolean" |
+| "Skip CPU Cgroup Precheck" | "yb.universe.skip_cpu_cgroup_check" | "UNIVERSE" | "If true, YBA will skip the on-prem CPU cgroup precheck that verifies the yb-tserver is in the yugabyte-db cgroup and that the yugabyte user can create child cgroups. This precheck runs during ConfigureDBApis when enabling multi-tenancy QoS on an on-prem universe." | "Boolean" |
 | "Max memory for OpenTelemetry Collector process." | "yb.universe.otel_collector_max_memory" | "UNIVERSE" | "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file." | "Integer" |
 | "Allow disable master on non-master node subtask" | "yb.universe.allow_disable_master_on_non_master_node_subtask" | "UNIVERSE" | "If true, YBA runs the subtask that stops the YB-Master process on nodes that are not master nodes in the cluster configuration or YBA configuration." | "Boolean" |
 | "Wait Attempts for major catalog upgrade" | "yb.upgrade.wait_attempts_for_major_catalog_upgrade" | "UNIVERSE" | "Wait Attempts for major catalog upgrade" | "Integer" |
@@ -385,3 +380,6 @@
 | "Enable Canary Upgrade" | "yb.upgrade.enable_canary_upgrade" | "UNIVERSE" | "Enable canary upgrade for the universe" | "Boolean" |
 | "Number of nodes to move in a given batch during full move" | "yb.task.full_move.roll_batch_size" | "UNIVERSE" | "Set numer of nodes to move in a given batch during full move. Default is 0 which means no batching, i.e. move all pods in a single go" | "Long" |
 | "Run Immediate Backup On Schedule Resume" | "yb.backup.run_immediate_backup_on_resume" | "UNIVERSE" | "When true, resumes a stopped backup schedule by running a full or incremental backup immediately instead of waiting for the next scheduled time. This will only change the default functionality, and which can still be overwritten with an api payload." | "Boolean" |
+| "Allow users to enable multi-tenancy" | "yb.universe.allow_multi_tenancy" | "UNIVERSE" | "If this flag is enabled, user will be able to enable the multi-tenancy QoS feature on universes." | "Boolean" |
+| "Flush Tablets Timeout on Stop TServer" | "yb.task.flush_tablets_timeout_on_stop_tserver" | "UNIVERSE" | "Timeout for flushing tablets when stopping tserver" | "Duration" |
+| "Skip YCQL precheck when enabling multi-tenancy" | "yb.universe.multitenancy_skip_ycql_precheck" | "UNIVERSE" | "If this flag is enabled, the precheck that requires YCQL to be disabled is skipped" | "Boolean" |

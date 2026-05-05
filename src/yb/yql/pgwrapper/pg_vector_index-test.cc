@@ -13,7 +13,11 @@
 
 #include <queue>
 
+#include "yb/client/client_error.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/meta_cache.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/table.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
@@ -52,7 +56,7 @@
 
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_string(vector_index_backend);
@@ -123,7 +127,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
     auto packing_mode = GetPackingMode();
@@ -1095,7 +1099,7 @@ TEST_P(PgVectorIndexTest, EfSearch) {
   constexpr int kSmallEf = 1;
   constexpr int kBigEf = 1000;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
 
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
@@ -1351,6 +1355,37 @@ class PgDistributedVectorIndexTest
   virtual int GetCleanupSplitTabletsIntervalSec() const {
     return 1;
   }
+
+  // May return stale partitioning if the table was cached before the split.
+  Result<std::vector<client::internal::RemoteTabletPtr>> LookupAllTabletsWithRetry(
+      const client::YBTablePtr& table, size_t num_retries = 1) {
+    LOG(INFO) << "Lookup tablets for table: " << table->ToString();
+    const auto deadline = CoarseMonoClock::Now() + 30s * kTimeMultiplier;
+    auto result = client_->LookupAllTabletsFuture(table, deadline).get();
+    for (size_t retry = 0; retry < num_retries && !result.ok(); ++retry) {
+      if (client::ClientError(result.status()) !=
+          client::ClientErrorCode::kTablePartitionListIsStale) {
+        break;
+      }
+      LOG(INFO) << "Lookup retry #" << retry << " status: " << result.status();
+      // It is required mark the table partitions as stale, so the next lookup will refresh the
+      // partition list from the master.
+      table->MarkPartitionsAsStale();
+      result = client_->LookupAllTabletsFuture(table, deadline).get();
+    }
+    return result;
+  }
+
+  Result<size_t> LookupNumTabletsWithRetry(
+      const client::YBTablePtr& table, size_t num_retries = 1) {
+    auto result = LookupAllTabletsWithRetry(table, num_retries);
+    RETURN_NOT_OK(result);
+    return result->size();
+  }
+
+  Result<size_t> LookupNumTablets(const client::YBTablePtr& table) {
+    return LookupNumTabletsWithRetry(table, /* num_retries = */ 0);
+  }
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgDistributedVectorIndexTest);
@@ -1471,6 +1506,111 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
   ASSERT_LE(num_found, kNumRows);
 
   // TODO(vector_index): Verify compacted tablets content once GH29378 is fixed.
+}
+
+TEST_P(PgDistributedVectorIndexTest, AnotherVectorIndexCreationAfterManualSplit) {
+  constexpr size_t kNumRows = 80;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1));
+
+  const auto main_table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto main_table = ASSERT_RESULT(client_->OpenTable(main_table_id));
+
+  // Warm meta cache with pre-split layout.
+  auto count = ASSERT_RESULT(conn.FetchAllAsString("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(kNumRows, std::stoi(count));
+
+  // Keep a stale base-table schema snapshot (without vector indexes) so that
+  // RefreshTablePartitions(base) does not erase vector-index entries from MetaCache.
+  ASSERT_TRUE(main_table->index_map().empty());
+
+  ASSERT_OK(CreateIndex(conn));
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  LOG(INFO) << "Creating another index";
+  ASSERT_OK(CreateIndex(conn, "another"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+TEST_P(PgDistributedVectorIndexTest, MetaCacheBaseTableStaleLookupAfterSplit) {
+  constexpr size_t kNumRows = 40;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  const auto main_table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto main_table = ASSERT_RESULT(client_->OpenTable(main_table_id));
+
+  // Warm up cache with pre-split tablet layout.
+  ASSERT_EQ(ASSERT_RESULT(LookupNumTablets(main_table)), 1);
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  ASSERT_OK(CreateIndex(conn));
+
+  const auto vector_table_id = ASSERT_RESULT(GetTableIDFromTableName(kVectorIndexName));
+  auto vector_table = ASSERT_RESULT(client_->OpenTable(vector_table_id));
+
+  // Vector index lookup should observe post-split partitions.
+  ASSERT_GE(ASSERT_RESULT(LookupNumTabletsWithRetry(vector_table)), 2);
+
+  // The expectation here is to have main table still see stale partition list, because
+  // nothing was triggered for the main table since the split.
+  ASSERT_EQ(1, ASSERT_RESULT(LookupNumTablets(main_table)));
+
+  auto query_vector = Vector(RandomUniformInt(0UL, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+  ASSERT_GE(static_cast<float>(num_found), kNumRows * 0.9);
+  ASSERT_LE(num_found, kNumRows);
+
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+TEST_P(PgDistributedVectorIndexTest, MetaCacheLookupAfterDropWithoutReads) {
+  constexpr size_t kNumRows = 20;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  // Warm up main table cache before split.
+  const auto main_table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto main_table = ASSERT_RESULT(client_->OpenTable(main_table_id));
+  ASSERT_EQ(ASSERT_RESULT(LookupNumTablets(main_table)), 1);
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  // Create vector index after the base table split and then drop the table
+  // without running any vector query. The main table may still have stale
+  // partition information in cache at this point.
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
 }
 
 ////////////////////////////////////////////////////////

@@ -15,6 +15,8 @@
 
 #include <utility>
 
+#include "yb/yql/pggate/pg_tools.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -55,7 +57,7 @@ struct YbcContextArgs {
   const char* strarg2 = nullptr;
 };
 
-auto MakeYbc(Reason reason, const YbcContextArgs& args = {}) {
+[[nodiscard]] auto MakeYbc(Reason reason, const YbcContextArgs& args = {}) {
   return YbcFlushDebugContext{
       .reason = std::to_underlying(reason),
       .uintarg = args.uintarg,
@@ -63,7 +65,11 @@ auto MakeYbc(Reason reason, const YbcContextArgs& args = {}) {
       .strarg1 = args.strarg1,
       .strarg2 = args.strarg2};
 }
+
+constexpr const char* kAcquireLockFormat = "before acquiring lock on $0";
+
 } // namespace
+
 
 YbcFlushDebugContext PgFlushDebugContext::YbcBeginSubTxn(
     SubTransactionId id, const char* name) {
@@ -109,124 +115,126 @@ YbcFlushDebugContext PgFlushDebugContext::YbcEndOfTopLevelStmt() {
 PgFlushDebugContext PgFlushDebugContext::Make(const YbcFlushDebugContext& ctx) {
   switch (static_cast<Reason>(ctx.reason)) {
     case Reason::kBeginSubTxn:
-      return DoMake(
+      return {
           "due to begin of new subtransaction for $0 (current SubTransactionId: $1)",
-          ctx.strarg1 ? ctx.strarg1 : "unnamed txn", ctx.uintarg);
+          ctx.strarg1 ? ctx.strarg1 : "unnamed txn", ctx.uintarg};
     case Reason::kEndSubTxn:
-      return DoMake("due to end of subtransaction with SubTransactionId $0", ctx.uintarg);
+      return {"due to end of subtransaction with SubTransactionId $0", ctx.uintarg};
     case Reason::kGetTxnSnapshot:
-      return DoMake(
+      return {
           "before getting a new transaction snapshot (current read point: $0) in "
-          "Read Committed isolation", ctx.uintarg);
+          "Read Committed isolation", ctx.uintarg};
     case Reason::kUnbatchableSqlStmtInSqlFunc:
-      return DoMake(
+      return {
           "before executing non-DML statement $0 (see CmdType in nodes.h) in SQL function '$1'",
-          ctx.uintarg, ctx.strarg1);
+          ctx.uintarg, ctx.strarg1};
     case Reason::kUnbatchablePlStmt:
-      return DoMake(
-          "before executing PL statement of type '$0' in function '$1'", ctx.strarg1, ctx.strarg2);
+      return {
+          "before executing PL statement of type '$0' in function '$1'", ctx.strarg1, ctx.strarg2};
     case Reason::kUnbatchableSqlStmtInPlFunc:
-      return DoMake(
+      return {
           "before executing SQL statement with command tag '$0' in PL function '$1'",
-          ctx.strarg1, ctx.strarg2);
+          ctx.strarg1, ctx.strarg2};
     case Reason::kCopyBatch:
-      return DoMake(
+      return {
           "after copying batch of tuples for table '$0' (total tuples processed: $1)",
-          ctx.strarg1, ctx.uintarg);
+          ctx.strarg1, ctx.uintarg};
     case Reason::kSwitchToDbCatalogVersionMode:
-      return DoMake(
+      return {
           "switch from global to per-database catalog version mode (current DB OID: $0)",
-          ctx.oidarg);
+          ctx.oidarg};
     case Reason::kEndOfTopLevelStmt:
-      return DoMake("at the end of top-level statement");
+      return {"at the end of top-level statement"};
   }
   DCHECK(false);
-  return DoMake("for unknown reason");
+  return {"for unknown reason"};
 }
 
 PgFlushDebugContext PgFlushDebugContext::CatalogTablePrefetch() {
-  return DoMake("before prefetching catalog tables");
+  return {"before prefetching catalog tables"};
 }
 
 PgFlushDebugContext PgFlushDebugContext::ConflictingRead(
     PgOid table_oid, std::string_view table_name) {
-  return DoMake(
+  return {
       "before performing a non-bufferable read operation on table '$0' with OID $1",
-      table_name, table_oid);
+      table_name, table_oid};
 }
 
 PgFlushDebugContext PgFlushDebugContext::BufferFull(uint64_t sz_bytes) {
-  return DoMake("due to buffer being full (ops size: $0 bytes)", sz_bytes);
+  return {"due to buffer being full (ops size: $0 bytes)", sz_bytes};
 }
 
 PgFlushDebugContext PgFlushDebugContext::CommitTxn(std::optional<PgOid> ddl_db_oid) {
-  return DoMake(
+  return {
       ddl_db_oid
           ? "due to commit of plain transaction (contains DDL ops on database with OID $0)"
-          : "due to commit of plain transaction", ddl_db_oid);
+          : "due to commit of plain transaction", ddl_db_oid};
 }
 
 PgFlushDebugContext PgFlushDebugContext::ActivateSubTxn(SubTransactionId id) {
-  return DoMake("due to activation of subtransaction with SubTransactionId $0", id);
+  return {"due to activation of subtransaction with SubTransactionId $0", id};
 }
 
 PgFlushDebugContext PgFlushDebugContext::ChangeTxnSnapshot(uint64_t read_point) {
-  return DoMake("before restoring transaction snapshot corresponding to read point $0", read_point);
+  return {"before restoring transaction snapshot corresponding to read point $0", read_point};
 }
 
 PgFlushDebugContext PgFlushDebugContext::ExportSnapshot(
     PgOid oid, std::optional<uint64_t> read_point) {
-  return DoMake(
+  return {
       read_point
           ? "before exporting transaction snapshot (read point: $1) on database with OID $0"
           : "before exporting transaction snapshot on database with OID $0",
-      oid, read_point);
+      oid, read_point};
 }
 
 PgFlushDebugContext PgFlushDebugContext::ImportSnapshot(std::string_view snapshot_id) {
-  return DoMake("before importing snapshot '$0'", snapshot_id);
+  return {"before importing snapshot '$0'", snapshot_id};
 }
 
 PgFlushDebugContext PgFlushDebugContext::EndOperationsBuffering() {
-  return DoMake("at the end of operations buffering");
+  return {"at the end of operations buffering"};
 }
 
 PgFlushDebugContext PgFlushDebugContext::EnterDdlTxnMode() {
-  return DoMake("due to entering DDL mode");
+  return {"due to entering DDL mode"};
 }
 
 PgFlushDebugContext PgFlushDebugContext::ExitDdlTxnMode() {
-  return DoMake("due to exiting DDL mode");
+  return {"due to exiting DDL mode"};
 }
 
 PgFlushDebugContext PgFlushDebugContext::ExecuteDdl() {
-  return DoMake("before executing DDL statement");
+  return {"before executing DDL statement"};
 }
 
-PgFlushDebugContext PgFlushDebugContext::AcquireLock(std::string_view lock_id) {
-  return DoMake("before acquiring lock on $0", lock_id);
+PgFlushDebugContext PgFlushDebugContext::AcquireLock(const YbcAdvisoryLockId& lock_id) {
+  return {kAcquireLockFormat, lock_id};
 }
 
-PgFlushDebugContext PgFlushDebugContext::ReleaseLock(std::string_view lock_id) {
-  return DoMake("before releasing lock on $0", lock_id);
+PgFlushDebugContext PgFlushDebugContext::AcquireLock(const YbcObjectLockId& lock_id) {
+  return {kAcquireLockFormat, lock_id};
+}
+
+PgFlushDebugContext PgFlushDebugContext::ReleaseLock(const YbcObjectLockId& lock_id) {
+  return {"before releasing lock on $0", lock_id};
 }
 
 PgFlushDebugContext PgFlushDebugContext::ConflictingKeyWrite(
       PgOid table_oid, std::string_view table_name, std::string_view key) {
-  return DoMake(
+  return {
       key.empty()
           ? "before enqueueing a conflicting write operation on table '$0' with OID $1"
           : "before enqueueing a conflicting write operation on table '$0' with OID $1 (key: $2)",
-      table_oid, table_name, AsHexPrinter{key});
+      table_oid, table_name, AsHexPrinter{key}};
 }
 
-template <class... Args>
-PgFlushDebugContext PgFlushDebugContext::DoMake(const char* format, const Args&... args) {
-  if (PREDICT_TRUE(!yb_debug_log_docdb_requests)) {
-    return {};
+template<class... Args>
+PgFlushDebugContext::PgFlushDebugContext(const char* format, const Args&... args) {
+  if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
+    value_ = Format(format, args...);
   }
-  return PgFlushDebugContext{
-      std::invoke<std::string(*)(const char*, const Args&...)>(&Format, format, args...)};
 }
 
 } // namespace yb::pggate

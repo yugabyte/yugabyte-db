@@ -90,6 +90,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/protobuf_util.h"
@@ -283,6 +284,23 @@ TEST_F(TabletSplitITest, ParentTabletCleanup) {
 
   // This will make client first try to access deleted tablet and that should be handled correctly.
   ASSERT_OK(CheckRowsCount(kNumRows));
+}
+
+TEST_F(TabletSplitITest, BootstrapStateCopiedToChildren) {
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(
+      kDefaultNumRows, /*wait_for_intents=*/true));
+
+  for (auto& tablet_peer : ASSERT_RESULT(ListTestTableActiveTabletPeers())) {
+    ASSERT_OK(tablet_peer->FlushBootstrapState());
+  }
+  StringWaiterLogSink yes_sink{": Initialized TabletBootstrapStateManager, found a file ? yes"};
+  StringWaiterLogSink no_sink{": Initialized TabletBootstrapStateManager, found a file ? no"};
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(30s));
+  // 2 children * 3 replicas.
+  ASSERT_EQ(yes_sink.GetEventCount(), 6);
+  ASSERT_EQ(no_sink.GetEventCount(), 0);
 }
 
 class TabletSplitNoBlockCacheITest : public TabletSplitITest {

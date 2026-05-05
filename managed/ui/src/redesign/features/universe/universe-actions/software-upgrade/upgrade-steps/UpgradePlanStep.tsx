@@ -1,8 +1,8 @@
 import React from 'react';
 import { makeStyles, Typography } from '@material-ui/core';
-import { useTranslation } from 'react-i18next';
+import { DragDropContext, Draggable, Droppable, DropResult } from 'react-beautiful-dnd';
 import { useFormContext } from 'react-hook-form';
-import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
+import { useTranslation } from 'react-i18next';
 
 import { PauseSlot } from './components/PauseSlot';
 import type { AzUpgradeStep, DBUpgradeFormFields } from '../types';

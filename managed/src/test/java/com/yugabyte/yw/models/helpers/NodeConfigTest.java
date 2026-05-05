@@ -56,8 +56,6 @@ public class NodeConfigTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
-    keyInfo.vaultFile = "/path/to/vault_file";
-    keyInfo.vaultPasswordFile = "/path/to/vault_password";
     keyInfo.installNodeExporter = false;
     keyInfo.skipProvisioning = false;
     keyInfo.sshPort = 22;

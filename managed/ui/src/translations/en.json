@@ -95,6 +95,10 @@
         }
       }
     },
+    "toast": {
+      "dbUpgradeRollbackRequestFailedLabel": "DB upgrade rollback request failed",
+      "dbUpgradeFinalizeRequestFailedLabel": "DB upgrade finalize request failed"
+    },
     "queryError": {
       "failedToFetchUniverseList": "Error fetching universe list.",
       "failedToFetchCustomerRuntimeConfig": "Failed to fetch runtime configurations for the current customer.",
@@ -284,6 +288,24 @@
             "upgradePlan": "UPGRADE PLAN",
             "upgradePace": "UPGRADE PACE"
           },
+          "summaryCard": {
+            "targetVersion": "TARGET VERSION",
+            "upgradeMethod": "UPGRADE METHOD",
+            "upgradePlan": "UPGRADE PLAN",
+            "upgradePace": "UPGRADE PACE",
+            "canaryUpgrade": "Canary Upgrade",
+            "expressUpgrade": "Express Upgrade",
+            "masterServers": "Master Servers",
+            "readReplica": "read replica",
+            "pause": "PAUSE",
+            "rollingUpgrade": "Rolling Upgrade",
+            "concurrentUpgrade": "Concurrent Upgrade",
+            "batch": "BATCH",
+            "maxSize": "MAX SIZE",
+            "waitTime": "WAIT TIME",
+            "nodeCount_one": "{{count}} Node",
+            "nodeCount_other": "{{count}} Nodes"
+          },
           "dbVersionStep": {
             "stepTitle": "Database Version",
             "stepDescription": "What database version do you want to upgrade to?",
@@ -315,7 +337,8 @@
             "canary": {
               "title": "Canary upgrade",
               "tag": "Advanced",
-              "description": "Includes monitoring pauses and mid-upgrade rollback opportunities."
+              "description": "Includes monitoring pauses and mid-upgrade rollback opportunities.",
+              "unavailableTooltip": "Not available for this universe. Learn more about <dbUpgradeRequirementsLink>canary upgrade requirements</dbUpgradeRequirementsLink>."
             },
             "upgradePace": {
               "title": "Upgrade Pace",
@@ -347,8 +370,170 @@
             "upgrade": "Upgrade"
           },
           "toast": {
-            "dbUpgradeInitiated": "Database upgrade initiated",
-            "dbUpgradeFailed": "Database upgrade request failed"
+            "dbUpgradeFailed": "Database upgrade request failed",
+            "dbUpgradePrecheckFailed": "Database pre-check request failed"
+          }
+        },
+        "rollbackModal": {
+          "modalTitle": "Roll Back Upgrade",
+          "confirmationMessage": "Are you sure you want to roll back to",
+          "rollbackPaceTitle": "ROLLBACK PACE",
+          "rollbackPaceRolling": {
+            "postUpgrade": "Rolling rollback",
+            "upgradeInProgress": "Rolling rollback of nodes in upgraded AZs"
+          },
+          "rollbackPaceConcurrent": {
+            "postUpgrade": "Concurrent rollback of all nodes",
+            "upgradeInProgress": "Concurrent rollback of all upgraded nodes"
+          },
+          "concurrentRollbackDowntimeWarning": "<bold>Requires downtime.</bold> The universe will be unavailable while the rollback is in progress.",
+          "upgradedAzsLabel": "Upgraded AZs:",
+          "submitLabel": "Proceed to Roll Back",
+          "rollingOptions": {
+            "maxNodesPerBatch": "Max nodes per batch:",
+            "maxNodesPerBatchTooltip": "Applies to T-Servers.\nMasters are upgraded one at a time.",
+            "waitBetweenBatches": "Wait between batches:",
+            "waitBetweenBatchesTooltip": "Applies between all batches\n(Masters and T-Servers)."
+          },
+          "toast": {
+            "rollbackFailedLabel": "Rollback request failed"
+          },
+          "validation": {
+            "maxNodesPerBatchMinimum": "Must be at least 1.",
+            "maxNodesPerBatchMaximum": "Must be less than or equal to the maxium batch size {{max}}.",
+            "waitBetweenBatchesMin": "Must be 0 or greater."
+          }
+        },
+        "finalizeModal": {
+          "modalTitle": "One last reminder before we proceed...",
+          "noRollBackAfterFinalize": "After the upgrade is finalized, you won't be able to roll back.",
+          "makeSureToEvaluatePerformance": "Make sure you evaluate the universe performance before finalizing the upgrade.",
+          "evaluationLink": "View recommended evaluation steps",
+          "submitLabel": "Proceed to finalize the upgrade",
+          "toast": {
+            "finalizeUpgradeFailedLabel": "Finalize DB upgrade request failed"
+          }
+        },
+        "dbUpgradeManagementSidePanel": {
+          "title": "Upgrade Monitor",
+          "descriptionTitle": "DESCRIPTION",
+          "description": "Upgrade to YugabyteDB {{targetDbVersion}}",
+          "ysqlMajorUpgrade": "YSQL Major Upgrade",
+          "progressPanel": {
+            "title": "Upgrade Progress",
+            "rollBack": "Roll Back",
+            "resumeUpgrade": "Resume Upgrade",
+            "finalizeUpgradeNow": "Finalize Upgrade Now",
+            "temporaryRestrictions": {
+              "tag": "Temporary Restrictions",
+              "ddlAndSomeOperationsBlockedForUpgrade": "DDLs and <dbUpgradeImpactDocLink>some operations</dbUpgradeImpactDocLink> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "someOperationsBlockedForUpgrade": "<dbUpgradeImpactDocLink>Some operations</dbUpgradeImpactDocLink> are blocked and will remain unavailable until the upgrade is completed.",
+              "universeMayHaveSlowerPerformance": "The universe may have slower performance."
+            },
+            "assessPerformance": {
+              "upgrade": {
+                "title": "Before resuming upgrade, assess your universe's performance",
+                "description": "Monitor your universe and application performance. If everything looks normal, resume the upgrade."
+              },
+              "finalize": {
+                "title": "Before finalizing, assess your universe's performance",
+                "description": "Compare the performance of PostgreSQL statements before and after upgrade."
+              }
+            },
+            "operationBanner": {
+              "preCheckInProgressBanner": "Pre-check in progress. This may take a few minutes.",
+              "preCheckSuccessBanner": "Universe is ready for upgrade.",
+              "preCheckFailedBanner": "Pre-check failed. Universe does not meet upgrade requirements. <viewDetailsLink>View error details</viewDetailsLink>",
+              "upgradeInProgressBanner": "Upgrade in progress. DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+              "upgradeSuccessBanner": "Upgrade completed.",
+              "upgradeFailedBanner": "Failed to upgrade. <viewDetailsLink>View error details</viewDetailsLink>"
+            },
+            "preCheckStage": {
+              "title": "Pre-Check",
+              "description": "Checks upgrade readiness and flags anything that needs fixing."
+            },
+            "upgradeMasterServersStage": {
+              "title": "Upgrade Master Servers",
+              "description": "This step upgrades master servers to <bold>{{version}}</bold>."
+            },
+            "upgradeAzStage": {
+              "title": "Upgrade AZ : {{azLabel}}",
+              "description": "This step upgrades T-servers in {{azName}} to <bold>{{version}}</bold>.",
+              "assessPerformanceTitle": "Before resuming upgrade, assess your universe's performance",
+              "assessPerformanceDescription": "Monitor your universe and application performance. If everything looks normal, resume the upgrade."
+            },
+            "finalizeStage": {
+              "title": "Finalize Upgrade",
+              "assessPerformanceTitle": "Before finalizing, assess your universe's performance",
+              "assessPerformanceDescription": "Compare the performance of PostgreSQL statements before and after upgrade."
+            },
+            "toast": {
+              "resumeUpgradeFailedLabel": "Resume DB upgrade request failed"
+            }
+          }
+        },
+        "clusterBanner": {
+          "actions": {
+            "viewDetails": "View Details",
+            "openUpgradeMonitor": "Open Upgrade Monitor",
+            "upgradeDatabase": "Upgrade Database",
+            "retry": "Retry"
+          },
+          "precheckInProgress": {
+            "title": "Upgrade pre-check in progress.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "precheckIssuesFound": {
+            "title": "Upgrade pre-check found issues.",
+            "description": "Universe does not meet DB upgrade requirements.",
+            "descriptionPg15": "Universe does not meet PG15 upgrade requirements."
+          },
+          "precheckPassed": {
+            "title": "Pre-check passed · <dateLabel>{{date}}</dateLabel>.",
+            "descriptionPg15": "Universe is ready for PG15 upgrade.",
+            "description": "Universe is ready for DB upgrade."
+          },
+          "upgradingSoftware": {
+            "title": "Upgrading software.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+            "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "softwareUpgradeFailed": {
+            "title": "Software upgrade failed."
+          },
+          "upgradePausedForMonitoring": {
+            "title": "Upgrade paused for monitoring.",
+            "description": "Review universe health, then resume or roll back."
+          },
+          "finalizeOrRollBack": {
+            "title": "Finalize or Roll Back Upgrade.",
+            "description": "Assess universe performance and finalize or roll back.",
+            "rollBack": "Roll Back",
+            "finalizeUpgradeNow": "Finalize Upgrade Now"
+          },
+          "upgradeAborted": {
+            "title": "Upgrade aborted.",
+            "description": "Upgrade was canceled because universe does not meet upgrade requirements."
+          },
+          "rollingBack": {
+            "title": "Rolling back upgrade.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+            "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "rollbackFailed": {
+            "title": "Failed to roll back."
+          },
+          "finalizing": {
+            "title": "Finalizing upgrade.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+            "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "finalizeFailed": {
+            "title": "Failed to finalize upgrade."
+          },
+          "upgradeCompleted": {
+            "title": "Upgrade completed. Universe is now on {{targetDbVersion}}.",
+            "description": "Assess performance and <rollBackLinkButton>roll back</rollBackLinkButton> if needed."
           }
         }
       },
@@ -423,18 +608,14 @@
       "paUniverseStatus": {
         "enableTitle": "Enable Performance Monitoring",
         "disableTitle": "Disable Performance Monitoring",
-        "enablePaUniverseSuccess": "Successfully enabled  Performance Monitoring to the universe",
-        "enablePaUniverseFailure": "Failed to  Performance Monitoring to the universe",
-        "disablePaUniverseSuccess": "Successfully disabled Performance Monitoring for the universe",
-        "disablePaUniverseFailure": "Failed to disable Performance Monitoring to the universe",
+        "enablePaUniverseFailure": "Failed to enable Performance Monitoring for the universe",
+        "disablePaUniverseFailure": "Failed to disable Performance Monitoring for the universe",
         "subText": "Are you sure you want to {{action}} Performance Monitoring for the universe <strong>{{universeName}}</strong>?",
         "enableAdvancedObservability": "Enable Advanced Observability",
         "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This will enable additional metrics export to Prometheus.",
-        "enableAdvancedObservabilitySuccess": "Successfully enabled Advanced Observability for the universe",
         "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
         "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
         "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This will disable additional metrics export to Prometheus.",
-        "disableAdvancedObservabilitySuccess": "Successfully disabled Advanced Observability for the universe",
         "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe"
       },
       "pgCompatibility": {
@@ -1187,6 +1368,7 @@
           "status": {
             "Initializing": "Initializing",
             "Replicating": "Replicating",
+            "Paused": "Paused",
             "Switchover in Progress": "Switchover in Progress",
             "Failover in Progress": "Failover in Progress",
             "Halted": {
@@ -1201,6 +1383,7 @@
             "Ready to replicate": "Ready to replicate",
             "Waiting for DR": "Waiting for DR",
             "Replicating data": "Replicating data",
+            "Replication paused": "Replication paused",
             "Preparing for switchover": "Preparing for switchover",
             "Switching to DR replica": "Switching to DR replica",
             "Universe marked as DR failed": "Marked as DR failed",
@@ -1210,6 +1393,7 @@
             "Unconfigured for DR": "Unconfigured",
             "Bootstrapping": "Bootstrapping",
             "Receiving data, Ready for reads": "Receiving data, Ready for reads",
+            "Replication paused": "Replication paused",
             "Switching to DR primary": "Switching to DR primary",
             "Universe marked as DR failed": "Marked as DR failed",
             "undefined": "Undefined"
@@ -2654,7 +2838,8 @@
         "Success": "Completed",
         "Running": "In Progress",
         "Abort": "Aborting",
-        "Aborted": "Aborted"
+        "Aborted": "Aborted",
+        "Paused": "Paused"
       },
       "progress": {
         "title": "Progress",
@@ -2668,6 +2853,7 @@
       },
       "banner": {
         "viewDetails": "View Details",
+        "retry": "Retry",
         "taskProgress": "{{percent}}%",
         "opNotAvailable": "Some operations are not available while the current operation is in progress",
         "softwareUpgradeFailed": "Software Upgrade Failed",
@@ -3694,7 +3880,7 @@
           "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
           "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps.",
           "expertResilienceUninferable": "<b>Invalid configuration!</b> RF {{rf}} requires either {{rf}} AZs or a minimum of {{rf}} total nodes. The current placement falls below this requirement.",
-          "expertAzBlank":"<b>Invalid configuration!</b> Availability zone cannot be left blank."
+          "expertAzBlank": "<b>Invalid configuration!</b> Availability zone cannot be left blank."
         }
       },
       "instanceSettings": {

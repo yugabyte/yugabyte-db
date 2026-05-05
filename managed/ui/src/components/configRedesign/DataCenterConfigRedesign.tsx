@@ -99,6 +99,10 @@ export const DataCenterConfigRedesign = ({
       (config: any) => config.key === RuntimeConfigKey.METRICS_EXPORT_FEATURE_FLAG
     )?.value === 'true';
   const shouldShowTelemetryProviderTab = isExportLogEnabled || isMetricsExportEnabled;
+  const isNewPerfAdvisorUIEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (c: any) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
+    )?.value === 'true';
 
   const defaultTab = isAvailable(currentCustomer.data.features, 'config.infra')
     ? ConfigTabKey.INFRA
@@ -269,7 +273,10 @@ export const DataCenterConfigRedesign = ({
               title={t('tab.perfAdvisor.tabLabel')}
               key="perf-advisor-config"
             >
-              <PerfAdvisorOverview activeTab={params.section} />
+              <PerfAdvisorOverview
+                activeTab={params.section}
+                isNewPerfAdvisorUIEnabled={isNewPerfAdvisorUIEnabled}
+              />
             </Tab>
           )}
         </YBTabsWithLinksPanel>

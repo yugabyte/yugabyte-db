@@ -560,7 +560,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       int rollback_till_ddl_state_index = 0);
 
   Status ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data,
-                              int rollback_till_ddl_state_index = 0);
+                              int rollback_till_ddl_state_index = 0,
+                              bool is_success = true);
 
   Status YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                     const std::vector<DdlLogEntry>& ddl_log_entries,
@@ -847,7 +848,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   //
   // Remember that OIDs are cached at TServers so you may want to use InvalidateTserverOidCaches()
   // after calling this function.
-  Status AdvanceOidCounters(const NamespaceId& namespace_id);
+  // Overrides SnapshotCoordinatorContext::AdvanceOidCounters. Also callable directly
+  // from backup/restore and clone paths.
+  Status AdvanceOidCounters(const NamespaceId& namespace_id) override;
 
   // Invalidate all the TServer OID caches in this universe.  After this returns, each TServer cache
   // will be effectively invalidated when that TServer receives a heartbeat response from master.
@@ -1598,13 +1601,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Find all CDCSDK streams that contain non eligible tables like indexes, mat views etc. in
   // their metadata.
-  Status FindCDCSDKStreamsForNonEligibleTables(TableStreamIdsMap* non_user_tables_to_streams_map);
+  Status FindCDCSDKStreamsForNonEligibleTables(
+      TableStreamIdsMap* non_eligible_tables_to_streams_map);
 
   // Returns true if the table is eligible for CDCSDK streams. 'allow_tables_without_primary_key' is
   // used only when 'check_schema' is sent as 'true'.
   bool IsTableEligibleForCDCSDKStream(
       const TableInfoPtr& table_info, const TableInfo::ReadLock& lock, bool check_schema,
-      const bool allow_tables_without_primary_key) const;
+      const bool allow_tables_without_primary_key,
+      const bool allow_cdc_used_syscatalog_tables) const;
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
@@ -1647,20 +1652,35 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableStreamIdsMap& unprocessed_tables_to_streams_map, bool non_eligible_table_cleanup,
       const LeaderEpoch& epoch);
 
+  // Process the deletion of entries for ineligible tables from cdc_state table.
+  Status ProcessTablesToBeDeletedFromCDCStateTable(
+      const TableStreamIdsMap& ineligible_tables_to_streams_map, const LeaderEpoch& epoch);
+
   Status AddTableForRemovalFromCDCSDKStream(
+      const std::unordered_set<TableId>& table_ids, const CDCStreamInfoPtr& stream);
+
+  Status AddTableForDeletionFromCDCStateTable(
       const std::unordered_set<TableId>& table_ids, const CDCStreamInfoPtr& stream);
 
   Status ValidateStreamForTableRemoval(const CDCStreamInfoPtr& stream);
 
   Status ValidateTableForRemovalFromCDCSDKStream(
-      const scoped_refptr<TableInfo>& table, bool check_for_ineligibility);
+      const scoped_refptr<TableInfo>& table, bool check_for_ineligibility,
+      bool allow_tables_without_primary_key = false, bool allow_cdc_used_syscatalog_tables = false);
 
   // Validate the streams in 'cdcsdk_unprocessed_unqualified_tables_to_streams_' for table removal
   // and get the StreamInfo.
   Status FindCDCSDKStreamsForUnprocessedUnqualifiedTables(
       TableStreamIdsMap* tables_to_be_removed_streams_map);
 
+  // Gets the ineligible qualified tables and associated streams from
+  // 'cdcsdk_ineligible_tables_to_streams_' and returns them in the provided map.
+  Status FindCDCSDKStreamsForIneligibleTables(TableStreamIdsMap* ineligible_tables_to_streams_map);
+
   void RemoveStreamsFromUnprocessedRemovedTableMap(
+      const TableId& table_id, const std::unordered_set<xrepl::StreamId>& stream_ids);
+
+  void RemoveStreamsFromIneligibleTableMap(
       const TableId& table_id, const std::unordered_set<xrepl::StreamId>& stream_ids);
 
   // Find all the CDC streams that have been marked as provided state.
@@ -1765,7 +1785,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status BackfillMetadataForXRepl(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
-  Result<TabletInfoPtr> GetTabletInfo(TabletIdView tablet_id) override EXCLUDES(mutex_);
+  Result<TabletInfoPtr> GetTabletInfo(TabletIdView tablet_id) const override EXCLUDES(mutex_);
 
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
@@ -2265,7 +2285,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // partitions_vtable_cache_refresh_secs seconds.
   void RebuildYQLSystemPartitions();
 
-  Result<TabletInfoPtr> GetTabletInfoUnlocked(TabletIdView tablet_id) REQUIRES_SHARED(mutex_);
+  Result<TabletInfoPtr> GetTabletInfoUnlocked(TabletIdView tablet_id) const REQUIRES_SHARED(mutex_);
 
   Status DoSplitTablet(
       const TabletInfoPtr& source_tablet_info, const std::vector<std::string>& split_encoded_keys,
@@ -2425,6 +2445,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   };
   // retained_by_cdcsdk_ is a subset of hidden_tablets_.
   std::unordered_map<TabletId, HiddenReplicationTabletInfo> retained_by_cdcsdk_ GUARDED_BY(mutex_);
+
+  // Stores the mapping between dropped / re-written colocated tables -> tablet id and hide time.
+  std::unordered_map<TableId, std::pair<TabletId, HybridTime>> colocated_tables_retained_by_cdcsdk_
+      GUARDED_BY(mutex_);
 
   // TODO(jhe) Cleanup how we use ScheduledTaskTracker, move is_running and util functions to class.
   // Background task for deleting parent split tablets retained by xCluster streams.
@@ -2921,6 +2945,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
 
+  bool SkipRemovalOfHiddenColocatedTableFromTablet(
+      const TableInfoPtr& table, const TabletInfo& tablet_info,
+      const ScheduleMinRestoreTime& schedule_min_restore_time);
+
   // Checks the colocated table is hidden and is not within the retention of any snapshot schedule
   // or covered by any live snapshot. If the checks pass sends a request to the relevant tserver
   // to remove this table from its metadata for the parent tablet.
@@ -2980,8 +3008,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // This method returns all tables in the namespace based on the criteria specified by
   // 'allows_tables_without_primary_key'.
   std::vector<TableInfoPtr> FindAllTablesForCDCSDK(
-      const NamespaceId& ns_id, const bool allow_tables_without_primary_key)
-      REQUIRES_SHARED(mutex_);
+      const NamespaceId& ns_id, const bool allow_tables_without_primary_key,
+      const bool include_catalog_tables = false) REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table.
   std::vector<CDCStreamInfoPtr> GetXReplStreamsForTable(
@@ -3066,7 +3094,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
 
-  void ProcessXReplParentTabletDeletionPeriodically();
+  void ProcessXReplHiddenObjectDeletionPeriodically();
 
   // Currently, there are 2 cases where a tablet is retained by CDCSDK:
   //   1. The table of such tablet was dropped, however, there was atleast one active stream on
@@ -3075,7 +3103,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   //   2. Such tablet was split and is intended to kept hidden till the time all streams complete
   //   their streaming from this tablet (aka start streaming from its children tablets).
   // This method processes all such tablets and deletes the ones which are eligible for deletion.
-  Status DoProcessCDCSDKTabletDeletion();
+  Status DoProcessCDCSDKTabletDeletion(
+      std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets);
+
+  Status DoProcessCDCSDKColocatedTableDeletion(
+      const std::unordered_map<TableId, std::pair<TabletId, HybridTime>>& hidden_colocated_tables)
+      EXCLUDES(mutex_);
+
+  void DoProcessCDCSDKHiddenObjectDeletion() EXCLUDES(mutex_);
 
   void RecordCDCSDKHiddenTablets(
       const std::vector<TabletInfoPtr>& tablets, const TabletDeleteRetainerInfo& delete_retainer)
@@ -3098,6 +3133,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status LoadUniverseReplicationBootstrap() REQUIRES(mutex_);
 
   bool CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) EXCLUDES(mutex_);
+
+  bool CDCSDKShouldRetainHiddenColocatedTable(const TableId& table_id) EXCLUDES(mutex_);
+
+  void UpdateHideTimeInHiddenColocatedTableToCDCSDKMap(const TableInfo& table) REQUIRES(mutex_);
 
   void CDCSDKPopulateDeleteRetainerInfoForTabletDrop(
       const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const
@@ -3294,12 +3333,25 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // In-memory map containing user tables to be removed from a CDCSDK stream. Will be
   // populated by two entities:
   // 1. Table removal requested by yb-admin command
-  // 2. Automatic table removal by UpdatePeersAndMetrics for tables not of interest/expired.
+  // 2. Automatic table removal by UpdatePeersAndMetrics for eligible tables not of
+  // interest/expired.
   // Will be refreshed on master restart / leadership change through the funcion:
   //  'FindAllUnproccesedUnqualifiedTablesInCDCSDKStream'
   std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>>
       cdcsdk_unprocessed_unqualified_tables_to_streams_
           GUARDED_BY(cdcsdk_unqualified_table_removal_mutex_);
+
+  mutable MutexType cdcsdk_ineligible_table_removal_mutex_;
+  // There can be cdc_state table entries for ineligible tables due to the bug (GHI #30773) in
+  // dynamic table addition workflow. This in-memory map is used to track such tables and their
+  // associated streams to removed their associated tablet entries from cdc_state table. This will
+  // be populated by UpdatePeersAndMetrics for ineligible tables which become 'not of interest' or
+  // expired.
+  // This is not refreshed on master restart / leadership change. If master restarts, entries in
+  // this map will be lost. But the UpdatePeersAndMetrics will be able to refill the previously lost
+  // entries.
+  std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>>
+      cdcsdk_ineligible_tables_to_streams_ GUARDED_BY(cdcsdk_ineligible_table_removal_mutex_);
 
   std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>> cdcsdk_tables_to_stream_map_
       GUARDED_BY(mutex_);

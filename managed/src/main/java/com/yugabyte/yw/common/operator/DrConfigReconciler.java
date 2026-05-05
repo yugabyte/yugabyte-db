@@ -85,6 +85,24 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
       String resourceNamespace = drConfig.getMetadata().getNamespace();
       log.info("Creating DR config: {}", resourceName);
 
+      // Validate spec universes resolve before we stamp a finalizer or create the task.
+      String specSourceName = drConfig.getSpec().getSourceUniverse();
+      String specTargetName = drConfig.getSpec().getTargetUniverse();
+      Universe specSourceUniverse =
+          operatorUtils.getUniverseFromNameAndNamespace(
+              cust.getId(), specSourceName, resourceNamespace);
+      Universe specTargetUniverse =
+          operatorUtils.getUniverseFromNameAndNamespace(
+              cust.getId(), specTargetName, resourceNamespace);
+      if (specSourceUniverse == null || specTargetUniverse == null) {
+        String reason =
+            buildMissingUniverseReason(
+                specSourceName, specSourceUniverse, specTargetName, specTargetUniverse);
+        log.warn("DR config {} cannot be created: {}", resourceName, reason);
+        updateDrConfigCrStatus(drConfig, "Failed to create task. " + reason + ".", null);
+        return;
+      }
+
       // Set finalizer if not already set
       ObjectMeta objectMeta = drConfig.getMetadata();
       if (CollectionUtils.isEmpty(objectMeta.getFinalizers())) {
@@ -114,12 +132,12 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
   }
 
   // Handles multiple cases by comparing CR spec with database model:
-  // Case 1: Failover operation (targetUniverse is empty string)
-  // Case 2: Switchover operation (source and target swapped compared to DB)
-  // Case 3: Replace replica operation (source unchanged, target changed to different universe)
-  // Case 4: Restart operation (source unchanged, target changed from empty to new universe)
-  // Case 5: Pause/Resume operation (paused field changed)
-  // Case 6: Database list update (databases differ from DB)
+  // Case 1: Failover        - targetUniverse is empty string (non-halted only)
+  // Case 2: Restart         - DR config is halted; restart in spec direction
+  // Case 3: Switchover      - source/target swapped (non-halted only)
+  // Case 4: Replace replica - source unchanged, target changed (non-halted only)
+  // Case 5: Pause/Resume    - paused field changed
+  // Case 6: Database list update
   // Case 7: No change needed
   @Override
   protected void updateActionReconcile(DrConfig drConfig, Customer cust) throws Exception {
@@ -158,11 +176,7 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
 
       String specTargetName = drConfig.getSpec().getTargetUniverse();
       String specSourceName = drConfig.getSpec().getSourceUniverse();
-
-      Universe currentSourceUniverse =
-          Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
-      Universe currentTargetUniverse =
-          Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+      String namespace = drConfig.getMetadata().getNamespace();
 
       // Case 1: Failover - targetUniverse is empty string
       if (specTargetName != null && specTargetName.isEmpty()) {
@@ -171,30 +185,59 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
           handleFailover(drConfig, cust, status);
           return;
         }
-        // Already halted post-failover, no action needed
         log.debug("DR config {} already in halted state, skipping failover", resourceName);
         return;
       }
 
-      // Case 2: Switchover - source and target are swapped compared to DB
-      if (specSourceName.equals(currentTargetUniverse.getName())
-          && specTargetName.equals(currentSourceUniverse.getName())) {
+      // Resolve spec universe names (which are YBUniverse CR names) to YBA universe UUIDs.
+      // String-comparing against Universe.getName() is unsafe because the YBA-internal
+      // universe name is suffixed with a creation epoch (e.g. "dr-source-1507547201"),
+      // while spec.sourceUniverse holds the short CR name ("dr-source").
+      Universe specSourceUniverse =
+          operatorUtils.getUniverseFromNameAndNamespace(cust.getId(), specSourceName, namespace);
+      Universe specTargetUniverse =
+          operatorUtils.getUniverseFromNameAndNamespace(cust.getId(), specTargetName, namespace);
+
+      if (specSourceUniverse == null || specTargetUniverse == null) {
+        String reason =
+            buildMissingUniverseReason(
+                specSourceName, specSourceUniverse, specTargetName, specTargetUniverse);
+        log.warn("DR config {} cannot be updated: {}", resourceName, reason);
+        updateDrConfigCrStatus(drConfig, "Failed to create task. " + reason + ".", null);
+        return;
+      }
+
+      UUID specSourceUuid = specSourceUniverse.getUniverseUUID();
+      UUID specTargetUuid = specTargetUniverse.getUniverseUUID();
+      UUID currentSourceUuid = xClusterConfig.getSourceUniverseUUID();
+      UUID currentTargetUuid = xClusterConfig.getTargetUniverseUUID();
+
+      // Case 2: Halted DR config - only restart is valid.
+      // After failover, xClusterConfig source/target reflect the pre-failover direction
+      // and are not a reliable signal of intent; switchover and replace-replica must
+      // not run on a halted config.
+      if (drConfigModel.isHalted()) {
+        log.info(
+            "DR config {} requires restart (halted, spec source={}, target={})",
+            resourceName,
+            specSourceName,
+            specTargetName);
+        handleRestart(drConfig, cust, drConfigModel);
+        return;
+      }
+
+      // Case 3: Switchover - source and target swapped (non-halted only)
+      if (specSourceUuid.equals(currentTargetUuid) && specTargetUuid.equals(currentSourceUuid)) {
         log.info("DR config {} requires switchover (source/target swapped)", resourceName);
         handleSwitchover(drConfig, cust, status);
         return;
       }
 
-      // Case 3 & 4: Source unchanged, target changed (replace replica or restart)
-      if (specSourceName.equals(currentSourceUniverse.getName())
-          && !specTargetName.equals(currentTargetUniverse.getName())) {
-        // Check if this is a restart (DR was in halted state) or replace replica
-        if (drConfigModel.isHalted()) {
-          log.info("DR config {} requires restart (halted state, new target)", resourceName);
-          handleRestart(drConfig, cust, drConfigModel);
-        } else {
-          log.info("DR config {} requires replace replica (target changed)", resourceName);
-          handleReplaceReplica(drConfig, cust, drConfigModel, xClusterConfig);
-        }
+      // Case 4: Replace replica - source unchanged, target changed (non-halted only;
+      // halted was handled above and routed to restart).
+      if (specSourceUuid.equals(currentSourceUuid) && !specTargetUuid.equals(currentTargetUuid)) {
+        log.info("DR config {} requires replace replica (target changed)", resourceName);
+        handleReplaceReplica(drConfig, cust, drConfigModel, xClusterConfig);
         return;
       }
 
@@ -311,6 +354,14 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     drConfigModel.refresh();
     // Check if any update is required
     if (requiresUpdate(drConfig, drConfigModel)) {
+      if (specHasUnresolvableUniverse(drConfig) && statusAlreadyReflectsMissingUniverse(drConfig)) {
+        log.debug(
+            "NoOp Action: DR Config {} has unresolvable universes and status already"
+                + " reflects this; skipping requeue",
+            resourceName);
+        workqueue.resetRetries(mapKey);
+        return;
+      }
       log.debug("NoOp Action: DR Config {} requires update, requeuing Update", resourceName);
       workqueue.requeue(
           mapKey, OperatorWorkQueue.ResourceAction.UPDATE, false /* incrementRetry */);
@@ -331,38 +382,63 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
 
     String specTargetName = drConfig.getSpec().getTargetUniverse();
     String specSourceName = drConfig.getSpec().getSourceUniverse();
+    String namespace = drConfig.getMetadata().getNamespace();
 
-    // Check for failover: target is empty string
+    // Failover: target is empty string on a non-halted config
     if (specTargetName != null && specTargetName.isEmpty()) {
-      if (!drConfigModel.isHalted() && xClusterConfig.getTargetUniverseUUID() != null) {
-        return true;
-      }
+      return !drConfigModel.isHalted() && xClusterConfig.getTargetUniverseUUID() != null;
+    }
+
+    // Halted: any non-empty target means restart is required.
+    if (drConfigModel.isHalted()) {
+      return specTargetName != null && !specTargetName.isEmpty();
+    }
+
+    Customer cust;
+    try {
+      cust = operatorUtils.getOperatorCustomer();
+    } catch (Exception e) {
+      log.warn("requiresUpdate: failed to get operator customer: {}", e.getMessage());
       return false;
     }
 
-    Universe currentSourceUniverse =
-        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
-    Universe currentTargetUniverse =
-        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-
-    // Check for switchover: source and target are swapped
-    if (specSourceName.equals(currentTargetUniverse.getName())
-        && specTargetName.equals(currentSourceUniverse.getName())) {
+    Universe specSourceUniverse;
+    Universe specTargetUniverse;
+    try {
+      specSourceUniverse =
+          operatorUtils.getUniverseFromNameAndNamespace(cust.getId(), specSourceName, namespace);
+      specTargetUniverse =
+          operatorUtils.getUniverseFromNameAndNamespace(cust.getId(), specTargetName, namespace);
+    } catch (Exception e) {
+      log.warn(
+          "requiresUpdate: failed to resolve spec universes for DR config {}: {}",
+          drConfig.getMetadata().getName(),
+          e.getMessage());
+      return false;
+    }
+    if (specSourceUniverse == null || specTargetUniverse == null) {
       return true;
     }
 
-    // Check for replace replica or restart: source unchanged, target changed
-    if (specSourceName.equals(currentSourceUniverse.getName())
-        && !specTargetName.equals(currentTargetUniverse.getName())) {
+    UUID specSourceUuid = specSourceUniverse.getUniverseUUID();
+    UUID specTargetUuid = specTargetUniverse.getUniverseUUID();
+    UUID currentSourceUuid = xClusterConfig.getSourceUniverseUUID();
+    UUID currentTargetUuid = xClusterConfig.getTargetUniverseUUID();
+
+    // Switchover (non-halted only)
+    if (specSourceUuid.equals(currentTargetUuid) && specTargetUuid.equals(currentSourceUuid)) {
       return true;
     }
 
-    // Check for pause/resume
+    // Replace replica (non-halted only)
+    if (specSourceUuid.equals(currentSourceUuid) && !specTargetUuid.equals(currentTargetUuid)) {
+      return true;
+    }
+
     if (requiresPauseResumeUpdate(drConfig, xClusterConfig)) {
       return true;
     }
 
-    // Check for database list change
     return requiresDatabaseUpdate(drConfig, drConfigModel);
   }
 
@@ -664,6 +740,21 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     return null;
   }
 
+  private static String buildMissingUniverseReason(
+      String sourceName, Universe sourceUniverse, String targetName, Universe targetUniverse) {
+    if (sourceUniverse == null && targetUniverse == null) {
+      return "source universe '"
+          + sourceName
+          + "' and target universe '"
+          + targetName
+          + "' do not exist";
+    }
+    if (sourceUniverse == null) {
+      return "source universe '" + sourceName + "' does not exist";
+    }
+    return "target universe '" + targetName + "' does not exist";
+  }
+
   private void updateDrConfigCrStatus(DrConfig drConfig, String message, UUID taskUUID) {
     try {
       DrConfigStatus status = drConfig.getStatus();
@@ -682,5 +773,29 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     } catch (Exception e) {
       log.error("Failed to update DR config CR status for {}", drConfig.getMetadata().getName(), e);
     }
+  }
+
+  private boolean specHasUnresolvableUniverse(DrConfig drConfig) {
+    try {
+      Customer cust = operatorUtils.getOperatorCustomer();
+      String ns = drConfig.getMetadata().getNamespace();
+      Universe source =
+          operatorUtils.getUniverseFromNameAndNamespace(
+              cust.getId(), drConfig.getSpec().getSourceUniverse(), ns);
+      Universe target =
+          operatorUtils.getUniverseFromNameAndNamespace(
+              cust.getId(), drConfig.getSpec().getTargetUniverse(), ns);
+      return source == null || target == null;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  private boolean statusAlreadyReflectsMissingUniverse(DrConfig drConfig) {
+    DrConfigStatus status = drConfig.getStatus();
+    if (status == null || status.getMessage() == null) {
+      return false;
+    }
+    return status.getMessage().contains("does not exist");
   }
 }

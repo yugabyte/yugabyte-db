@@ -213,8 +213,8 @@ void RowsResult::SetPagingState(YBqlOp *op) {
   // If there is a paging state in the response, fill in the table ID also and serialize the
   // paging state as bytes.
   if (op->response().has_paging_state()) {
-    QLPagingStatePB *paging_state = op->mutable_response()->mutable_paging_state();
-    paging_state->set_table_id(op->table()->id());
+    auto *paging_state = op->response().mutable_paging_state();
+    paging_state->ref_table_id(op->table()->id());
     paging_state->set_schema_version(op->table()->schema().version());
     SetPagingState(*paging_state);
   }
@@ -225,14 +225,21 @@ void RowsResult::SetPagingState(const QLPagingStatePB& paging_state) {
   CHECK(paging_state.SerializeToString(&paging_state_));
 }
 
+void RowsResult::SetPagingState(const LWQLPagingStatePB& paging_state) {
+  std::string temp;
+  paging_state.AppendToString(&temp);
+  paging_state_ = std::move(temp);
+}
+
 void RowsResult::SetPagingState(RowsResult&& other) {
   paging_state_ = std::move(other.paging_state_);
 }
 
 void RowsResult::OverrideSchemaVersionInPagingState(uint32_t schema_version) {
   LOG_IF(DFATAL, paging_state_.empty()) << "PagingState is not available";
-  QLPagingStatePB paging_state;
-  paging_state.ParseFromString(paging_state_);
+  auto arena = SharedThreadSafeArena();
+  auto& paging_state = *arena->NewArenaObject<LWQLPagingStatePB>();
+  CHECK_OK(paging_state.ParseFromSlice(paging_state_));
   paging_state.set_schema_version(schema_version);
   SetPagingState(paging_state);
 }

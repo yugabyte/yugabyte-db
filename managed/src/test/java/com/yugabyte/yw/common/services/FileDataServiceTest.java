@@ -163,16 +163,12 @@ public class FileDataServiceTest extends FakeDBApplication {
   private void fillKeyInfo(String directory, String provisionDir, AccessKey.KeyInfo key) {
     key.publicKey = directory + "public.key";
     key.privateKey = directory + "private.key";
-    key.vaultFile = directory + "vault.file";
-    key.vaultPasswordFile = directory + "vault.password";
     key.provisionInstanceScript = provisionDir + "provision_instance.py";
   }
 
   private void validateKeyInfo(AccessKey.KeyInfo expKeyInfo, AccessKey.KeyInfo repKeyInfo) {
     assertEquals(expKeyInfo.publicKey, repKeyInfo.publicKey);
     assertEquals(expKeyInfo.privateKey, repKeyInfo.privateKey);
-    assertEquals(expKeyInfo.vaultFile, repKeyInfo.vaultFile);
-    assertEquals(expKeyInfo.vaultPasswordFile, repKeyInfo.vaultPasswordFile);
     assertEquals(expKeyInfo.provisionInstanceScript, repKeyInfo.provisionInstanceScript);
   }
 

@@ -101,6 +101,7 @@
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -502,6 +503,15 @@ Status TabletServer::Init() {
   // our heartbeat thread will loop until successfully connecting.
   RETURN_NOT_OK(ValidateMasterAddressResolution());
 
+#ifdef __linux__
+  if (cgroup_manager_) {
+    RETURN_NOT_OK_PREPEND(cgroup_manager_->Init(),
+                          "Could not init TServer cgroup manager");
+    RETURN_NOT_OK_PREPEND(cgroup_manager_->RegisterMetrics(metric_registry()),
+                          "Could not register cgroup metrics");
+  }
+#endif
+
   RETURN_NOT_OK(DbServerBase::Init());
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
@@ -644,7 +654,7 @@ Status TabletServer::WaitInited() {
 }
 
 void TabletServer::AutoInitServiceFlags() {
-  const int32 num_cores = base::NumCPUs();
+  const int32 num_cores = NumEffectiveCPUs();
 
   if (FLAGS_num_concurrent_backfills_allowed == -1) {
     const int32 num_threads = std::max(1, std::min(8, num_cores / 2));
@@ -769,7 +779,15 @@ Status TabletServer::Start() {
 
   RETURN_NOT_OK(heartbeater_->Start());
   ysql_lease_manager_->StartTSLocalLockManager();
-  RETURN_NOT_OK(connectivity_poller_->Start());
+  {
+    Cgroup* conn_cgroup = nullptr;
+#ifdef __linux__
+    if (cgroup_manager_) {
+      conn_cgroup = cgroup_manager_->SystemMedCgroup();
+    }
+#endif
+    RETURN_NOT_OK(connectivity_poller_->Start(conn_cgroup));
+  }
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
@@ -780,6 +798,11 @@ Status TabletServer::Start() {
   }
 
   RETURN_NOT_OK(maintenance_manager_->Init());
+#ifdef __linux__
+  if (cgroup_manager_) {
+    maintenance_manager_->SetCgroup(cgroup_manager_->SystemMedCgroup());
+  }
+#endif
 
   if (FLAGS_enable_ysql) {
     ScheduleCheckLaggingCatalogVersions();
@@ -814,6 +837,12 @@ void TabletServer::Shutdown() {
   if (xcluster_consumer) {
     xcluster_consumer->Shutdown();
   }
+
+#ifdef __linux__
+  if (cgroup_manager_) {
+    cgroup_manager_->Shutdown();
+  }
+#endif
 
   maintenance_manager_->Shutdown();
   heartbeater_->Shutdown();
@@ -1936,13 +1965,13 @@ Status TabletServer::CheckYsqlLaggingCatalogVersions() {
   for (const auto& [datid, local_catalog_version] : rows) {
     db_local_catalog_versions_map[datid].push_back(local_catalog_version);
   }
-  LOG(INFO) << "db_local_catalog_versions_map: " << yb::ToString(db_local_catalog_versions_map);
+  VLOG(1) << "db_local_catalog_versions_map: " << yb::ToString(db_local_catalog_versions_map);
   std::map<uint32_t, std::vector<uint64_t>> garbage_collected_db_versions;
   std::map<uint32_t, uint64_t> db_cutoff_catalog_versions;
   DoGarbageCollectionOfInvalidationMessages(
       db_local_catalog_versions_map, &garbage_collected_db_versions, &db_cutoff_catalog_versions);
-  LOG(INFO) << "garbage_collected_db_versions: " << yb::ToString(garbage_collected_db_versions);
-  LOG(INFO) << "db_cutoff_catalog_versions: " << yb::ToString(db_cutoff_catalog_versions);
+  VLOG(1) << "garbage_collected_db_versions: " << yb::ToString(garbage_collected_db_versions);
+  VLOG(1) << "db_cutoff_catalog_versions: " << yb::ToString(db_cutoff_catalog_versions);
   return Status::OK();
 }
 
@@ -2076,11 +2105,39 @@ void TabletServer::InvalidatePgTableCache(
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 
+#ifdef __linux__
+  builder->SetThreadPoolCgroupProvider([this](auto tag) { return PerDbCgroupProvider(tag); });
+  if (cgroup_manager_) {
+    builder->SetSystemHighCgroup(cgroup_manager_->SystemHighCgroup());
+    builder->SetSystemMedCgroup(cgroup_manager_->SystemMedCgroup());
+  }
+#endif
+
   secure_context_ = VERIFY_RESULT(rpc::SetupInternalSecureContext(
       options_.HostsString(), fs_manager_->GetDefaultRootDir(), builder));
 
   return Status::OK();
 }
+
+#ifdef __linux__
+Cgroup* TabletServer::PerDbCgroupProvider(rpc::ThreadPoolTag tag) {
+  if (!tag || !cgroup_manager_ || !FLAGS_enable_qos) {
+    return nullptr;
+  }
+  if (tag > std::numeric_limits<PgOid>::max()) {
+    LOG(DFATAL) << "pool tag out of range of pg oid; does not correspond to a database: "
+                << tag;
+    return nullptr;
+  }
+  auto cgroup_result = cgroup_manager_->CgroupForDb(static_cast<PgOid>(tag));
+  if (!cgroup_result.ok()) {
+    LOG(DFATAL) << "failed to get cgroup for database " << tag << ": "
+                << cgroup_result.status();
+    return nullptr;
+  }
+  return &*cgroup_result;
+}
+#endif
 
 XClusterConsumerIf* TabletServer::GetXClusterConsumer() const {
   std::lock_guard l(xcluster_consumer_mutex_);

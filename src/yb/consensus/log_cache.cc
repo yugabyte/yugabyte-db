@@ -395,7 +395,8 @@ Result<ReadOpsResult> LogCache::ReadOps(
     size_t max_size_bytes,
     log::ObeyMemoryLimit obey_memory_limit,
     CoarseTimePoint deadline,
-    bool fetch_single_entry) NO_THREAD_SAFETY_ANALYSIS {
+    bool fetch_single_entry,
+    const OpId* known_preceding_op) NO_THREAD_SAFETY_ANALYSIS {
   DCHECK_GE(after_op_index, 0);
 
   VLOG_WITH_PREFIX(4) << "ReadOps, after_op_index: " << after_op_index
@@ -405,7 +406,11 @@ Result<ReadOpsResult> LogCache::ReadOps(
   int64_t starting_op_segment_seq_num;
   int64_t next_index;
   int64_t to_index;
-  result.preceding_op = VERIFY_RESULT(LookupOpId(after_op_index));
+  if (known_preceding_op && known_preceding_op->index == after_op_index) {
+    result.preceding_op = *known_preceding_op;
+  } else {
+    result.preceding_op = VERIFY_RESULT(LookupOpId(after_op_index));
+  }
 
   std::unique_lock<simple_spinlock> l(lock_);
   next_index = after_op_index + 1;

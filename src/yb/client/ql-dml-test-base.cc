@@ -162,7 +162,7 @@ QLWriteRequestPB::QLStmtType GetQlStatementType(const WriteOpType op_type) {
 Result<YBqlWriteOpPtr> Increment(
     TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta,
     Flush flush) {
-  auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+  auto op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
   auto value_column_id = table->ColumnId(kValueColumn);
 
   auto* const req = op->mutable_request();
@@ -365,7 +365,7 @@ Result<YBqlWriteOpPtr> WriteRow(
   VLOG(4) << "Calling WriteRow key=" << key << " value=" << value << " op_type="
           << yb::ToString(op_type);
   const QLWriteRequestPB::QLStmtType stmt_type = GetQlStatementType(op_type);
-  const auto op = table->NewWriteOp(stmt_type);
+  const auto op = table->NewWriteOp(session->arena(), stmt_type);
   auto* const req = op->mutable_request();
   if (table->table()->partition_schema().IsHashPartitioning()) {
     QLAddInt32HashValue(req, key);
@@ -395,7 +395,7 @@ Result<YBqlWriteOpPtr> UpdateRow(
 
 Result<int32_t> SelectRow(
     TableHandle* table, const YBSessionPtr& session, int32_t key, const std::string& column) {
-  const YBqlReadOpPtr op = table->NewReadOp();
+  const YBqlReadOpPtr op = table->NewReadOp(session->arena());
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, key);
   table->AddColumns({column}, req);
@@ -426,7 +426,7 @@ Result<std::map<int32_t, int32_t>> SelectAllRows(
   // empty), we add a read op for the keys in [prev_code, current_code).
   for (size_t i = 1; i < partitions.size(); ++i) {
     const auto& partition = partitions[i];
-    const YBqlReadOpPtr op = table->NewReadOp();
+    const YBqlReadOpPtr op = table->NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     table->AddColumns(table->AllColumnNames(), req);
     if (prev_code) {
@@ -522,7 +522,7 @@ Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table, 
   bool has_paging_state = false;
   size_t row_count = 0;
   for (;;) {
-    const auto op = table.NewReadOp();
+    const auto op = table.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     req->set_return_paging_state(true);
     if (has_paging_state) {
@@ -542,7 +542,7 @@ Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table, 
     if (!op->response().has_paging_state()) {
       break;
     }
-    paging_state = std::move(op->response().paging_state());
+    paging_state = op->response().paging_state().ToGoogleProtobuf();
     has_paging_state = true;
   }
   return row_count;

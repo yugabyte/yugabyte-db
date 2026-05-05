@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) that connects to a YugabyteDB cluster using the [Npgsql driver](/stable/develop/drivers-orms/csharp/postgres-npgsql) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in C#.
+The following tutorial shows a small [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) that connects to a YugabyteDB cluster using the [Npgsql driver](/stable/develop/drivers-orms/csharp/postgres-npgsql/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in C#.
 
 ## Prerequisites
 

@@ -1,7 +1,7 @@
 import { makeStyles, Typography } from '@material-ui/core';
 import { YBButton } from '@yugabyte-ui-library/core';
-import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 
 import GrayDotIcon from '@app/redesign/assets/gray-dot.svg';
 import AddIcon from '@app/redesign/assets/add.svg';

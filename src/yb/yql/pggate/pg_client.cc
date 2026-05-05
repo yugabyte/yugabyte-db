@@ -16,6 +16,9 @@
 #include <concepts>
 #include <mutex>
 
+#include "opentelemetry/nostd/shared_ptr.h"
+#include "opentelemetry/trace/span.h"
+
 #include "yb/ash/rpc_wait_state.h"
 
 #include "yb/cdc/cdc_service.proxy.h"
@@ -43,6 +46,7 @@
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -252,6 +256,18 @@ class BigDataFetcher {
 template <class T>
 struct ResponseReadyTraits;
 
+std::string_view GetSharedMemSpanName(tserver::PgSharedExchangeReqType req_type) {
+  switch (req_type) {
+    case tserver::PgSharedExchangeReqType::PERFORM:
+      return "shmem req yb.tserver.PgClientService.Perform";
+    case tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK:
+      return "shmem req yb.tserver.PgClientService.AcquireObjectLock";
+    case tserver::PgSharedExchangeReqType_INT_MIN_SENTINEL_DO_NOT_USE_: [[fallthrough]];
+    case tserver::PgSharedExchangeReqType_INT_MAX_SENTINEL_DO_NOT_USE_: break;
+  }
+  FATAL_INVALID_ENUM_VALUE(tserver::PgSharedExchangeReqType, req_type);
+}
+
 template <>
 struct ResponseReadyTraits<bool> {
   static bool AllowNotReady() {
@@ -350,6 +366,7 @@ template <class Data>
 void ExchangeFuture<Data>::wait() const {
   if (!value_) {
     value_ = MakeExchangeResult(*data_, data_->Complete());
+    data_->EndSharedMemorySpan(value_->status);
   }
 }
 
@@ -386,8 +403,33 @@ struct PgClientData : public FetchBigDataCallback {
   std::optional<Result<Slice>> exchange_result GUARDED_BY(exchange_mutex);
   bool fetching_big_data GUARDED_BY(exchange_mutex) = false;
   rpc::CallData big_call_data GUARDED_BY(exchange_mutex);
+  // Only the owning future accesses this span while starting or finishing the shared-memory
+  // request. Exchange callbacks do not touch it, so it does not need exchange_mutex protection.
+  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span;
 
   PgClientData(const LWReqPB& req_, ThreadSafeArena* arena_) : req(req_), resp(arena_) {}
+
+  void StartSharedMemorySpan() {
+    if (dist_trace::HasActiveContext()) {
+      otel_span = dist_trace::StartSpan(
+          GetSharedMemSpanName(kSharedExchangeRequestType), dist_trace::GetPendingRpcAttrPairs());
+    }
+  }
+
+  void EndSharedMemorySpan(const Status& status) {
+    if (!otel_span) {
+      return;
+    }
+    if (status.ok()) {
+      otel_span->SetStatus(opentelemetry::trace::StatusCode::kOk);
+    } else if (status.IsTimedOut()) {
+      otel_span->SetStatus(opentelemetry::trace::StatusCode::kError, "Call TimedOut");
+    } else {
+      otel_span->SetStatus(opentelemetry::trace::StatusCode::kError, "Call ErroredOut");
+    }
+    otel_span->End();
+    otel_span = nullptr;
+  }
 
   void SetupExchange(
       tserver::SharedExchange* exchange_, BigDataFetcher* big_data_fetcher_,
@@ -1042,6 +1084,7 @@ class PgClient::Impl : public BigDataFetcher {
       auto& exchange = session_shared_mem_->exchange();
       auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
       if (out) {
+        data->StartSharedMemorySpan();
         const auto [rpc_deadline, rpc_timeout] =
             timeouts_.GetDeadlineAndTimeoutForRPC<typename Data::RequestType>();
         *reinterpret_cast<uint8_t *>(out) = Data::kSharedExchangeRequestType;
@@ -1060,7 +1103,9 @@ class PgClient::Impl : public BigDataFetcher {
           status = exchange.SendRequest();
         }
         if (!status.ok()) {
-          data->promise.set_value(MakeExchangeResult(*data, status));
+          auto result = MakeExchangeResult(*data, status);
+          data->EndSharedMemorySpan(result.status);
+          data->promise.set_value(std::move(result));
           return data->promise.get_future();
         }
         data->SetupExchange(&exchange, this, rpc_deadline);

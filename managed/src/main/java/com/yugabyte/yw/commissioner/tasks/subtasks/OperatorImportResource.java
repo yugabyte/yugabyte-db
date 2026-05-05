@@ -385,9 +385,7 @@ public class OperatorImportResource extends UniverseTaskBase {
     log.info("Importing universe: {}", taskParams().universeUUID);
 
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getSingleProvider(universe.getUniverseDetails().getPrimaryCluster());
 
     try {
       operatorUtils.createUniverseCr(universe, provider.getName(), getNamespace());

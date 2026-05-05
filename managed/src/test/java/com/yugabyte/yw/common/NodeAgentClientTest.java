@@ -13,7 +13,7 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.protobuf.ByteString;
-import com.yugabyte.yw.commissioner.NodeAgentEnabler;
+import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.common.NodeAgentClient.ChannelFactory;
 import com.yugabyte.yw.common.NodeAgentClient.NodeAgentUpgradeParam;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -218,7 +218,7 @@ public class NodeAgentClientTest extends FakeDBApplication {
     nodeAgentClient =
         new NodeAgentClient(
             mockConfGetter,
-            com.google.inject.util.Providers.of(mock(NodeAgentEnabler.class)),
+            com.google.inject.util.Providers.of(mock(NodeAgentPoller.class)),
             config -> channel);
   }
 

@@ -17,7 +17,7 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/redis_protocol.messages.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/reactor.h"
@@ -324,9 +324,10 @@ Out DoSerializeResponses(const Collection& responses, Out out) {
   // TODO(Amit): As and when we implement get/set and its h* equivalents, we would have to
   // handle arrays, hashes etc. For now, we only support the string response.
 
-  for (const auto& redis_response : responses) {
-    string error_message = redis_response.error_message();
-    if (error_message == "") {
+  for (const auto& redis_response_ptr : responses) {
+    auto& redis_response = *redis_response_ptr;
+    Slice error_message = redis_response.error_message();
+    if (error_message.empty()) {
       error_message = "Unknown error";
     }
     // Several types of error cases:
@@ -391,14 +392,15 @@ void RedisInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_c
 }
 
 // We wait until all responses are ready for batch embedded in this call.
-void RedisInboundCall::Respond(size_t idx, bool is_success, RedisResponsePB* resp) {
+void RedisInboundCall::Respond(
+    size_t idx, bool is_success, std::shared_ptr<LWRedisResponsePB> resp) {
   // Did we set response for command at this index already?
   VLOG(2) << "Responding to '" << client_batch_[idx][0] << "' with " << resp->ShortDebugString();
   if (base::subtle::NoBarrier_AtomicIncrement(&ready_[idx], 1) == 1) {
     if (!is_success) {
       had_failures_.store(true, std::memory_order_release);
     }
-    responses_[idx].Swap(resp);
+    responses_[idx] = std::move(resp);
     // Did we get all responses and ready to send data.
     size_t responded = ready_count_.fetch_add(1, std::memory_order_release) + 1;
     if (responded == client_batch_.size()) {
@@ -410,17 +412,21 @@ void RedisInboundCall::Respond(size_t idx, bool is_success, RedisResponsePB* res
 
 void RedisInboundCall::RespondSuccess(size_t idx,
                                       const rpc::RpcMethodMetrics& metrics,
-                                      RedisResponsePB* resp) {
+                                      std::shared_ptr<LWRedisResponsePB> resp) {
   Respond(idx, true, resp);
   metrics.handler_latency->Increment((MonoTime::Now() - timing_.time_handled).ToMicroseconds());
 }
 
 void RedisInboundCall::RespondFailure(size_t idx, const Status& status) {
-  RedisResponsePB resp;
-  Slice message = status.message();
-  resp.set_code(RedisResponsePB_RedisStatusCode_PARSING_ERROR);
-  resp.set_error_message(message.data(), message.size());
-  Respond(idx, false, &resp);
+  auto resp = rpc::MakeSharedMessage<LWRedisResponsePB>();
+  resp->set_code(RedisResponsePB_RedisStatusCode_PARSING_ERROR);
+  resp->dup_error_message(status.message());
+  Respond(idx, false, std::move(resp));
+}
+
+size_t RedisInboundCall::DynamicMemoryUsage() const {
+  return QueueableInboundCall::DynamicMemoryUsage() +
+         DynamicMemoryUsageOf(responses_, ready_, client_batch_);
 }
 
 } // namespace redisserver

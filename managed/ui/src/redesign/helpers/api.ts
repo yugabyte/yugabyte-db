@@ -46,6 +46,7 @@ import { AuditLogPayload } from '../features/universe/universe-tabs/db-audit-log
 import { TelemetryProvider } from '../features/export-telemetry/dtos';
 import { Task, TaskState } from '../features/tasks/dtos';
 import { SortDirection } from '../utils/dtos';
+import { UniverseSoftwareUpgradePrecheckReqBody } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -119,7 +120,6 @@ export const universeQueryKey = {
   ],
   namespaces: (universeUuid: string | undefined) => [
     ...universeQueryKey.detail(universeUuid),
-    ,
     'namespaces'
   ],
   detailsV2: (universeUuid: string | undefined) => [
@@ -224,6 +224,14 @@ export const dbReleaseQueryKey = {
   list: () => [...dbReleaseQueryKey.ALL, 'list']
 };
 
+export const dbUpgradeMetadataQueryKey = {
+  ALL: ['dbUpgradeMetadata'],
+  detail: (
+    universeUuid: string,
+    dbUpgradeMetadataQueryRequestBody: UniverseSoftwareUpgradePrecheckReqBody
+  ) => [...dbUpgradeMetadataQueryKey.ALL, universeUuid, dbUpgradeMetadataQueryRequestBody]
+};
+
 // --------------------------------------------------------------------------------------
 // API Constants
 // --------------------------------------------------------------------------------------
@@ -248,7 +256,7 @@ export interface CreateDrConfigRequest {
       storageConfigUUID: string;
     };
   };
-  pitrParams: {
+  pitrParams?: {
     retentionPeriodSec: number;
   };
 
@@ -828,6 +836,7 @@ class ApiService {
       })
       .then((response) => response.data);
   };
+
   getAlerts = (
     offset: number,
     limit: number,

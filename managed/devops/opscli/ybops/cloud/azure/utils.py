@@ -1043,7 +1043,7 @@ class AzureCloudAdmin():
             }
             vm_parameters["properties"] = properties
 
-        # Tag VM as cluster-server for ansible configure-{} script
+        # Tag VM as cluster-server.
         self.add_tag_resource(vm_parameters, "yb-server-type", server_type)
         for k in tags:
             self.add_tag_resource(vm_parameters, k, tags[k])

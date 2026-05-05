@@ -15,12 +15,16 @@
 
 #include <algorithm>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/common/pg_system_attr.h"
 
 #include "yb/util/std_util.h"
 
-#include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_doc_op_fetch_stream.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_table.h"
 
 namespace yb::pggate {
 namespace {
@@ -37,8 +41,8 @@ struct PgsqlReadOpWithPgTable {
   PgsqlReadOpWithPgTable(
       ThreadSafeArena* arena, const PgTableDescPtr& descr,
       const YbcPgTableLocalityInfo& locality_info, PgsqlMetricsCaptureType metrics_capture)
-      : table(descr), read_op(arena, *table, locality_info, metrics_capture) {
-  }
+      : table(descr), read_op(arena, *table, locality_info, metrics_capture) {}
+
   PgTable table;
   PgsqlReadOp read_op;
 };
@@ -143,69 +147,140 @@ class PrecastRequestSender {
 
 } // namespace
 
-YbctidReader::YbctidReader(const PgSessionPtr& session)
-    : session_(session) {}
+class YbctidReader::Impl {
+ public:
+  explicit Impl(PgSession& session) : session_{session} {}
+
+  Result<std::span<LightweightTableYbctid>> Read(
+      PgOid database_id, const TableLocalityMap& tables_locality, const Options& options) {
+    auto& ybctids = ybctids_.values;
+    // Group the items by the table ID.
+    std::ranges::sort(
+        ybctids, [](const auto& a, const auto& b) { return a.table_id < b.table_id; });
+
+    auto arena = std::make_shared<ThreadSafeArena>();
+
+    PrecastRequestSender precast_sender(options.run_marker);
+
+    auto request_sender = [&precast_sender](
+        PgSession* session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
+        const PgSession::RunOptions& options, IsForWritePgDoc is_write) {
+      DCHECK(!is_write);
+      return precast_sender.Send(*session, ops, table, options);
+    };
+    // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
+    // Each doc_op will use request_sender to send all the requests with single perform RPC.
+    auto shared_session = session_.shared_from_this();
+    for (auto it = ybctids.begin(), end = ybctids.end(); it != end;) {
+      const auto table_id = it->table_id;
+      auto desc = VERIFY_RESULT(session_.LoadTable(PgObjectId(database_id, table_id)));
+      auto metrics_capture = session_.metrics().metrics_capture();
+      auto read_op_with_table = std::make_shared<PgsqlReadOpWithPgTable>(
+          arena.get(), desc, tables_locality.Get(table_id), metrics_capture);
+      auto read_op = SharedField(read_op_with_table, &read_op_with_table->read_op);
+      auto* expr_pb = read_op->read_request().add_targets();
+      expr_pb->set_column_id(std::to_underlying(PgSystemAttrNum::kYBTupleId));
+      doc_ops_.push_back(std::make_unique<PgDocReadOp>(
+          shared_session, &read_op_with_table->table, std::move(read_op),
+          request_sender));
+      auto& doc_op = *doc_ops_.back();
+      RETURN_NOT_OK(ExecuteInit(doc_op, options));
+      // Populate doc_op with ybctids which belong to current table.
+      RSTATUS_DCHECK(VERIFY_RESULT(doc_op.PopulateByYbctidOps(
+          {make_lw_function([&it, table_id, end] {
+            return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
+          }), static_cast<size_t>(end - it)})),
+          IllegalState, "Failed to create requests, can't fetch");
+      RETURN_NOT_OK(doc_op.Execute());
+    }
+
+    RETURN_NOT_OK(precast_sender.TransmitCollected(session_));
+    // Disable further request collecting as in the vast majority of cases new requests will not be
+    // initiated because requests for all ybctids has already been sent. But in case of dynamic
+    // splitting new requests might be sent. They will be sent and processed as usual (i.e. request
+    // of each doc_op will be sent individually).
+    precast_sender.DisableCollecting();
+    // Collect the results from the docdb ops.
+    ybctids.clear();
+    for (auto& doc_op : doc_ops_) {
+      for(auto has_data = true; has_data;) {
+        has_data = VERIFY_RESULT(doc_op->ResultStream().ProcessNextYbctids(
+            [&ybctids, table_id = doc_op->table()->relfilenode_id().object_oid](Slice ybctid) {
+              ybctids.emplace_back(table_id, ybctid);
+            }, &ybctids_.retention));
+      }
+    }
+
+    return std::span(ybctids);
+  }
+
+  [[nodiscard]] size_t StartNewBatch(size_t capacity) {
+    const auto signature = ++active_batch_accessor_signature_;
+    Clear();
+    if (capacity) {
+      ybctids_.values.reserve(capacity);
+    }
+    return signature;
+  }
+
+  void Add(const LightweightTableYbctid& ybctid) { ybctids_.values.push_back(ybctid); }
+
+  size_t active_batch_accessor_signature() const { return active_batch_accessor_signature_; }
+
+  void Clear() {
+    doc_ops_.clear();
+    ybctids_.Clear();
+  }
+
+ private:
+  struct Ybctids {
+    boost::container::small_vector<LightweightTableYbctid, 8> values;
+    DocResultYbctidRetention retention;
+
+    void Clear() {
+      values.clear();
+      retention.Clear();
+    }
+  };
+
+  PgSession& session_;
+  boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 8> doc_ops_;
+  Ybctids ybctids_;
+  size_t active_batch_accessor_signature_{0};
+
+  DISALLOW_COPY_AND_ASSIGN(Impl);
+};
+
+YbctidReader::BatchAccessor::~BatchAccessor() {
+  if (PREDICT_TRUE(IsActive())) {
+    impl_.Clear();
+  }
+}
+
+void YbctidReader::BatchAccessor::Add(const LightweightTableYbctid& ybctid) {
+  if (PREDICT_TRUE(IsActive())) {
+    impl_.Add(ybctid);
+  } else {
+    DCHECK(false) << "The batch is inactive";
+  }
+}
+
+bool YbctidReader::BatchAccessor::IsActive() const {
+  return signature_ == impl_.active_batch_accessor_signature();
+}
+
+YbctidReader::ReadResult YbctidReader::BatchAccessor::Read(
+    PgOid database_id, const TableLocalityMap& tables_locality, const Options& options) {
+  RSTATUS_DCHECK(IsActive(), IllegalState, "Read from inactive batch is not allowed");
+  return impl_.Read(database_id, tables_locality, options);
+}
+
+YbctidReader::YbctidReader(PgSession& session) : impl_(new Impl(session)) {}
 
 YbctidReader::~YbctidReader() = default;
 
-Result<std::span<LightweightTableYbctid>> YbctidReader::Read(
-    PgOid database_id, const TableLocalityMap& tables_locality, const Options& options) {
-  auto& ybctids = ybctids_.values;
-  // Group the items by the table ID.
-  std::ranges::sort(ybctids, [](const auto& a, const auto& b) { return a.table_id < b.table_id; });
-
-  auto arena = std::make_shared<ThreadSafeArena>();
-
-  PrecastRequestSender precast_sender(options.run_marker);
-
-  auto request_sender = [&precast_sender](
-      PgSession* session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
-      const PgSession::RunOptions& options, IsForWritePgDoc is_write) {
-    DCHECK(!is_write);
-    return precast_sender.Send(*session, ops, table, options);
-  };
-  // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
-  // Each doc_op will use request_sender to send all the requests with single perform RPC.
-  for (auto it = ybctids.begin(), end = ybctids.end(); it != end;) {
-    const auto table_id = it->table_id;
-    auto desc = VERIFY_RESULT(session_->LoadTable(PgObjectId(database_id, table_id)));
-    auto metrics_capture = session_->metrics().metrics_capture();
-    auto read_op_with_table = std::make_shared<PgsqlReadOpWithPgTable>(
-        arena.get(), desc, tables_locality.Get(table_id), metrics_capture);
-    auto read_op = SharedField(read_op_with_table, &read_op_with_table->read_op);
-    auto* expr_pb = read_op->read_request().add_targets();
-    expr_pb->set_column_id(std::to_underlying(PgSystemAttrNum::kYBTupleId));
-    doc_ops_.push_back(std::make_unique<PgDocReadOp>(
-        session_, &read_op_with_table->table, std::move(read_op), request_sender));
-    auto& doc_op = *doc_ops_.back();
-    RETURN_NOT_OK(ExecuteInit(doc_op, options));
-    // Populate doc_op with ybctids which belong to current table.
-    RSTATUS_DCHECK(VERIFY_RESULT(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
-      return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    }), static_cast<size_t>(end - it)})), IllegalState, "Failed to create requests, can't fetch");
-    RETURN_NOT_OK(doc_op.Execute());
-  }
-
-  RETURN_NOT_OK(precast_sender.TransmitCollected(*session_));
-  // Disable further request collecting as in the vast majority of cases new requests will not be
-  // initiated because requests for all ybctids has already been sent. But in case of dynamic
-  // splitting new requests might be sent. They will be sent and processed as usual (i.e. request
-  // of each doc_op will be sent individually).
-  precast_sender.DisableCollecting();
-  // Collect the results from the docdb ops.
-  ybctids.clear();
-  for (auto& doc_op : doc_ops_) {
-    for(;;) {
-      if (!VERIFY_RESULT(doc_op->ResultStream().ProcessNextYbctids(
-              [&ybctids, object_oid = doc_op->table()->relfilenode_id().object_oid](Slice ybctid) {
-                ybctids.emplace_back(object_oid, ybctid);
-              }, &ybctids_.retention))) {
-        break;
-      }
-    }
-  }
-
-  return std::span(ybctids);
+YbctidReader::BatchAccessor YbctidReader::StartNewBatch(size_t capacity) {
+  return {*impl_, impl_->StartNewBatch(capacity)};
 }
 
 } // namespace yb::pggate

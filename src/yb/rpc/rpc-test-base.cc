@@ -527,7 +527,7 @@ class AbacusService: public rpc_test::AbacusServiceIf {
 TestServer::TestServer(std::unique_ptr<Messenger>&& messenger,
                        const TestServerOptions& options)
     : messenger_(std::move(messenger)),
-      thread_pool_(std::make_unique<ThreadPool>(ThreadPoolOptions {
+      thread_pool_(std::make_shared<ThreadPool>(ThreadPoolOptions {
         .name = "rpc-test",
         .max_workers = options.n_worker_threads,
       })) {
@@ -544,11 +544,9 @@ Status TestServer::Start() {
 Status TestServer::RegisterService(std::unique_ptr<ServiceIf> service) {
   const std::string& service_name = service->service_name();
 
-  auto service_pool = make_scoped_refptr<ServicePool>(kQueueLength,
-                                                      thread_pool_.get(),
-                                                      &messenger_->scheduler(),
-                                                      std::move(service),
-                                                      messenger_->metric_entity());
+  auto service_pool = make_scoped_refptr<ServicePool>(
+      kQueueLength, [pool = thread_pool_](auto) { return pool; },
+      &messenger_->scheduler(), std::move(service), messenger_->metric_entity());
   if (!service_pool_) {
     service_pool_ = service_pool;
   }

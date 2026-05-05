@@ -963,12 +963,14 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), expected_op_id);
 
   // Read from the start_op_id
-  auto read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(3)));
+  auto read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(start_op_id));
   ASSERT_EQ(last_committed_index - start_op_id.index, read_result.messages.size());
+  ASSERT_EQ(start_op_id, read_result.preceding_op);
 
   // Start reading from 0.0 and ensure that we get the first known OpID.
   read_result = ASSERT_RESULT(queue_->ReadReplicatedMessagesForCDC(MakeOpIdForIndex(0)));
   ASSERT_EQ(last_committed_index - start_op_id.index, read_result.messages.size());
+  ASSERT_EQ(start_op_id, read_result.preceding_op);
 
   // Read from some index > 0
   int start = 10;

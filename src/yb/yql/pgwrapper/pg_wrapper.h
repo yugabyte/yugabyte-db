@@ -98,6 +98,8 @@ class PgWrapper : public ProcessWrapper {
 
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
 
+  static std::string GetPostgresExecutablePath();
+
   struct PgUpgradeParams {
     std::string ysql_user_name;
     std::string data_dir;
@@ -147,7 +149,6 @@ class PgWrapper : public ProcessWrapper {
   // Creates a directory name "<conf_.data_dir>_<version>".
   std::string MakeVersionedDataDir(int32_t version);
 
-  static std::string GetPostgresExecutablePath();
   static std::string GetPostgresSuppressionsPath();
   static std::string GetPostgresLibPath();
   static std::string GetPostgresThirdPartyLibPath();

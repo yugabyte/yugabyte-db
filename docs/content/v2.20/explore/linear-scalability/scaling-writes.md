@@ -58,6 +58,6 @@ The cluster configuration is shown in the following illustration.
 
 ## Learn more
 
-- [TPC-C benchmark](../../../benchmark/tpcc-ysql)
-- [YugabyteDB Benchmarks](../../../benchmark)
+- [TPC-C benchmark](../../../benchmark/tpcc-ysql/)
+- [YugabyteDB Benchmarks](../../../benchmark/)
 - [Scaling: YugabyteDB vs Cockroach vs Aurora](https://www.yugabyte.com/blog/yugabytedb-vs-cockroachdb-vs-aurora/)

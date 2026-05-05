@@ -52,6 +52,7 @@
 
 namespace yb {
 
+class Cgroup;
 template<class T>
 class AtomicGauge;
 class EventStats;
@@ -276,6 +277,10 @@ class MaintenanceManager : public std::enable_shared_from_this<MaintenanceManage
   void GetMaintenanceManagerStatusDump(tablet::MaintenanceManagerStatusPB* out_pb);
 
   static const Options DEFAULT_OPTIONS;
+
+#ifdef __linux__
+  void SetCgroup(Cgroup* cgroup);
+#endif
 
  private:
   friend class ScopedMaintenanceOpRun;

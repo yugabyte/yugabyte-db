@@ -1075,8 +1075,7 @@ The number of tablet replicas that each core on a YB-TServer can support.
 
 {{% tags/wrap %}}
 
-
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+Default: `1462`
 {{% /tags/wrap %}}
 
 The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
@@ -2171,7 +2170,7 @@ For information on using this parameter to configure CBO, refer to [Enable cost-
 
 ### Auto Analyze service flags
 
-{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 {{< note title="Note" >}}
 
@@ -2920,13 +2919,13 @@ Specifies if YCQL tables are created with transactions enabled by default.
 Default: `false`
 {{% /tags/wrap %}}
 
-Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table) privileges.
+Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate/) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table/) privileges.
 
 ##### --ycql_enable_audit_log
 
 Set this flag to `true` to enable audit logging for the universe.
 
-For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
+For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql/).
 
 ##### --ycql_allow_non_authenticated_password_reset
 

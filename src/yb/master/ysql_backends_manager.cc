@@ -589,9 +589,7 @@ Result<int> BackendsCatalogVersionJob::WaitAndGetNumLaggingBackends(
   {
     std::lock_guard l(state_mutex_);
     if (!MonitoredTask::IsStateTerminal(state())) {
-      if (state_cv_.WaitUntil(ToSteady(deadline))) {
-        return HandleTerminalState();
-      }
+      state_cv_.WaitUntil(ToSteady(deadline));
     }
   }
   if (IsStateTerminal(state())) {

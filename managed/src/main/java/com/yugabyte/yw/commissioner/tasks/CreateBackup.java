@@ -21,12 +21,12 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -138,12 +138,7 @@ public class CreateBackup extends UniverseTaskBase {
             if (!StringUtils.equals(
                 universe.getUniverseDetails().getYbcSoftwareVersion(),
                 ybcManager.getStableYbcVersion())) {
-              if (universe
-                  .getUniverseDetails()
-                  .getPrimaryCluster()
-                  .userIntent
-                  .providerType
-                  .equals(Common.CloudType.kubernetes)) {
+              if (Util.isKubernetesBasedUniverse(universe)) {
                 createUpgradeYbcTaskOnK8s(
                         params().getUniverseUUID(), ybcManager.getStableYbcVersion())
                     .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);

@@ -30,7 +30,7 @@ class InstallNodeAgent(BaseYnpModule):
         return (f'{yba_url}/api/v1/customers/{customer_uuid}/providers/'
                 f'{p_uuid}/instance_types/{code}')
 
-    def _make_request(self, url, headers=None, method='GET', data=None, verify_ssl=True):
+    def _make_request(self, url, headers=None, method='GET', data=None, skip_tls_verify=True):
         """Make HTTP request using urllib"""
         if headers is None:
             headers = {}
@@ -44,7 +44,7 @@ class InstallNodeAgent(BaseYnpModule):
 
         # Create SSL context
         ssl_context = ssl.create_default_context()
-        if not verify_ssl:
+        if skip_tls_verify:
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
 
@@ -76,7 +76,8 @@ class InstallNodeAgent(BaseYnpModule):
                 "cloudInfo": {
                     "onprem": {
                         "ybHomeDir": context.get("yb_home_dir", "/home/yugabyte"),
-                        "useClockbound": context.get("configure_clockbound", "false")
+                        "useClockbound": context.get("configure_clockbound", "false"),
+                        "enableMultiTenancy": context.get("configure_cgroup", "true")
                     }
                 }
             },
@@ -125,6 +126,12 @@ class InstallNodeAgent(BaseYnpModule):
         return provider_data
 
     def _generate_provider_update_payload(self, context, provider):
+        # Patch enableMultiTenancy onto existing on-prem cloudInfo so reprovision propagates the
+        # toggled configure_cgroup value to YBA.
+        onprem = provider.setdefault('details', {}).setdefault('cloudInfo', {}).setdefault(
+            'onprem', {})
+        onprem['enableMultiTenancy'] = context.get("configure_cgroup", "true")
+
         regions = provider.get('regions', [])
         region_exist = False
         for region in regions:
@@ -204,23 +211,23 @@ class InstallNodeAgent(BaseYnpModule):
         provider_url = self._get_provider_url(context)
         yba_url = context.get('url')
         skip_tls_verify = not yba_url.lower().startswith('https') or \
-            context.get('skip_tls_verify', False)
+            context.get('skip_tls_verify', True)
         response = self._make_request(provider_url,
                                       headers=self._get_headers(context.get('api_key')),
-                                      verify_ssl=skip_tls_verify)
+                                      skip_tls_verify=skip_tls_verify)
         return response
 
     def _create_instance_if_not_exists(self, context, provider):
         yba_url = context.get('url')
         skip_tls_verify = not yba_url.lower().startswith('https') or \
-            context.get('skip_tls_verify', False)
+            context.get('skip_tls_verify', True)
         get_instance_type_url = self._get_instance_type(context.get('url'), context.get(
             'customer_uuid'), provider.get('uuid'), context.get('instance_type_name'))
 
         try:
             response = self._make_request(get_instance_type_url,
                                           headers=self._get_headers(context.get('api_key')),
-                                          verify_ssl=skip_tls_verify)
+                                          skip_tls_verify=skip_tls_verify)
             data = response['json']()
             if not data:  # If the instance type does not exist
                 raise ValueError("Instance type does not exist")
@@ -260,7 +267,6 @@ class InstallNodeAgent(BaseYnpModule):
         if context.get('is_cloud', 'False') == 'True':
             return super().render_templates(context)
 
-        node_agent_enabled = False
         self._cleanup(context)
 
         try:
@@ -283,7 +289,14 @@ class InstallNodeAgent(BaseYnpModule):
                             for zone in zones:
                                 if zone['code'] == context.get('provider_region_zone_name'):
                                     zone_exist = True
-                    if not region_exists or not zone_exist:
+                    # Also write the update payload when configure_cgroup diverges from what YBA
+                    # has, so toggling it on reprovision actually reaches the provider.
+                    onprem_info = provider_details.get('cloudInfo', {}).get('onprem', {})
+                    multi_tenancy_diff = (
+                        str(onprem_info.get('enableMultiTenancy', False)).lower()
+                        != str(context.get('configure_cgroup', 'true')).lower()
+                    )
+                    if not region_exists or not zone_exist or multi_tenancy_diff:
                         update_provider_data = self._generate_provider_update_payload(
                             context, provider_data)
                         update_provider_data_file = os.path.join(
@@ -292,7 +305,6 @@ class InstallNodeAgent(BaseYnpModule):
                             json.dump(update_provider_data, f, indent=4)
                     self._create_instance_if_not_exists(context, provider_data)
                     context['provider_id'] = str(provider_data.get('uuid'))
-                    node_agent_enabled = provider_details.get('enableNodeAgent', False)
                 else:
                     logging.info("Generating provider create payload...")
                     provider_payload = self._generate_provider_payload(context)
@@ -305,7 +317,6 @@ class InstallNodeAgent(BaseYnpModule):
                         context.get('tmp_directory'), 'create_instance.json')
                     with open(instance_payload_file, 'w') as f:
                         json.dump(instance_create_payload, f, indent=4)
-                    node_agent_enabled = True
 
             except ValueError as json_err:
                 logging.error(f"Error parsing JSON response: {json_err}")
@@ -320,6 +331,4 @@ class InstallNodeAgent(BaseYnpModule):
         with open(add_node_payload_file, 'w') as f:
             json.dump(add_node_payload, f, indent=4)
 
-        if node_agent_enabled:
-            return super().render_templates(context)
-        return None
+        return super().render_templates(context)

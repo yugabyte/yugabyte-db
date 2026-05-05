@@ -1,5 +1,5 @@
-systemd_dir="{{yb_home_dir}}/.config/systemd/user"
-config_dir="{{yb_home_dir}}/bin"
+systemd_dir="{{ yb_user_home }}/.config/systemd/user"
+config_dir="{{ yb_home_dir }}/bin"
 if grep -q "DefaultLimitMEMLOCK=500000" "/etc/systemd/system.conf"; then
     echo "[PASS] DefaultLimitMEMLOCK is set in /etc/systemd/system.conf"
     add_result "DefaultLimitMEMLOCK in /etc/systemd/system.conf" "PASS" \
@@ -32,9 +32,9 @@ else
 fi
 {% if earlyoom_enable == 'True' %}
     if [ "$SUDO_ACCESS" = "true" ]; then
-        earlyoom_check="su - {{ yb_user }} -c 'systemctl --user is-active --quiet earlyoom'"
+        earlyoom_check="su - {{ yb_user }} -c 'XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user is-active --quiet earlyoom'"
     else
-        earlyoom_check="systemctl --user is-active --quiet earlyoom"
+        earlyoom_check="XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user is-active --quiet earlyoom"
     fi
     if eval "$earlyoom_check"; then
         add_result "Service Status Check" "PASS" "Service earlyoom.service is running."

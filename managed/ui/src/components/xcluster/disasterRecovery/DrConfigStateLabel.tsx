@@ -84,6 +84,14 @@ export const DrConfigStateLabel = ({ drConfig, variant = 'body2' }: DrConfigStat
         </Typography>
       );
       break;
+    case DrConfigState.PAUSED:
+      stateLabel = (
+        <Typography variant={variant} component="span" className={clsx(classes.label)}>
+          <i className={clsx('fa fa-pause-circle-o', classes.warning)} />
+          {t(drConfig.state)}
+        </Typography>
+      );
+      break;
     case DrConfigState.HALTED:
       stateLabel = (
         <Typography variant={variant} component="span" className={clsx(classes.label)}>

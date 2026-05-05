@@ -1,23 +1,24 @@
-import { FocusEvent } from 'react';
 import { useFormContext } from 'react-hook-form';
-import { useTranslation } from 'react-i18next';
-import { Box, FormHelperText, makeStyles, Typography } from '@material-ui/core';
+import { Trans, useTranslation } from 'react-i18next';
+import { useQuery } from 'react-query';
+import { Box, FormHelperText, makeStyles, Typography, Link as MuiLink } from '@material-ui/core';
 import clsx from 'clsx';
 
-import { YBInputField } from '@app/redesign/components';
+import { YBInputField, YBTooltip } from '@app/redesign/components';
 import { YBRadio } from '@app/redesign/components/YBRadio/YBRadio';
 import {
+  YBA_UNIVERSE_UPGRADE_DOCUMENTATION_URL,
   UpgradeMethod,
   UpgradePace
 } from '@app/redesign/features/universe/universe-actions/software-upgrade/constants';
+import { useDbUpgradeModalContext } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModalContext';
 import type { DBUpgradeFormFields } from '@app/redesign/features/universe/universe-actions/software-upgrade/types';
+import { getIsCanaryUpgradeAvailable } from '@app/redesign/features/universe/universe-actions/software-upgrade/utils/formUtils';
+import { precheckSoftwareUpgrade } from '@app/v2/api/universe/universe';
 
 import CircleCheckedIcon from '@app/redesign/assets/circle-checked.svg';
 import CircleUnselectedIcon from '@app/redesign/assets/circle-unselected.svg';
 import TreeIcon from '@app/redesign/assets/tree-icon.svg';
-interface UpgradeMethodStepProps {
-  maxNodesPerBatchMaximum: number;
-}
 
 const useStyles = makeStyles((theme) => ({
   stepContainer: {
@@ -260,6 +261,13 @@ const useStyles = makeStyles((theme) => ({
     fontSize: 13,
     fontWeight: 400,
     lineHeight: '19px'
+  },
+  canaryOptionDisabled: {
+    opacity: 0.4,
+    cursor: 'not-allowed'
+  },
+  canaryTooltipLink: {
+    color: theme.palette.primary.main
   }
 }));
 
@@ -267,29 +275,39 @@ const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal.upgradeMe
 const UPGRADE_MODAL_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal';
 const TEST_ID_PREFIX = 'UpgradeMethodStep';
 
-export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStepProps) => {
+export const UpgradeMethodStep = () => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
   const { control, watch, setValue, formState } = useFormContext<DBUpgradeFormFields>();
+  const { maxNodesPerBatchMaximum, clusters, currentUniverseUuid } = useDbUpgradeModalContext();
+  const targetDbVersion = watch('targetDbVersion');
+
+  const dbUpgradeMetaQuery = useQuery(
+    ['softwareUpgradePrecheck', currentUniverseUuid, targetDbVersion],
+    () =>
+      precheckSoftwareUpgrade(currentUniverseUuid, {
+        yb_software_version: targetDbVersion
+      }),
+    { enabled: !!currentUniverseUuid && !!targetDbVersion }
+  );
+  const isYsqlMajorUpgrade = dbUpgradeMetaQuery.data?.ysql_major_version_upgrade ?? false;
 
   const selectedMethod = watch('upgradeMethod');
   const selectedPace = watch('upgradePace');
   const isFormDisabled = formState.isSubmitting;
+  const isCanaryUpgradeAvailable = getIsCanaryUpgradeAvailable(clusters);
 
   const handleMethodSelect = (method: UpgradeMethod) => {
-    if (isFormDisabled) return;
+    if (isFormDisabled) {
+      return;
+    }
+    if (method === UpgradeMethod.CANARY && !isCanaryUpgradeAvailable) {
+      return;
+    }
     setValue('upgradeMethod', method);
     if (method === UpgradeMethod.CANARY) {
+      // Only rolling upgrade is supported when upgradeMethod is CANARY.
       setValue('upgradePace', UpgradePace.ROLLING);
-    }
-  };
-
-  const handleMaxNodesPerBatchBlur = (event: FocusEvent<HTMLInputElement>) => {
-    const fieldValue = Number(event.target.value);
-    if (fieldValue > maxNodesPerBatchMaximum) {
-      setValue('maxNodesPerBatch', maxNodesPerBatchMaximum);
-    } else if (fieldValue < 1) {
-      setValue('maxNodesPerBatch', 1);
     }
   };
 
@@ -374,7 +392,7 @@ export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStep
                                   type="number"
                                   className={classes.numericInputField}
                                   disabled={isFormDisabled || maxNodesPerBatchMaximum <= 1}
-                                  onBlur={handleMaxNodesPerBatchBlur}
+                                  hideInlineError
                                   rules={{
                                     required: {
                                       value: true,
@@ -388,13 +406,10 @@ export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStep
                                     },
                                     max: {
                                       value: maxNodesPerBatchMaximum,
-                                      message: t(
-                                        'fields.validationError.maxNodesPerBatchMaximum',
-                                        {
-                                          keyPrefix: UPGRADE_MODAL_KEY_PREFIX,
-                                          max: maxNodesPerBatchMaximum
-                                        }
-                                      )
+                                      message: t('fields.validationError.maxNodesPerBatchMaximum', {
+                                        keyPrefix: UPGRADE_MODAL_KEY_PREFIX,
+                                        max: maxNodesPerBatchMaximum
+                                      })
                                     }
                                   }}
                                   inputProps={{
@@ -482,42 +497,71 @@ export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStep
                   </div>
                 </div>
 
-                {/* Recommendation Banner */}
-                <div className={classes.recommendationBanner}>
-                  <span className={classes.recommendationTag}>{t('recommendationLabel')}</span>
-                  <Typography className={classes.recommendationText}>
-                    {t('recommendationMessage')}
-                  </Typography>
-                </div>
+                {isYsqlMajorUpgrade && isCanaryUpgradeAvailable && (
+                  <div className={classes.recommendationBanner}>
+                    <span className={classes.recommendationTag}>{t('recommendationLabel')}</span>
+                    <Typography className={classes.recommendationText}>
+                      {t('recommendationMessage')}
+                    </Typography>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {/* Canary Upgrade Section */}
-          <div
-            className={clsx(
-              classes.canarySection,
-              selectedMethod === UpgradeMethod.CANARY && classes.selectedSection
-            )}
-            onClick={() => handleMethodSelect(UpgradeMethod.CANARY)}
-            data-testid={`${TEST_ID_PREFIX}-CanaryOption`}
+          <YBTooltip
+            placement="top"
+            interactive
+            title={
+              isCanaryUpgradeAvailable ? (
+                ''
+              ) : (
+                <Trans
+                  t={t}
+                  i18nKey="canary.unavailableTooltip"
+                  components={{
+                    dbUpgradeRequirementsLink: (
+                      <MuiLink
+                        className={classes.canaryTooltipLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href={YBA_UNIVERSE_UPGRADE_DOCUMENTATION_URL}
+                      />
+                    )
+                  }}
+                />
+              )
+            }
           >
-            <div className={classes.methodHeader}>
-              <span className={classes.methodIcon}>
-                {selectedMethod === UpgradeMethod.CANARY ? (
-                  <CircleCheckedIcon />
-                ) : (
-                  <CircleUnselectedIcon />
-                )}
-              </span>
-              <Box display="flex" alignItems="center" style={{ gap: 8 }}>
-                <Typography className={classes.methodTitle}>{t('canary.title')}</Typography>
-                <span className={classes.methodTag}>{t('canary.tag')}</span>
-              </Box>
-            </div>
+            <div
+              className={clsx(
+                classes.canarySection,
+                selectedMethod === UpgradeMethod.CANARY && classes.selectedSection,
+                !isCanaryUpgradeAvailable && classes.canaryOptionDisabled
+              )}
+              onClick={() => handleMethodSelect(UpgradeMethod.CANARY)}
+              data-testid={`${TEST_ID_PREFIX}-CanaryOption`}
+            >
+              <div className={classes.methodHeader}>
+                <span className={classes.methodIcon}>
+                  {selectedMethod === UpgradeMethod.CANARY ? (
+                    <CircleCheckedIcon />
+                  ) : (
+                    <CircleUnselectedIcon />
+                  )}
+                </span>
+                <Box display="flex" alignItems="center" style={{ gap: 8 }}>
+                  <Typography className={classes.methodTitle}>{t('canary.title')}</Typography>
+                  <span className={classes.methodTag}>{t('canary.tag')}</span>
+                </Box>
+              </div>
 
-            <Typography className={classes.methodDescription}>{t('canary.description')}</Typography>
-          </div>
+              <Typography className={classes.methodDescription}>
+                {t('canary.description')}
+              </Typography>
+            </div>
+          </YBTooltip>
         </div>
       </div>
     </div>

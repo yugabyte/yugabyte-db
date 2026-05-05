@@ -600,7 +600,7 @@ Default: `0` for no limit.
 
 The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
 
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+Default: `1462`
 
 ## Geo-distribution flags
 
@@ -939,7 +939,7 @@ Default: `false`
 
 ##### --ycql_require_drop_privs_for_truncate
 
-Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table) privileges.
+Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate/) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table/) privileges.
 
 Default: `false`
 
@@ -947,7 +947,7 @@ Default: `false`
 
 Set this flag to `true` to enable audit logging for the universe.
 
-For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
+For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql/).
 
 ##### --ycql_allow_non_authenticated_password_reset
 

@@ -62,6 +62,7 @@ DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
 DECLARE_uint64(TEST_delay_release_locks_ms);
+DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
 using namespace std::literals;
 
@@ -1738,6 +1739,34 @@ TEST_F_EX(
     PgObjectLocksTest, TestConcurrentDdlSyncReleaseForGlobalLocksAndDdls,
     PgObjectLocksWithConcurrentDdl) {
   testSyncReleaseForGlobalLocksAndDdls();
+}
+
+class PgObjectLocksTestFullInval : public PgObjectLocksTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ysql_max_invalidation_message_queue_size=0");
+  }
+};
+
+TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelectFullInvalidation, PgObjectLocksTestFullInval) {
+  testConcurrentAlterSelect(false);
+}
+
+TEST_F_EX(
+    PgObjectLocksTest, ConcurrentAlterSelectFreshCacheFullInvalidation,
+    PgObjectLocksTestFullInval) {
+  testConcurrentAlterSelect(true);
+}
+
+TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelectConcurrentDdl, PgObjectLocksWithConcurrentDdl) {
+  testConcurrentAlterSelect(false);
+}
+
+TEST_F_EX(
+    PgObjectLocksTest, ConcurrentAlterSelectFreshCacheConcurrentDdl,
+    PgObjectLocksWithConcurrentDdl) {
+  testConcurrentAlterSelect(true);
 }
 
 }  // namespace yb::pgwrapper

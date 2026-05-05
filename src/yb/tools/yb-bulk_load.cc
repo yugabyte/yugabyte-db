@@ -237,13 +237,13 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
       break;
     }
     case DataType::STRING: {
-      ql_valuepb->set_string_value(column);
+      ql_valuepb->dup_string_value(column);
       break;
     }
     case DataType::JSONB: {
       common::Jsonb jsonb;
       RETURN_NOT_OK(jsonb.FromString(column));
-      ql_valuepb->set_jsonb_value(jsonb.MoveSerializedJsonb());
+      ql_valuepb->dup_jsonb_value(jsonb.MoveSerializedJsonb());
       break;
     }
     case DataType::TIMESTAMP: {
@@ -253,7 +253,7 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
       break;
     }
     case DataType::BINARY: {
-      ql_valuepb->set_binary_value(column);
+      ql_valuepb->dup_binary_value(column);
       break;
     }
     default:
@@ -277,8 +277,9 @@ Status BulkLoadTask::InsertRow(const string &row,
                              ncolumns, schema.num_columns());
   }
 
-  QLResponsePB resp;
-  QLWriteRequestPB req;
+  auto arena = SharedThreadSafeArena();
+  auto& resp = *arena->NewArenaObject<LWQLResponsePB>();
+  auto& req = *arena->NewArenaObject<LWQLWriteRequestPB>();
   req.set_type(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT);
   req.set_client(YQL_CLIENT_CQL);
 

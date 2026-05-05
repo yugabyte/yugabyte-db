@@ -972,6 +972,81 @@ public class TestYbQpm extends BasePgSQLTest {
         assertTrue(compressData.verifyResult(hintText, planText));
       }
     }
+
+    // Make sure max exec time param text is populated. Create the table and index first.
+    stmt.execute("DROP TABLE IF EXISTS t1");
+    stmt.execute("CREATE TABLE t1 AS SELECT a1, repeat('x', 1000) AS str_col " +
+                 "FROM GENERATE_SERIES(0, 10000) dt(a1)");
+    stmt.execute("CREATE INDEX a1_idx ON t1(a1 ASC)");
+    stmt.execute("ANALYZE t1");
+
+    boolean[] booleanArr = {true, false};
+
+    // Loop twice, once using generic plans and once using custom plans.
+    // A custom plan will differ from a generic plan because the custom
+    // plan has a constant. Even though the constant value is not
+    // used to calculate plan id, the constant type and location are used.
+    for (boolean useGenericPlan : booleanArr) {
+
+      if (useGenericPlan)
+        stmt.execute("SET plan_cache_mode=force_generic_plan");
+      else
+        stmt.execute("SET plan_cache_mode=force_custom_plan");
+
+      // Remove the prepared statements.
+      stmt.execute("DEALLOCATE ALL");
+
+      // Create parameterized statement.
+      stmt.execute("PREPARE s1(int) AS /*+ IndexScan(t1) */ SELECT * FROM t1 WHERE a1<$1");
+
+      // Clear the QPM table.
+      stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)");
+
+      int a1ParamValues[] = {0, 5000, 10000};
+      long queryId = 0;
+      long planId = 0;
+
+      // Execute the parameterized statement with 3 values to constrain a1. Since the predicate
+      // is 'a1 < <value>', increasing the value will lead to longer execution times.
+      for (int a1Param : a1ParamValues) {
+        String queryText = String.format("EXECUTE s1(%d)", a1Param);
+        stmt.executeQuery(queryText);
+
+        long currentQueryId = getExplainQueryId(stmt, queryText);
+
+        // Query id should be the same.
+        if (queryId > 0)
+          assertEquals(queryId, currentQueryId);
+
+        queryId = currentQueryId;
+
+        long currentPlanId = getExplainPlanId(stmt, queryText);
+
+        // Plan id should be the same.
+        if (planId > 0)
+          assertEquals(planId, currentPlanId);
+
+        planId = currentPlanId;
+      }
+
+      // Get the QPM entry for the query, keeping 'max_exec_time_params' and 'calls'.
+      try (ResultSet rs = stmt.executeQuery(
+          String.format(
+              "SELECT max_exec_time_params, calls " +
+              "FROM yb_pg_stat_plans " +
+              "WHERE queryid = %d",
+              queryId))) {
+          assertTrue(rs.next());
+          String maxParams = rs.getString("max_exec_time_params");
+          long calls = rs.getLong("calls");
+
+          // There should be 1 entry with the worst param as '10000' and
+          // as many calls as there are statement executions.
+          assertEquals("$1 = '10000'", maxParams);
+          assertEquals(a1ParamValues.length, calls);
+          assertFalse(rs.next());
+      }
+    }
   }
 
   public void writeReadQpmDumpFile(Statement stmt, boolean log) throws Exception {

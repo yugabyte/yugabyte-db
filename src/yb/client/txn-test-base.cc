@@ -259,7 +259,7 @@ void TransactionTestBase<MiniClusterType>::VerifyRows(
 template <class MiniClusterType>
 YBqlReadOpPtr TransactionTestBase<MiniClusterType>::ReadRow(
     const YBSessionPtr& session, int32_t key, const std::string& column) {
-  auto op = table_.NewReadOp();
+  auto op = table_.NewReadOp(session->arena());
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, key);
   table_.AddColumns({column}, req);

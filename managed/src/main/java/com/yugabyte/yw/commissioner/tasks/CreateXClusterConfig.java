@@ -901,8 +901,12 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               .setShouldRunPredicate(bootstrapRequiredPredicate);
         }
 
-        // Recreate the PITR config for txn xCluster.
-        if (xClusterConfig.getType() != ConfigType.Basic) {
+        // Recreate the PITR config for txn xCluster (skip when snapshot schedules are disabled).
+        boolean skipSnapshotSchedules =
+            xClusterConfig.isAutomaticDdlMode()
+                && confGetter.getConfForScope(
+                    targetUniverse, UniverseConfKeys.skipXClusterSnapshotSchedules);
+        if (xClusterConfig.getType() != ConfigType.Basic && !skipSnapshotSchedules) {
           if (pitrConfigOnTargetOptional.isPresent()) {
             PitrConfig pitrConfig = pitrConfigOnTargetOptional.get();
             // Create the PITR config on the target if the predicate is true which means the

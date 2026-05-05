@@ -28,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 public class YNPProvisioning extends NodeTaskBase {
   private final YNPConfigGenerator ynpConfigGenerator;
   private ShellProcessContext shellContext =
-      ShellProcessContext.builder().logCmdOutput(true).build();
+      ShellProcessContext.builder().useSshConnectionOnly(true).logCmdOutput(true).build();
 
   @Inject
   protected YNPProvisioning(
@@ -56,13 +56,18 @@ public class YNPProvisioning extends NodeTaskBase {
 
   @VisibleForTesting
   Path generateProvisionConfig(
-      Universe universe, NodeDetails node, Provider provider, Path nodeAgentHome) {
+      Universe universe,
+      NodeDetails node,
+      Provider provider,
+      Path nodeAgentHome,
+      UserIntent userIntent) {
     YNPConfigGenerator.ConfigParams configParams =
         YNPConfigGenerator.ConfigParams.builder()
             .nodeAgentHome(nodeAgentHome)
             .provider(provider)
             .nodeDetails(node)
             .universe(universe)
+            .userIntent(userIntent)
             .isYbPrebuiltImage(taskParams().isYbPrebuiltImage)
             .build();
     return ynpConfigGenerator.generateConfigFile(configParams);
@@ -87,7 +92,8 @@ public class YNPProvisioning extends NodeTaskBase {
      *  YNP based provisioning because dual NIC setup will require a reboot which might
      *  clean up the tmp directory where the YNP config is created.
      */
-    AnsibleSetupServer.Params ansibleParams = buildDualNicSetupParams(universe, node, provider);
+    AnsibleSetupServer.Params ansibleParams =
+        buildDualNicSetupParams(universe, node, provider, taskParams().userIntent);
     nodeManager
         .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
         .processErrors("Dual NIC setup failed");
@@ -99,7 +105,9 @@ public class YNPProvisioning extends NodeTaskBase {
         Paths.get(
                 customTmpDirectory, String.format("config_%d.json", Instant.now().getEpochSecond()))
             .toString();
-    Path tmpConfigFilepath = generateProvisionConfig(universe, node, provider, nodeAgentHomePath);
+    Path tmpConfigFilepath =
+        generateProvisionConfig(
+            universe, node, provider, nodeAgentHomePath, taskParams().userIntent);
     nodeUniverseManager.uploadFileToNode(
         node, universe, tmpConfigFilepath.toString(), targetConfigPath, "755", shellContext);
     // Copy the conf file to scripts folder and run the provisioning script as in manual onprem.
@@ -125,11 +133,13 @@ public class YNPProvisioning extends NodeTaskBase {
   }
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(
-      Universe universe, NodeDetails node, Provider provider) {
-    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+      Universe universe, NodeDetails node, Provider provider, UserIntent taskUserIntent) {
+    UserIntent userIntent =
+        taskUserIntent == null
+            ? universe.getCluster(node.placementUuid).userIntent
+            : taskUserIntent;
     AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
     fillSetupParamsForNode(ansibleParams, userIntent, node);
-    ansibleParams.skipAnsiblePlaybook = true;
     ansibleParams.sshUserOverride = node.sshUserOverride;
     ansibleParams.sshPortOverride = node.sshPortOverride;
     return ansibleParams;

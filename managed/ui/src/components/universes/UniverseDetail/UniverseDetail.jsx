@@ -268,12 +268,14 @@ class UniverseDetail extends Component {
     // (perf advisor collector or advanced observability disabled for the universe)
     const isOnPerfAdvisorTab = this.props.location?.pathname?.includes(PERF_ADVISOR_PATH);
     const { universePaRegistrationStatus: paStatus } = this.props.universe;
+    const paPromiseState = getPromiseState(paStatus);
     const shouldShowPerformanceTab =
       paStatus?.data?.success && paStatus?.data?.advancedObservability;
-    const hasRegistrationError = getPromiseState(paStatus).isError();
+    const paStatusResolved = paPromiseState.isError() || paPromiseState.isSuccess();
     if (
       isOnPerfAdvisorTab &&
-      (hasRegistrationError || (paStatus?.data !== undefined && !shouldShowPerformanceTab))
+      paStatusResolved &&
+      (paPromiseState.isError() || !shouldShowPerformanceTab)
     ) {
       this.props.router.push(`/universes/${this.props.params.uuid}/overview`);
     }

@@ -17,6 +17,7 @@
 
 #include "yb/consensus/log.h"
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_read_context.h"
 
 #include "yb/integration-tests/packed_row_test_base.h"
@@ -24,6 +25,7 @@
 #include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/sst_dump_tool.h"
 
 #include "yb/tablet/kv_formatter.h"
@@ -46,6 +48,8 @@ using namespace std::literals;
 DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_keep_intent_doc_ht);
 DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
+DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
@@ -1337,6 +1341,295 @@ TEST_P(PgPackedRowTestDisableTableLocks, DropColumnAfterReadStart) {
       "ALTER TABLE test DROP COLUMN value2",
       "SELECT SUM(value2) FROM test WHERE value = 1",
       42);
+}
+
+namespace {
+
+std::optional<SchemaVersion> GetMinPrimarySchemaVersion(rocksdb::DB* db) {
+  std::unordered_map<Uuid, SchemaVersion> versions;
+  {
+    auto smallest = db->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
+    if (smallest) {
+      down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(&versions);
+    }
+  }
+  for (const auto& file : db->GetLiveFilesMetaData()) {
+    auto smallest = file.smallest.user_frontier;
+    if (!smallest) {
+      continue;
+    }
+    down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(&versions);
+  }
+  auto it = versions.find(Uuid::Nil());
+  if (it == versions.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+} // namespace
+
+TEST_F_EX(PgPackedRowTest, SchemaPinnedByCompactionGc, PgMiniTestBase) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  // Requires packing to be off in order to reproduce.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+
+  constexpr auto kNumInitialRows = 1000;
+  constexpr auto kNumRowsInTxn = 100;
+  constexpr auto kWaitTimeout = 10s * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  LOG(INFO) << "Table created";
+
+  const auto tablets =
+      ASSERT_RESULT(ListTabletsForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(tablets.size(), 1);
+  auto& tablet = *tablets[0].get();
+
+  struct TestScope {
+    rocksdb::CompactionContextFactoryDelayer compaction_delayer;
+    TestThreadHolder thread_holder;
+
+    ~TestScope() {
+      // Clear delays first so the slow compaction thread can finish before thread_holder joins
+      // threads.
+      compaction_delayer.SetDelayForAllCompactions(0ms);
+    }
+  } test_scope;
+
+  auto& regular_db_options = pointer_cast<rocksdb::DBImpl*>(tablet.regular_db())->TEST_db_options();
+  regular_db_options.compaction_context_factory =
+      test_scope.compaction_delayer.WrapFactory(regular_db_options.compaction_context_factory);
+  auto regular_db_listener = std::make_shared<rocksdb::TestCompactionListener>();
+  regular_db_options.listeners.push_back(regular_db_listener);
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, 1 FROM generate_series(1, $0) AS i",
+      kNumInitialRows));
+  int64_t next_row = kNumInitialRows + 1;
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(LoggedWaitFor(
+      [&tablet]() -> Result<bool> { return VERIFY_RESULT(tablet.CountIntents()) == 0; },
+      kWaitTimeout, "Waiting for intents to be cleaned"));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_EQ(GetMinPrimarySchemaVersion(tablet.regular_db()), std::nullopt);
+
+  // Long-running compaction pins schema version 0 in SchemaPackingRegistry.
+  ASSERT_EQ(regular_db_listener->GetNumCompactionsStarted(), 0);
+  test_scope.compaction_delayer.SetDelayForNextCompactions(100ms);
+  test_scope.thread_holder.AddThreadFunctor([&] {
+    CHECK_OK(cluster_->CompactTablets());
+  });
+  ASSERT_OK(
+      LoggedWaitFor(
+          [regular_db_listener] { return regular_db_listener->GetNumCompactionsStarted() > 0; },
+          kWaitTimeout, Format("Waiting for the 1st compaction to start")));
+
+  // ALTER TABLE -> schema version 1.
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN c1 INT"));
+  LOG(INFO) << "ALTER TABLE done";
+
+  bool txn_is_open = false;
+  auto rows_flusher = [&]() -> Status {
+    if (txn_is_open) {
+      RETURN_NOT_OK(conn.CommitTransaction());
+      txn_is_open = false;
+    }
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&tablet]() -> Result<bool> {
+          const auto num_intents = VERIFY_RESULT(tablet.CountIntents());
+          LOG(INFO) << "Intents count: " << num_intents;
+          return num_intents == 0;
+        },
+        kWaitTimeout, "Waiting for intents cleanup"));
+
+    // We want IntentsDB to be not empty, so it contains primary_schema_version = 1 which will be
+    // taken into account by OldSchemaGC triggered after compaction.
+    // Otherwise, FillMinXClusterSchemaVersion (as of 2026-04-13) will set min version to 0
+    // (safe, but incorrect and prevent bug from being reproducible).
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO test SELECT i, $0 FROM generate_series($0, $1) AS i", next_row,
+        next_row + kNumRowsInTxn - 1));
+    txn_is_open = true;
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          const auto num_intents = VERIFY_RESULT(tablet.CountIntents());
+          LOG(INFO) << "Intents count: " << num_intents;
+          return num_intents >= kNumRowsInTxn;
+        },
+        kWaitTimeout, "Waiting for intents"));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+    const auto min_primary_version = GetMinPrimarySchemaVersion(tablet.intents_db());
+    {
+      const auto num_intents = VERIFY_RESULT(tablet.CountIntents());
+      LOG(INFO) << "Intents count: " << num_intents;
+    }
+    SCHECK_EQ(min_primary_version, 1, InternalError, "");
+    next_row += kNumRowsInTxn;
+    return Status::OK();
+  };
+
+  auto auto_compaction_trigger = [&](const std::string& label) -> Status {
+    const auto num_compactions_started = regular_db_listener->GetNumCompactionsStarted();
+    const auto num_compactions_completed = regular_db_listener->GetNumCompactionsCompleted();
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          RETURN_NOT_OK(rows_flusher());
+          return regular_db_listener->GetNumCompactionsStarted() > num_compactions_started;
+        },
+        kWaitTimeout, Format("Waiting for $0 to start", label), 100ms, 1));
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&] {
+          return regular_db_listener->GetNumCompactionsCompleted() > num_compactions_completed;
+        },
+        kWaitTimeout, Format("Waiting for $0 to complete", label)));
+    if (txn_is_open) {
+      RETURN_NOT_OK(conn.CommitTransaction());
+      txn_is_open = false;
+    }
+    return Status::OK();
+  };
+
+  // Write more SST files to trigger smaller compaction so OldSchemaGC will be run after it.
+  // Regular DB has primary_schema_version = nullopt, intents DB has v1, so without the fix
+  // OldSchemaGC determines min version = 1 and GCs v0 from storage.
+  // With the fix: OldSchemaGC respects MinActiveVersion() and won't GC below v0 (pinned by 1st
+  // compaction).
+  test_scope.compaction_delayer.SetDelayForNextCompactions(0ms);
+  ASSERT_OK(auto_compaction_trigger("2nd compaction"));
+
+  // Write more SST files to trigger smaller compaction after OldSchemaGC.
+  // Before GHI #31138 fix: MinActiveVersion() returns 0 (held by 1st compaction), but only version
+  // 1 exists in the current packing storage -> "Cannot find packing with version 0".
+  ASSERT_OK(auto_compaction_trigger("3rd compaction"));
+
+  // Check: 1st compaction should still be running and  pin schema version 0 in
+  // SchemaPackingRegistry.
+  {
+    auto current_table_info = tablet.metadata()->primary_table_info();
+    ASSERT_EQ(current_table_info->schema_version, 1);
+    auto min_active =
+        current_table_info->doc_read_context->schema_packing_storage.registry().MinActiveVersion();
+    LOG(INFO) << "MinActiveVersion: " << AsString(min_active)
+              << ", current schema version: " << current_table_info->schema_version
+              << ", schema count: "
+              <<   current_table_info->doc_read_context->schema_packing_storage.SchemaCount();
+    ASSERT_EQ(min_active, 0);
+    ASSERT_GE(
+        regular_db_listener->GetNumCompactionsCompleted(),
+        regular_db_listener->GetNumCompactionsStarted() - 1);
+  }
+
+  test_scope.compaction_delayer.SetDelayForAllCompactions(0ms);
+  test_scope.thread_holder.JoinAll();
+
+  const auto row_count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(row_count, next_row - 1);
+}
+
+// Bug scenario similar to SchemaPinnedByCompactionGc, but the stale SchemaPackingRegistry entry is
+// pinned by a long-running read (which holds a TableInfoPtr on the stack) instead of a long-running
+// compaction.
+TEST_P(PgPackedRowTestDisableTableLocks, SchemaPinnedByReadGc) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  constexpr auto kNumRows = 10;
+  constexpr auto kWaitTimeout = 10s * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  LOG(INFO) << "Table created";
+
+  const auto tablets =
+      ASSERT_RESULT(ListTabletsForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(tablets.size(), 1);
+  auto& tablet = *tablets[0].get();
+
+  struct TestScope {
+    TestThreadHolder thread_holder;
+    SyncPoint& sync_point = *SyncPoint::GetInstance();
+
+    CountDownLatch release_read{1};
+
+    ~TestScope() {
+      release_read.CountDown();
+      sync_point.DisableProcessing();
+      sync_point.ClearAllCallBacks();
+      sync_point.ClearTrace();
+    }
+  } test_scope;
+
+  // Start a long-running aggregate read that pins schema version 0 via TableInfoPtr held on the
+  // stack in DoHandlePgsqlReadRequest.
+  CountDownLatch read_paused(1);
+  test_scope.sync_point.SetCallBack(
+      "Tablet::DoHandlePgsqlReadRequest::Aggregate", [&](void*) {
+        LOG(INFO) << "Read reached sync point, pausing";
+        read_paused.CountDown();
+        test_scope.release_read.Wait();
+        LOG(INFO) << "Read released from sync point";
+      });
+  test_scope.sync_point.EnableProcessing();
+
+  auto read_conn = ASSERT_RESULT(Connect());
+  test_scope.thread_holder.AddThreadFunctor([&read_conn, &test_scope] {
+    auto result = read_conn.FetchRow<int64_t>("SELECT count(*) FROM test");
+    if (!test_scope.thread_holder.stop_flag().load()) {
+      CHECK_OK(result);
+    }
+  });
+
+  ASSERT_TRUE(read_paused.WaitFor(kWaitTimeout));
+  LOG(INFO) << "Background read is paused at sync point (schema version 0 pinned)";
+
+  // ALTER TABLE -> schema version 1.
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN c1 INT"));
+  LOG(INFO) << "ALTER TABLE done";
+
+  // Insert some data at schema version 1, flush.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, 1 FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(LoggedWaitFor(
+    [&tablet]() -> Result<bool> { return GetMinPrimarySchemaVersion(tablet.regular_db()) == 1; },
+    kWaitTimeout, "Waiting for regular DB primary schema version to become 1."));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_EQ(GetMinPrimarySchemaVersion(tablet.regular_db()), 1);
+
+  // Compact to trigger OldSchemaGC. Regular DB has primary_schema_version = 1, so without
+  // the fix OldSchemaGC determines min version = 1 and GCs v0 from storage.
+  // With the fix: OldSchemaGC respects MinActiveVersion() and won't GC below v0 (pinned by read).
+  ASSERT_OK(cluster_->CompactTablets());
+
+  // Another compaction. Without the fix, this crashes with
+  // "Cannot find packing with version 0" because MinActiveVersion() returns 0 (pinned by read)
+  // but version 0 was GC'd from storage.
+  ASSERT_OK(cluster_->CompactTablets());
+
+  // Verify: read should still pin schema version 0 in the registry.
+  {
+    auto current_table_info = tablet.metadata()->primary_table_info();
+    ASSERT_EQ(current_table_info->schema_version, 1);
+    auto min_active =
+        current_table_info->doc_read_context->schema_packing_storage.registry().MinActiveVersion();
+    LOG(INFO) << "MinActiveVersion: " << AsString(min_active)
+              << ", current schema version: " << current_table_info->schema_version
+              << ", schema count: "
+              << current_table_info->doc_read_context->schema_packing_storage.SchemaCount();
+    ASSERT_EQ(min_active, 0);
+  }
+
+  // Release the read.
+  test_scope.release_read.CountDown();
+  test_scope.thread_holder.JoinAll();
+
+  const auto row_count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(row_count, kNumRows);
 }
 
 INSTANTIATE_TEST_SUITE_P(

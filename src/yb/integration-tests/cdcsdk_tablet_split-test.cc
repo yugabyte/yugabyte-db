@@ -2419,5 +2419,99 @@ TEST_F(CDCSDKTabletSplitTest, TestProgressivePollingAcrossThreeLevels) {
       "B retired, C active -> {C, D, E}");
 }
 
+TEST_F(CDCSDKTabletSplitTest, TestNoEmptyBeginCommitAfterTabletSplit) {
+  // After a tablet split, a child whose key range excludes the multi-shard txn's intents
+  // should NOT emit empty BEGIN + COMMIT with no DMLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(
+      /* replication_factor */ 3, /* num_masters */ 1, /* colocated */ false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_table (key INT, value_1 INT, PRIMARY KEY (key ASC)) "
+      "SPLIT AT VALUES ((500))"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 2);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ true));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+
+  // Multi-shard txn: key=300 lands in T1, key=600 in T2.
+  auto txn_conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(txn_conn.Execute("BEGIN"));
+  ASSERT_OK(txn_conn.Execute("INSERT INTO test_table VALUES (300, 301)"));
+  ASSERT_OK(txn_conn.Execute("INSERT INTO test_table VALUES (600, 601)"));
+
+  // Find T1 (lower range) and split it while txn is open.
+  int t1_idx = tablets[0].partition().partition_key_start().empty() ? 0 : 1;
+  int t2_idx = 1 - t1_idx;
+  WaitUntilSplitIsSuccesful(tablets[t1_idx].tablet_id(), table, 3);
+
+  ASSERT_OK(txn_conn.Execute("COMMIT"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> post_split;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &post_split, nullptr));
+  ASSERT_EQ(post_split.size(), 3);
+
+  GetChangesResponsePB split_resp;
+  PollUntilTabletSplit(stream_id, tablets, &split_resp, t1_idx);
+
+  std::unordered_set<TabletId> expected_tablets;
+  expected_tablets.insert(tablets[t1_idx].tablet_id());
+  for (const auto& t : post_split) {
+    expected_tablets.insert(t.tablet_id());
+  }
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id);
+
+  // Poll each child of T1 and verify no empty BEGIN+COMMIT is emitted.
+  auto t2_id = tablets[t2_idx].tablet_id();
+  bool found_empty_txn = false;
+
+  for (int i = 0; i < post_split.size(); i++) {
+    if (post_split[i].tablet_id() == t2_id) {
+      continue;
+    }
+
+    auto child_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+        stream_id, post_split, &split_resp.cdc_sdk_checkpoint(),
+        &split_resp.cdc_sdk_checkpoint(), "", i));
+
+    bool in_begin = false;
+    bool has_dml = false;
+    while (child_resp.cdc_sdk_proto_records_size() > 0) {
+      for (const auto& rec : child_resp.cdc_sdk_proto_records()) {
+        auto op = rec.row_message().op();
+        if (op == RowMessage::BEGIN) {
+          in_begin = true;
+          has_dml = false;
+        } else if (op == RowMessage::COMMIT) {
+          if (in_begin && !has_dml) {
+            found_empty_txn = true;
+            break;
+          }
+          in_begin = false;
+        } else if (
+            op == RowMessage::INSERT || op == RowMessage::UPDATE || op == RowMessage::DELETE) {
+          has_dml = true;
+        }
+      }
+      child_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+          stream_id, post_split, &child_resp.cdc_sdk_checkpoint(),
+          &child_resp.cdc_sdk_checkpoint(), "", i));
+    }
+  }
+
+  ASSERT_FALSE(found_empty_txn)
+      << "Empty BEGIN+COMMIT should not be emitted for transactions with no intents in key range";
+}
+
 }  // namespace cdc
 }  // namespace yb

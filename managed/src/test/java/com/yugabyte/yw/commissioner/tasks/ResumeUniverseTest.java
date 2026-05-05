@@ -43,7 +43,6 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -216,8 +215,9 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResumeUniverseWithCRAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(
-        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     setupUniverse(azuProvider, false, 3);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
     taskParams.customerUUID = defaultCustomer.getUuid();
@@ -235,7 +235,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
                 Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
 
     verifyNodeInteractionsCapacityReservation(
-        12,
+        6,
         NodeManager.NodeCommandType.Resume,
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
@@ -248,8 +248,9 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResumeUniverseWithCRAzureRRSuccess() {
-    RuntimeConfigEntry.upsertGlobal(
-        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     setupUniverse(azuProvider, false, 3);
 
     Provider azuProvider2 =
@@ -310,7 +311,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
                     Arrays.asList("host-n4-readonly", "host-n5-readonly", "host-n6-readonly")))));
 
     verifyNodeInteractionsCapacityReservation(
-        21,
+        12,
         NodeManager.NodeCommandType.Resume,
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
@@ -328,7 +329,9 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResumeUniverseWithCRAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     setupUniverse(defaultProvider, false, 3);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
     taskParams.customerUUID = defaultCustomer.getUuid();
@@ -344,7 +347,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
 
     verifyNodeInteractionsCapacityReservation(
-        9,
+        3,
         NodeManager.NodeCommandType.Resume,
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(

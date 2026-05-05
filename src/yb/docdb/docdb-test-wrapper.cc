@@ -218,10 +218,10 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
         )#");
   ASSERT_OK(ExtendList(
       DocPath(encoded_doc_key, KeyEntryValue("list2")),
-      ValueRef(QLValue::PrimitiveArray(5, 2), dockv::ListExtendOrder::PREPEND_BLOCK),
+      ValueRef(*MakeLWValue(QLValue::PrimitiveArray(5, 2)), dockv::ListExtendOrder::PREPEND_BLOCK),
       HybridTime(300)));
   ASSERT_OK(ExtendList(DocPath(encoded_doc_key, KeyEntryValue("list2")),
-      ValueRef(QLValue::PrimitiveArray(7, 4), dockv::ListExtendOrder::APPEND),
+      ValueRef(*MakeLWValue(QLValue::PrimitiveArray(7, 4)), dockv::ListExtendOrder::APPEND),
       HybridTime(400)));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
@@ -422,7 +422,8 @@ TEST_P(DocDBTestWrapper, ListOverwriteAndInsertTest) {
     for (const auto& child : children) {
       AddMapValue(idx++, child, &list);
     }
-    ValueRef value_ref(list);
+    auto lw_list = MakeLWValue(list);
+    ValueRef value_ref(*lw_list);
     value_ref.set_write_instruction(bfql::TSOpcode::kListAppend);
     ASSERT_OK(InsertSubDocument(
         DocPath(encoded_doc_key, KeyEntryValue("list")), value_ref, HybridTime(logical_time)));
@@ -497,7 +498,8 @@ TEST_P(DocDBTestWrapper, ListInsertAndDeleteTest) {
     for (const auto& child : children) {
       AddMapValue(idx++, child, &list);
     }
-    ValueRef value_ref(list);
+    auto lw_list = MakeLWValue(list);
+    ValueRef value_ref(*lw_list);
     value_ref.set_write_instruction(bfql::TSOpcode::kListAppend);
     ASSERT_OK(InsertSubDocument(
         DocPath(encoded_doc_key, KeyEntryValue("list")), value_ref, HybridTime(logical_time)));
@@ -579,7 +581,8 @@ TEST_P(DocDBTestWrapper, MapInsertAndDeleteTest) {
     for (const auto& child : values) {
       AddMapValue(child.first, child.second, &map_value);
     }
-    ValueRef value_ref(map_value);
+    auto lw_map_value = MakeLWValue(map_value);
+    ValueRef value_ref(*lw_map_value);
     value_ref.set_write_instruction(bfql::TSOpcode::kMapExtend);
     ASSERT_OK(InsertSubDocument(DocPath(encoded_doc_key), value_ref, HybridTime(logical_time)));
   };
@@ -768,8 +771,8 @@ TEST_P(DocDBTestWrapper, MinorCompactionWithDeletions) {
   const auto doc_key = MakeDocKey("k");
   KeyBytes encoded_doc_key(doc_key.Encode());
   for (int i = 1; i <= 6; ++i) {
-    auto value = QLValue::Primitive(Format("v$0", i));
-    auto value_ref = i == 5 ? ValueRef(ValueEntryType::kTombstone) : ValueRef(value);
+    auto value = MakeLWValue(QLValue::Primitive(Format("v$0", i)));
+    auto value_ref = i == 5 ? ValueRef(ValueEntryType::kTombstone) : ValueRef(*value);
     ASSERT_OK(SetPrimitive(
         DocPath(encoded_doc_key), value_ref, HybridTime::FromMicros(i * 1000)));
     ASSERT_OK(FlushRocksDbAndWait());
@@ -862,7 +865,7 @@ TEST_P(DocDBTestWrapper, BasicTest) {
 
   TestInsertion(
       DocPath(string_valued_doc_key.Encode()),
-      ValueRef(QLValue::Primitive("value1")),
+      ValueRef(*MakeLWValue(QLValue::Primitive("value1"))),
       1000_usec_ht,
       R"#(1. PutCF('Smy_key_where_value_is_a_string\x00\x00\
                     !', 'Svalue1'))#");
@@ -872,7 +875,7 @@ TEST_P(DocDBTestWrapper, BasicTest) {
 
   TestInsertion(
       DocPath(encoded_doc_key, KeyEntryValue("subkey_a")),
-      ValueRef(QLValue::Primitive("value_a")),
+      ValueRef(*MakeLWValue(QLValue::Primitive("value_a"))),
       2000_usec_ht,
       R"#(
 1. PutCF('Smydockey\x00\x00\
@@ -886,7 +889,7 @@ TEST_P(DocDBTestWrapper, BasicTest) {
 
   TestInsertion(
       DocPath(encoded_doc_key, KeyEntryValue("subkey_b"), KeyEntryValue("subkey_c")),
-      ValueRef(QLValue::Primitive("value_bc")),
+      ValueRef(*MakeLWValue(QLValue::Primitive("value_bc"))),
       3000_usec_ht,
       R"#(
 1. PutCF('Smydockey\x00\x00\
@@ -903,7 +906,7 @@ TEST_P(DocDBTestWrapper, BasicTest) {
   // This only has one insertion, because the object at subkey "subkey_b" already exists.
   TestInsertion(
       DocPath(encoded_doc_key, KeyEntryValue("subkey_b"), KeyEntryValue("subkey_d")),
-      ValueRef(QLValue::Primitive("value_bd")),
+      ValueRef(*MakeLWValue(QLValue::Primitive("value_bd"))),
       3500_usec_ht,
       R"#(
 1. PutCF('Smydockey\x00\x00\
@@ -946,7 +949,7 @@ TEST_P(DocDBTestWrapper, BasicTest) {
   // operation and create a new object at subkey_b at the new hybrid_time, hence two writes.
   TestInsertion(
       DocPath(encoded_doc_key, KeyEntryValue("subkey_b"), KeyEntryValue("subkey_c")),
-      ValueRef(QLValue::Primitive("value_bc_prime")),
+      ValueRef(*MakeLWValue(QLValue::Primitive("value_bc_prime"))),
       7000_usec_ht,
       R"#(
 1. PutCF('Smydockey\x00\x00\

@@ -558,6 +558,11 @@ ReinitializeParallelDSM(ParallelContext *pcxt)
 			pcxt->worker[i].error_mqh = shm_mq_attach(mq, pcxt->seg, NULL);
 		}
 	}
+
+	/*
+	 * YB TODO(#30936): Dump and restore transaction state similar to the way it
+	 * is done in InitializeParallelDSM.
+	 */
 }
 
 /*
@@ -595,9 +600,6 @@ LaunchParallelWorkers(ParallelContext *pcxt)
 
 	if (IsYugaByteEnabled())
 	{
-		/* TODO(#30588): Allow parallel workers after the fix */
-		if (!YBCIsLegacyModeForCatalogOps())
-			return;
 		/*
 		 * Semantics of the "EnsureReadPoint" contradicts "RestartReadPoint".
 		 * Hence, if we are restarting, proceed without parallel workers.

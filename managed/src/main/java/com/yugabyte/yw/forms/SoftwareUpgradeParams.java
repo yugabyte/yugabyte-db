@@ -9,11 +9,13 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.ImmutableSet;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -99,15 +101,28 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "Software version is already: " + ybSoftwareVersion);
     }
 
+    SoftwareUpgradeState softwareUpgradeState = universe.getUniverseDetails().softwareUpgradeState;
     Set<SoftwareUpgradeState> allowedStates = ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET;
     if (canaryUpgradeConfig != null) {
+      if (softwareUpgradeState == SoftwareUpgradeState.Paused) {
+        UUID previousTaskUUID = getPreviousTaskUUID();
+        UUID updatingTaskUUID = universe.getUniverseDetails().updatingTaskUUID;
+        if (previousTaskUUID == null
+            || updatingTaskUUID == null
+            || !previousTaskUUID.equals(updatingTaskUUID)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Universe has a paused canary software upgrade. Submit a resume or rollback instead"
+                  + " of a new upgrade.");
+        }
+      }
       allowedStates =
           ImmutableSet.of(
               SoftwareUpgradeState.Ready,
               SoftwareUpgradeState.UpgradeFailed,
               SoftwareUpgradeState.Paused);
     }
-    if (!allowedStates.contains(universe.getUniverseDetails().softwareUpgradeState)) {
+    if (!allowedStates.contains(softwareUpgradeState)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Software upgrade cannot be preformed on universe in state "
@@ -164,7 +179,7 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     }
 
     if (canaryUpgradeConfig != null) {
-      validateCanaryUpgradeConfig(universe);
+      validateCanaryUpgradeConfig(universe, runtimeConfigFactory);
     }
   }
 
@@ -174,7 +189,22 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
    * and no AZ-level pause points (see CanaryUpgradeConfig API docs). Only non-null step lists are
    * validated for AZ membership.
    */
-  private void validateCanaryUpgradeConfig(Universe universe) {
+  private void validateCanaryUpgradeConfig(
+      Universe universe, RuntimeConfigFactory runtimeConfigFactory) {
+    Config universeConfig = runtimeConfigFactory.forUniverse(universe);
+    long masterStagePause =
+        universeConfig.getLong(UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey());
+    long tserverStagePause =
+        universeConfig.getLong(UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey());
+    if (masterStagePause != 0 || tserverStagePause != 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Canary upgrade cannot be used when per-AZ stage pause durations are non-zero."
+              + " Set yb.upgrade.upgrade_master_stage_pause_duration_ms and"
+              + " yb.upgrade.upgrade_tserver_stage_pause_duration_ms to 0 before using canary"
+              + " upgrade.");
+    }
+
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     UUID primaryClusterUuid = details.getPrimaryCluster().uuid;
 

@@ -681,10 +681,6 @@ handle_predefined_build_root
 # Setting CMake options.
 cmake_opts=()
 
-if is_mac && [[ $should_build_clangd_index == "true" && ${YB_COMPILER_TYPE:-} == "" ]]; then
-  # On macOS, we need to use our custom-built version of Clang to build the clangd index.
-  YB_COMPILER_TYPE=clang16
-fi
 if [[ $validate_args_only == "true" ]]; then
   yb_set_build_type_quietly=true
 fi
@@ -1156,7 +1152,6 @@ fi
 run_tests_remotely
 
 if [[ ${ran_tests_remotely} != "true" ]]; then
-  ensure_test_tmp_dir_is_set
   if [[ -n $cxx_test_name ]]; then
     capture_sec_timestamp cxx_test_start
     run_cxx_test

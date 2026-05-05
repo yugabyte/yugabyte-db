@@ -1779,9 +1779,28 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 
 		case AT_SetRelOptions:
 		case AT_ResetRelOptions:
-			*needsYBAlter = false;
-			ereport(NOTICE,
-					(errmsg("storage parameters are currently ignored in YugabyteDB")));
+			{
+				*needsYBAlter = false;
+				/*
+				 * Emit one NOTICE per unsupported parameter so the user
+				 * knows exactly which option(s) have no effect.
+				 */
+				ListCell   *lc;
+
+				foreach(lc, (List *) cmd->def)
+				{
+					DefElem    *def = (DefElem *) lfirst(lc);
+
+					if (strncmp(def->defname, "yb_auto_analyze_",
+								strlen("yb_auto_analyze_")) == 0)
+						continue;
+
+					ereport(NOTICE,
+							(errmsg("storage parameter %s is currently ignored "
+									"for ALTER TABLE in YugabyteDB",
+									def->defname)));
+				}
+			}
 			break;
 
 		case AT_AddOf:

@@ -158,7 +158,7 @@ Result<google::protobuf::RepeatedPtrField<RestorationInfoPB>> ListSnapshotRestor
 Result<SnapshotScheduleId> CreateSnapshotSchedule(
     MasterBackupProxy* proxy,
     YQLDatabase namespace_type,
-    const std::string& namespace_name,
+    std::string_view namespace_name,
     MonoDelta interval,
     MonoDelta retention_duration,
     MonoDelta timeout) {
@@ -169,7 +169,7 @@ Result<SnapshotScheduleId> CreateSnapshotSchedule(
   client::YBTableName keyspace;
   master::NamespaceIdentifierPB namespace_id;
   namespace_id.set_database_type(namespace_type);
-  namespace_id.set_name(namespace_name);
+  namespace_id.set_name(std::string{namespace_name});
   keyspace.GetFromNamespaceIdentifierPB(namespace_id);
   auto* options = req.mutable_options();
   auto* filter_tables = options->mutable_filter()->mutable_tables()->mutable_tables();
@@ -470,7 +470,7 @@ class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase {
   }
 
   Status CreateDatabase(
-      const std::string& namespace_name,
+      std::string_view namespace_name,
       master::YsqlColocationConfig colocated = master::YsqlColocationConfig::kNotColocated) {
     auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(conn.ExecuteFormat(
@@ -657,12 +657,12 @@ class PgCloneInitiallyEmptyDBTest : public PostgresMiniClusterTest {
   Status CreateSourceDbAndSnapshotSchedule(master::YsqlColocationConfig colocated) {
     RETURN_NOT_OK(CreateDatabase(kSourceNamespaceName, colocated));
     source_conn_ = std::make_unique<pgwrapper::PGConn>(
-        VERIFY_RESULT(ConnectToDB(kSourceNamespaceName)));
+        VERIFY_RESULT(ConnectToDB(std::string{kSourceNamespaceName})));
     schedule_id_ = VERIFY_RESULT(CreateSnapshotSchedule(
-        master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kSourceNamespaceName, kInterval, kRetention,
-        kTimeout));
+        master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kSourceNamespaceName,
+        snapshot_schedule_interval(), kRetention, kTimeout));
     RETURN_NOT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id_, kTimeout));
-     return Status::OK();
+    return Status::OK();
   }
 
   void DoTearDown() override {
@@ -685,6 +685,10 @@ class PgCloneInitiallyEmptyDBTest : public PostgresMiniClusterTest {
 
   virtual master::YsqlColocationConfig ColocateDatabase() {
     return master::YsqlColocationConfig::kNotColocated;
+  }
+
+  virtual std::chrono::seconds snapshot_schedule_interval() {
+    return kInterval;
   }
 
   std::unique_ptr<rpc::Messenger> messenger_;
@@ -1194,6 +1198,80 @@ TEST_P(PgCloneTestWithColocatedDBParam, CloneWithSequences) {
   row = ASSERT_RESULT(
       (target_conn.FetchRow<int32_t, int32_t>(Format("SELECT * FROM t1 WHERE key=$0", key))));
   ASSERT_EQ(row, kRows[3]);
+}
+
+// Uses a short snapshot interval so we don't need to sleep 40s waiting for a snapshot to advance
+// last_snapshot_ht_. The sequences_data table is never colocated, so there is no need to
+// parameterize over colocation.
+class PgCloneSequencesRetentionTest : public PgCloneInitiallyEmptyDBTest {
+ protected:
+  static constexpr auto kShortInterval = 2s;
+
+  std::chrono::seconds snapshot_schedule_interval() override {
+    return kShortInterval;
+  }
+};
+
+// Clone should succeed even when the sequences_data tablet's history has been compacted past the
+// clone's restore time. The ysql_dump subprocess reads sequence values at the restore time, and
+// PITR's retention_duration_sec must protect the history on tservers (not just on the master).
+TEST_F(PgCloneSequencesRetentionTest, CloneWithSequencesAfterCompaction) {
+  // With retention_interval=0, the only thing protecting history from compaction is the snapshot
+  // schedule's retention_duration_sec propagated via heartbeats.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  // Create a table with a SERIAL column (cache=1 ensures every INSERT writes to sequences_data).
+  ASSERT_OK(source_conn_->Execute("CREATE SEQUENCE seq_test_id_seq CACHE 1"));
+  ASSERT_OK(source_conn_->Execute(
+      "CREATE TABLE seq_test (id INT DEFAULT nextval('seq_test_id_seq') PRIMARY KEY, data TEXT)"));
+  ASSERT_OK(source_conn_->Execute("INSERT INTO seq_test (data) VALUES ('before_clone_point')"));
+
+  auto clone_to_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+
+  // Generate writes to create MVCC history that compaction can GC.
+  // Flush between batches to create multiple SST files.
+  for (int batch = 0; batch < 3; batch++) {
+    for (int i = 0; i < 10; i++) {
+      ASSERT_OK(source_conn_->Execute("INSERT INTO seq_test (data) VALUES ('filler')"));
+    }
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+  }
+
+  // Wait for at least one scheduled snapshot after clone_to_time to be reflected on every tserver
+  // via heartbeat.
+  const auto clone_to_ht = HybridTime::FromMicros(static_cast<uint64_t>(clone_to_time));
+  ASSERT_OK(WaitFor(
+      [this, &clone_to_ht]() -> Result<bool> {
+        for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+          auto last_snapshot_ht = cluster_->mini_tablet_server(i)
+                                      ->server()
+                                      ->tablet_manager()
+                                      ->TEST_LastSnapshotHybridTime(schedule_id_);
+          if (last_snapshot_ht <= clone_to_ht) {
+            return false;
+          }
+        }
+        return true;
+      },
+      kTimeout,
+      "Wait for snapshot schedule's last_snapshot_ht to advance past clone_to_time on all "
+      "tservers"));
+
+  // Compact with retention=0 to aggressively GC historical versions.
+  ASSERT_OK(cluster_->CompactTablets());
+
+  // Clone at the old timestamp. The PITR schedule's retention should keep sequences_data history
+  // available for the clone's ysql_dump read, even after compaction.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE cloned_db TEMPLATE $0 AS OF $1", kSourceNamespaceName, clone_to_time));
+
+  // Verify the cloned database has the correct data from before the clone point.
+  auto target_conn = ASSERT_RESULT(ConnectToDB("cloned_db"));
+  auto rows =
+      ASSERT_RESULT((target_conn.FetchRows<int32_t, std::string>("SELECT id, data FROM seq_test")));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(std::get<0>(rows[0]), 1);
+  ASSERT_EQ(std::get<1>(rows[0]), "before_clone_point");
 }
 
 TEST_P(PgCloneTestWithColocatedDBParam, CloneWithSequencesAndDdl) {

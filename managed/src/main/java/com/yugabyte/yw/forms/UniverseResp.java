@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
@@ -69,13 +70,15 @@ public class UniverseResp {
       rollMaxBatchSize = UpgradeTaskBase.getMaxNodesToRoll(universe);
     }
     String ybaSoftwareVersion = currentYbaSoftwareVersion();
+    String localInstanceAddress = HighAvailabilityConfig.getLocalInstanceAddress().orElse(null);
     return new UniverseResp(
         universe,
         taskUUID,
         resourceDetails,
         allowedTasks.get(universe.getUniverseUUID()),
         rollMaxBatchSize,
-        ybaSoftwareVersion);
+        ybaSoftwareVersion,
+        localInstanceAddress);
   }
 
   public static List<UniverseResp> create(
@@ -96,6 +99,7 @@ public class UniverseResp {
         });
 
     String ybaSoftwareVersion = currentYbaSoftwareVersion();
+    String localInstanceAddress = HighAvailabilityConfig.getLocalInstanceAddress().orElse(null);
     return universeList.stream()
         .map(
             universe ->
@@ -109,7 +113,8 @@ public class UniverseResp {
                     UniverseResourceDetails.create(universe.getUniverseDetails(), context),
                     allowedTasks.get(universe.getUniverseUUID()),
                     suggests.get(universe.getUniverseUUID()),
-                    ybaSoftwareVersion))
+                    ybaSoftwareVersion,
+                    localInstanceAddress))
         .collect(Collectors.toList());
   }
 
@@ -228,11 +233,25 @@ public class UniverseResp {
   public final String platformVersion;
 
   public UniverseResp(Universe entity) {
-    this(entity, null, null, null, null, currentYbaSoftwareVersion());
+    this(
+        entity,
+        null,
+        null,
+        null,
+        null,
+        currentYbaSoftwareVersion(),
+        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null));
   }
 
   public UniverseResp(Universe entity, UUID taskUUID) {
-    this(entity, taskUUID, null, null, null, currentYbaSoftwareVersion());
+    this(
+        entity,
+        taskUUID,
+        null,
+        null,
+        null,
+        currentYbaSoftwareVersion(),
+        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null));
   }
 
   public UniverseResp(
@@ -241,7 +260,14 @@ public class UniverseResp {
       UniverseResourceDetails resources,
       AllowedTasks allowedTasks,
       RollMaxBatchSize rollMaxBatchSize) {
-    this(entity, taskUUID, resources, allowedTasks, rollMaxBatchSize, currentYbaSoftwareVersion());
+    this(
+        entity,
+        taskUUID,
+        resources,
+        allowedTasks,
+        rollMaxBatchSize,
+        currentYbaSoftwareVersion(),
+        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null));
   }
 
   public UniverseResp(
@@ -250,7 +276,8 @@ public class UniverseResp {
       UniverseResourceDetails resources,
       AllowedTasks allowedTasks,
       RollMaxBatchSize rollMaxBatchSize,
-      String platformVersion) {
+      String platformVersion,
+      String localInstanceAddress) {
     this(
         entity,
         taskUUID,
@@ -260,7 +287,8 @@ public class UniverseResp {
         resources,
         allowedTasks,
         rollMaxBatchSize,
-        platformVersion);
+        platformVersion,
+        localInstanceAddress);
   }
 
   public UniverseResp(
@@ -271,13 +299,16 @@ public class UniverseResp {
       UniverseResourceDetails resources,
       AllowedTasks allowedTasks,
       RollMaxBatchSize rollMaxBatchSize,
-      String platformVersion) {
+      String platformVersion,
+      String localInstanceAddress) {
     universeUUID = entity.getUniverseUUID();
     name = entity.getName();
     creationDate = entity.getCreationDate().toString();
     version = entity.getVersion();
     dnsName = getDnsName(customer, provider);
-    universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
+    universeDetails =
+        new UniverseDefinitionTaskParamsResp(
+            entity.getUniverseDetails(), entity, localInstanceAddress);
     this.taskUUID = taskUUID;
     this.resources = resources;
     universeConfig = entity.getConfig();

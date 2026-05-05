@@ -39,7 +39,7 @@ If your cluster is deployed in a peered VPC, you need to add the IP addresses of
 
 By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable **Public Access** on the cluster **Settings > Network Access** tab.
 
-For more information, refer to [IP allow list](../../cloud-secure-clusters/add-connections).
+For more information, refer to [IP allow list](../../cloud-secure-clusters/add-connections/).
 
 #### VPC network
 

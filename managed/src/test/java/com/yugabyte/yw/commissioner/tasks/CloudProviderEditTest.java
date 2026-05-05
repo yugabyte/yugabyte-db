@@ -55,7 +55,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.RegionDetails;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -911,8 +910,10 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testWaitForFinishingTasksTimeout() throws InterruptedException {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.waitForProviderTasksStepMs.getKey(), "50");
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.waitForProviderTasksTimeoutMs.getKey(), "100");
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.waitForProviderTasksStepMs.getKey(), "50");
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.waitForProviderTasksTimeoutMs.getKey(), "100");
     UUID backupTaskUUID = UUID.randomUUID();
     CreateBackup createBackup = app.injector().instanceOf(CreateBackup.class);
     BackupRequestParams params = new BackupRequestParams();
@@ -944,8 +945,10 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testWaitForFinishingTasksSuccess() throws InterruptedException {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.waitForProviderTasksStepMs.getKey(), "100");
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.waitForProviderTasksTimeoutMs.getKey(), "10000");
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.waitForProviderTasksStepMs.getKey(), "100");
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.waitForProviderTasksTimeoutMs.getKey(), "10000");
     UUID backupTaskUUID = UUID.randomUUID();
     CreateBackup createBackup = app.injector().instanceOf(CreateBackup.class);
     BackupRequestParams params = new BackupRequestParams();
@@ -1104,7 +1107,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testImageBundleEditRegionAdd() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
     Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(p, "us-west-1", "us-west-1", "yb-image1");
     createImageBundle(p, null);
@@ -1141,7 +1146,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   public void testImageBundleEditRegionAddLegacyPayload() {
     JsonNode vpcInfo = Json.parse("{\"us-west-2\": {\"zones\": {\"us-west-2a\": \"subnet-1\"}}}");
     when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
     Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(p, "us-west-1", "us-west-1", "yb-image1");
     createImageBundle(p, null);

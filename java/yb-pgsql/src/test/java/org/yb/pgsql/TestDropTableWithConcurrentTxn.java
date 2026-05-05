@@ -413,15 +413,13 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
 
   @Test
   public void testDmlTxnDrop() throws Exception {
-    skipYsqlConnMgr(BasePgSQLTest.CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE,
-                isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE);
     testDmlTxnDropInternal();
   }
 
   @Test
   public void testDmlTxnDropWithReadCommitted() throws Exception {
-    skipYsqlConnMgr(BasePgSQLTest.CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE,
-                isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE);
     restartClusterWithFlags(Collections.emptyMap(),
                             Collections.singletonMap("yb_enable_read_committed_isolation",
                                                      "true"));

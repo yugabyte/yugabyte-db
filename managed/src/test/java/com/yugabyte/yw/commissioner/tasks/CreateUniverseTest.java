@@ -33,7 +33,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -70,6 +69,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.FreezeUniverse,
           TaskType.PersistUseClockbound,
           TaskType.InstanceExistCheck,
+          TaskType.UpdateUniverseFields,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
@@ -111,6 +111,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.FreezeUniverse,
           TaskType.PersistUseClockbound,
           TaskType.InstanceExistCheck,
+          TaskType.UpdateUniverseFields,
           TaskType.ValidateGFlags,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl, // master
@@ -250,8 +251,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCRAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(
-        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
@@ -312,7 +314,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     nonZ1Nodes.addAll(nodesByAZ.get(zone3.getUuid()));
 
     verifyNodeInteractionsCapacityReservation(
-        42,
+        27,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -326,8 +328,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCRAzureSameZoneN() {
-    RuntimeConfigEntry.upsertGlobal(
-        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
     Region region1 = Region.create(azuProvider, "us-west", "us-west", "yb-image");
     AvailabilityZone zone1 =
@@ -377,7 +380,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 Map.of("1", nodesByAZ.get(zone2.getUuid())))));
 
     verifyNodeInteractionsCapacityReservation(
-        42,
+        27,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -391,8 +394,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCRAzureFail() {
-    RuntimeConfigEntry.upsertGlobal(
-        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     failsOnCapacityReservation = 1;
 
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
@@ -402,7 +406,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.capacityReservationMaxRetries.getKey(), "2");
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.capacityReservationMaxRetries.getKey(), "2");
 
     taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
     taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
@@ -414,8 +420,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCRAzureUnsupportedTypeSuccess() {
-    RuntimeConfigEntry.upsertGlobal(
-        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
@@ -480,7 +487,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             Mockito.anyMap());
 
     verifyNodeInteractionsCapacityReservation(
-        42,
+        27,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -492,7 +499,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testCreateUniverseWithCapacityReservationAwsSuccess() {
 
-    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     Region region1 = Region.getByCode(defaultProvider, "region-1");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "az-1", "az 1", "subnet");
     Region region2 = Region.create(defaultProvider, "region-2", "region-2", "yb-image");
@@ -547,7 +556,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 "5", new ZoneData("region-2", nodesByAZ.get(zone3.getUuid())))));
 
     verifyNodeInteractionsCapacityReservation(
-        42,
+        27,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
@@ -573,8 +582,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseRRWithCRAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(
-        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
@@ -635,7 +645,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                     "4", Arrays.asList(readonlyNodes.get("4"))))));
 
     verifyNodeInteractionsCapacityReservation(
-        75,
+        54,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -649,7 +659,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseRRWithCRAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
 
     Region region1 = Region.getByCode(defaultProvider, "region-1");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "az-1", "az 1", "subnet");
@@ -706,7 +718,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 "6", new ZoneData("region-2", Arrays.asList(readonlyNodes.get("6"))))));
 
     verifyNodeInteractionsCapacityReservation(
-        75,
+        54,
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(

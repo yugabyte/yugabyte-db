@@ -175,7 +175,7 @@ Result<tserver::ReadRequestPB> TabletSplitITestBase<MiniClusterType>::CreateRead
   tserver::ReadRequestPB req;
   auto op = client::CreateReadOp(arena, key, this->table_, this->kValueColumn);
   auto* ql_batch = req.add_ql_batch();
-  *ql_batch = op->request();
+  *ql_batch = op->request().ToGoogleProtobuf();
 
   std::string partition_key;
   RETURN_NOT_OK(op->GetPartitionKey(&partition_key));
@@ -190,8 +190,9 @@ Result<tserver::ReadRequestPB> TabletSplitITestBase<MiniClusterType>::CreateRead
 template <class MiniClusterType>
 tserver::WriteRequestPB TabletSplitITestBase<MiniClusterType>::CreateInsertRequest(
     const TabletId& tablet_id, int32_t key, int32_t value) {
+  auto arena = SharedThreadSafeArena();
   tserver::WriteRequestPB req;
-  auto op = this->table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto op = this->table_.NewWriteOp(arena, QLWriteRequestPB::QL_STMT_INSERT);
 
   {
     auto op_req = op->mutable_request();
@@ -200,7 +201,7 @@ tserver::WriteRequestPB TabletSplitITestBase<MiniClusterType>::CreateInsertReque
   }
 
   auto* ql_batch = req.add_ql_write_batch();
-  *ql_batch = op->request();
+  *ql_batch = op->request().ToGoogleProtobuf();
 
   std::string partition_key;
   EXPECT_OK(op->GetPartitionKey(&partition_key));

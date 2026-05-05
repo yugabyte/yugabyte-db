@@ -81,7 +81,7 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>r2dbc-postgresql</artifactId>
-  <version>1.1.0-yb-1-ea</version>
+  <version>1.1.0-yb-2</version>
 </dependency>
 ```
 

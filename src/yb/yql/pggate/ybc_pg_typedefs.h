@@ -65,9 +65,6 @@ YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
 // Handle to a distributed trace span context.
 YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
 
-// Handle to a distributed trace scope.
-YB_DEFINE_HANDLE_TYPE(OtelScope);
-
 // Represents STATUS_* definitions from src/postgres/src/include/c.h.
 #define YBC_STATUS_OK     (0)
 #define YBC_STATUS_ERROR  (-1)
@@ -405,6 +402,8 @@ typedef struct {
   uint16_t (*GetSessionReplicationOriginId)();
   /* CHECK_FOR_INTERRUPTS */
   void (*CheckForInterrupts)();
+  /* xact.h */
+  bool (*IsInParallelMode)();
 } YbcPgCallbacks;
 
 typedef struct {

@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,28 +31,40 @@ public class ResourceTracker {
 
   /**
    * Track a YBA resource (the CR itself) with its YAML data. Creates or updates the resource in the
-   * database.
+   * database and records the local PlatformInstance UUID against it.
    *
    * @param resource the Kubernetes resource to track
+   * @param localInstanceUuid the local PlatformInstance UUID (may be null if HA is not configured)
    */
-  public void trackResource(HasMetadata resource) {
+  public void trackResource(HasMetadata resource, UUID localInstanceUuid) {
     KubernetesResourceDetails details = KubernetesResourceDetails.fromResource(resource);
     String resourceName = details.toResourceName();
     String yaml = Serialization.asYaml(resource);
-    OperatorResource.createOrUpdate(resourceName, yaml);
+    OperatorResource or = OperatorResource.createOrUpdate(resourceName, yaml);
+    OperatorResource.addPlatformInstance(resourceName, localInstanceUuid);
+    for (OperatorResource dep : or.getDependencies()) {
+      OperatorResource.addPlatformInstance(dep.getName(), localInstanceUuid);
+    }
     log.trace("Tracking resource: {}", resourceName);
   }
 
   /**
    * Track a YBA resource using pre-computed details and YAML data. Creates or updates the resource
-   * in the database.
+   * in the database and records the local PlatformInstance UUID against it.
    *
    * @param details the resource details
    * @param yamlData the YAML representation of the resource
+   * @param localInstanceUuid the local PlatformInstance UUID (may be null if HA is not configured)
    */
-  public void trackResource(KubernetesResourceDetails details, String yamlData) {
+  public void trackResource(
+      KubernetesResourceDetails details, String yamlData, UUID localInstanceUuid) {
     String resourceName = details.toResourceName();
-    OperatorResource.createOrUpdate(resourceName, yamlData);
+    OperatorResource or = OperatorResource.createOrUpdate(resourceName, yamlData);
+    OperatorResource.addPlatformInstance(resourceName, localInstanceUuid);
+    for (OperatorResource dep : or.getDependencies()) {
+      OperatorResource.addPlatformInstance(dep.getName(), localInstanceUuid);
+    }
+
     log.trace("Tracking resource: {}", resourceName);
   }
 
@@ -62,11 +75,13 @@ public class ResourceTracker {
    *
    * @param owner the owner resource details
    * @param dependency the dependent Kubernetes resource (e.g., a Secret)
+   * @param localInstanceUuid the local PlatformInstance UUID (may be null if HA is not configured)
    */
-  public void trackDependency(KubernetesResourceDetails owner, HasMetadata dependency) {
+  public void trackDependency(
+      KubernetesResourceDetails owner, HasMetadata dependency, UUID localInstanceUuid) {
     KubernetesResourceDetails depDetails = KubernetesResourceDetails.fromResource(dependency);
     String depYaml = Serialization.asYaml(dependency);
-    trackDependency(owner, depDetails, depYaml);
+    trackDependency(owner, depDetails, depYaml, localInstanceUuid);
   }
 
   /**
@@ -76,19 +91,23 @@ public class ResourceTracker {
    * @param owner the owner resource details
    * @param dependency the dependent resource details
    * @param dependencyYamlData the YAML representation of the dependency (may be null)
+   * @param localInstanceUuid the local PlatformInstance UUID (may be null if HA is not configured)
    */
   public void trackDependency(
       KubernetesResourceDetails owner,
       KubernetesResourceDetails dependency,
-      String dependencyYamlData) {
+      String dependencyYamlData,
+      UUID localInstanceUuid) {
     String ownerName = owner.toResourceName();
     String depName = dependency.toResourceName();
 
     // Ensure owner exists (it should already from trackResource)
     if (!OperatorResource.exists(ownerName)) {
       OperatorResource.createOrUpdate(ownerName, null);
+      OperatorResource.addPlatformInstance(ownerName, localInstanceUuid);
     }
     OperatorResource.createOrUpdate(depName, dependencyYamlData);
+    OperatorResource.addPlatformInstance(depName, localInstanceUuid);
     OperatorResource.addDependency(ownerName, depName);
     log.trace("Tracking dependency {} for owner {}", depName, ownerName);
   }
@@ -99,23 +118,29 @@ public class ResourceTracker {
    *
    * @param owner the owner resource details
    * @param dependency the dependent resource details
+   * @param localInstanceUuid the local PlatformInstance UUID (may be null if HA is not configured)
    */
   public void trackDependency(
-      KubernetesResourceDetails owner, KubernetesResourceDetails dependency) {
-    trackDependency(owner, dependency, null);
+      KubernetesResourceDetails owner,
+      KubernetesResourceDetails dependency,
+      UUID localInstanceUuid) {
+    trackDependency(owner, dependency, null, localInstanceUuid);
   }
 
   /**
-   * Untrack a YBA resource. Returns the set of dependent resources that are no longer used by any
-   * remaining tracked resource and can safely be cleaned up.
+   * Untrack a YBA resource. Soft-deletes the resource (and orphaned deps), removes the local
+   * PlatformInstance UUID from the resource, and returns the set of orphaned dependencies.
    *
    * @param resource the YBA resource to untrack
+   * @param localInstanceUuid the local PlatformInstance UUID (may be null if HA is not configured)
    * @return the set of orphaned dependencies (no longer used by any other tracked resource)
    */
-  public Set<KubernetesResourceDetails> untrackResource(KubernetesResourceDetails resource) {
+  public Set<KubernetesResourceDetails> untrackResource(
+      KubernetesResourceDetails resource, UUID localInstanceUuid) {
     String resourceName = resource.toResourceName();
     log.trace("Untracking resource: {}", resourceName);
-    Set<KubernetesResourceDetails> orphaned = OperatorResource.deleteAndGetOrphaned(resourceName);
+    Set<KubernetesResourceDetails> orphaned =
+        OperatorResource.deleteAndGetOrphaned(resourceName, localInstanceUuid);
     if (!orphaned.isEmpty()) {
       log.info("Orphaned dependencies after untracking {}: {}", resourceName, orphaned);
     }

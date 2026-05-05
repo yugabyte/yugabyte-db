@@ -73,6 +73,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
@@ -2480,6 +2481,7 @@ CommitTransaction(void)
 	/* Commit updates to the relation map --- do this as late as possible */
 	AtEOXact_RelationMap(true, is_parallel_worker);
 
+	YB_DIST_TRACE_START_SPAN("commit");
 	if (IsYugaByteEnabled())
 	{
 		bool		increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
@@ -2528,6 +2530,7 @@ CommitTransaction(void)
 		ParallelWorkerReportLastRecEnd(XactLastRecEnd);
 	}
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_TRANSACTION_COMMIT(MyProc->lxid);
 
 	/*
@@ -3096,6 +3099,7 @@ AbortTransaction(void)
 		XLogSetAsyncXactLSN(XactLastRecEnd);
 	}
 
+	YB_DIST_TRACE_START_SPAN("abort");
 	TRACE_POSTGRESQL_TRANSACTION_ABORT(MyProc->lxid);
 
 	/*
@@ -3147,6 +3151,7 @@ AbortTransaction(void)
 	}
 
 	YBCAbortTransaction();
+	YB_DIST_TRACE_END_SPAN();
 
 	/* Reset the value of the sticky connection */
 	s->ybUncommittedStickyObjectCount = 0;

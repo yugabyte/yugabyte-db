@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.metrics.remoteread;
 
+import static com.yugabyte.yw.metrics.MetricQueryHelper.WS_CLIENT_KEY;
 import static com.yugabyte.yw.models.helpers.CommonUtils.RESULT_FAILURE;
 import static com.yugabyte.yw.models.helpers.CommonUtils.RESULT_SUCCESS;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -11,8 +12,10 @@ import com.google.inject.Singleton;
 import com.google.protobuf.CodedInputStream;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.metrics.tsdb.ByteBufferBitInput;
 import com.yugabyte.yw.common.metrics.tsdb.ChunkDecompressor;
+import com.yugabyte.yw.metrics.MetricUrlProvider;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.prometheus.metrics.core.metrics.Summary;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
@@ -31,6 +34,7 @@ import java.util.zip.CRC32C;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 import org.xerial.snappy.Snappy;
+import play.libs.ws.WSClient;
 import prometheus.Remote;
 import prometheus.Remote.ChunkedReadResponse;
 import prometheus.Remote.Query;
@@ -65,11 +69,19 @@ public class RemoteReadClient {
 
   private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
-  private final ApiHelper apiHelper;
+  private final WSClientRefresher wsClientRefresher;
+  private final MetricUrlProvider metricUrlProvider;
 
   @Inject
-  public RemoteReadClient(ApiHelper apiHelper) {
-    this.apiHelper = apiHelper;
+  public RemoteReadClient(
+      WSClientRefresher wsClientRefresher, MetricUrlProvider metricUrlProvider) {
+    this.wsClientRefresher = wsClientRefresher;
+    this.metricUrlProvider = metricUrlProvider;
+  }
+
+  protected ApiHelper getApiHelper() {
+    WSClient wsClient = wsClientRefresher.getClient(WS_CLIENT_KEY);
+    return new ApiHelper(wsClient, wsClientRefresher.getMaterializer());
   }
 
   public void readMetrics(
@@ -87,7 +99,7 @@ public class RemoteReadClient {
           try {
             parseChunkedReadResponse(inputStream, metricConsumer);
           } catch (Exception e) {
-            throw new RuntimeException("Failed to parse metrics response", e);
+            throw new RuntimeException("Failed to parse metrics response: " + e.getMessage(), e);
           }
         });
   }
@@ -122,13 +134,14 @@ public class RemoteReadClient {
     }
 
     try {
-      apiHelper.postBinaryRequest(
-          normalizeUrl(url),
-          compressedMessage,
-          "application/x-protobuf",
-          requestHeaders,
-          DEFAULT_REQUEST_TIMEOUT,
-          inputStreamConsumer);
+      getApiHelper()
+          .postBinaryRequest(
+              normalizeUrl(url),
+              compressedMessage,
+              "application/x-protobuf",
+              requestHeaders,
+              DEFAULT_REQUEST_TIMEOUT,
+              inputStreamConsumer);
       REMOTE_READ_MILLIS
           .labelValues(RESULT_SUCCESS)
           .observe(System.currentTimeMillis() - startTime);
@@ -141,10 +154,11 @@ public class RemoteReadClient {
     }
   }
 
-  private static Map<String, String> buildRequestHeaders() {
+  private Map<String, String> buildRequestHeaders() {
     Map<String, String> headers = new java.util.HashMap<>();
     headers.put("Content-Encoding", "snappy");
     headers.put("User-Agent", "yugabyte-anywhere");
+    headers.putAll(metricUrlProvider.getAuthHeaders());
     return headers;
   }
 

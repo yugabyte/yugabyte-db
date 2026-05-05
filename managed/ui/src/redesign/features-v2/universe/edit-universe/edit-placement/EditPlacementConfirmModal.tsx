@@ -100,7 +100,7 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
   const newNodeCount = getNodeCount(nodesAndAvailability!.availabilityZones!);
 
   const newResilientType = t(`faultToleranceTypes.${resilience?.faultToleranceType}`, {
-    count: getFaultToleranceNeeded(resilience!.replicationFactor) - 1
+    count: getFaultToleranceNeeded(resilience!.resilienceFactor) - 1
   });
 
   const currentRegions = universeData?.spec?.clusters

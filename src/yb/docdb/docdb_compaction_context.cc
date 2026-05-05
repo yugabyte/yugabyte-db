@@ -550,7 +550,7 @@ class PackedRowData {
 class VectorMetadataFilter {
  public:
   virtual ~VectorMetadataFilter() = default;
-  virtual rocksdb::FilterDecision Filter(Slice key, Slice value) {
+  virtual Result<rocksdb::FilterDecision> Filter(Slice key, Slice value) {
     // Dummy filter by default.
     return rocksdb::FilterDecision::kKeep;
   }
@@ -567,7 +567,7 @@ class VectorMetadataFilterImpl : public VectorMetadataFilter {
     VLOG(1) << "VectorMetadataFilter: key_bounds: " << key_bounds.ToString();
   }
 
-  rocksdb::FilterDecision Filter(Slice key, Slice value) override {
+  Result<rocksdb::FilterDecision> Filter(Slice key, Slice value) override {
     DCHECK(key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
     auto decision = DoFilter(key, value);
     VLOG_WITH_FUNC(4)
@@ -583,19 +583,19 @@ class VectorMetadataFilterImpl : public VectorMetadataFilter {
         ? rocksdb::FilterDecision::kKeep : rocksdb::FilterDecision::kDiscard;
   }
 
-  rocksdb::FilterDecision DoFilter(Slice key, Slice value) {
+  Result<rocksdb::FilterDecision> DoFilter(Slice key, Slice value) {
     DCHECK(key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
     if (!value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone)) {
       return DoFilterYbctid(value);
     }
 
     // Special handling for the tombstoned entries: need to find entry's corresponding ybctid.
-    EnsureIteratorCreated();
+    RETURN_NOT_OK(EnsureIteratorCreated());
 
     // Seek for the next record.
     dockv::KeyBytes next_key { key, dockv::KeyEntryTypeAsChar::kMaxByte };
     iterator()->Seek(next_key.AsSlice(), SeekFilter::kAll);
-    const FetchedEntry& entry = CHECK_RESULT(iterator()->Fetch());
+    const auto& entry = VERIFY_RESULT_REF(iterator()->Fetch());
 
     // Make sure extracted entry matches the specified key.
     if (!entry.key.starts_with(key.Prefix(dockv::kEncodedDocVectorKeyStaticSize))) {
@@ -609,14 +609,14 @@ class VectorMetadataFilterImpl : public VectorMetadataFilter {
     return DoFilterYbctid(entry.value);
   }
 
-  // Iterator lazy instantiation.
-  void EnsureIteratorCreated() {
+  Status EnsureIteratorCreated() {
     if (iterator()) {
-      return;
+      return Status::OK();
     }
     iterator_holder_ =
-        CHECK_RESULT(provider_.CreateVectorMetadataIterator(ReadHybridTime::Max(), nullptr));
-    CHECK_NOTNULL(iterator());
+        VERIFY_RESULT(provider_.CreateVectorMetadataIterator(ReadHybridTime::Max(), nullptr));
+    SCHECK_NOTNULL(iterator());
+    return Status::OK();
   }
 
   inline IntentAwareIterator* iterator() {
@@ -672,7 +672,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
         vector_metadata_filter_(CreateVectorMetadataFilter(
             compaction_reason, key_bounds_, vector_metadata_iterator_provider)) {
     // TODO: switch this to VLOG if it becomes too chatty.
-    LOG_DETAIL
+    LOG(DETAIL)
         << "DocDB compaction feed, min_other_data_ht: " << encoded_min_other_data_ht_.ToString()
         << ", history_cutoff = " << retention_directive_.history_cutoff
         << ", repack range: " << encoded_repack_min_ht_.ToString()
@@ -962,9 +962,10 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return Status::OK();
   }
 
-  // Filtering vector index reverse maping records whose ybctid is out of key_bounds.
+  // Filtering vector index reverse mapping records whose ybctid is out of key_bounds.
   if (key_type == dockv::KeyEntryType::kVectorIndexMetadata &&
-      vector_metadata_filter_->Filter(key, value) == rocksdb::FilterDecision::kDiscard) {
+      VERIFY_RESULT(vector_metadata_filter_->Filter(key, value)) ==
+          rocksdb::FilterDecision::kDiscard) {
     return Status::OK();
   }
 

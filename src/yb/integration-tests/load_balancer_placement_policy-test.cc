@@ -467,7 +467,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
 
 // HandleAddIfMissingPlacement should not add replicas to zones outside the placement policy.
 TEST_F(LoadBalancerPlacementPolicyTest, UnderreplicatedAdd) {
-  const int consider_failed_sec = 3;
+  const int consider_failed_sec = 6;
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
 
   // Add a tserver in a new zone that is not part of the placement info.

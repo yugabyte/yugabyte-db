@@ -1519,8 +1519,7 @@ public class TestYbBackup extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, two logical
     // connections use the same physical connection, leading to unexpected
     // results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
-        isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
 
     if (disableGeoPartitionedTests()) {
       return;
@@ -1558,8 +1557,7 @@ public class TestYbBackup extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, two logical
     // connections use the same physical connection, leading to unexpected
     // results as per the expectations of the test.
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
-        isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
 
     if (disableGeoPartitionedTests()) {
       return;

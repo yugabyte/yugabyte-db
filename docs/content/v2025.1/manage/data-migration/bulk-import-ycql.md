@@ -137,8 +137,8 @@ time ./cassandra-loader \
   -schema "example.SensorData(customer_name, device_id, ts, sensor_data)"
 ```
 
-For additional options, refer to [cassandra-loader options](https://github.com/yugabyte/cassandra-loader#options).
+For additional options, refer to [cassandra-loader options](https://github.com/yugabyte/cassandra-loader/#options).
 
 ## Verify migration
 
-After the data and schema have been migrated, follow the steps in [Verify migration](../verify-migration-ycql) to ensure the migration was successful.
+After the data and schema have been migrated, follow the steps in [Verify migration](../verify-migration-ycql/) to ensure the migration was successful.

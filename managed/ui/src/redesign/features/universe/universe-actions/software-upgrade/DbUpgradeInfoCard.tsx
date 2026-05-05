@@ -1,15 +1,16 @@
 import { makeStyles, Typography } from '@material-ui/core';
+import { YBTooltip } from '@yugabyte-ui-library/core';
+import clsx from 'clsx';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
-import { YBTooltip } from '@yugabyte-ui-library/core';
 
+import { usePillStyles } from '@app/redesign/styles/styles';
 import { precheckSoftwareUpgrade } from '@app/v2/api/universe/universe';
+
 import DocumentationIcon from '@app/redesign/assets/documentation.svg';
 import InfoIcon from '@app/redesign/assets/info-message.svg';
-import UnavailableIcon from '@app/redesign/assets/revoke-key-5.svg';
+import UnavailableIcon from '@app/redesign/assets/approved/revoke-key-5.svg';
 import UpgradeIcon from '@app/redesign/assets/upgrade.svg';
-import { usePillStyles } from '@app/redesign/styles/styles';
-import clsx from 'clsx';
 
 const TRANSLATION_KEY_PREFIX =
   'universeActions.dbUpgrade.upgradeModal.dbVersionStep.upgradeInfoCard';
@@ -103,7 +104,7 @@ const useStyles = makeStyles((theme) => ({
 
     padding: theme.spacing(2),
 
-    backgroundColor: theme.palette.ybacolors?.tipBackgroundLightGray ?? '#F7F9FB',
+    backgroundColor: theme.palette.grey[50],
     border: `1px solid ${theme.palette.grey[200]}`,
     borderRadius: theme.shape.borderRadius,
 
@@ -220,7 +221,7 @@ export const DbUpgradeInfoCard = ({
       <div className={classes.upgradeRestrictionsBox}>
         <div className={clsx(pillClasses.pill, pillClasses.metadataWhite)}>
           <UnavailableIcon width={16} height={16} />
-          <span>{t('temporaryRestrictions')}</span>
+          <Typography variant="subtitle1">{t('temporaryRestrictions')}</Typography>
         </div>
         <ul>
           <li>

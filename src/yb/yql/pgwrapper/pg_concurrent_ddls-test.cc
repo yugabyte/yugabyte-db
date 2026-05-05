@@ -185,36 +185,41 @@ TEST_F(PgConcurrentCreateIndexWithSlowBackfillTest, SlowBackfillTest) {
 // This is the SlowBackfillTest for partitioned table, where we can allow concurrent
 // execution of CREATE INDEX on child partitions to speed up indexing process.
 TEST_F(PgConcurrentCreateIndexWithSlowBackfillTest, PartitionedSlowBackfillTest) {
+  // TSAN amplifies catalog-cache and cluster startup overhead. 50 rows still keep
+  // the 1 row/sec backfill active across the 10s stagger with three tablets.
+  constexpr int kRowsPerPartition = NonTsanVsTsan(100, 50);
   auto setup_script =
-    R"#(
+    Format(R"#(
 CREATE TABLE parent_partition(c1 int, c2 int) PARTITION BY RANGE (c1);
-CREATE TABLE child_part_1 PARTITION OF parent_partition FOR VALUES FROM (0) to (100);
-CREATE TABLE child_part_2 PARTITION OF parent_partition FOR VALUES FROM (101) to (201);
+CREATE TABLE child_part_1 PARTITION OF parent_partition FOR VALUES FROM (0) to ($0);
+CREATE TABLE child_part_2 PARTITION OF parent_partition FOR VALUES FROM ($1) to ($2);
 CREATE INDEX parent_index ON ONLY parent_partition (c1, c2);
--- Insert 200 rows of data
--- 100 rows into child_part_1 (c1 from 0 to 99)
--- 100 rows into child_part_2 (c1 from 101 to 200)
+-- Insert rows of data into both partitions.
 INSERT INTO parent_partition (c1, c2)
 SELECT
     CASE
-        WHEN i <= 100 THEN i - 1      -- 0 to 99
-        ELSE i                        -- 101 to 200
+        WHEN i <= $0 THEN i - 1
+        ELSE i
     END,
-    (random() * 1000)::int            -- random data for c2
-FROM generate_series(1, 200) AS i;
-        )#";
-  // Verify each partition has 100 rows.
+    (random() * 1000)::int
+FROM generate_series(1, $3) AS i;
+        )#",
+           kRowsPerPartition,
+           kRowsPerPartition + 1,
+           2 * kRowsPerPartition + 1,
+           2 * kRowsPerPartition);
+  // Verify each partition has the expected number of rows.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(setup_script));
   auto count = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM child_part_1"));
-  ASSERT_EQ(count, 100);
+  ASSERT_EQ(count, kRowsPerPartition);
   count = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM child_part_2"));
-  ASSERT_EQ(count, 100);
+  ASSERT_EQ(count, kRowsPerPartition);
   count = ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM parent_partition"));
-  ASSERT_EQ(count, 200);
+  ASSERT_EQ(count, 2 * kRowsPerPartition);
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([this] {
       auto conn = ASSERT_RESULT(Connect());

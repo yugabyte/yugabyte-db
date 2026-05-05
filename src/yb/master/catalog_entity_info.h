@@ -1393,6 +1393,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   bool IsTablesWithoutPrimaryKeyAllowed() const;
 
+  bool DetectPublicationChangesImplicitly() const;
+
   std::string ToString() const override;
 
   bool IsXClusterStream() const;

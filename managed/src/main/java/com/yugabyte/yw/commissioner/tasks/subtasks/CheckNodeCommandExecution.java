@@ -46,8 +46,12 @@ public class CheckNodeCommandExecution extends NodeTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNode(taskParams().nodeName);
-    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-        == Common.CloudType.local) {
+    if (universe
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent
+        .getAllCloudTypes()
+        .contains(Common.CloudType.local)) {
       log.info("Skipping check for local provider");
       return;
     }

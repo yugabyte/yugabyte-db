@@ -196,11 +196,14 @@ class DocOperationTest : public DocDBTestBase {
                const TransactionOperationContext& txn_op_context =
                    kNonTransactionalOperationContext) {
     qlexpr::IndexMap index_map;
+    auto arena = SharedThreadSafeArena();
+    auto& ql_writereq = *arena->NewArenaObject<LWQLWriteRequestPB>(ql_writereq_pb);
+    auto ql_writeresp = arena->NewArenaObject<LWQLResponsePB>();
     QLWriteOperation ql_write_op(
-        ql_writereq_pb, ql_writereq_pb.schema_version(),
+        ql_writereq, ql_writereq_pb.schema_version(),
         std::make_shared<DocReadContext>(DocReadContext::TEST_Create(schema)), index_map,
         /* unique_index_key_projection= */ nullptr, txn_op_context);
-    ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
+    ASSERT_OK(ql_write_op.Init(ql_writeresp));
     auto doc_write_batch = MakeDocWriteBatch();
     ReadRestartData read_restart_data;
     ASSERT_OK(ql_write_op.Apply({
@@ -210,6 +213,7 @@ class DocOperationTest : public DocDBTestBase {
       .schema_packing_provider = nullptr,
     }));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
+    ql_writeresp->ToGoogleProtobuf(ql_writeresp_pb);
   }
 
   void AssertWithTTL(QLWriteRequestPB_QLStmtType stmt_type) {
@@ -327,7 +331,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
   }
 
   QLRowBlock ReadQLRow(const Schema& schema, int32_t primary_key, const HybridTime& read_time) {
-    QLReadRequestPB ql_read_req;
+    ThreadSafeArena arena;
+    LWQLReadRequestPB ql_read_req(&arena);
     ql_read_req.add_hashed_column_values()->mutable_value()->set_int32_value(primary_key);
     ql_read_req.set_hash_code(kFixedHashCode);
     ql_read_req.set_max_hash_code(kFixedHashCode);
@@ -342,8 +347,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
       auto col = projection.column_by_id(ColumnId(i));
       EXPECT_OK(col);
-      QLRSColDescPB *rscol_desc = rsrow_desc_pb->add_rscol_descs();
-      rscol_desc->set_name(col->name());
+      auto* rscol_desc = rsrow_desc_pb->add_rscol_descs();
+      rscol_desc->dup_name(col->name());
       col->type()->ToQLTypePB(rscol_desc->mutable_ql_type());
     }
 
@@ -377,14 +382,16 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   // Write key with ttl to docdb.
   auto db = rocksdb();
-  yb::RedisWriteRequestPB redis_write_operation_pb;
+  auto arena = SharedThreadSafeArena();
+  auto& redis_write_operation_pb = *arena->NewArenaObject<LWRedisWriteRequestPB>();
   auto set_request_pb = redis_write_operation_pb.mutable_set_request();
   set_request_pb->set_ttl(2000);
-  redis_write_operation_pb.mutable_key_value()->set_key("abc");
+  redis_write_operation_pb.mutable_key_value()->ref_key("abc");
   redis_write_operation_pb.mutable_key_value()->set_type(REDIS_TYPE_STRING);
   redis_write_operation_pb.mutable_key_value()->set_hash_code(123);
-  redis_write_operation_pb.mutable_key_value()->add_value("xyz");
-  RedisWriteOperation redis_write_operation(redis_write_operation_pb);
+  redis_write_operation_pb.mutable_key_value()->add_ref_value("xyz");
+  auto& resp = *arena->NewArenaObject<LWRedisResponsePB>();
+  RedisWriteOperation redis_write_operation(redis_write_operation_pb, resp);
   auto doc_write_batch = MakeDocWriteBatch();
   ASSERT_OK(redis_write_operation.Apply(docdb::DocOperationApplyData{
       .doc_write_batch = &doc_write_batch,

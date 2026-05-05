@@ -8,7 +8,6 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
@@ -55,7 +54,6 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -126,9 +124,8 @@ public class UpgradeUniverseHandler {
     // Verify request params
     requestParams.verifyParams(universe, true);
 
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return submitUpgradeTask(
-        userIntent.providerType.equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.RestartUniverseKubernetesUpgrade
             : TaskType.RestartUniverse,
         CustomerTask.TaskType.RestartUniverse,
@@ -150,12 +147,8 @@ public class UpgradeUniverseHandler {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     requestParams.ybPrevSoftwareVersion = userIntent.ybSoftwareVersion;
 
-    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(universe)) {
       checkHelmChartExists(requestParams.ybSoftwareVersion);
-    }
-
-    if (userIntent.providerType.equals(CloudType.kubernetes)) {
-      Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
       if (confGetter.getConfForScope(universe, UniverseConfKeys.enableYbcForUniverse)
           && Util.compareYbVersions(
                   requestParams.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
@@ -194,9 +187,9 @@ public class UpgradeUniverseHandler {
 
   private TaskType getSoftwareUpgradeTaskType(
       Universe universe, SoftwareUpgradeParams requestParams) {
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
     TaskType taskType =
-        userIntent.providerType.equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.SoftwareKubernetesUpgrade
             : TaskType.SoftwareUpgrade;
 
@@ -230,6 +223,9 @@ public class UpgradeUniverseHandler {
   public UUID upgradeDBVersion(
       SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
 
+    if (requestParams.canaryUpgradeConfig != null) {
+      ensureCanaryUpgradeEnabled(universe);
+    }
     requestParams =
         setSoftwareUpgradeRequestParams(requestParams, universe, requestParams.rollbackSupport);
     TaskType taskType = getSoftwareUpgradeTaskType(universe, requestParams);
@@ -244,9 +240,8 @@ public class UpgradeUniverseHandler {
     // update prev software version to track version in the task details.
     requestParams.ybPrevSoftwareVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     TaskType taskType =
-        userIntent.providerType.equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.FinalizeKubernetesUpgrade
             : TaskType.FinalizeUpgrade;
     return submitUpgradeTask(
@@ -257,7 +252,7 @@ public class UpgradeUniverseHandler {
       RollbackUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     TaskType taskType =
-        userIntent.providerType.equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.RollbackKubernetesUpgrade
             : TaskType.RollbackUpgrade;
 
@@ -313,13 +308,13 @@ public class UpgradeUniverseHandler {
         requestParams.verifyParams(universe, true);
       }
     }
-    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(universe)) {
       // Gflags upgrade does not change universe version. Check for current version of helm chart.
       checkHelmChartExists(
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     }
     return submitUpgradeTask(
-        userIntent.providerType.equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.GFlagsKubernetesUpgrade
             : TaskType.GFlagsUpgrade,
         CustomerTask.TaskType.GFlagsUpgrade,
@@ -460,7 +455,7 @@ public class UpgradeUniverseHandler {
     }
 
     if (userIntent.enableClientToNodeEncrypt) {
-      boolean isKubernetes = userIntent.providerType.equals(CloudType.kubernetes);
+      boolean isKubernetes = Util.isKubernetesBasedUniverse(universe);
       // For Kubernetes, clientRootCA must be same as rootCA
       // For non-Kubernetes, check rootAndClientRootCASame flag
       boolean useSameAsRootCA =
@@ -537,14 +532,14 @@ public class UpgradeUniverseHandler {
       }
     }
 
-    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(universe)) {
       // Certs rotate does not change universe version. Check for current version of helm chart.
       checkHelmChartExists(
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     }
 
     return submitUpgradeTask(
-        userIntent.providerType.equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.CertsRotateKubernetesUpgrade
             : TaskType.CertsRotate,
         CustomerTask.TaskType.CertsRotate,
@@ -557,9 +552,8 @@ public class UpgradeUniverseHandler {
     // Verify request params
     requestParams.verifyParams(universe, true);
 
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return submitUpgradeTask(
-        userIntent.providerType.equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.UpdateKubernetesDiskSize
             : TaskType.ResizeNode,
         CustomerTask.TaskType.ResizeNode,
@@ -662,7 +656,7 @@ public class UpgradeUniverseHandler {
       }
 
       // For Kubernetes provider, verify the universe version is compatible with otel exporter.
-      if (userIntent.providerType.equals(CloudType.kubernetes)
+      if (Util.isKubernetesBasedUniverse(universe)
           && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
         String errorMessage =
             String.format(
@@ -680,7 +674,7 @@ public class UpgradeUniverseHandler {
 
     requestParams.verifyParams(universe, true);
     userIntent.auditLogConfig = requestParams.auditLogConfig;
-    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(universe)) {
       return submitUpgradeTask(
           TaskType.ModifyKubernetesAuditLoggingConfig,
           CustomerTask.TaskType.ModifyAuditLoggingConfig,
@@ -705,6 +699,7 @@ public class UpgradeUniverseHandler {
     telemetryProviderService.throwExceptionIfQueryLoggingRuntimeFlagDisabled();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
 
     // Verify if the query log payload is same as existing query log config.
     if (requestParams.queryLogConfig != null
@@ -781,9 +776,17 @@ public class UpgradeUniverseHandler {
         throw new PlatformServiceException(BAD_REQUEST, errorMessage);
       }
 
-      // Block k8s PGLE till 2026.1.2
-      if (userIntent.providerType.equals(CloudType.kubernetes)) {
-        String errorMessage = "Query log export is not supported for kubernetes based universes.";
+      // For Kubernetes provider, verify the universe version is compatible with otel exporter.
+      if (isK8s && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
+        String errorMessage =
+            String.format(
+                "Query log exporter is not supported for universe '%s' running version '%s'. Please"
+                    + " upgrade to version '%s' or '%s'. Alternatively, disable the exporter to"
+                    + " only enable query logs on the universe.",
+                universe.getUniverseUUID(),
+                userIntent.ybSoftwareVersion,
+                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_STABLE,
+                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_PREVIEW);
         log.error(errorMessage);
         throw new PlatformServiceException(BAD_REQUEST, errorMessage);
       }
@@ -808,7 +811,7 @@ public class UpgradeUniverseHandler {
 
     requestParams.verifyParams(universe, true);
     userIntent.queryLogConfig = requestParams.queryLogConfig;
-    // if (userIntent.providerType.equals(CloudType.kubernetes)) {
+    // if (isK8s) {
     //   return submitUpgradeTask(
     //       TaskType.ModifyKubernetesQueryLoggingConfig,
     //       CustomerTask.TaskType.ModifyQueryLoggingConfig,
@@ -902,7 +905,7 @@ public class UpgradeUniverseHandler {
     String typeName = generateTypeName(userIntent, requestParams);
 
     return submitUpgradeTask(
-        userIntent.providerType.equals(CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.TlsToggleKubernetes
             : TaskType.TlsToggle,
         CustomerTask.TaskType.TlsToggle,
@@ -1119,6 +1122,16 @@ public class UpgradeUniverseHandler {
     return toggle ? "ON" : "OFF";
   }
 
+  private void ensureCanaryUpgradeEnabled(Universe universe) {
+    if (!Boolean.TRUE.equals(
+        confGetter.getConfForScope(universe, UniverseConfKeys.enableCanaryUpgrade))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Canary upgrade is disabled for this universe. Enable yb.upgrade.enable_canary_upgrade"
+              + " to use canary or resume canary APIs.");
+    }
+  }
+
   /**
    * Resumes a paused canary software upgrade task. Re-submits the same task UUID without deleting
    * existing subtasks so the task continues from the remaining work.
@@ -1126,6 +1139,7 @@ public class UpgradeUniverseHandler {
   public UUID resumeCanarySoftwareUpgrade(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    ensureCanaryUpgradeEnabled(universe);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
     if (taskInfo.getTaskState() != TaskInfo.State.Paused) {
       throw new PlatformServiceException(

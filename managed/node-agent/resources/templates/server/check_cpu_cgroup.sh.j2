@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Copyright (c) YugabyteDB, Inc.
+#
+# The script checks /proc/<tserver-pid>/cgroup to verify membership in the 
+# yugabyte-db cgroup and confirms the yugabyte user can 
+# create child cgroups inside that directory.
+
+set -euo pipefail
+
+tserver_pid=$(pgrep -u "$(id -un)" -f "bin/yb-tserver" 2>/dev/null | head -n1 || true)
+if [ -z "$tserver_pid" ]; then
+  echo "FAIL: yb-tserver process not found for user $(id -un)"
+  exit 1
+fi
+
+CG_PROC="/proc/${tserver_pid}/cgroup"
+if [ ! -r "$CG_PROC" ]; then
+  echo "FAIL: cannot read $CG_PROC"
+  exit 1
+fi
+
+# Walk every line of /proc/<pid>/cgroup. Each line is `hid:controllers:path`; v2 has
+# hid=0 and empty controllers, v1 has hid>0 and a comma-separated controller list. For
+# any entry whose leaf path component is yugabyte-db, verify the yugabyte user can create
+# a child cgroup inside it.
+matches=0
+while IFS=: read -r hid ctrls path; do
+  [ "${path##*/}" = "yugabyte-db" ] || continue
+  matches=$((matches+1))
+  dir=""
+  for candidate in \
+      "/sys/fs/cgroup${path}" \
+      "/sys/fs/cgroup/${ctrls}${path}" \
+      "/sys/fs/cgroup/${ctrls%%,*}${path}"; do
+    if [ -d "$candidate" ]; then dir="$candidate"; break; fi
+  done
+  if [ -z "$dir" ]; then
+    echo "FAIL: could not resolve on-disk directory for cgroup entry ${hid}:${ctrls}:${path}"
+    exit 1
+  fi
+  probe="${dir}/.yba_cgroup_precheck_$$"
+  if ! mkdir "$probe" 2>/dev/null; then
+    echo "FAIL: user $(id -un) cannot create child cgroups under $dir"
+    exit 1
+  fi
+  # Best-effort cleanup; rmdir can legitimately fail if the kernel auto-removes the probe
+  # (e.g. empty v2 sub-cgroup), and that failure should not trip `set -e`.
+  rmdir "$probe" 2>/dev/null || true
+  echo "OK: yb-tserver pid $tserver_pid is in yugabyte-db cgroup $dir; user $(id -un) can create child cgroups"
+done < "$CG_PROC"
+
+if [ "$matches" -eq 0 ]; then
+  echo "FAIL: yb-tserver pid $tserver_pid is not in any yugabyte-db cgroup (see $CG_PROC)"
+  exit 1
+fi

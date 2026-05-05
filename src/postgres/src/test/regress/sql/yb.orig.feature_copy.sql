@@ -444,7 +444,56 @@ copy copy_options from stdin with (format csv, freeze);
 
 select * from copy_options order by a;
 
+-- Test: upsert mode guardrail with secondary indexes
+-- When upsert mode (via yb_enable_upsert_mode or COPY REPLACE) is used on a
+-- table with secondary indexes, upsert mode is silently disabled and the
+-- operation falls back to a normal insert. Non-conflicting rows succeed;
+-- conflicting rows get a standard duplicate key error.
+
+-- Test A: COPY REPLACE on table with secondary index (multiple rows)
+-- First row is new (succeeds as normal insert), second row conflicts (error).
+-- COPY is transactional so the entire batch is rolled back.
+create table upsert_guard_test1 (h int primary key, v1 int, v2 int);
+create index upsert_guard_idx1 on upsert_guard_test1 (v1);
+insert into upsert_guard_test1 values (1, 10, 100), (2, 20, 200), (3, 30, 300);
+
+copy upsert_guard_test1 from stdin with (format csv, replace);
+4,40,400
+1,11,111
+5,50,500
+\.
+
+-- All original rows should be intact (COPY rolled back on conflict).
+select * from upsert_guard_test1 order by h;
+
+-- Index should be consistent with base table.
+/*+IndexOnlyScan(upsert_guard_test1 upsert_guard_idx1)*/
+select v1 from upsert_guard_test1 where v1 > 0 order by v1;
+
+-- Test C: COPY (non-replace) with yb_enable_upsert_mode on table with secondary index
+-- First row is new (succeeds), second row conflicts (error), COPY rolls back.
+create table upsert_guard_test3 (h int primary key, v1 int, v2 int);
+create index upsert_guard_idx3 on upsert_guard_test3 (v1);
+insert into upsert_guard_test3 values (1, 10, 100), (2, 20, 200);
+
+set yb_enable_upsert_mode = true;
+copy upsert_guard_test3 from stdin with (format csv);
+3,30,300
+1,11,111
+4,40,400
+\.
+set yb_enable_upsert_mode = false;
+
+-- All original rows should be intact (COPY rolled back on conflict).
+select * from upsert_guard_test3 order by h;
+
+-- Index should be consistent with base table.
+/*+IndexOnlyScan(upsert_guard_test3 upsert_guard_idx3)*/
+select v1 from upsert_guard_test3 where v1 > 0 order by v1;
+
 -- clean up
+DROP TABLE upsert_guard_test1;
+DROP TABLE upsert_guard_test3;
 DROP TABLE forcetest;
 DROP TABLE x;
 DROP TABLE y;

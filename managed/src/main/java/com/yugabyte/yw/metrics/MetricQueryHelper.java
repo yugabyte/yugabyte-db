@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -294,8 +293,7 @@ public class MetricQueryHelper {
           if (newNamingStyle) {
             Set<String> nodePrefixes = new HashSet<String>();
             for (Cluster cluster : universe.getUniverseDetails().clusters) {
-              Provider provider =
-                  Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+              Provider provider = Util.getSingleProvider(cluster);
               for (Region r : provider.getRegions()) {
                 for (AvailabilityZone az : r.getZones()) {
                   boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
@@ -590,7 +588,7 @@ public class MetricQueryHelper {
     List<String> namespaces = new ArrayList<>();
 
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getSingleProvider(cluster);
       for (Region r : Region.getByProvider(provider.getUuid())) {
         for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.getUuid())) {
           boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
@@ -673,8 +671,12 @@ public class MetricQueryHelper {
   }
 
   public static String getDataMountPoints(Universe universe) {
-    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-        == CloudType.onprem) {
+    if (universe
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent
+        .getAllCloudTypes()
+        .contains(CloudType.onprem)) {
       final String mountRoots =
           universe.getNodes().stream()
               .filter(MetricQueryHelper::checkNonNullMountRoots)
@@ -697,15 +699,21 @@ public class MetricQueryHelper {
   }
 
   public static String getOtherMountPoints(RuntimeConfGetter confGetter, Universe universe) {
-    UUID providerUuid =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUuid);
-    String otherMountPoints =
-        confGetter.getConfForScope(provider, ProviderConfKeys.monitoredMountRoots);
-    if (StringUtils.isBlank(otherMountPoints)) {
+    List<String> mountPoints = new ArrayList<>();
+    for (UUID providerUuid :
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.getAllProviderUUIDs()) {
+      Provider provider = Provider.getOrBadRequest(providerUuid);
+      String otherMountPoints =
+          confGetter.getConfForScope(provider, ProviderConfKeys.monitoredMountRoots);
+      if (!StringUtils.isBlank(otherMountPoints)) {
+        mountPoints.add(otherMountPoints);
+      }
+    }
+    if (mountPoints.isEmpty()) {
       // Special value to make sure no metric values are returned for the query
       return "#";
     }
+    String otherMountPoints = String.join("|", mountPoints);
     return otherMountPoints.replaceAll(",", "|");
   }
 
@@ -715,13 +723,7 @@ public class MetricQueryHelper {
   }
 
   private Map<String, String> getAuthHeaders() {
-    Boolean authEnabled = confGetter.getGlobalConf(GlobalConfKeys.metricsAuth);
-    if (!authEnabled) {
-      return Collections.emptyMap();
-    }
-    String username = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthUsername);
-    String password = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthPassword);
-    return AuthUtil.getBasicAuthHeader(username, password);
+    return metricUrlProvider.getAuthHeaders();
   }
 
   /*

@@ -2721,7 +2721,7 @@ select * from my_locks order by 1;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;
 begin; alter table alterlock set (fillfactor = 100);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter fillfactor is currently ignored for ALTER TABLE in YugabyteDB
 select * from my_locks order by 1;
  relname | max_lockmode 
 ---------+--------------
@@ -2729,7 +2729,7 @@ select * from my_locks order by 1;
 
 commit;
 begin; alter table alterlock reset (fillfactor);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter fillfactor is currently ignored for ALTER TABLE in YugabyteDB
 select * from my_locks order by 1;
  relname | max_lockmode 
 ---------+--------------
@@ -2737,7 +2737,7 @@ select * from my_locks order by 1;
 
 commit;
 begin; alter table alterlock set (toast.autovacuum_enabled = off);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 select * from my_locks order by 1;
  relname | max_lockmode 
 ---------+--------------
@@ -2745,7 +2745,7 @@ select * from my_locks order by 1;
 
 commit;
 begin; alter table alterlock set (autovacuum_enabled = off);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
 select * from my_locks order by 1;
  relname | max_lockmode 
 ---------+--------------
@@ -2762,7 +2762,8 @@ ERROR:  current transaction is aborted, commands ignored until end of transactio
 rollback;
 -- test that mixing options with different lock levels works as expected
 begin; alter table alterlock set (autovacuum_enabled = off, fillfactor = 80);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter autovacuum_enabled is currently ignored for ALTER TABLE in YugabyteDB
+NOTICE:  storage parameter fillfactor is currently ignored for ALTER TABLE in YugabyteDB
 select * from my_locks order by 1;
  relname | max_lockmode 
 ---------+--------------

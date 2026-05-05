@@ -265,6 +265,14 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation);
 extern bool YBRelHasSecondaryIndices(Relation relation);
 
 /*
+ * Check if upsert (blind write) is unsafe on the given relation.
+ * Blind writes skip reading the old row, which means secondary index
+ * entries are updated incorrectly, triggers fire incorrectly, and
+ * foreign key cascades are skipped.
+ */
+extern bool YBIsUpsertUnsafeOnRel(Relation relation);
+
+/*
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed
  * transactions.
  */
@@ -602,6 +610,13 @@ extern bool yb_enable_saop_pushdown;
  * Enables the use of TOAST compression for the Postgres catcache.
  */
 extern int	yb_toast_catcache_threshold;
+
+/*
+ * Maximum number of tuples in a preloaded catalog cache for which a
+ * list-cache miss can be answered by scanning the local cache instead of
+ * doing an RPC.  Set to 0 to disable the optimization entirely.
+ */
+extern int	yb_catcache_list_from_preloaded_limit;
 
 /*
  * Configure size of the parallel range in requests for parallel keys.

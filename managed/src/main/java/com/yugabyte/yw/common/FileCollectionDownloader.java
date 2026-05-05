@@ -210,6 +210,7 @@ public class FileCollectionDownloader {
       // Get just the filenames for the tar command
       List<String> tarArgs = new ArrayList<>();
       tarArgs.add("tar");
+      tarArgs.add("--warning=no-file-changed");
       tarArgs.add("-czf");
       tarArgs.add(combinedTarPath);
       tarArgs.add("-C");

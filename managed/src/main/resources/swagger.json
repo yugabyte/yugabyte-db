@@ -921,6 +921,7 @@
             "DB_FATAL_LOGS",
             "DB_ERROR_LOGS",
             "DB_CORE_FILES",
+            "DB_PROCESS_LIMITS",
             "DB_YSQL_CONNECTION",
             "DB_YCQL_CONNECTION",
             "DB_REDIS_CONNECTION",
@@ -982,7 +983,11 @@
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
-            "OTEL_METRIC_EXPORT_FAILURE"
+            "OTEL_METRIC_EXPORT_FAILURE",
+            "PA_COLLECTOR_DOWN",
+            "PA_UNIVERSE_COLLECTION_FAILURE",
+            "PA_UNIVERSE_COLLECTION_STALE",
+            "PA_EMBEDDED_COLLECTOR_ERROR"
           ],
           "type" : "string"
         },
@@ -1106,6 +1111,7 @@
             "DB_FATAL_LOGS",
             "DB_ERROR_LOGS",
             "DB_CORE_FILES",
+            "DB_PROCESS_LIMITS",
             "DB_YSQL_CONNECTION",
             "DB_YCQL_CONNECTION",
             "DB_REDIS_CONNECTION",
@@ -1167,7 +1173,11 @@
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
-            "OTEL_METRIC_EXPORT_FAILURE"
+            "OTEL_METRIC_EXPORT_FAILURE",
+            "PA_COLLECTOR_DOWN",
+            "PA_UNIVERSE_COLLECTION_FAILURE",
+            "PA_UNIVERSE_COLLECTION_STALE",
+            "PA_EMBEDDED_COLLECTOR_ERROR"
           ],
           "type" : "string"
         },
@@ -1387,6 +1397,7 @@
             "DB_FATAL_LOGS",
             "DB_ERROR_LOGS",
             "DB_CORE_FILES",
+            "DB_PROCESS_LIMITS",
             "DB_YSQL_CONNECTION",
             "DB_YCQL_CONNECTION",
             "DB_REDIS_CONNECTION",
@@ -1448,7 +1459,11 @@
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
-            "OTEL_METRIC_EXPORT_FAILURE"
+            "OTEL_METRIC_EXPORT_FAILURE",
+            "PA_COLLECTOR_DOWN",
+            "PA_UNIVERSE_COLLECTION_FAILURE",
+            "PA_UNIVERSE_COLLECTION_STALE",
+            "PA_EMBEDDED_COLLECTOR_ERROR"
           ],
           "type" : "string"
         },
@@ -2694,6 +2709,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -2704,6 +2721,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -2776,6 +2794,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -2864,6 +2883,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -5576,6 +5596,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -5586,6 +5608,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -5658,6 +5681,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -5746,6 +5770,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -6138,12 +6163,16 @@
           ],
           "type" : "string"
         },
+        "geoPartitioned" : {
+          "description" : "Property indicating that tablespaces are created for partitions.WARNING: This is a preview API that could change",
+          "type" : "boolean"
+        },
         "index" : {
           "format" : "int32",
           "type" : "integer"
         },
         "partitions" : {
-          "description" : "WARNING: This is a preview API that could change. Geo partitions for cluster",
+          "description" : "List of current partitions. WARNING: This is a preview API that could change",
           "items" : {
             "$ref" : "#/definitions/PartitionInfo"
           },
@@ -6612,6 +6641,18 @@
         },
         "enableYSQLAuth" : {
           "description" : "Enable YSQL Auth for the universe",
+          "type" : "boolean"
+        },
+        "multiTenancy" : {
+          "$ref" : "#/definitions/MultiTenancyConfig",
+          "description" : "WARNING: This is a preview API that could change. Multi-tenancy configuration for QoS. Cgroup provisioning must already be completed on the nodes before enabling."
+        },
+        "runOnlyPrechecks" : {
+          "description" : "WARNING: This is a preview API that could change. If true, only run the prechecks for the configure YSQL task without performing the actual upgrade. Cannot be set together with validateParams.",
+          "type" : "boolean"
+        },
+        "validateParams" : {
+          "description" : "WARNING: This is a preview API that could change. If true, only validate the request parameters without submitting any task or running prechecks. Cannot be set together with runOnlyPrechecks.",
           "type" : "boolean"
         },
         "ysqlPassword" : {
@@ -7372,6 +7413,10 @@
           "description" : "Customer task retryable",
           "type" : "boolean"
         },
+        "softwareUpgradeProgress" : {
+          "$ref" : "#/definitions/SoftwareUpgradeProgress",
+          "description" : "Software upgrade progress (canary / per-AZ) when applicable"
+        },
         "status" : {
           "description" : "Customer task status",
           "example" : "Complete",
@@ -7761,6 +7806,7 @@
             "Unconfigured for DR",
             "Bootstrapping",
             "Receiving data, Ready for reads",
+            "Replication paused",
             "Switching to DR primary",
             "Universe marked as DR failed"
           ],
@@ -7817,6 +7863,7 @@
             "Ready to replicate",
             "Waiting for DR",
             "Replicating data",
+            "Replication paused",
             "Preparing for switchover",
             "Switching to DR replica",
             "Universe marked as DR failed"
@@ -7839,6 +7886,7 @@
             "Replicating",
             "Switchover in Progress",
             "Failover in Progress",
+            "Paused",
             "Halted",
             "Updating",
             "Failed"
@@ -8686,6 +8734,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -8696,6 +8746,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -8768,6 +8819,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -8856,6 +8908,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -9508,6 +9561,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9518,6 +9573,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -9590,6 +9646,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -9678,6 +9735,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -11040,6 +11098,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -11050,6 +11110,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -11122,6 +11183,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -11210,6 +11272,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -11787,6 +11850,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -11797,6 +11862,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -11869,6 +11935,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -11957,6 +12024,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -13069,6 +13137,26 @@
         "storageConfigUUID",
         "timeTakenPartial"
       ],
+      "type" : "object"
+    },
+    "MultiTenancyConfig" : {
+      "description" : "Multi-tenancy configuration for QoS",
+      "properties" : {
+        "enableQos" : {
+          "description" : "Enable QoS-based multi-tenancy (sets enable_qos gflag)",
+          "type" : "boolean"
+        },
+        "qosMaxDbCount" : {
+          "description" : "Maximum number of databases allowed",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "qosMaxDbCpuPercent" : {
+          "description" : "Maximum per-database CPU percentage",
+          "format" : "double",
+          "type" : "number"
+        }
+      },
       "type" : "object"
     },
     "NamespaceInfoResp" : {
@@ -14346,6 +14434,10 @@
     },
     "OnPremCloudInfo" : {
       "properties" : {
+        "enableMultiTenancy" : {
+          "description" : "WARNING: This is a preview API that could change.",
+          "type" : "boolean"
+        },
         "useClockbound" : {
           "description" : "WARNING: This is a preview API that could change.",
           "type" : "boolean"
@@ -14424,6 +14516,38 @@
       ],
       "type" : "object"
     },
+    "PA Collector registered universe info" : {
+      "properties" : {
+        "advancedObservability" : {
+          "description" : "Whether advanced observability (metrics export) is enabled",
+          "type" : "boolean"
+        },
+        "dataMountPoints" : {
+          "description" : "Data mount points",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "otherMountPoints" : {
+          "description" : "Other mount points",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "universeName" : {
+          "description" : "Universe name (from YBA, or null if universe was deleted)",
+          "type" : "string"
+        },
+        "universeUuid" : {
+          "description" : "Universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "PA Collector universe registration status" : {
       "properties" : {
         "advancedObservability" : {
@@ -14494,6 +14618,85 @@
         "paUrl",
         "uuid",
         "ybaUrl"
+      ],
+      "type" : "object"
+    },
+    "PaUniverseApiFilter" : {
+      "properties" : {
+        "universeName" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "universeName"
+      ],
+      "type" : "object"
+    },
+    "PaUniversePagedApiQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [
+            "ASC",
+            "DESC"
+          ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/PaUniverseApiFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [
+            "universeName",
+            "universeUuid"
+          ],
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "direction",
+        "filter",
+        "limit",
+        "needTotalCount",
+        "offset",
+        "sortBy"
+      ],
+      "type" : "object"
+    },
+    "PaUniversePagedApiResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/PA Collector registered universe info"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "entities",
+        "hasNext",
+        "hasPrev",
+        "totalCount"
       ],
       "type" : "object"
     },
@@ -16311,6 +16514,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -16321,6 +16526,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -16393,6 +16599,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -16481,6 +16688,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -17000,6 +17208,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17010,6 +17220,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -17082,6 +17293,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -17170,6 +17382,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -18058,6 +18271,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18068,6 +18283,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -18140,6 +18356,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -18228,6 +18445,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -18903,6 +19121,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18913,6 +19133,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -18985,6 +19206,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -19073,6 +19295,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -20454,6 +20677,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -20464,6 +20689,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -20536,6 +20762,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -20624,6 +20851,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -21120,6 +21348,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -21130,6 +21360,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -21202,6 +21433,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -21290,6 +21522,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -21541,6 +21774,8 @@
               "MigrateUniverse",
               "KubernetesToggleImmutableYbc",
               "OperatorImportUniverse",
+              "RegisterUniverseWithPACollector",
+              "UnregisterUniverseFromPACollector",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -21551,6 +21786,7 @@
               "PersistResizeNode",
               "PersistSystemdUpgrade",
               "PersistUseClockbound",
+              "PersistEnableMultiTenancy",
               "UpdateNodeDetails",
               "AddAuthorizedKey",
               "AnsibleClusterServerCtl",
@@ -21623,6 +21859,7 @@
               "DeleteXClusterTableConfigEntry",
               "DeleteDrConfigEntry",
               "WaitForReplicationDrain",
+              "XClusterFailoverWithOnDemandSnapshot",
               "ResetXClusterConfigEntry",
               "SetReplicationPaused",
               "ChangeXClusterRole",
@@ -21711,6 +21948,7 @@
               "CheckLocale",
               "CheckShellConnectivity",
               "CheckGlibc",
+              "CheckCpuCgroup",
               "CheckOpentelemetryOperator",
               "PGUpgradeTServerCheck",
               "CleanUpPGUpgradeDataDir",
@@ -22111,6 +22349,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22121,6 +22361,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -22193,6 +22434,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -22281,6 +22523,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -22892,6 +23135,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22902,6 +23147,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -22974,6 +23220,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -23062,6 +23309,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -23186,6 +23434,41 @@
         "upgradeOption",
         "upgradeSystemCatalog",
         "ybSoftwareVersion"
+      ],
+      "type" : "object"
+    },
+    "SoftwareUpgradeProgress" : {
+      "description" : "Software upgrade progress by availability zone",
+      "properties" : {
+        "canaryPauseState" : {
+          "description" : "WARNING: This is a preview API that could change. Current canary pause state, if applicable",
+          "enum" : [
+            "NOT_PAUSED",
+            "PAUSED_AFTER_MASTERS",
+            "PAUSED_AFTER_TSERVERS_AZ"
+          ],
+          "type" : "string"
+        },
+        "canaryUpgrade" : {
+          "type" : "boolean"
+        },
+        "masterAZUpgradeStatesList" : {
+          "description" : "WARNING: This is a preview API that could change. Master upgrade state per availability zone",
+          "items" : {
+            "$ref" : "#/definitions/AZUpgradeState"
+          },
+          "type" : "array"
+        },
+        "tserverAZUpgradeStatesList" : {
+          "description" : "WARNING: This is a preview API that could change. Tserver upgrade state per availability zone",
+          "items" : {
+            "$ref" : "#/definitions/AZUpgradeState"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [
+        "canaryUpgrade"
       ],
       "type" : "object"
     },
@@ -24053,6 +24336,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24063,6 +24348,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -24135,6 +24421,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -24223,6 +24510,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -24841,7 +25129,9 @@
               "ImportUniverse",
               "MigrateUniverse",
               "KubernetesToggleImmutableYbc",
-              "OperatorImport"
+              "OperatorImport",
+              "RegisterWithPACollector",
+              "UnregisterFromPACollector"
             ],
             "type" : "string"
           },
@@ -25386,6 +25676,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -25396,6 +25688,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -25468,6 +25761,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -25556,6 +25850,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -26074,6 +26369,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26084,6 +26381,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -26156,6 +26454,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -26244,6 +26543,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -26629,6 +26929,9 @@
           "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
+        "newUI" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -26900,6 +27203,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26910,6 +27215,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -26982,6 +27288,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -27070,6 +27377,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -27173,6 +27481,7 @@
       "required" : [
         "clusters",
         "creatingUser",
+        "newUI",
         "platformUrl",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
@@ -27552,6 +27861,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -27562,6 +27873,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -27634,6 +27946,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -27722,6 +28035,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -28204,6 +28518,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -28214,6 +28530,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -28286,6 +28603,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -28374,6 +28692,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -29366,6 +29685,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -29376,6 +29697,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -29448,6 +29770,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -29536,6 +29859,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -29764,6 +30088,10 @@
         },
         "masterK8SNodeResourceSpec" : {
           "$ref" : "#/definitions/K8SNodeResourceSpec"
+        },
+        "multiTenancy" : {
+          "$ref" : "#/definitions/MultiTenancyConfig",
+          "description" : "WARNING: This is a preview API that could change. Multi-tenancy configuration"
         },
         "numNodes" : {
           "format" : "int32",
@@ -30580,6 +30908,8 @@
             "MigrateUniverse",
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
+            "RegisterUniverseWithPACollector",
+            "UnregisterUniverseFromPACollector",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -30590,6 +30920,7 @@
             "PersistResizeNode",
             "PersistSystemdUpgrade",
             "PersistUseClockbound",
+            "PersistEnableMultiTenancy",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -30662,6 +30993,7 @@
             "DeleteXClusterTableConfigEntry",
             "DeleteDrConfigEntry",
             "WaitForReplicationDrain",
+            "XClusterFailoverWithOnDemandSnapshot",
             "ResetXClusterConfigEntry",
             "SetReplicationPaused",
             "ChangeXClusterRole",
@@ -30750,6 +31082,7 @@
             "CheckLocale",
             "CheckShellConnectivity",
             "CheckGlibc",
+            "CheckCpuCgroup",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
             "CleanUpPGUpgradeDataDir",
@@ -31067,6 +31400,7 @@
             "Ready to replicate",
             "Waiting for DR",
             "Replicating data",
+            "Replication paused",
             "Preparing for switchover",
             "Switching to DR replica",
             "Universe marked as DR failed"
@@ -31125,6 +31459,7 @@
             "Unconfigured for DR",
             "Bootstrapping",
             "Receiving data, Ready for reads",
+            "Replication paused",
             "Switching to DR primary",
             "Universe marked as DR failed"
           ],
@@ -31365,6 +31700,7 @@
             "Ready to replicate",
             "Waiting for DR",
             "Replicating data",
+            "Replication paused",
             "Preparing for switchover",
             "Switching to DR replica",
             "Universe marked as DR failed"
@@ -31423,6 +31759,7 @@
             "Unconfigured for DR",
             "Bootstrapping",
             "Receiving data, Ready for reads",
+            "Replication paused",
             "Switching to DR primary",
             "Universe marked as DR failed"
           ],

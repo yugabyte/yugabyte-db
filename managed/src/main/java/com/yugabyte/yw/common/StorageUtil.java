@@ -112,7 +112,6 @@ public interface StorageUtil {
    */
   public default void validateStorageConfig(CustomerConfigData configData) {
     Map<String, String> configLocationMap = getRegionLocationsMap(configData);
-    // TODO: Check all permissions instead of listing here.
     if (!canCredentialListObjects(configData, configLocationMap)) {
       throw new PlatformServiceException(
           PRECONDITION_FAILED, "Storage config credentials cannot list objects");

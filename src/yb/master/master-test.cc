@@ -40,6 +40,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/common_net.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -99,6 +100,8 @@ DECLARE_string(use_private_ip);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_bool(enable_ysql);
+DECLARE_bool(enable_qos);
+DECLARE_int32(qos_max_db_count);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -2912,6 +2915,55 @@ Result<TSHeartbeatResponsePB> MasterTest::SendNewTSRegistrationHeartbeat(
     registered_ts_count_++;
   }
   return result;
+}
+
+TEST_F(MasterTest, TestQosMaxDbCount) {
+  // Set a low limit for testing.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 3;
+
+  CreateNamespaceResponsePB resp;
+
+  // Template databases should not count toward the limit.
+  ASSERT_OK(CreatePgsqlNamespace(
+      "template0", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 100), &resp));
+  // Also create "template1" -- both should be excluded.
+  ASSERT_OK(CreatePgsqlNamespace(
+      "template1", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 101), &resp));
+
+  // Create databases up to the limit (limit = 3, current non-template count = 0).
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db1", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 1), &resp));
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db2", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 2), &resp));
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db3", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 3), &resp));
+
+  // The next creation should fail.
+  Status s = CreatePgsqlNamespace(
+      "db4", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 4), &resp);
+  ASSERT_TRUE(s.IsInvalidArgument()) << s;
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Too many databases");
+
+  // Increasing the limit should allow creation again.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 4;
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db4", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 4), &resp));
+
+  // Disabling QoS should remove the limit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = false;
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db5", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 5), &resp));
+
+  // Re-enable QoS; setting limit to 0 should also disable the check.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 0;
+  ASSERT_OK(CreatePgsqlNamespace(
+      "db6", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 6), &resp));
+
+  // YCQL keyspaces should not be affected by the YSQL limit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 1;
+  ASSERT_OK(CreateNamespace("cql_ks", YQLDatabase::YQL_DATABASE_CQL, &resp));
 }
 
 } // namespace master

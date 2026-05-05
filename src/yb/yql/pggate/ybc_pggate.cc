@@ -519,6 +519,7 @@ void YBCDestroyPgGate() {
   LOG_IF(FATAL, !is_main_thread())
       << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
 
+  pgapi->Shutdown();
   if (pgapi_shutdown_done.exchange(true)) {
     LOG(DFATAL) << __PRETTY_FUNCTION__ << " should only be called once";
     return;
@@ -2064,7 +2065,7 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     the TransactionSnapshot's read time serial number.
   //
   return !YBCIsObjectLockingEnabled() || !yb_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet()
-    || YBCIsSysTablePrefetchingStarted();
+      || YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
 }
 
 //------------------------------------------------------------------------------------------------

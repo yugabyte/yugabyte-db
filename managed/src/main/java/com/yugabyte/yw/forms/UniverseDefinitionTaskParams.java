@@ -483,8 +483,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Getter
     @Setter
     @ApiModelProperty(
-        value = "WARNING: This is a preview API that could change. Geo partitions for cluster")
+        value = "List of current partitions. " + "WARNING: This is a preview API that could change")
     private List<PartitionInfo> partitions;
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(
+        value =
+            "Property indicating that tablespaces are created for partitions."
+                + "WARNING: This is a preview API that could change")
+    private boolean geoPartitioned;
 
     /** Default to PRIMARY. */
     private Cluster() {
@@ -685,11 +694,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     @JsonIgnore
-    public boolean isGeoPartitioned() {
-      return partitions != null && partitions.size() > 1;
-    }
-
-    @JsonIgnore
     public PartitionInfo getDefaultPartition() {
       return partitions == null
           ? null
@@ -781,7 +785,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (other == null) {
         return;
       }
-      if (other.getDeviceInfo() != null) {
+      if (other.getDeviceInfo() != null && !other.getDeviceInfo().allNull()) {
         this.setDeviceInfo(other.getDeviceInfo());
       }
       if (other.getInstanceType() != null) {
@@ -944,6 +948,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (MapUtils.isEmpty(azOverrides)) {
         azOverrides = null;
       }
+    }
+
+    @JsonIgnore
+    public void removeNonRequiredAZs(Set<UUID> usedAZs) {
+      if (MapUtils.isEmpty(azOverrides)) {
+        return;
+      }
+      azOverrides.keySet().retainAll(usedAZs);
     }
 
     @JsonIgnore
@@ -1228,6 +1240,59 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(value = "YbaApi Internal. Use clockbound as time source")
     private boolean useClockbound = false;
 
+    @Data
+    @ApiModel(description = "Multi-tenancy configuration for QoS")
+    public static class MultiTenancyConfig {
+      @ApiModelProperty(value = "Enable QoS-based multi-tenancy (sets enable_qos gflag)")
+      private boolean enableQos = false;
+
+      @ApiModelProperty(value = "Maximum per-database CPU percentage")
+      @Nullable
+      private Double qosMaxDbCpuPercent;
+
+      @ApiModelProperty(value = "Maximum number of databases allowed")
+      @Nullable
+      private Integer qosMaxDbCount;
+
+      @Override
+      public MultiTenancyConfig clone() {
+        MultiTenancyConfig newConfig = new MultiTenancyConfig();
+        newConfig.enableQos = enableQos;
+        newConfig.qosMaxDbCount = qosMaxDbCount;
+        newConfig.qosMaxDbCpuPercent = qosMaxDbCpuPercent;
+        return newConfig;
+      }
+
+      @Override
+      public boolean equals(Object other) {
+        if (other == null) {
+          return false;
+        }
+        if (other.getClass() != this.getClass()) {
+          return false;
+        }
+        MultiTenancyConfig otherMt = (MultiTenancyConfig) other;
+        return enableQos == otherMt.enableQos
+            && Objects.equals(qosMaxDbCount, otherMt.getQosMaxDbCount())
+            && Objects.equals(qosMaxDbCpuPercent, otherMt.getQosMaxDbCpuPercent());
+      }
+    }
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0")
+    @Getter
+    @Setter
+    @Nullable
+    @ApiModelProperty(
+        value = "WARNING: This is a preview API that could change. Multi-tenancy configuration")
+    private MultiTenancyConfig multiTenancy;
+
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Universe provisioned with cpu cgroup")
+    @Getter
+    @Setter
+    private boolean cpuCgroupConfigured;
+
     @Getter
     @Setter
     @Nullable
@@ -1242,6 +1307,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
             "WARNING: This is a preview API that could change. Use YBDB inbuilt YBC for K8s"
                 + " universe")
     private boolean useYbdbInbuiltYbc = false;
+
+    @JsonIgnore
+    public boolean isQosEnabled() {
+      return multiTenancy != null && multiTenancy.isEnableQos();
+    }
 
     @Override
     public String toString() {
@@ -1329,6 +1399,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         newUserIntent.tserverK8SNodeResourceSpec = tserverK8SNodeResourceSpec.clone();
       }
       newUserIntent.useClockbound = useClockbound;
+      if (multiTenancy != null) {
+        newUserIntent.multiTenancy = multiTenancy.clone();
+      }
       newUserIntent.useYbdbInbuiltYbc = useYbdbInbuiltYbc;
       return newUserIntent;
     }
@@ -1365,6 +1438,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         return overridenDetails.getCgroupSize();
       }
       return cgroupSize;
+    }
+
+    @JsonIgnore
+    public Collection<UUID> getAllProviderUUIDs() {
+      // For tests to work.
+      if (provider == null) {
+        return Collections.emptySet();
+      }
+      return Collections.singletonList(UUID.fromString(provider));
+    }
+
+    @JsonIgnore
+    public Collection<CloudType> getAllCloudTypes() {
+      return Collections.singletonList(providerType);
     }
 
     @JsonIgnore

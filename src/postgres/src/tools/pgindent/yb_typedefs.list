@@ -61,6 +61,8 @@ YbCatalogModificationAspects
 YbCatalogVersionType
 YbChildScan
 YbChildScanData
+YbColFoldState
+YbColFoldType
 YbCommandInfo
 YbConcurrencyContext
 YbCostModel
@@ -116,6 +118,7 @@ YbIntCounters
 YbIssueDetectionCheck
 YbIssueDetectionPlan
 YbJumbleState
+YbListenerQueueScanCurrentXactState
 YbLocationLen
 YbLockMechanism
 YbLogicalClientVersionType
@@ -256,7 +259,6 @@ YbcMetricsInfo
 YbcObjectLockId
 YbcObjectLockMode
 YbcOrderingMode
-YbcOtelScope
 YbcOtelSpanContext
 YbcPallocFn
 YbcPgAshConfig

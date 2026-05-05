@@ -162,6 +162,11 @@ Result<std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>> CreateYsql
       FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor.GetYsqlConnManagerStatsShmkey() : 0;
   auto ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
       ysql_conn_mgr_conf, conn_mgr_shmem_key);
+#ifdef __linux__
+  if (auto* cm = tablet_server.cgroup_manager()) {
+    ysql_conn_mgr_supervisor->SetCgroup(cm->SystemHighCgroup());
+  }
+#endif
   if (ysql_lease_enabled) {
     RETURN_NOT_OK(ysql_conn_mgr_supervisor->InitPaused());
   } else {
@@ -324,7 +329,7 @@ Status StartServices(Services& services) {
         FLAGS_pgsql_proxy_bind_address,
         tablet_server_options.fs_opts.data_paths.front() + "/pg_data");
     RETURN_NOT_OK(pg_process_conf_result);
-    RETURN_NOT_OK(docdb::DocPgInit());
+    RETURN_NOT_OK(docdb::DocPgInit(pgwrapper::PgWrapper::GetPostgresExecutablePath()));
     auto& pg_process_conf = *pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options.master_addresses_flag;
     RETURN_NOT_OK(pg_process_conf.SetSslConf(

@@ -156,6 +156,7 @@ message ConfigureServerInput {
     repeated string processes = 3;
     repeated string mountPoints = 4;
     uint32 numCoresToKeep = 5;
+    bool configureCgroup = 6;
 }
 
 message ConfigureServerOutput {

@@ -76,10 +76,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -135,7 +137,8 @@ public class NodeAgentRpcPayload {
           .map(String::trim)
           .filter(s -> !s.isEmpty())
           .collect(Collectors.toList());
-    } else if (params.deviceInfo.numVolumes != null
+    }
+    if (params.deviceInfo.numVolumes != null
         && params.getProvider().getCloudCode() != Common.CloudType.onprem) {
       List<String> mountPoints = new ArrayList<>();
       for (int i = 0; i < params.deviceInfo.numVolumes; i++) {
@@ -147,15 +150,14 @@ public class NodeAgentRpcPayload {
   }
 
   private String getYbPackage(ReleaseContainer release, Architecture arch, Region region) {
+    Objects.requireNonNull(release, "Release container cannot be null");
     String ybServerPackage = null;
-    if (release != null) {
-      if (arch != null) {
-        ybServerPackage = release.getFilePath(arch);
-      } else {
-        ybServerPackage = release.getFilePath(region);
-      }
+    if (arch != null) {
+      ybServerPackage = release.getFilePath(arch);
+    } else {
+      ybServerPackage =
+          release.getFilePath(Objects.requireNonNull(region, "Region cannot be null"));
     }
-
     return ybServerPackage;
   }
 
@@ -432,7 +434,11 @@ public class NodeAgentRpcPayload {
   }
 
   public ConfigureServerInput setUpConfigureServerBits(
-      Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
+      Universe universe,
+      NodeDetails nodeDetails,
+      NodeTaskParams taskParams,
+      NodeAgent nodeAgent,
+      @Nullable Boolean configureCgroupOverride) {
     ConfigureServerInput.Builder configureServerInputBuilder = ConfigureServerInput.newBuilder();
     Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
@@ -454,6 +460,11 @@ public class NodeAgentRpcPayload {
     Integer num_cores_to_keep =
         confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
     configureServerInputBuilder.setNumCoresToKeep(num_cores_to_keep);
+    boolean configureCgroup =
+        configureCgroupOverride != null
+            ? configureCgroupOverride
+            : Util.configureCgroup(cluster.userIntent, provider, false, confGetter);
+    configureServerInputBuilder.setConfigureCgroup(configureCgroup);
     return configureServerInputBuilder.build();
   }
 
@@ -639,6 +650,10 @@ public class NodeAgentRpcPayload {
     AnsibleClusterServerCtl.Params taskParams = null;
     if (nodeTaskParams instanceof AnsibleClusterServerCtl.Params) {
       taskParams = (AnsibleClusterServerCtl.Params) nodeTaskParams;
+    } else {
+      throw new RuntimeException(
+          "Expected AnsibleClusterServerCtl.Params for setupServerControlBits, but found "
+              + nodeTaskParams.getClass());
     }
     String serverName = "yb-" + taskParams.process;
     String serverHome =
@@ -692,6 +707,9 @@ public class NodeAgentRpcPayload {
     AnsibleConfigureServers.Params taskParams = null;
     if (nodeTaskParams instanceof AnsibleConfigureServers.Params) {
       taskParams = (AnsibleConfigureServers.Params) nodeTaskParams;
+    } else {
+      throw new RuntimeException(
+          "Expected AnsibleConfigureServers.Params, but found " + nodeTaskParams.getClass());
     }
     String taskSubType = taskParams.getProperty("taskSubType");
     UserIntent userIntent = nodeManager.getUserIntentFromParams(universe, taskParams);
@@ -735,7 +753,6 @@ public class NodeAgentRpcPayload {
                     ShellProcessContext.DEFAULT,
                     true);
                 // Create the gflags_dir.
-                StringBuilder sb = new StringBuilder();
                 nodeAgentClient.executeCommand(
                     nodeAgent,
                     Arrays.asList(

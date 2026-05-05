@@ -27,6 +27,11 @@ public class CheckSshConnection extends NodeTaskBase {
   }
 
   @Override
+  public int getRetryLimit() {
+    return 2;
+  }
+
+  @Override
   public void run() {
     Universe universe = getUniverse();
     NodeDetails node = universe.getNode(taskParams().nodeName);

@@ -111,7 +111,6 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/master/async_rpc_tasks.h"
@@ -197,6 +196,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_validators.h"
@@ -260,6 +260,13 @@ DEFINE_RUNTIME_int32(catalog_manager_inject_latency_in_delete_table_ms, 0,
 TAG_FLAG(catalog_manager_inject_latency_in_delete_table_ms, hidden);
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+
+DECLARE_bool(enable_qos);
+DEFINE_RUNTIME_int32(qos_max_db_count, 0,
+    "Maximum number of YSQL databases allowed per cluster when QoS is enabled "
+    "(enable_qos=true). CREATE DATABASE is rejected when the non-template database "
+    "count would exceed this limit. Template databases (template0, template1) are "
+    "excluded from the count. Set to 0 to disable the limit.");
 
 DEFINE_RUNTIME_int32(replication_factor, 3,
     "Default number of replicas for tables that do not have the num_replicas set. "
@@ -652,6 +659,7 @@ DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(cdc_enable_dynamic_schema_changes);
+DECLARE_bool(TEST_cdc_add_dynamic_index_to_state_table);
 namespace yb::master {
 
 using std::shared_ptr;
@@ -829,7 +837,7 @@ int GetTransactionTableNumShardsPerTServer() {
   int value = 8;
   if (IsTsan()) {
     value = 2;
-  } else if (base::NumCPUs() <= 2) {
+  } else if (NumEffectiveCPUs() <= 2) {
     value = 4;
   }
   return value;
@@ -3461,13 +3469,12 @@ Status CatalogManager::DoSplitTablet(
       source_tablet_info, split_encoded_keys, split_partition_keys, is_manual_split, epoch);
 }
 
-Result<TabletInfoPtr> CatalogManager::GetTabletInfo(TabletIdView tablet_id)
-    EXCLUDES(mutex_) {
+Result<TabletInfoPtr> CatalogManager::GetTabletInfo(TabletIdView tablet_id) const EXCLUDES(mutex_) {
   SharedLock lock(mutex_);
   return GetTabletInfoUnlocked(tablet_id);
 }
 
-Result<TabletInfoPtr> CatalogManager::GetTabletInfoUnlocked(TabletIdView tablet_id)
+Result<TabletInfoPtr> CatalogManager::GetTabletInfoUnlocked(TabletIdView tablet_id) const
     REQUIRES_SHARED(mutex_) {
   const auto tablet_info = FindPtrOrNull(*tablet_map_, tablet_id);
   if (tablet_info == nullptr) {
@@ -3606,9 +3613,9 @@ Status CatalogManager::ValidateSplitCandidate(
 Status CatalogManager::ValidateSplitCandidateUnlocked(
     const TabletInfoPtr& tablet, const ManualSplit is_manual_split) {
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
-  const IgnoreVectorIndexes ignore_vector_indexes { is_manual_split.get() };
+  const IgnoreVectorIndexesValidation ignore_vector_indexes_validation { is_manual_split.get() };
   RETURN_NOT_OK(master_->tablet_split_manager().ValidateSplitCandidateTable(
-      tablet->table(), ignore_disabled_list, ignore_vector_indexes));
+      tablet->table(), ignore_disabled_list, ignore_vector_indexes_validation));
   RETURN_NOT_OK(XReplValidateSplitCandidateTableUnlocked(tablet->table()->id()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
@@ -7629,6 +7636,7 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
   std::vector<std::pair<TableInfo::WriteLock, TransactionId>> table_lock_and_transaction_ids;
   std::vector<TableInfo*> tables_to_remove_from_map;
   std::vector<std::map<TabletId, std::weak_ptr<TabletInfo>>> tablets_to_remove_from_map;
+  std::vector<TableInfo*> newly_hidden_tables;
   for (const auto& table : tables) {
     if (table->is_deleted()) {
       tables_to_remove_from_map.push_back(table.get());
@@ -7642,6 +7650,9 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
     }
     auto lock_and_transaction_id = PrepareTableDeletion(table);
     if (lock_and_transaction_id.first.locked()) {
+      if (lock_and_transaction_id.first.data().is_hidden()) {
+        newly_hidden_tables.push_back(table.get());
+      }
       table_lock_and_transaction_ids.push_back(std::move(lock_and_transaction_id));
       tables_to_update_on_disk.push_back(table.get());
     }
@@ -7651,6 +7662,14 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
           *this, epoch, std::move(tables_to_update_on_disk),
           std::move(table_lock_and_transaction_ids), sys_catalog_tablet_info),
       "Error marking tables as DELETED");
+
+  if (!newly_hidden_tables.empty()) {
+    LockGuard mutex_lock(mutex_);
+    for (const auto& table : newly_hidden_tables) {
+      UpdateHideTimeInHiddenColocatedTableToCDCSDKMap(*table);
+    }
+  }
+
   if (!tables_to_remove_from_map.empty()) {
     LockGuard lock(mutex_);
     auto table_map_checkout = tables_.CheckOut();
@@ -9197,6 +9216,34 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // case of concurrent CREATE DATABASE requests in different sessions.
     ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
     RETURN_NOT_OK(check_ns_errors(ns, false /* by_id */));
+
+    // Enforce the QoS database count limit for YSQL databases.
+    if (FLAGS_enable_qos && FLAGS_qos_max_db_count > 0 &&
+        db_type == YQL_DATABASE_PGSQL && !is_ysql_major_upgrade_in_progress) {
+      int non_template_count = 0;
+      for (const auto& [name, ns_info] : namespace_names_mapper_[YQL_DATABASE_PGSQL]) {
+        if (name == "template0" || name == "template1") {
+          continue;
+        }
+        if (ns_info->id() == kPgSequencesDataNamespaceId) {
+          continue;
+        }
+        auto state = ns_info->state();
+        if (state != SysNamespaceEntryPB::DELETED &&
+            state != SysNamespaceEntryPB::FAILED) {
+          ++non_template_count;
+        }
+      }
+      if (non_template_count >= FLAGS_qos_max_db_count) {
+        Status s = STATUS_FORMAT(
+            InvalidArgument,
+            "Too many databases: $0 non-template databases already exist, "
+            "limit is $1 (qos_max_db_count). Drop unused databases or "
+            "increase the limit.",
+            non_template_count, FLAGS_qos_max_db_count);
+        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+      }
+    }
 
     // Add the new namespace.
 
@@ -11328,12 +11375,22 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const TableInfo& table) 
 Status CatalogManager::DeleteOrHideTabletsOfTable(
     const TableInfo& table_info, const TabletDeleteRetainerInfo& delete_retainer,
     const LeaderEpoch& epoch) {
+  auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
   // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
   if (!CheckIfForbiddenToDeleteTabletOf(table_info).ok()) {
+    if (FLAGS_enable_table_rewrite_for_cdcsdk_table && delete_retainer.active_cdcsdk &&
+        table_info.IsSecondaryTable()) {
+      LockGuard lock(mutex_);
+      RSTATUS_DCHECK(
+          tablets.size() == 1, InternalError, "Colocated table has more than one tablet");
+      // An entry is added to colocated_tables_retained_by_cdcsdk_ here so that the colocated table
+      // is not deleted by the bg thread. The hide time will get overwritten when the table is
+      // marked as hidden.
+      colocated_tables_retained_by_cdcsdk_.emplace(
+          table_info.id(), std::make_pair(tablets[0]->tablet_id(), HybridTime::kMax));
+    }
     return Status::OK();
   }
-
-  auto tablets = VERIFY_RESULT(table_info.GetTabletsIncludeInactive());
 
   std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->tablet_id() < rhs->tablet_id();
@@ -12102,11 +12159,13 @@ Status CatalogManager::SendCreateTabletRequests(
         const auto stream = entry.second;
         // Set the CDCSDK retention barriers on the tablets at the time of creation only if atleast
         // one stream with replication slot consumption exists on the namespace.
-        if (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
-            !stream->GetCdcsdkYsqlReplicationSlotName().empty() &&
-            IsTableEligibleForCDCSDKStream(
-                tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
-                stream->IsTablesWithoutPrimaryKeyAllowed())) {
+        if (PREDICT_FALSE(FLAGS_TEST_cdc_add_dynamic_index_to_state_table) ||
+            (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
+             !stream->GetCdcsdkYsqlReplicationSlotName().empty() &&
+             IsTableEligibleForCDCSDKStream(
+                 tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
+                 stream->IsTablesWithoutPrimaryKeyAllowed(),
+                 stream->DetectPublicationChangesImplicitly()))) {
           can_set_cdc_sdk_retention_barriers = true;
           break;
         }
@@ -12491,8 +12550,6 @@ Status CatalogManager::BuildLocationsForTablet(
     if (partitions_only) {
       return Status::OK();
     }
-    const auto& tablet_pb = l_tablet->pb;
-    locs_pb->set_table_id(l_tablet->pb.table_id());
     if (l_tablet->pb.hosted_tables_mapped_by_parent_id()) {
       for (auto& table_id : tablet->GetTableIds()) {
         locs_pb->add_table_ids(std::move(table_id));
@@ -12503,8 +12560,8 @@ Status CatalogManager::BuildLocationsForTablet(
     if (locs->empty() && l_tablet->pb.has_committed_consensus_state()) {
       cstate = l_tablet->pb.committed_consensus_state();
     }
-    locs_pb->mutable_split_tablet_ids()->Reserve(tablet_pb.split_tablet_ids().size());
-    for (const auto& split_tablet_id : tablet_pb.split_tablet_ids()) {
+    locs_pb->mutable_split_tablet_ids()->Reserve(l_tablet->pb.split_tablet_ids().size());
+    for (const auto& split_tablet_id : l_tablet->pb.split_tablet_ids()) {
       *locs_pb->add_split_tablet_ids() = split_tablet_id;
     }
   }
@@ -13440,6 +13497,14 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
       return;
     }
     lock.Commit();
+
+    {
+      LockGuard mutex_lock(mutex_);
+      if (table->is_hidden()) {
+        UpdateHideTimeInHiddenColocatedTableToCDCSDKMap(*table);
+      }
+    }
+
     if (!transaction_id.IsNil()) {
       TEST_SYNC_POINT("CatalogManager::CheckTableDeleted:BeforeRemoveDdlTransactionState");
       RemoveDdlTransactionState(table->id(), {transaction_id});

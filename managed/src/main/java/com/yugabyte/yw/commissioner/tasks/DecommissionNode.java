@@ -63,7 +63,7 @@ public class DecommissionNode extends EditUniverseTaskBase {
         throw new RuntimeException(msg);
       }
       setToBeRemovedState(currentNode);
-      configureTaskParams(universe);
+      configureTaskParams(universe, true /* moveMastersFirst */);
     }
 
     // Check again after locking.
@@ -136,7 +136,8 @@ public class DecommissionNode extends EditUniverseTaskBase {
           taskParamsCluster,
           getNodesInCluster(taskParamsCluster.uuid, addedMasters),
           getNodesInCluster(taskParamsCluster.uuid, removedMasters),
-          true /* force */);
+          true /* force */,
+          true /* moveMastersFirst */);
 
       createUpdateUniverseIntentTask(taskParamsCluster, true /*updatePlacementInfo*/);
 

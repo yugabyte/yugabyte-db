@@ -19,12 +19,14 @@
 
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 
-#include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/tserver_xcluster_context_mock.h"
 #include "yb/tserver/xcluster_output_client.h"
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"
+
+DECLARE_bool(xcluster_ddl_queue_enable_transactional_ddl);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb::tserver {
 
@@ -32,6 +34,7 @@ namespace {
 const int64_t kCompleteJsonb = 1;
 const std::string kDDLCommandCreateTable = "CREATE TABLE";
 const std::string kDDLCommandCreateIndex = "CREATE INDEX";
+const std::string kDDLCommandAlterTable = "ALTER TABLE";
 
 const NamespaceId kSourceNamespaceId = "0000abcd000030008000000000000000";
 
@@ -48,7 +51,7 @@ std::string ConstructJson(
 class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
  public:
   explicit XClusterDDLQueueHandlerMocked(
-      const client::YBTableName& target_table_name, MockTserverXClusterContext& xcluster_context)
+      const client::YBTableName& target_table_name, TserverXClusterContextIf& xcluster_context)
       : XClusterDDLQueueHandler(
             /* local_client */ nullptr, target_table_name.namespace_name(), kSourceNamespaceId,
             target_table_name.namespace_id(), /* log_prefix */ "", xcluster_context,
@@ -74,11 +77,17 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
   void ClearState() {
     rows_.clear();
     get_rows_to_process_calls_ = 0;
+    executed_queries_.clear();
+    txn_control_queries_.clear();
+    ddl_query_fail_at_index_ = -1;
+    is_already_processed_calls_ = 0;
   }
 
   bool HasSafeTimeBatch() const { return !safe_time_batch_->commit_times.empty(); }
 
   xcluster::SafeTimeBatch GetSafeTimeBatch() { return *safe_time_batch_; }
+
+  int GetNumFailsForThisDdl() const { return num_fails_for_this_ddl_; }
 
   Status DoPersistAndUpdateSafeTimeBatch(xcluster::SafeTimeBatch new_safe_time_batch) override {
     safe_time_batch_ = new_safe_time_batch;
@@ -89,6 +98,10 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
   std::vector<std::tuple<int64, int64, std::string>> rows_;
   int get_rows_to_process_calls_ = 0;
   HybridTime last_updated_safe_time_ = HybridTime::kInvalid;
+  std::vector<std::string> executed_queries_;
+  std::vector<std::string> txn_control_queries_;
+  int ddl_query_fail_at_index_ = -1;
+  int is_already_processed_calls_ = 0;
 
  private:
   Status InitPGConnection() override { return Status::OK(); }
@@ -110,11 +123,24 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
     return rows;
   }
 
+  Status RunAndLogQuery(const std::string& query) override {
+    txn_control_queries_.push_back(query);
+    return Status::OK();
+  }
+
   Status CheckForFailedQuery() override { return Status::OK(); };
 
-  Status ProcessDDLQuery(const XClusterDDLQueryInfo& query_info) override { return Status::OK(); }
+  Status ProcessDDLQuery(const XClusterDDLQueryInfo& query_info) override {
+    int idx = static_cast<int>(executed_queries_.size());
+    executed_queries_.push_back(query_info.command_tag);
+    if (idx == ddl_query_fail_at_index_) {
+      return STATUS(RuntimeError, "Simulated DDL failure");
+    }
+    return Status::OK();
+  }
 
   Result<bool> IsAlreadyProcessed(const XClusterDDLQueryInfo& query_info) override {
+    is_already_processed_calls_++;
     return false;
   };
 };
@@ -368,4 +394,188 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, GetSafeTimeBetweenDDLProcessing) {
   ASSERT_OK(ddl_queue_handler.UpdateSafeTimeForPause());
   ASSERT_EQ(ddl_queue_handler.last_updated_safe_time_, HybridTime(2, 1));
 }
+
+class XClusterTransactionalDDLQueueHandlerMockedTest
+    : public XClusterDDLQueueHandlerMockedTest {
+ public:
+  void SetUp() override {
+    XClusterDDLQueueHandlerMockedTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_enable_transactional_ddl) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+  }
+};
+
+TEST_F(XClusterTransactionalDDLQueueHandlerMockedTest, TransactionalDDLBatch) {
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
+
+  const auto ht1 = HybridTime(1, 1);
+  const auto ddl_end_time1 = HybridTime(1, 0).ToUint64();
+  const auto ddl_end_time2 = HybridTime(1, 0).ToUint64() + 1;
+  int query_id = 1;
+
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time1, query_id, ConstructJson(1, kDDLCommandCreateTable));
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time2, query_id + 1, ConstructJson(1, kDDLCommandCreateIndex));
+  ddl_queue_handler.safe_time_ht_ = ht1;
+
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
+
+  ASSERT_EQ(ddl_queue_handler.executed_queries_.size(), 2);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[0], kDDLCommandCreateTable);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[1], kDDLCommandCreateIndex);
+
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_.size(), 2);
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_[0], "BEGIN");
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_[1], "COMMIT");
+}
+
+// When a DDL fails mid-batch, later DDLs should be skipped and the next attempt should rerun
+// the full batch.
+TEST_F(XClusterTransactionalDDLQueueHandlerMockedTest, TransactionalDDLBatchFailureAndRetry) {
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
+
+  // ht1 must be larger than all ddl_end_times so GetRowsToProcess returns all 3 rows.
+  const auto ht1 = HybridTime(2, 1);
+  const auto ddl_end_time1 = HybridTime(1, 0).ToUint64();
+  int query_id = 1;
+
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time1, query_id, ConstructJson(1, kDDLCommandCreateTable));
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time1 + 1, query_id + 1, ConstructJson(1, kDDLCommandCreateIndex));
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time1 + 2, query_id + 2, ConstructJson(1, kDDLCommandAlterTable));
+  ddl_queue_handler.safe_time_ht_ = ht1;
+  ddl_queue_handler.ddl_query_fail_at_index_ = 1;
+
+  auto s = ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1});
+  ASSERT_NOK(s);
+  // DDL 3 should never be attempted after DDL 2 fails.
+  ASSERT_EQ(ddl_queue_handler.executed_queries_.size(), 2);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[0], kDDLCommandCreateTable);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[1], kDDLCommandCreateIndex);
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_.size(), 2);
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_[0], "BEGIN");
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_[1], "ABORT");
+
+  // Retry should rerun all 3 DDLs from scratch.
+  ddl_queue_handler.ddl_query_fail_at_index_ = -1;
+  ddl_queue_handler.executed_queries_.clear();
+  ddl_queue_handler.txn_control_queries_.clear();
+
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
+  ASSERT_EQ(ddl_queue_handler.executed_queries_.size(), 3);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[0], kDDLCommandCreateTable);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[1], kDDLCommandCreateIndex);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[2], kDDLCommandAlterTable);
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_.size(), 2);
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_[0], "BEGIN");
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_[1], "COMMIT");
+}
+
+// Retry counter accumulates across failed attempts, and all DDLs are rechecked via
+// IsAlreadyProcessed on the successful retry since the rolled-back txn undid prior inserts.
+TEST_F(XClusterTransactionalDDLQueueHandlerMockedTest, TransactionalDDLRetryCounterAccumulates) {
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
+
+  const auto ht1 = HybridTime(1, 1);
+  const auto ddl_end_time1 = HybridTime(1, 0).ToUint64();
+  const auto ddl_end_time2 = HybridTime(1, 0).ToUint64() + 1;
+  int query_id = 1;
+
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time1, query_id, ConstructJson(1, kDDLCommandCreateTable));
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time2, query_id + 1, ConstructJson(1, kDDLCommandCreateIndex));
+  ddl_queue_handler.safe_time_ht_ = ht1;
+  ddl_queue_handler.ddl_query_fail_at_index_ = 1;
+
+  // Counter should increment on each failed attempt.
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    ddl_queue_handler.executed_queries_.clear();
+    ddl_queue_handler.txn_control_queries_.clear();
+
+    auto s = ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1});
+    ASSERT_NOK(s);
+    ASSERT_EQ(ddl_queue_handler.GetNumFailsForThisDdl(), attempt);
+    ASSERT_EQ(ddl_queue_handler.txn_control_queries_.size(), 2);
+    ASSERT_EQ(ddl_queue_handler.txn_control_queries_[0], "BEGIN");
+    ASSERT_EQ(ddl_queue_handler.txn_control_queries_[1], "ABORT");
+  }
+
+  // Counter should reset to 0 after a successful batch commit, and both DDLs should be rechecked
+  // since DDL 1's previous insert into replicated_ddls was rolled back with the failed txn.
+  ddl_queue_handler.ddl_query_fail_at_index_ = -1;
+  ddl_queue_handler.is_already_processed_calls_ = 0;
+  ddl_queue_handler.executed_queries_.clear();
+  ddl_queue_handler.txn_control_queries_.clear();
+
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
+  ASSERT_EQ(ddl_queue_handler.GetNumFailsForThisDdl(), 0);
+  ASSERT_EQ(ddl_queue_handler.is_already_processed_calls_, 2);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_.size(), 2);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[0], kDDLCommandCreateTable);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[1], kDDLCommandCreateIndex);
+}
+
+// A single auto query should not be wrapped in BEGIN/COMMIT even with both flags enabled.
+TEST_F(XClusterTransactionalDDLQueueHandlerMockedTest, TransactionalDDLSingleDDLNoWrapping) {
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
+
+  const auto ht1 = HybridTime(1, 1);
+  const auto ddl_end_time1 = HybridTime(1, 0).ToUint64();
+  int query_id = 1;
+
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time1, query_id, ConstructJson(1, kDDLCommandCreateTable));
+  ddl_queue_handler.safe_time_ht_ = ht1;
+
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
+  ASSERT_EQ(ddl_queue_handler.executed_queries_.size(), 1);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[0], kDDLCommandCreateTable);
+  ASSERT_TRUE(ddl_queue_handler.txn_control_queries_.empty());
+}
+
+// Manual queries should not count toward the auto-query size check that gates wrapping. A batch
+// with 1 manual + 2 auto queries should still wrap the auto queries in BEGIN/COMMIT.
+TEST_F(XClusterTransactionalDDLQueueHandlerMockedTest, TransactionalDDLMixedManualAndAutoQueries) {
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
+
+  // ht1 must be larger than all ddl_end_times so GetRowsToProcess returns all 3 rows.
+  const auto ht1 = HybridTime(2, 1);
+  const auto ddl_end_time1 = HybridTime(1, 0).ToUint64();
+  const auto ddl_end_time2 = HybridTime(1, 0).ToUint64() + 1;
+  const auto ddl_end_time3 = HybridTime(1, 0).ToUint64() + 2;
+  int query_id = 1;
+
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time1, query_id,
+      ConstructJson(1, kDDLCommandCreateTable, "\"manual_replication\": true"));
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time2, query_id + 1, ConstructJson(1, kDDLCommandCreateTable));
+  ddl_queue_handler.rows_.emplace_back(
+      ddl_end_time3, query_id + 2, ConstructJson(1, kDDLCommandCreateIndex));
+  ddl_queue_handler.safe_time_ht_ = ht1;
+
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
+
+  // Only the auto queries should have been executed via ProcessDDLQuery.
+  ASSERT_EQ(ddl_queue_handler.executed_queries_.size(), 2);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[0], kDDLCommandCreateTable);
+  ASSERT_EQ(ddl_queue_handler.executed_queries_[1], kDDLCommandCreateIndex);
+
+  // The manual EXECUTE should be issued first, then the auto queries wrapped in BEGIN/COMMIT.
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_.size(), 3);
+  ASSERT_STR_CONTAINS(
+      ddl_queue_handler.txn_control_queries_[0], "EXECUTE manual_replication_insert");
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_[1], "BEGIN");
+  ASSERT_EQ(ddl_queue_handler.txn_control_queries_[2], "COMMIT");
+}
+
 }  // namespace yb::tserver

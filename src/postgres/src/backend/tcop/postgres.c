@@ -258,6 +258,7 @@ static void yb_start_xact_command_internal(bool yb_skip_read_committed_internal_
 static void yb_abort_xact_command(void);
 
 static YbTraceparentResult YbExtractTraceParentFromComment(const char *query, char *traceparent_out);
+static void yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_redacted);
 
 /* ----------------------------------------------------------------
  *		routines to obtain user input
@@ -712,6 +713,7 @@ pg_parse_query(const char *query_string)
 	List	   *raw_parsetree_list;
 
 	TRACE_POSTGRESQL_QUERY_PARSE_START(query_string);
+	YB_DIST_TRACE_START_SPAN("parse");
 
 	if (log_parser_stats)
 		ResetUsage();
@@ -740,6 +742,7 @@ pg_parse_query(const char *query_string)
 	 * here.
 	 */
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_PARSE_DONE(query_string);
 
 	return raw_parsetree_list;
@@ -786,6 +789,7 @@ pg_analyze_and_rewrite_fixedparams(RawStmt *parsetree,
 	List	   *querytree_list;
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
+	YB_DIST_TRACE_START_SPAN("rewrite");
 
 	/*
 	 * (1) Perform parse analysis.
@@ -804,6 +808,7 @@ pg_analyze_and_rewrite_fixedparams(RawStmt *parsetree,
 	 */
 	querytree_list = pg_rewrite_query(query);
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
 	return querytree_list;
@@ -825,6 +830,7 @@ pg_analyze_and_rewrite_varparams(RawStmt *parsetree,
 	List	   *querytree_list;
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
+	YB_DIST_TRACE_START_SPAN("rewrite");
 
 	/*
 	 * (1) Perform parse analysis.
@@ -857,6 +863,7 @@ pg_analyze_and_rewrite_varparams(RawStmt *parsetree,
 	 */
 	querytree_list = pg_rewrite_query(query);
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
 	return querytree_list;
@@ -879,6 +886,7 @@ pg_analyze_and_rewrite_withcb(RawStmt *parsetree,
 	List	   *querytree_list;
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
+	YB_DIST_TRACE_START_SPAN("rewrite");
 
 	/*
 	 * (1) Perform parse analysis.
@@ -897,6 +905,7 @@ pg_analyze_and_rewrite_withcb(RawStmt *parsetree,
 	 */
 	querytree_list = pg_rewrite_query(query);
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
 	return querytree_list;
@@ -1014,6 +1023,7 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 	Assert(ActiveSnapshotSet());
 
 	TRACE_POSTGRESQL_QUERY_PLAN_START();
+	YB_DIST_TRACE_START_SPAN("plan");
 
 	if (log_planner_stats)
 		ResetUsage();
@@ -1073,6 +1083,7 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 	if (Debug_print_plan)
 		elog_node_display(LOG, "plan", plan, Debug_pretty_print);
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_PLAN_DONE();
 
 	return plan;
@@ -1199,9 +1210,8 @@ YbShouldCollectCommitStats(CommandTag command_tag, bool is_implict_block,
 	return false;
 }
 
-
 static void
-YbDistTraceSetQueryId(YbcOtelScope scope, List *querytree_list)
+YbDistTraceSetQueryIdToRootSpan(List *querytree_list)
 {
 	ListCell *lc;
 	foreach(lc, querytree_list)
@@ -1209,9 +1219,87 @@ YbDistTraceSetQueryId(YbcOtelScope scope, List *querytree_list)
 		Query *q = lfirst_node(Query, lc);
 		if (q->queryId != UINT64CONST(0))
 		{
-			YBCDistTraceSetSpanAttributeUint64(scope, "query.id", q->queryId);
+			YBCDistTraceSetCurrSpanAttrUint64("query.id", q->queryId);
 			break;
 		}
+	}
+}
+
+/*
+ * yb_maybe_start_trace_root_span
+ *
+ * Start a distributed trace root span for the extended query protocol if tracing
+ * is enabled and no root span is currently active. The traceparent is extracted
+ * from a SQL comment in the query string or from the yb_dist_tracecontext GUC.
+ *
+ * Called from the first extended protocol message handler in a cycle
+ * (Parse, Bind, or Execute).
+ */
+static void
+yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_redacted)
+{
+	if (!YBCIsDistTraceEnabled() || !YBCIsOtelScopeStackEmpty())
+		return;
+
+	char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
+	YbcOtelSpanContext span_ctx = NULL;
+
+	/*
+	 * YB: query_string may be NULL for protocol messages that don't carry a
+	 * query (e.g. Close, Describe, Flush, Sync). YbRedactPasswordIfExists
+	 * would dereference it, so skip redaction in that case.
+	 */
+	const char *redacted_query_string = (is_query_string_redacted || query_string == NULL)
+		? query_string : YbRedactPasswordIfExists(query_string, CMDTAG_UNKNOWN);
+
+	/*
+	 * redacted_query_string may be NULL for protocol messages that don't carry
+	 * a query (e.g. Close, Describe, Flush, Sync).
+	 */
+	YbTraceparentResult tp_result = redacted_query_string
+		? YbExtractTraceParentFromComment(redacted_query_string, traceparent)
+		: YB_TRACEPARENT_NO_COMMENT;
+
+	/* YB: GUC comment traceparent is higher priority over SQL comment traceparent. */
+	if (yb_guc_remote_span_ctx)
+	{
+		span_ctx = yb_guc_remote_span_ctx;
+
+		if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
+			tp_result != YB_TRACEPARENT_NO_FIELD)
+			ereport(WARNING,
+					(errmsg("yb_dist_tracecontext GUC takes priority; "
+							"skipping SQL comment traceparent")));
+	}
+	else if (tp_result == YB_TRACEPARENT_OK)
+	{
+		span_ctx = YBCGetValidSpanContext(traceparent);
+
+		if (!span_ctx)
+			ereport(WARNING,
+					(errmsg("traceparent format is invalid")));
+	}
+	else if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
+			 tp_result != YB_TRACEPARENT_NO_FIELD)
+		ereport(WARNING,
+				(errmsg("traceparent comment parsing failed: %s",
+						YbGetTraceparentResultErrmsg(tp_result))));
+
+	/*
+	 * YB: Start a root span. The scope is owned by the otel_scope_stack
+	 * in ybc_dist_trace.cc. On error, YBCDistTraceClearStack (called at the top
+	 * of the main loop) cleans up any orphaned scopes.
+	 */
+	if (span_ctx)
+	{
+		YBCDistTraceStartRootSpan(redacted_query_string, span_ctx, MyDatabaseId, GetUserId());
+
+		/*
+		 * YB: Destroy the span context if it came from the sql comment
+		 * as it is not used after this point.
+		 */
+		if (span_ctx != yb_guc_remote_span_ctx)
+			YBCDestroySpanContext(span_ctx);
 	}
 }
 
@@ -1234,8 +1322,6 @@ exec_simple_query(const char *query_string)
 
 	const char *yb_redacted_query_string;
 	CommandTag	yb_command_tag;
-	/* TODO(#30672): Add distributed tracing support for extended query protocol */
-	YbcOtelScope yb_dist_trace_scope = NULL;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -1250,55 +1336,7 @@ exec_simple_query(const char *query_string)
 
 	TRACE_POSTGRESQL_QUERY_START(query_string);
 
-	if (YBCIsDistTraceEnabled())
-	{
-		char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
-		YbcOtelSpanContext span_ctx = NULL;
-
-		/* YB: SQL comment traceparent is higher priority over GUC traceparent. */
-		YbTraceparentResult tp_result = YbExtractTraceParentFromComment(query_string, traceparent);
-
-		if (tp_result == YB_TRACEPARENT_OK)
-		{
-			span_ctx = YBCGetValidSpanContext(traceparent);
-
-			if (!span_ctx)
-				ereport(WARNING,
-						(errmsg("traceparent format is invalid")));
-		}
-		else if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
-				 tp_result != YB_TRACEPARENT_NO_FIELD)
-			ereport(WARNING,
-					(errmsg("traceparent comment parsing failed: %s%s",
-							YbGetTraceparentResultErrmsg(tp_result),
-							yb_guc_remote_span_ctx
-							? "; skipping yb_dist_tracecontext GUC"
-							: "")));
-		else
-		{
-			/* YB: Fall back to GUC-based span context. */
-			span_ctx = yb_guc_remote_span_ctx;
-		}
-
-		/*
-		 * YB: Start a root span. The scope is registered with the current YB
-		 * memory context (tied to CurrentMemoryContext) via PgMemctx::Register.
-		 * On error, the Postgres MemoryContext reset will destroy the associated
-		 * PgMemctx, automatically cleaning up this scope.
-		 */
-		if (span_ctx)
-		{
-			yb_dist_trace_scope =
-				YBCDistTraceStartRootSpan(yb_redacted_query_string, span_ctx, MyDatabaseId, GetUserId());
-
-			/*
-			 * YB: Destroy the span context if it came from the sql comment
-			 * as it is not used after this point.
-			 */
-			if (span_ctx != yb_guc_remote_span_ctx)
-				YBCDestroySpanContext(span_ctx);
-		}
-	}
+	yb_maybe_start_trace_root_span(yb_redacted_query_string, true);
 
 	/*
 	 * We use save_log_statement_stats so ShowUsage doesn't report incorrect
@@ -1458,8 +1496,9 @@ exec_simple_query(const char *query_string)
 
 		querytree_list = pg_analyze_and_rewrite_fixedparams(parsetree, query_string,
 															NULL, 0, NULL);
-		if (yb_dist_trace_scope)
-			YbDistTraceSetQueryId(yb_dist_trace_scope, querytree_list);
+
+		if (YBCIsDistTraceEnabled() && YBCDistTraceIsRootSpan())
+			YbDistTraceSetQueryIdToRootSpan(querytree_list);
 
 		plantree_list = pg_plan_queries(querytree_list, query_string,
 										CURSOR_OPT_PARALLEL_OK, NULL);
@@ -1669,9 +1708,8 @@ exec_simple_query(const char *query_string)
 	if (save_log_statement_stats)
 		ShowUsage("QUERY STATISTICS");
 
+	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_DONE(query_string);
-	if (yb_dist_trace_scope)
-		YBCDistTraceEndSpan(yb_dist_trace_scope);
 
 	debug_query_string = NULL;
 }
@@ -1715,6 +1753,10 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
 
 	set_ps_display("PARSE");
+
+	/* YB: Start the extended query protocol root span and ext.parse child. */
+	yb_maybe_start_trace_root_span(yb_redacted_query_string, true);
+	YB_DIST_TRACE_START_SPAN("ext.parse");
 
 	if (save_log_statement_stats)
 		ResetUsage();
@@ -1926,6 +1968,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	if (save_log_statement_stats)
 		ShowUsage("PARSE MESSAGE STATISTICS");
 
+	YB_DIST_TRACE_END_SPAN(); /* ext.parse */
+
 	debug_query_string = NULL;
 }
 
@@ -2011,6 +2055,13 @@ exec_bind_message(StringInfo input_message)
 	}
 
 	set_ps_display("BIND");
+
+	/*
+	 * YB: Start root span if this is the first extended protocol message
+	 * (e.g. named prepared statement reuse without a preceding Parse).
+	 */
+	yb_maybe_start_trace_root_span(yb_redacted_query_string, true);
+	YB_DIST_TRACE_START_SPAN("ext.bind");
 
 	if (save_log_statement_stats)
 		ResetUsage();
@@ -2407,6 +2458,8 @@ exec_bind_message(StringInfo input_message)
 	if (save_log_statement_stats)
 		ShowUsage("BIND MESSAGE STATISTICS");
 
+	YB_DIST_TRACE_END_SPAN(); /* ext.bind */
+
 	debug_query_string = NULL;
 }
 
@@ -2492,6 +2545,13 @@ exec_execute_message(const char *portal_name, long max_rows)
 	}
 
 	set_ps_display(GetCommandTagName(portal->commandTag));
+
+	/*
+	 * YB: Start root span if this is the first extended protocol message.
+	 * sourceText has the original query including any traceparent comment.
+	 */
+	yb_maybe_start_trace_root_span(sourceText, false);
+	YB_DIST_TRACE_START_SPAN("ext.execute");
 
 	if (save_log_statement_stats)
 		ResetUsage();
@@ -2665,6 +2725,8 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 	if (save_log_statement_stats)
 		ShowUsage("EXECUTE MESSAGE STATISTICS");
+
+	YB_DIST_TRACE_END_SPAN(); /* ext.execute */
 
 	debug_query_string = NULL;
 }
@@ -4754,7 +4816,17 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	 * a "safe point".
 	 */
 	Assert(!YBCIsSysTablePrefetchingStarted());
-	(void) YBRefreshCacheWrapperImpl(catalog_master_version, is_retry, true);
+
+	yb_refresh_cache_in_progress = true;
+	PG_TRY();
+	{
+		(void) YBRefreshCacheWrapperImpl(catalog_master_version, is_retry, true);
+	}
+	PG_FINALLY();
+	{
+		yb_refresh_cache_in_progress = false;
+	}
+	PG_END_TRY();
 }
 
 static bool
@@ -5470,7 +5542,11 @@ yb_collect_portal_restart_data(const char *portal_name)
 {
 	Portal		portal = GetPortalByName(portal_name);
 
-	Assert(portal);
+	if (!PortalIsValid(portal))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_CURSOR),
+				 errmsg("portal \"%s\" does not exist", portal_name)));
+
 	Assert(!strcmp(portal->name, portal_name));
 
 	YBQueryRetryData *result = palloc(sizeof(YBQueryRetryData));
@@ -6688,6 +6764,8 @@ PostgresMain(const char *dbname, const char *username)
 			yb_refresh_stats_before_exec = true;
 
 			YbToggleSessionStatsTimer(yb_enable_pg_stat_statements_rpc_stats);
+
+			YBCDistTraceClearStack();
 		}
 
 		/*
@@ -7205,7 +7283,10 @@ PostgresMain(const char *dbname, const char *username)
 				{
 					int			close_type;
 					const char *close_target;
-					bool yb_report_prep_stmt_closed = false;
+					bool		yb_skip_close_complete = false;
+
+					yb_maybe_start_trace_root_span(debug_query_string, false);
+					YB_DIST_TRACE_START_SPAN("ext.close");
 
 					forbidden_in_wal_sender(firstchar);
 
@@ -7217,17 +7298,7 @@ PostgresMain(const char *dbname, const char *username)
 					{
 						case 'S':
 							if (close_target[0] != '\0')
-							{
-								if (YbIsClientYsqlConnMgr())
-								{
-									yb_report_prep_stmt_closed =
-										YbDropPreparedStatement(close_target, false);
-								}
-								else
-								{
-									DropPreparedStatement(close_target, false);
-								}
-							} /* YB: CLOSE for named prepared statement is supported by conn mgr */
+								DropPreparedStatement(close_target, false, YbIsClientYsqlConnMgr());
 							else
 							{
 								/* special-case the unnamed statement */
@@ -7249,6 +7320,30 @@ PostgresMain(const char *dbname, const char *username)
 									break;	/* YB: No-op only return CloseComplete. */
 								yb_switch_fallthrough();
 							}
+						case 'F':
+							/* YB: ForceClose, used by ConnMgr only */
+							if (YbIsClientYsqlConnMgr())
+							{
+								if (close_target[0] == '\0')
+									ereport(ERROR,
+											(errcode(ERRCODE_PROTOCOL_VIOLATION),
+											 errmsg("ForceClose of unnamed prep statement is not supported")));
+
+								/*
+								 * Since this is force close, we disable
+								 * selective deallocation
+								 */
+								bool		yb_conn_mgr_selective_deallocate_saved;
+
+								yb_conn_mgr_selective_deallocate_saved = yb_conn_mgr_selective_deallocate;
+								yb_conn_mgr_selective_deallocate = false;
+								DropPreparedStatement(close_target, false, false);
+								yb_conn_mgr_selective_deallocate = yb_conn_mgr_selective_deallocate_saved;
+
+								yb_skip_close_complete = true;
+								break;
+							}
+							yb_switch_fallthrough();
 						default:
 							ereport(ERROR,
 									(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -7257,12 +7352,17 @@ PostgresMain(const char *dbname, const char *username)
 							break;
 					}
 
+					/*
+					 * YB: Close complete needs to be skipped for ForceClose
+					 * sent by ConnMgr
+					 */
+					if (yb_skip_close_complete)
+						break;
+
 					if (whereToSendOutput == DestRemote)
-					{
-						if (yb_report_prep_stmt_closed)
-							pq_puttextmessage('5', close_target);
 						pq_putemptymessage('3');	/* CloseComplete */
-					} /* YB: With Conn mgr, send name of deallocated prep stmt */
+
+					YB_DIST_TRACE_END_SPAN(); /* ext.close */
 				}
 				break;
 
@@ -7275,6 +7375,9 @@ PostgresMain(const char *dbname, const char *username)
 
 					/* Set statement_timestamp() (needed for xact) */
 					SetCurrentStatementStartTimestamp();
+
+					yb_maybe_start_trace_root_span(debug_query_string, false);
+					YB_DIST_TRACE_START_SPAN("ext.describe");
 
 					describe_type = pq_getmsgbyte(&input_message);
 					describe_target = pq_getmsgstring(&input_message);
@@ -7295,16 +7398,26 @@ PostgresMain(const char *dbname, const char *username)
 											describe_type)));
 							break;
 					}
+
+					YB_DIST_TRACE_END_SPAN(); /* ext.describe */
 				}
 				break;
 
 			case 'H':			/* flush */
+				yb_maybe_start_trace_root_span(debug_query_string, false);
+				YB_DIST_TRACE_START_SPAN("ext.flush");
+
 				pq_getmsgend(&input_message);
 				if (whereToSendOutput == DestRemote)
 					pq_flush();
+
+				YB_DIST_TRACE_END_SPAN(); /* ext.flush */
 				break;
 
 			case 'S':			/* sync */
+				yb_maybe_start_trace_root_span(debug_query_string, false);
+				YB_DIST_TRACE_START_SPAN("ext.sync");
+
 				/*
 				 * YB: TODO(kramanathan): Display commit stats for the extended
 				 * query protocol. (#28409)
@@ -7335,7 +7448,11 @@ PostgresMain(const char *dbname, const char *username)
 				 * packet is 'S'.
 				 */
 				YbRefreshSessionStatsDuringExecution();
+
 				send_ready_for_query = true;
+
+				YB_DIST_TRACE_END_SPAN(); /* ext.sync */
+				YB_DIST_TRACE_END_SPAN(); /* root query span */
 				break;
 
 				/*
@@ -7470,6 +7587,8 @@ PostgresMain(const char *dbname, const char *username)
 											   true /* ssl_done */ ,
 											   true /* gss_done */ );
 
+						YbLogAuthPassthroughConnReceived(MyProcPort);
+
 						/*
 						 * Set up a timeout in case a buggy or malicious client
 						 * fails to respond during authentication.  Since we're
@@ -7484,10 +7603,6 @@ PostgresMain(const char *dbname, const char *username)
 						/*
 						 * Done with authentication.  Disable the timeout, and
 						 * log if needed.
-						 * TODO (vikram.damle) (#29817):
-						 * Add connection logging (cf postinit.c:284) and update
-						 * YbGetAuthorizedConnections as done in
-						 * `PerformaAuthentication()`.
 						 */
 						disable_timeout(STATEMENT_TIMEOUT, false);
 
@@ -7500,6 +7615,8 @@ PostgresMain(const char *dbname, const char *username)
 						 */
 						if (!MyProcPort->yb_has_auth_passthrough_failed)
 						{
+							YbLogAuthPassthroughConnAuthenticated(MyProcPort);
+
 							if (YbCreateClientId() == 0)
 								YbAuthPassthroughSetupGUCAndReport();
 						}
@@ -7859,39 +7976,84 @@ disable_statement_timeout(void)
 }
 
 /*
- * Extract trace parent from a leading SQL comment in a query.
+ * Extract trace parent from comment in a query.
  *
  * traceparent_out must point to a buffer of at least
  * YB_TRACEPARENT_VALUE_LEN + 1 bytes.
  *
- * The traceparent must appear in a comment at the start of the query:
+ * The traceparent comments may appear at the query start or end.
+ * If both comment blocks are present and contain traceparent, the one at the start is returned.
+ *
+ * Parsed (traceparent extracted):
  * "/\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ SELECT 1;"
+ * "SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/;"
+ *
+ * Not parsed (no traceparent extracted)
+ * "/\* abc *\/ /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ SELECT 1;"
+ *   -- leading comment has no traceparent field
+ * "SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ /\* abc *\/;"
+ *   -- trailing comment has no traceparent field
+ *
+ * Special case -- leading invalid traceparent takes priority over a valid trailing one;
+ * a warning is emitted and the query runs without tracing:
+ * "/\*traceparent='INVALID'*\/ SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/;"
  */
 static YbTraceparentResult
 YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 {
-	const char *pos = query;
+	const char *pos;
+	const char *end;
+	const char *content;
 	const char *comment_end;
+	YbTraceparentResult result;
 
-	/* Skip leading whitespace. */
+	/* Check for a leading block comment. */
+	pos = query;
 	while (isspace((unsigned char) *pos))
 		pos++;
 
-	if (pos[0] != '/' || pos[1] != '*')
-		return YB_TRACEPARENT_NO_COMMENT;
+	if (pos[0] == '/' && pos[1] == '*')
+	{
+		content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+		comment_end = strstr(content, "*/");
+		if (comment_end)
+		{
+			result = YbGetTraceparentFromTraceContext(content, comment_end - content,
+								  traceparent_out);
+			if (result != YB_TRACEPARENT_NO_FIELD)
+				return result;
+		}
+	}
 
-	/* Skip the comment start delimiters "/ *". */
-	pos += YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+	/* Check for a trailing block comment. */
+	end = query + strlen(query);
+	while (end > query && (isspace((unsigned char) end[-1]) || end[-1] == ';'))
+		end--;
 
 	/*
-	 * Find the comment end delimiters "* /".
-	 * This is required as without this we can match a YB_TRACEPARENT_KEY_PREFIX
-	 * after the comment end delimiters.
+	 * Require at least 4 chars (the two-char open and two-char close delimiters)
+	 * and verify the query ends with the star-slash close delimiter.
 	 */
-	comment_end = strstr(pos, "*/");
-	Assert(comment_end);
+	if (end - query < 2 * YB_TRACEPARENT_COMMENT_DELIMITERS_LEN ||
+		end[-2] != '*' || end[-1] != '/')
+		return YB_TRACEPARENT_NO_COMMENT;
 
-	return YbGetTraceparentFromTraceContext(pos, comment_end - pos, traceparent_out);
+	/* Scan backwards to find the slash-star that opens the trailing comment. */
+	pos = end - YB_TRACEPARENT_COMMENT_DELIMITERS_LEN; /* points to '*' of closing delimiter */
+	while (pos > query)
+	{
+		pos--;
+		if (pos[0] == '/' && pos[1] == '*')
+		{
+			content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+			result = YbGetTraceparentFromTraceContext(content,
+				(end - YB_TRACEPARENT_COMMENT_DELIMITERS_LEN) - content,
+				traceparent_out);
+			return result != YB_TRACEPARENT_NO_FIELD ? result : YB_TRACEPARENT_NO_COMMENT;
+		}
+	}
+
+	return YB_TRACEPARENT_NO_COMMENT;
 }
 
 /*

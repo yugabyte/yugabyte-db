@@ -19,7 +19,7 @@ Before installing YugabyteDB, ensure that you have the following available:
 
 - `wget` or `curl`.
 
-    The instructions use the `wget` command to download files. If you prefer to use `curl`, you can replace `wget` with `curl -O`.
+    The instructions use the `wget` command to download files. If you prefer to use `curl`, you can replace `wget` with `curl -LO`.
 
     To install `wget`:
 

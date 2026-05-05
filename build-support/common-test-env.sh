@@ -941,6 +941,7 @@ run_cmd_in_dedicated_cgroup() {
 
     "${cmd[@]}"
   )
+  local cmd_exit_code=$?
 
   # Delete all child cgroups. -depth to delete bottom-up.
   find "$new_cgroup" -mindepth 1 -depth -type d -exec rmdir {} \;
@@ -963,6 +964,7 @@ run_cmd_in_dedicated_cgroup() {
     set -e
   done < "$new_cgroup/cgroup.procs"
   rmdir "$new_cgroup"
+  return "$cmd_exit_code"
 }
 
 run_one_cxx_test() {

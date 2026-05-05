@@ -19,14 +19,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.LocalNodeManager;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -35,7 +34,6 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.NodeAgent;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
@@ -43,8 +41,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
@@ -152,12 +148,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       String packageName = extractPackageName(ybServerPackage);
       String versionName = extractVersionName(ybServerPackage);
       String ybSoftwareDir = nodeUniverseManager.getYbHomeDir(node, universe) + "/yb-software/";
-      Provider provider =
-          Provider.getOrBadRequest(
-              UUID.fromString(
-                  universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
-      String customTmpDirectory =
-          confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+      String customTmpDirectory = nodeUniverseManager.getRemoteTmpDir(node, universe);
       nodeUniverseManager
           .runCommand(
               node,
@@ -226,21 +217,20 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
           .executeCommandInPodContainer(
               podConfig, namespace, podName, "yb-tserver", extractPackageCommand);
     } else {
-      Optional<NodeAgent> optional =
-          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
-              ? Optional.empty()
-              : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
-                  universe, node, true /*check feature flag*/);
+      boolean isNodeAgentSupported =
+          NodeAgentClient.isCloudTypeSupported(
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType);
       AnsibleConfigureServers.Params params =
           getAnsibleConfigureServerParamsToDownloadSoftware(
               universe, node, taskParams().ybSoftwareVersion);
-      if (!optional.isPresent()) {
-        nodeManager.nodeCommand(NodeCommandType.Configure, params).processErrors();
-      } else {
+      if (isNodeAgentSupported) {
+        NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(node.cloudInfo.private_ip);
         nodeAgentClient.runDownloadSoftware(
-            optional.get(),
-            nodeAgentRpcPayload.setupDownloadSoftwareBits(universe, node, params, optional.get()),
+            nodeAgent,
+            nodeAgentRpcPayload.setupDownloadSoftwareBits(universe, node, params, nodeAgent),
             NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      } else {
+        nodeManager.nodeCommand(NodeCommandType.Configure, params).processErrors();
       }
     }
   }
@@ -292,11 +282,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     Architecture arch = universe.getUniverseDetails().arch;
     ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
     String ybServerPackage = release.getFilePath(arch);
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
-    String customTmpDirectory =
-        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+    String customTmpDirectory = nodeUniverseManager.getRemoteTmpDir(node, universe);
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     String pgUpgradeBinaryLocation =

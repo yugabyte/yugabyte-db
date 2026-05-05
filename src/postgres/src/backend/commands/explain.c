@@ -5552,7 +5552,7 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 		idxNames = lappend(idxNames, indexname);
 	}
 
-	if (node->onConflictAction != ONCONFLICT_NONE)
+	if (YbOnConflictClauseIsExplicitlySpecified(node->onConflictAction))
 	{
 		ExplainPropertyText("Conflict Resolution",
 							node->onConflictAction == ONCONFLICT_NOTHING ?

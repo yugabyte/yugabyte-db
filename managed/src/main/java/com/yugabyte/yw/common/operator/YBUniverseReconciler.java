@@ -504,11 +504,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
               ybUniverse, cust.getUuid(), false, getProvider(ybUniverse, cust.getUuid()));
       UserIntent newReadReplicaIntent = null;
       if (ybUniverse.getSpec().getReadReplica() != null) {
-        newReadReplicaIntent =
-            getReadReplicaUserIntent(
-                universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent,
-                ybUniverse,
-                cust.getUuid());
+        UserIntent currIntent =
+            CollectionUtils.isNotEmpty(universe.getUniverseDetails().getReadOnlyClusters())
+                ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+                : newPrimaryIntent;
+        newReadReplicaIntent = getReadReplicaUserIntent(currIntent, ybUniverse, cust.getUuid());
       }
       if (operatorUtils.universeAndSpecMismatch(
           cust, universe, ybUniverse, newPrimaryIntent, newReadReplicaIntent)) {
@@ -605,11 +605,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             ybUniverse, cust.getUuid(), false, getProvider(ybUniverse, cust.getUuid()));
     UserIntent newReadReplicaIntent = null;
     if (ybUniverse.getSpec().getReadReplica() != null) {
-      newReadReplicaIntent =
-          getReadReplicaUserIntent(
-              u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent,
-              ybUniverse,
-              cust.getUuid());
+      UserIntent currIntent =
+          CollectionUtils.isNotEmpty(u.getUniverseDetails().getReadOnlyClusters())
+              ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+              : newPrimaryIntent;
+      newReadReplicaIntent = getReadReplicaUserIntent(currIntent, ybUniverse, cust.getUuid());
     }
     TaskType prevTaskType = taskInfo.getTaskType();
     try {
@@ -713,11 +713,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     UserIntent incomingReadReplicaIntent = null;
     if (ybUniverse.getSpec().getReadReplica() != null) {
-      incomingReadReplicaIntent =
-          getReadReplicaUserIntent(
-              universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent,
-              ybUniverse,
-              cust.getUuid());
+      UserIntent currIntent =
+          CollectionUtils.isNotEmpty(universe.getUniverseDetails().getReadOnlyClusters())
+              ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+              : incomingIntent;
+      incomingReadReplicaIntent = getReadReplicaUserIntent(currIntent, ybUniverse, cust.getUuid());
     }
 
     KubernetesResourceDetails k8ResourceDetails =
@@ -991,7 +991,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           }
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
 
-          taskUUID = addReadReplicaCluster(cust, universeDetails);
+          taskUUID = addReadReplicaCluster(cust, universeDetails, ybUniverse);
         } else if (operatorUtils.shouldUpdateReadReplica(
             universe, ybUniverse, incomingReadReplicaIntent)) {
           log.info("Updating Read Replica");
@@ -1015,7 +1015,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             return;
           }
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
-          taskUUID = universeCRUDHandler.clusterDelete(cust, universe, clusterUUID, true);
+          taskUUID =
+              universeCRUDHandler.clusterDelete(
+                  cust, universe, clusterUUID, true, k8ResourceDetails);
         } else {
           log.info("No update made");
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.READY);
@@ -1352,6 +1354,12 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         userIntent.masterDeviceInfo =
             operatorUtils.mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
       }
+      if (userIntent.deviceInfo == null) {
+        userIntent.deviceInfo = operatorUtils.defaultDeviceInfo();
+      }
+      if (userIntent.masterDeviceInfo == null) {
+        userIntent.masterDeviceInfo = operatorUtils.defaultMasterDeviceInfo();
+      }
 
       userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
       userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
@@ -1371,7 +1379,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
       if (ysqlPassword != null) {
         Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
-        resourceTracker.trackDependency(currentReconcileResource, ysqlSecret);
+        resourceTracker.trackDependency(
+            currentReconcileResource, ysqlSecret, currentLocalInstanceUuid);
         log.trace(
             "Tracking secret {} as dependency of {}",
             ysqlSecret.getMetadata().getName(),
@@ -1388,7 +1397,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
       if (ycqlPassword != null) {
         Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
-        resourceTracker.trackDependency(currentReconcileResource, ycqlSecret);
+        resourceTracker.trackDependency(
+            currentReconcileResource, ycqlSecret, currentLocalInstanceUuid);
         log.trace(
             "Tracking secret {} as dependency of {}",
             ycqlSecret.getMetadata().getName(),
@@ -1641,6 +1651,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private static Map<String, PerAZVolumeDto> toPerAZVolumeDtoMapFromTserver(
       Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ> perAZ) {
     Map<String, PerAZVolumeDto> map = new HashMap<>();
+    if (MapUtils.isEmpty(perAZ)) {
+      return map;
+    }
     for (Map.Entry<String, io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ> e :
         perAZ.entrySet()) {
       map.put(e.getKey(), toPerAZVolumeDtoFromTserver(e.getValue()));
@@ -1662,6 +1675,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private static Map<String, PerAZVolumeDto> toPerAZVolumeDtoMapFromMaster(
       Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.mastervolume.PerAZ> perAZ) {
     Map<String, PerAZVolumeDto> map = new HashMap<>();
+    if (MapUtils.isEmpty(perAZ)) {
+      return map;
+    }
     for (Map.Entry<String, io.yugabyte.operator.v1alpha1.ybuniversespec.mastervolume.PerAZ> e :
         perAZ.entrySet()) {
       map.put(e.getKey(), toPerAZVolumeDtoFromMaster(e.getValue()));
@@ -1684,6 +1700,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.tservervolume.PerAZ>
           perAZ) {
     Map<String, PerAZVolumeDto> map = new HashMap<>();
+    if (MapUtils.isEmpty(perAZ)) {
+      return map;
+    }
     for (Map.Entry<
             String, io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.tservervolume.PerAZ>
         e : perAZ.entrySet()) {
@@ -1846,7 +1865,10 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
   private void createAutoProviderCR(YBUniverse ybUniverse, String providerName, UUID customerUUID) {
     List<String> zonesFilter = ybUniverse.getSpec().getZoneFilter();
-    String storageClass = ybUniverse.getSpec().getDeviceInfo().getStorageClass();
+    String storageClass =
+        ybUniverse.getSpec().getDeviceInfo() != null
+            ? ybUniverse.getSpec().getDeviceInfo().getStorageClass()
+            : null;
     String kubeNamespace = ybUniverse.getMetadata().getNamespace();
     String domainName =
         maybeGetKubeDomainFromOverrides(ybUniverse.getSpec().getKubernetesOverrides());
@@ -2046,7 +2068,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       readReplicaUserIntent.deviceInfo =
           operatorUtils.mapReadReplicaTserverVolume(
               ybUniverse.getSpec().getReadReplica().getTserverVolume());
-    } else {
+    } else if (ybUniverse.getSpec().getReadReplica().getDeviceInfo() != null) {
       readReplicaUserIntent.deviceInfo.volumeSize =
           ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue();
       readReplicaUserIntent.deviceInfo.numVolumes =
@@ -2097,6 +2119,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           null,
           false);
     }
+    existingUserIntent.tserverK8SNodeResourceSpec =
+        incomingReadReplicaIntent.tserverK8SNodeResourceSpec;
     if (ybUniverse.getSpec().getReadReplica().getPlacementInfo() != null) {
       existingReadReplicaCluster.placementInfo =
           createPlacementInfo(
@@ -2108,7 +2132,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
-  private UUID addReadReplicaCluster(Customer cust, UniverseDefinitionTaskParams universeDetails) {
+  private UUID addReadReplicaCluster(
+      Customer cust, UniverseDefinitionTaskParams universeDetails, YBUniverse ybUniverse) {
     // Converting details to configure task params using JSON
     ObjectMapper mapper =
         Json.mapper()
@@ -2125,6 +2150,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
     taskConfigParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     taskConfigParams.currentClusterType = ClusterType.ASYNC;
+    taskConfigParams.setKubernetesResourceDetails(
+        KubernetesResourceDetails.fromResource(ybUniverse));
     log.info("Adding read replica cluster to universe now");
     universeCRUDHandler.configure(cust, taskConfigParams);
     taskConfigParams.clusters.remove(

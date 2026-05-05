@@ -21,7 +21,7 @@ WHERE query LIKE 'BACKFILL%';
 
 --Test: query text should be normalized with $N placeholders.
 SELECT
-  query LIKE 'BACKFILL INDEX % WITH $1 READ TIME $2 PARTITION $3'
+  query LIKE 'BACKFILL INDEX % WITH $1 READ TIME % PARTITION $2'
     AS query_is_normalized
 FROM pg_stat_statements
 WHERE query LIKE 'BACKFILL%';

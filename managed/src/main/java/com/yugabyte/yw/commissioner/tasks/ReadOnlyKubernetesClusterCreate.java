@@ -18,14 +18,18 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -36,22 +40,33 @@ import lombok.extern.slf4j.Slf4j;
 @Retryable
 public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
   private YbcManager ybcManager;
+  private final OperatorStatusUpdater kubernetesStatus;
 
   @Inject
   protected ReadOnlyKubernetesClusterCreate(
-      BaseTaskDependencies baseTaskDependencies, YbcManager ybcManager) {
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
+      YbcManager ybcManager) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
     this.ybcManager = ybcManager;
   }
 
   @Override
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
+    Throwable th = null;
     try {
       verifyParams(UniverseOpType.CREATE);
       Universe universe =
           lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion, u -> setCommunicationPortsForNodes(false));
+      kubernetesStatus.startYBUniverseEventStatus(
+          universe,
+          taskParams().getKubernetesResourceDetails(),
+          TaskType.ReadOnlyKubernetesClusterCreate.name(),
+          getUserTaskUUID(),
+          UniverseState.EDITING);
       preTaskActions(universe);
       addBasicPrecheckTasks();
 
@@ -65,18 +80,16 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       Cluster readOnlyCluster = taskParams().getReadOnlyClusters().get(0);
       PlacementInfo pi = readOnlyCluster.placementInfo;
 
-      Provider primaryProvider =
-          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
-      Provider provider =
-          Provider.getOrBadRequest(UUID.fromString(readOnlyCluster.userIntent.provider));
+      Provider primaryProvider = Util.getSingleProvider(primaryCluster);
+      Provider provider = Util.getSingleProvider(readOnlyCluster);
 
       KubernetesPlacement placement = new KubernetesPlacement(pi, /*isReadOnlyCluster*/ true);
 
-      CloudType primaryCloudType = primaryCluster.userIntent.providerType;
-      if (primaryCloudType != CloudType.kubernetes) {
+      if (primaryProvider.getCloudCode() != CloudType.kubernetes) {
         String msg =
             String.format(
-                "Expected primary cluster on kubernetes but found on %s", primaryCloudType.name());
+                "Expected primary cluster on kubernetes but found on %s",
+                primaryProvider.getCloudCode());
         log.error(msg);
         throw new IllegalArgumentException(msg);
       }
@@ -153,8 +166,16 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      th = t;
       throw t;
     } finally {
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          taskParams().getKubernetesResourceDetails(),
+          TaskType.ReadOnlyKubernetesClusterCreate.name(),
+          getUserTaskUUID(),
+          (th != null) ? UniverseState.ERROR_UPDATING : UniverseState.READY,
+          th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());

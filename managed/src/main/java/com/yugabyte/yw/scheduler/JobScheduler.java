@@ -394,7 +394,7 @@ public class JobScheduler {
         jobInstance = jobInstanceQueue.take();
         future = executeJobInstance(jobInstance);
       } catch (InterruptedException e) {
-        log.debug("Job instance dequeuer interuppted");
+        log.debug("Job instance dequeuer interruppted");
       } catch (Exception e) {
         log.error("Exception occurred in job instance execution - {}", e.getMessage());
       } finally {
@@ -503,7 +503,7 @@ public class JobScheduler {
       JobSchedule jobSchedule, JobInstance jobInstance, Throwable t) {
     if (t != null) {
       log.info(
-          "Error in excuting job instance {} for schedule {} - {}",
+          "Error in executing job instance {} for schedule {} - {}",
           jobInstance.getUuid(),
           jobSchedule.getUuid(),
           t.getMessage());

@@ -16,10 +16,10 @@ Designing efficient, high-performance YSQL applications requires thoughtful data
 
 ## Use application patterns
 
-Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, choose a suitable design pattern for your application from a suite of battle-tested design paradigms, including [Global database](../../build-global-apps/global-database), [Multi-master](../../build-global-apps/active-active-multi-master), [Standby cluster](../../build-global-apps/active-active-single-master), [Duplicate indexes](../../build-global-apps/duplicate-indexes), [Follower reads](../../build-global-apps/follower-reads), and more. You can also combine these patterns as per your needs.
+Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, choose a suitable design pattern for your application from a suite of battle-tested design paradigms, including [Global database](../../build-global-apps/global-database/), [Multi-master](../../build-global-apps/active-active-multi-master/), [Standby cluster](../../build-global-apps/active-active-single-master/), [Duplicate indexes](../../build-global-apps/duplicate-indexes/), [Follower reads](../../build-global-apps/follower-reads/), and more. You can also combine these patterns as per your needs.
 
 {{<lead link="../../build-global-apps">}}
-For more details, see [Build global applications](../../build-global-apps).
+For more details, see [Build global applications](../../build-global-apps/).
 {{</lead>}}
 
 ## Colocation

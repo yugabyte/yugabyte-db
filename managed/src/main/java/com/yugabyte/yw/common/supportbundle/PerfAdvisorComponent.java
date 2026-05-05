@@ -3,10 +3,7 @@ package com.yugabyte.yw.common.supportbundle;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
-import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.pa.PerfAdvisorClient;
 import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.forms.SupportBundleFormData;
@@ -33,22 +30,16 @@ public class PerfAdvisorComponent implements SupportBundleComponent {
 
   private final PerfAdvisorClient perfAdvisorClient;
   private final PerfAdvisorService perfAdvisorService;
-  private final SupportBundleUtil supportBundleUtil;
   public final String PA_DUMP_FOLDER = "pa";
 
   private static final long POLL_INTERVAL_MS = TimeUnit.SECONDS.toMillis(10);
   private static final long POLL_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(30);
 
-  @Inject private RuntimeConfGetter confGetter;
-
   @Inject
   public PerfAdvisorComponent(
-      PerfAdvisorClient perfAdvisorClient,
-      PerfAdvisorService perfAdvisorService,
-      SupportBundleUtil supportBundleUtil) {
+      PerfAdvisorClient perfAdvisorClient, PerfAdvisorService perfAdvisorService) {
     this.perfAdvisorClient = perfAdvisorClient;
     this.perfAdvisorService = perfAdvisorService;
-    this.supportBundleUtil = supportBundleUtil;
   }
 
   @Override
@@ -65,8 +56,6 @@ public class PerfAdvisorComponent implements SupportBundleComponent {
     // create PA_DUMP_FOLDER folder inside the support_bundle/YBA folder.
     Path destDir = Paths.get(bundlePath.toString() + "/" + PA_DUMP_FOLDER);
     Files.createDirectories(destDir);
-
-    dateValidation(data);
 
     UUID paCollectorUuid = universe.getUniverseDetails().getPaCollectorUuid();
     if (paCollectorUuid == null) {
@@ -145,8 +134,6 @@ public class PerfAdvisorComponent implements SupportBundleComponent {
       NodeDetails node)
       throws Exception {
 
-    dateValidation(bundleData);
-
     UUID paCollectorUuid = universe.getUniverseDetails().getPaCollectorUuid();
     if (paCollectorUuid == null) {
       log.warn(
@@ -163,23 +150,5 @@ public class PerfAdvisorComponent implements SupportBundleComponent {
         bundleData.paDumpStartDate.toInstant(),
         bundleData.paDumpEndDate.toInstant(),
         bundleData.paMetricsFormat);
-  }
-
-  // validate the start & end dates of prometheus metrics dump
-  // 1. If both the dates are given; Continue
-  // 2. If no dates are specified, download all the exports from last 'x' duration
-  private void dateValidation(SupportBundleFormData data) {
-    boolean startDateIsValid = supportBundleUtil.isValidDate(data.paDumpStartDate);
-    boolean endDateIsValid = supportBundleUtil.isValidDate(data.paDumpEndDate);
-    if (!startDateIsValid && !endDateIsValid) {
-      int defaultPromDumpRange =
-          confGetter.getGlobalConf(GlobalConfKeys.supportBundleDefaultPromDumpRange);
-      log.debug(
-          "'paDumpStartDate' and 'paDumpEndDate' are not valid. Defaulting the duration to {}",
-          defaultPromDumpRange);
-      data.paDumpEndDate = data.endDate;
-      data.paDumpStartDate =
-          supportBundleUtil.getDateNMinutesAgo(data.endDate, defaultPromDumpRange);
-    }
   }
 }

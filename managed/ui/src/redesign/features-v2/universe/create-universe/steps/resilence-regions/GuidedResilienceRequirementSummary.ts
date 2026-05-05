@@ -1,6 +1,8 @@
 import { getFaultToleranceNeeded } from '../../CreateUniverseUtils';
 import { FaultToleranceType } from './dtos';
 
+export { getGuidedNodesStepReplicationFactor } from '../../CreateUniverseUtils';
+
 export type RequirementCardPlacementStep = 'resilience' | 'nodes';
 
 export type GuidedRequirementTag =
@@ -49,17 +51,6 @@ export function getGuidedResilienceRequirementSummary(
     default:
       return { tags: [], displayReplicationFactor: n };
   }
-}
-
-/** Replication factor shown on the nodes step and in payloads for guided mode. */
-export function getGuidedNodesStepReplicationFactor(
-  faultToleranceType: FaultToleranceType,
-  resilienceFactor: number
-): number {
-  if (faultToleranceType === FaultToleranceType.NONE) {
-    return resilienceFactor;
-  }
-  return getFaultToleranceNeeded(resilienceFactor);
 }
 
 /** Singular noun keys under guidedMode for use with `pluralize(t(key), count)`. */

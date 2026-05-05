@@ -72,12 +72,14 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/url-coding.h"
 
 using yb::consensus::GetConsensusRole;
@@ -497,6 +499,11 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       std::bind(&TabletServerPathHandlers::HandleObjectLocksPage, this, _1, _2),
       true /* styled */,
       false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/cgroups", "",
+      std::bind(&TabletServerPathHandlers::HandleCgroupsPage, this, _1, _2),
+      true /* styled */,
+      false /* is_on_nav_bar */);
   RegisterTabletPathHandler(
       server, tserver_, "/tablet-consensus-status", &HandleConsensusStatusPage);
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
@@ -651,6 +658,38 @@ void TabletServerPathHandlers::HandleObjectLocksPage(
     return;
   }
   ts_local_lock_manager->DumpLocksToHtml(*output);
+}
+
+void TabletServerPathHandlers::HandleCgroupsPage(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  *output << "<h2>Cgroups</h2>\n";
+#ifdef __linux__
+  auto cgroup_manager = tserver_->cgroup_manager();
+  if (!cgroup_manager) {
+    *output << "Cgroup management is not enabled.\n";
+    return;
+  }
+
+  auto it = req.parsed_args.find("sample_interval_ms");
+  // 1000ms is the maximum value for cfs_period_us, so we are guaranteed to sample at least one
+  // full period for all cgroups.
+  uint64_t sample_interval_ms = 1'000;
+  if (it != req.parsed_args.end()) {
+    auto result = CheckedStoull(it->second);
+    if (!result.ok()) {
+      *output << "Bad value for sample_interval_ms: ";
+      EscapeForHtml(AsString(result.status()), output);
+      *output << ".\n";
+      return;
+    }
+    sample_interval_ms = *result;
+  }
+
+  cgroup_manager->DumpCgroupsToHtml(*output, sample_interval_ms);
+#else
+  *output << "Only available on Linux builds\n";
+#endif
 }
 
 namespace {
@@ -1128,7 +1167,7 @@ void TabletServerPathHandlers::HandleXClusterPage(
   output << "<h1>xCluster state</h1>\n";
 
   if (!xcluster_outbound_stream_stats.empty()) {
-    output << "<h3>xCluster outbound streams</h3>\n";
+    auto group_fs = html_print_helper.CreateFieldset("xCluster outbound streams");
 
     auto xcluster_streams = html_print_helper.CreateTablePrinter(
         "xcluster_streams",
@@ -1137,18 +1176,20 @@ void TabletServerPathHandlers::HandleXClusterPage(
          "WAL index sent", "WAL end index", "Last poll at", "Status"});
 
     for (const auto& stat : xcluster_outbound_stream_stats) {
-      xcluster_streams.AddRow(
-          stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
-          stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
-          StringPrintf("%.3f", stat.mbs_sent), stat.records_sent, stat.avg_get_changes_latency_ms,
-          stat.sent_index, stat.latest_index, stat.last_poll_time.ToFormattedString(), stat.status);
+      xcluster_streams
+          .AddRow(
+              stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
+              stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
+              StringPrintf("%.3f", stat.mbs_sent), stat.records_sent,
+              stat.avg_get_changes_latency_ms, stat.sent_index, stat.latest_index,
+              stat.last_poll_time.ToFormattedString(), stat.status)
+          .SetColor(stat.status);
     }
     xcluster_streams.Print();
   }
 
   if (!xcluster_inbound_stream_stats.empty()) {
-    output << "<h3>xCluster inbound streams</h3>\n";
-
+    auto group_fs = html_print_helper.CreateFieldset("xCluster inbound streams");
     auto xcluster_pollers = html_print_helper.CreateTablePrinter(
         "xcluster_pollers",
         {"ReplicationGroup Id", "Stream Id", "Consumer Table Id", "Consumer Tablet Id",
@@ -1157,12 +1198,15 @@ void TabletServerPathHandlers::HandleXClusterPage(
          "Avg apply latency (ms)", "WAL index received", "Last poll At", "Status"});
 
     for (const auto& stat : xcluster_inbound_stream_stats) {
-      xcluster_pollers.AddRow(
-          stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
-          stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
-          StringPrintf("%.3f", stat.avg_throughput_kbps), StringPrintf("%.3f", stat.mbs_received),
-          stat.records_received, stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms,
-          stat.received_index, stat.last_poll_time.ToFormattedString(), stat.status);
+      xcluster_pollers
+          .AddRow(
+              stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
+              stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
+              StringPrintf("%.3f", stat.avg_throughput_kbps),
+              StringPrintf("%.3f", stat.mbs_received), stat.records_received,
+              stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms, stat.received_index,
+              stat.last_poll_time.ToFormattedString(), stat.status)
+          .SetColor(stat.status);
     }
     xcluster_pollers.Print();
   }

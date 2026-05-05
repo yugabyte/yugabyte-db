@@ -822,7 +822,7 @@ void ReleaseWithRetriesGlobal(
                                    !PREDICT_FALSE(FLAGS_TEST_make_global_lock_release_async);
   if (wait_for_completion) {
     shared_sync = std::make_shared<Synchronizer>();
-    opt_cb.emplace(shared_sync->AsStdStatusCallback());
+    opt_cb.emplace(Synchronizer::AsStdStatusCallback(shared_sync));
   }
   ReleaseWithRetriesGlobalNow(client, lock_manager_weak, release_req, std::move(opt_cb));
   if (wait_for_completion) {

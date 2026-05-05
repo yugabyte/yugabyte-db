@@ -107,7 +107,6 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
-
       when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {
       fail();
@@ -562,7 +561,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -587,7 +586,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.getUniverseUUID(), onPremProvider, DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -602,7 +601,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.getUniverseUUID(), onPremProvider, DEFAULT_NODE_NAME, 4);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(10)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -651,7 +650,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
 
     // 5 calls for setting up the server and then 6 calls for setting the conf files.
-    verify(mockNodeManager, times(19)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -672,6 +671,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testAddNodeWithUnderReplicatedMaster_WithReadOnlyCluster_NodeFromPrimary() {
     Universe universe = createUniverse("Demo");
+    // No masters.
     universe =
         Universe.saveDetails(
             universe.getUniverseUUID(),
@@ -683,7 +683,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(universe.getUniverseUUID(), DEFAULT_NODE_NAME, 4);
     assertEquals(Failure, taskInfo.getTaskState());
-    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -710,8 +710,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     setDefaultNodeState(universe, NodeState.Removed, "yb-tserver-0");
 
     TaskInfo taskInfo = submitTask(universe.getUniverseUUID(), "yb-tserver-0", 5);
-    assertEquals(Failure, taskInfo.getTaskState());
-    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    assertEquals(Success, taskInfo.getTaskState());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

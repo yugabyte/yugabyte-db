@@ -439,7 +439,7 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql) workloads in your local environment.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) workloads in your local environment.
 
 To use encryption in transit, OpenSSL must be installed on the nodes.
 
@@ -1385,7 +1385,7 @@ The following steps assume that you have a running YugabyteDB cluster deployed u
       --fault_tolerance=zone
     ```
 
-1. Repeat the previous step on all the nodes of the cluster, one node at a time. If you are deploying the cluster on your local computer, specify the base directory for each node using the `--base-dir` flag.
+1. Repeat the previous step on all the nodes of the cluster, one node at a time. If you are deploying the cluster on your local computer, specify the base directory for each node using the `--base_dir` flag.
 
 1. After starting all nodes, specify the data placement constraint on the cluster using the following command:
 

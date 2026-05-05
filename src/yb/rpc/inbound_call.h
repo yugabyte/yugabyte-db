@@ -170,6 +170,10 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
     call_processed_listener_ = nullptr;
   }
 
+  virtual ThreadPoolTag pool_tag() const {
+    return 0;
+  }
+
   virtual Slice serialized_remote_method() const = 0;
   virtual Slice method_name() const = 0;
 

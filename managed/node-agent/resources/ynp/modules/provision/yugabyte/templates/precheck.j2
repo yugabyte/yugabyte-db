@@ -2,17 +2,17 @@
 if id {{ yb_user }} &>/dev/null; then
     echo "User {{ yb_user }} exists"
     add_result "Yugabyte User Existence Check" "PASS" "User {{ yb_user }} exists"
-    # FATAL: Check if existing user's home directory matches the configured yb_home_dir
+    # FATAL: Check if existing user's home directory matches the configured  yb_user_home
     existing_home=$(getent passwd {{ yb_user }} | cut -d: -f6)
-    configured_home="{{ yb_home_dir }}"
+    configured_user_home="{{ yb_user_home }}"
     # Resolve both paths to absolute canonical paths for comparison
     existing_home_abs=$(realpath -m "$existing_home" 2>/dev/null || echo "$existing_home")
-    configured_home_abs=$(realpath -m "$configured_home" 2>/dev/null || echo "$configured_home")
+    configured_user_home_abs=$(realpath -m "$configured_user_home" 2>/dev/null || echo "$configured_user_home")
 
-    if [ "$existing_home_abs" != "$configured_home_abs" ]; then
+    if [ "$existing_home_abs" != "$configured_user_home_abs" ]; then
         fatal_msg="User {{ yb_user }} home directory"
         fatal_msg+=" '$existing_home_abs' does not match"
-        fatal_msg+=" configured '$configured_home_abs'."
+        fatal_msg+=" configured '$configured_user_home_abs'."
         fatal_msg+=" This mismatch can cause system corruption."
         add_fatal_result \
             "Yugabyte User Home Directory Mismatch" \
@@ -22,7 +22,7 @@ else
     echo "User {{ yb_user }} does not exist"
     add_result "Yugabyte User Existence Check" "FAIL" "User {{ yb_user }} does not exist"
     # Validate that a home directory is configured for user creation
-    if [ -z "{{ yb_home_dir }}" ]; then
+    if [ -z "{{ yb_user_home }}" ]; then
         add_fatal_result \
             "Yugabyte Home Directory Config" \
             "No home directory configured for user {{ yb_user }}"
@@ -31,56 +31,55 @@ fi
 
 # Get the actual home directory of the yugabyte user
 # Output looks like yugabyte:x:1001:1001::/home/yugabyte:/bin/bash
-set_yb_home_dir=$(getent passwd {{ yb_user }} | cut -d: -f6 2>&1)
-if [ -z "$set_yb_home_dir" ]; then
+set_yb_user_home=$(getent passwd {{ yb_user }} | cut -d: -f6 2>&1)
+if [ -z "$set_yb_user_home" ]; then
     echo "Could not find home directory for user {{ yb_user }}"
     add_result "Yugabyte Home Directory Assigned Check" "FAIL" "Could not find home directory for user {{ yb_user }}"
 else
-    normalized_set_yb_home_dir=$(readlink -m "$set_yb_home_dir" 2>&1)
-    normalized_yb_home_dir=$(readlink -m "{{ yb_home_dir }}" 2>&1)
-    if [ "$normalized_set_yb_home_dir" == "$normalized_yb_home_dir" ]; then
-        echo "Yugabyte home directory for user {{ yb_user }} is correctly set to {{ yb_home_dir }}"
-        add_result "Yugabyte Home Directory Assigned Check" "PASS" "Yugabyte home directory for user {{ yb_user }} is correctly set to {{ yb_home_dir }}"
+    normalized_set_yb_user_home=$(readlink -m "$set_yb_user_home" 2>&1)
+    normalized_yb_user_home=$(readlink -m "{{ yb_user_home }}" 2>&1)
+    if [ "$normalized_set_yb_user_home" == "$normalized_yb_user_home" ]; then
+        echo "Yugabyte home directory for user {{ yb_user }} is correctly set to {{ yb_user_home }}"
+        add_result "Yugabyte Home Directory Assigned Check" "PASS" "Yugabyte home directory for user {{ yb_user }} is correctly set to {{ yb_user_home }}"
     else
-        echo "Yugabyte home directory for user {{ yb_user }} is incorrectly set to $set_yb_home_dir"
-        add_result "Yugabyte Home Directory Assigned Check" "FAIL" "Yugabyte home directory for user {{ yb_user }} is set to $set_yb_home_dir instead of {{ yb_home_dir }}"
+        echo "Yugabyte home directory for user {{ yb_user }} is incorrectly set to $set_yb_user_home"
+        add_result "Yugabyte Home Directory Assigned Check" "FAIL" "Yugabyte home directory for user {{ yb_user }} is set to $set_yb_home_dir instead of {{ yb_user_home }}"
     fi
 fi
 
-# Check the correct permissions for yb_home_dir
-if [ -d {{ yb_home_dir }} ]; then
-    owner=$(stat -c "%U" "{{ yb_home_dir }}")
-    group=$(stat -c "%G" "{{ yb_home_dir }}")
-    permissions=$(stat -c "%a" "{{ yb_home_dir }}")
-
-    if [ "$owner" != "{{ yb_user }}" ]; then
-        echo "Ownership of {{ yb_home_dir }} is incorrect. Expected owner: {{ yb_user }}, Found: $owner"
-        add_result "Yugabyte Home Directory Ownership Check" "FAIL" "Ownership of {{ yb_home_dir }} is incorrect. Expected owner: {{ yb_user }}, Found: $owner"
-    fi
-
-    if [ "$group" != "{{ yb_user }}" ]; then
-        echo "Group ownership of {{ yb_home_dir }} is incorrect. Expected group: {{ yb_user }}, Found: $group"
-        add_result "Yugabyte Home Directory Group Ownership Check" "FAIL" "Group ownership of {{ yb_home_dir }} is incorrect. Expected group: {{ yb_user }}, Found: $group"
-    fi
-
-    if [ "$permissions" -lt 711 ]; then
-        echo "Permissions of {{ yb_home_dir }} are too restrictive. Expected: 711 or less restrictive, Found: $permissions"
-        add_result "Yugabyte Home Directory Permissions Check" "FAIL" "Permissions of {{ yb_home_dir }} are too restrictive. Expected: 711 or less restrictive, Found: $permissions"
-    fi
-
-    echo "{{ yb_home_dir }} has the correct ownership and acceptable permissions"
-    add_result "Yugabyte Home Directory Permissions Check" "PASS" "{{ yb_home_dir }} has the correct ownership and acceptable permissions"
-    threshold={{ min_home_dir_space_gb }}
-    free_space_gb=$(df -B1G --output=avail "{{ yb_home_dir }}" | tail -n 1)
-    if [ "$free_space_gb" -gt "$threshold" ]; then
-        add_result "Yugabyte Home Directory Free Space Check" "PASS" "Sufficient disk space available: ${free_space_gb}G"
-    else
-        add_result "Yugabyte Home Directory Free Space Check" "FAIL" "Insufficient disk space: ${free_space_gb}G available, ${threshold}G required."
-    fi
-else
-    echo "{{ yb_home_dir }} does not exist"
-    add_result "Yugabyte Home Directory Existence Check" "FAIL" "{{ yb_home_dir }} does not exist"
-fi
+check_directory_permissions() {
+  local dir="$1"
+  local min_space_gb="$2"
+  local dir_name_msg="$3"
+  if [ ! -d "$dir" ]; then
+    echo "$dir does not exist"
+    add_result "$dir_name_msg Existence Check" "FAIL" "$dir does not exist"
+    return
+  fi
+  owner=$(stat -c "%U" "$dir")
+  group=$(stat -c "%G" "$dir")
+  permissions=$(stat -c "%a" "$dir")
+  if [ "$owner" != "{{ yb_user }}" ]; then
+    echo "Ownership of $dir is incorrect. Expected owner: {{ yb_user }}, Found: $owner"
+    add_result "$dir_name_msg Ownership Check" "FAIL" "Ownership of $dir is incorrect. Expected owner: {{ yb_user }}, Found: $owner"
+  fi
+  if [ "$group" != "{{ yb_user }}" ]; then
+    echo "Group ownership of $dir is incorrect. Expected group: {{ yb_user }}, Found: $group"
+    add_result "$dir_name_msg Group Ownership Check" "FAIL" "Group ownership of $dir is incorrect. Expected group: {{ yb_user }}, Found: $group"
+  fi
+  if [ "$permissions" -lt 711 ]; then
+    echo "Permissions of $dir are too restrictive. Expected: 711 or less restrictive, Found: $permissions"
+    add_result "$dir_name_msg Permissions Check" "FAIL" "Permissions of $dir are too restrictive. Expected: 711 or less restrictive, Found: $permissions"
+  fi
+  echo "$dir has the correct ownership and acceptable permissions"
+  add_result "$dir_name_msg Permissions Check" "PASS" "$dir has the correct ownership and acceptable permissions"
+  free_space_gb=$(df -B1G --output=avail "$dir" | tail -n 1)
+  if [ "$free_space_gb" -gt "$min_space_gb" ]; then
+    add_result "$dir_name_msg Free Space Check" "PASS" "Sufficient disk space available: ${free_space_gb}G"
+  else
+    add_result "$dir_name_msg Free Space Check" "FAIL" "Insufficient disk space: ${free_space_gb}G available, ${threshold}G required."
+  fi
+}
 
 is_subdirectory() {
   local dir="$1"
@@ -97,6 +96,14 @@ is_subdirectory() {
   esac
 }
 
+# Check the correct permissions for yb_home_dir and yb_user_home
+if [ "$(realpath "{{ yb_user_home }}")" = "$(realpath "{{ yb_home_dir }}")" ]; then
+  check_directory_permissions "{{ yb_user_home }}" "{{ min_home_dir_space_gb }}" "Yugabyte User Home Directory"
+else
+  check_directory_permissions "{{ yb_home_dir }}" "{{ min_home_dir_space_gb }}" "Yugabyte Home Directory"
+  check_directory_permissions "{{ yb_user_home }}" "{{ min_user_home_space_gb }}" "Yugabyte User Home Directory"
+fi
+
 threshold={{ min_mount_point_dir_space_gb }}
 # Convert the space-separated string to an array
 mount_points="{{ mount_points | default('') | trim }}"
@@ -104,7 +111,7 @@ IFS=' ' read -ra mount_points_array <<< "$mount_points"
 # Verify each mount point
 for mount_point in "${mount_points_array[@]}"; do
     if is_subdirectory "$mount_point" "{{ yb_home_dir }}"; then
-        message="Mountpoint $mount_point is inside home directory {{ yb_home_dir }}"
+        message="Mountpoint $mount_point is inside software home directory {{ yb_home_dir }}"
         add_result "home directory check" "FAIL" "$message"
     fi
     if [ -d "$mount_point" ]; then

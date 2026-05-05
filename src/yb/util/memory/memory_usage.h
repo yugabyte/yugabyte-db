@@ -66,9 +66,15 @@ inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
   if (capacity <= kStdStringInternalCapacity) {
     return 0;
   } else {
-    // std::string allocates 16*n bytes for capacity from [16*(n - 1); 16*n - 1].
+#if defined(YB_GPERFTOOLS_TCMALLOC)
+    // gperftools tcmalloc allocates exactly capacity + 1 bytes.
+    return capacity + 1;
+#else
+    // Google tcmalloc allocates 16*n bytes for std::string capacity
+    // from [16*(n - 1); 16*n - 1].
     // 48 bytes for capacity in [32; 47], 64 bytes for capacity in [48; 63] and so on...
     return (capacity + 16) & ~(size_t(0xf));
+#endif
   }
 }
 

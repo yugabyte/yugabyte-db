@@ -17,6 +17,8 @@ struct od_hashmap_list_item {
 	od_hashmap_elt_t key;
 	od_hashmap_elt_t value;
 	od_list_t link;
+	/* YB: Link for maintaining LRU order */
+	od_list_t yb_lru_link;
 };
 
 extern od_hashmap_list_item_t *od_hashmap_list_item_create(void);

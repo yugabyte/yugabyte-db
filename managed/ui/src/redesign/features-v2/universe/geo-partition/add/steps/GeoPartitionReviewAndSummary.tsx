@@ -12,39 +12,20 @@ import {
 } from '../../../create-universe/steps/review-summary/ReviewAndSummaryComponent';
 
 import { ClusterType, Region } from '@app/redesign/helpers/dtos';
-import { ClusterPartitionSpec, Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
 
 import { UniverseActionButtons } from '../../../create-universe/components/UniverseActionButtons';
-import { prepareAddGeoPartitionPayload, useGeoPartitionNavigation } from '../AddGeoPartitionUtils';
+import {
+  buildUniverseSpecForGeoPartitionPricing,
+  prepareAddGeoPartitionPayload,
+  sumNumNodesInClusterPartitionPlacement,
+  useGeoPartitionNavigation
+} from '../AddGeoPartitionUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import PinIcon from '@app/redesign/assets/pin.svg';
 
 const { Box } = mui;
-
-function mapGeoPartitionSpecToUniverseSpec(
-  geoPartitionSpec: ClusterPartitionSpec,
-  universeData: Universe
-) {
-  if (!universeData?.spec) return;
-
-  const primaryCluster = universeData.spec.clusters.find(
-    (c) => c.cluster_type === ClusterType.PRIMARY
-  );
-  if (!primaryCluster) return;
-
-  return {
-    spec: {
-      ...universeData.spec,
-      clusters: universeData.spec.clusters.map((cluster) => ({
-        ...cluster,
-        placement_spec: geoPartitionSpec.placement
-      }))
-    },
-    arch: universeData.info?.arch
-  };
-}
 
 export const GeoPartitionReviewAndSummary = () => {
   const [addGeoPartitionContext, addGeoPartitionMethods] = (useContext(
@@ -63,9 +44,9 @@ export const GeoPartitionReviewAndSummary = () => {
     geoPartitions.map((gp) => ({
       queryKey: ['geo-partition-cost', gp.name],
       queryFn: async () => {
-        const universeSpec = mapGeoPartitionSpecToUniverseSpec(
-          geoPartitionData.find((spec) => spec.name === gp.name)!,
-          universeData!
+        const universeSpec = buildUniverseSpecForGeoPartitionPricing(
+          universeData!,
+          geoPartitionData.find((spec) => spec.name === gp.name)!
         );
         if (!universeSpec) return;
         return getUniverseResources(universeSpec as any);
@@ -83,7 +64,12 @@ export const GeoPartitionReviewAndSummary = () => {
   const reviewItems: ReviewItem[] = geoPartitions.map((_, i) => ({
     name: geoPartitions[i].name,
     attributes: [
-      { name: 'Nodes', value: costs[i]?.data?.num_nodes ?? '-' },
+      {
+        name: 'Nodes',
+        value: geoPartitionData[i]?.placement
+          ? String(sumNumNodesInClusterPartitionPlacement(geoPartitionData[i]))
+          : '-'
+      },
       { name: 'Cores', value: costs[i]?.data?.num_cores ?? '-' },
       { name: 'Total Memory', value: costs[i]?.data?.mem_size_gb ?? '-' },
       { name: 'Total Storage', value: costs[i]?.data?.volume_size_gb ?? '-' }

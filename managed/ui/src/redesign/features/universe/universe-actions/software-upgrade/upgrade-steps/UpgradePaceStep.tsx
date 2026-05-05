@@ -1,9 +1,10 @@
 import { FocusEvent } from 'react';
+import { FormHelperText, makeStyles, Typography } from '@material-ui/core';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { FormHelperText, makeStyles, Typography } from '@material-ui/core';
 
 import { YBInputField } from '@app/redesign/components';
+import { useDbUpgradeModalContext } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModalContext';
 import type { DBUpgradeFormFields } from '@app/redesign/features/universe/universe-actions/software-upgrade/types';
 
 const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal.upgradePaceStep';
@@ -67,14 +68,11 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-interface UpgradePaceStepProps {
-  maxNodesPerBatchMaximum: number;
-}
-
-export const UpgradePaceStep = ({ maxNodesPerBatchMaximum }: UpgradePaceStepProps) => {
+export const UpgradePaceStep = () => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
   const { control, setValue, formState } = useFormContext<DBUpgradeFormFields>();
+  const { maxNodesPerBatchMaximum } = useDbUpgradeModalContext();
 
   const isFormDisabled = formState.isSubmitting;
 

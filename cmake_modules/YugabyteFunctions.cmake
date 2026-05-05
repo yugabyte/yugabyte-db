@@ -471,7 +471,7 @@ macro(YB_SETUP_CLANG)
   # so that the annotations in the header actually take effect.
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
-  if(NOT APPLE)
+  if(NOT IS_APPLE_CLANG)
     set(LIBCXX_DIR "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
     if(NOT EXISTS "${LIBCXX_DIR}")
       message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
@@ -493,18 +493,27 @@ macro(YB_SETUP_CLANG)
     execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -print-search-dirs
                     OUTPUT_VARIABLE CLANG_PRINT_SEARCH_DIRS_OUTPUT)
 
-    if ("${CLANG_PRINT_SEARCH_DIRS_OUTPUT}" MATCHES ".*libraries: =([^:]+)(:.*|$)" )
+    if ("${CLANG_PRINT_SEARCH_DIRS_OUTPUT}" MATCHES ".*libraries: =([^:\r\n]+)(:.*|[\r\n]*$)" )
       # We get a directory like this:
       # .../yb-llvm-v12.0.1-yb-1-1639783720-bdb147e6-almalinux8-x86_64/lib/clang/12.0.1
       set(CLANG_LIB_DIR "${CMAKE_MATCH_1}")
-      set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/linux")
-      if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
-        set(CLANG_RUNTIME_LIB_DIR
-            "${CLANG_LIB_DIR}/lib/${CMAKE_SYSTEM_PROCESSOR}-unknown-linux-gnu")
+      if(APPLE)
+        set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/darwin")
         if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
           message(FATAL_ERROR
                   "Failed to determine Clang runtime library directory inside of "
-                  "${CLANG_RUNTIME_LIB_DIR}/lib")
+                  "${CLANG_RUNTIME_LIB_DIR}")
+        endif()
+      else()
+        set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/linux")
+        if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+          set(CLANG_RUNTIME_LIB_DIR
+              "${CLANG_LIB_DIR}/lib/${CMAKE_SYSTEM_PROCESSOR}-unknown-linux-gnu")
+          if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+            message(FATAL_ERROR
+                    "Failed to determine Clang runtime library directory inside of "
+                    "${CLANG_RUNTIME_LIB_DIR}")
+          endif()
         endif()
       endif()
     else()
@@ -853,6 +862,10 @@ macro(configure_macos_sdk)
   # If the build type is e.g. "clang15", we consider this not to be Apple Clang but custom-built
   # LLVM on macOS.
   if(APPLE AND NOT IS_APPLE_CLANG)
+    if (NOT CMAKE_OSX_SYSROOT)
+      execute_process(COMMAND xcrun --sdk macosx --show-sdk-path OUTPUT_VARIABLE CMAKE_OSX_SYSROOT
+                      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    endif()
     ADD_LINKER_FLAGS("-L${CMAKE_OSX_SYSROOT}/usr/lib")
   endif()
 endmacro()

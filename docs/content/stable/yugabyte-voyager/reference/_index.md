@@ -33,6 +33,12 @@ menu:
     href="performance/"
     icon="fa-thin fa-chart-line-up">}}
 
+  {{<index/item
+    title="Iterative cutover"
+    body="Peform multiple rounds of cutover between a PostgreSQL source and YugabyteDB target."
+    href="iterative-cutover/"
+    icon="fa-thin fa-repeat">}}
+
    {{<index/item
     title="Diagnostics reporting"
     body="Monitor migration diagnostics securely with yb-voyager commands."

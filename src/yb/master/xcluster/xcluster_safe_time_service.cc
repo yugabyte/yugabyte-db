@@ -640,7 +640,8 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
   auto session = ybclient->NewSession(ybclient->default_rpc_timeout());
 
   for (auto& tablet_info : entries_to_delete) {
-    const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const auto op = safe_time_table_->NewWriteOp(
+        session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddStringHashValue(req, tablet_info.replication_group_id_column_value().ToString());
     QLAddStringHashValue(req, tablet_info.tablet_id_column_value());

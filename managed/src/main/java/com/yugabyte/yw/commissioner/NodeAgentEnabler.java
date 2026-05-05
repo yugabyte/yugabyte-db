@@ -9,17 +9,16 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -34,7 +33,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -51,10 +49,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.Getter;
@@ -147,6 +143,7 @@ public class NodeAgentEnabler {
   private final PlatformExecutorFactory platformExecutorFactory;
   private final PlatformScheduler platformScheduler;
   private final NodeAgentInstaller nodeAgentInstaller;
+  private final NodeAgentClient nodeAgentClient;
   private final Map<UUID, UniverseNodeAgentInstaller> customerNodeAgentInstallers;
   private ExecutorService universeInstallerExecutor;
 
@@ -155,11 +152,13 @@ public class NodeAgentEnabler {
       RuntimeConfGetter confGetter,
       PlatformExecutorFactory platformExecutorFactory,
       PlatformScheduler platformScheduler,
-      NodeAgentInstaller nodeAgentInstaller) {
+      NodeAgentInstaller nodeAgentInstaller,
+      NodeAgentClient nodeAgentClient) {
     this.confGetter = confGetter;
     this.platformExecutorFactory = platformExecutorFactory;
     this.platformScheduler = platformScheduler;
     this.nodeAgentInstaller = nodeAgentInstaller;
+    this.nodeAgentClient = nodeAgentClient;
     this.customerNodeAgentInstallers = new ConcurrentHashMap<>();
   }
 
@@ -209,7 +208,8 @@ public class NodeAgentEnabler {
                   .filter(
                       u -> {
                         Optional<Boolean> optional =
-                            isNodeAgentEnabled(u, p -> true /* include provider flag */);
+                            nodeAgentClient.isNodeAgentEnabled(
+                                u, p -> p.getDetails().isEnableNodeAgent());
                         return optional.isPresent() && optional.get() == false;
                       })
                   .filter(
@@ -292,65 +292,12 @@ public class NodeAgentEnabler {
         });
   }
 
-  /**
-   * Checks if node agent client is enabled for the provider and the universe if it is non-null.
-   * Client check adds additional requirements.
-   *
-   * @param provider the given provider.
-   * @param universe the given universe.
-   * @return true if the client is enabled.
-   */
-  public boolean isNodeAgentClientEnabled(Provider provider, @Nullable Universe universe) {
-    if (!isNodeAgentServerEnabled(provider, universe)) {
-      return false;
-    }
-    if (universe != null && universe.getUniverseDetails().installNodeAgent) {
-      log.debug(
-          "Node agent is not available on all nodes for universe {}({})",
-          universe.getName(),
-          universe.getUniverseUUID());
-      // Check if mixed mode is allowed.
-      if (!confGetter.getConfForScope(universe, UniverseConfKeys.allowNodeAgentClientMixMode)) {
-        return false;
-      }
-    }
-    // All checks passed.
-    return true;
-  }
-
-  /**
-   * Checks if node agent server is enabled for the provider and universe if it is non-null.
-   * Enabling server means that installation for server can be performed.
-   *
-   * @param provider the given provider.
-   * @param universe the given universe.
-   * @return true if the server is enabled.
-   */
-  public boolean isNodeAgentServerEnabled(Provider provider, @Nullable Universe universe) {
-    boolean clientEnabled =
-        confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
-    if (!clientEnabled) {
-      log.trace("Node agent server is disabled for provider {}", provider.getUuid());
-      return false;
-    }
-    // The internal provider flag is not checked.
-    if (universe != null && isNodeAgentEnabled(universe, p -> false).orElse(false) == false) {
-      return false;
-    }
-    return true;
-  }
-
   /*
-   * Checks if background installation for node agents is enabled for the given universe. It is
-   * disabled if node agent client is currently disabled. As node agent is enabled for all new
-   * providers by default, background installation is enabled unless it is explicitly disabled.
-   * For old providers, its support depends on the provider type.
+   * Checks if background installation for node agents is enabled for the given universe.
    *
    * 1. Cloud service providers - supported if the client runtime config is not disabled.
    * 2. Onprem fully manual providers - supported if the client runtime config is not disabled.
    * 3. Onprem non-manual providers - not supported.
-   *
-   * For 1 and 2, provider flag must not be checked.
    */
   private boolean isBackgroundInstallNodeAgentEnabled(Universe universe) {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
@@ -362,55 +309,18 @@ public class NodeAgentEnabler {
           universe.getUniverseUUID());
       return false;
     }
-    return isNodeAgentEnabled(
+    return nodeAgentClient
+        .isNodeAgentEnabled(
             universe,
             p -> {
+              // Additional provider checks.
               if (p.getCloudCode() != CloudType.onprem || p.getDetails().isSkipProvisioning()) {
-                // Do not include provider flag for cloud and fully manual onprem providers when the
-                // enabler is on.
-                return false;
+                return true;
               }
-              // Always check provider flag for onprem non-manual providers.
-              return true;
+              // For onprem non-manual providers, it is skipped if it is an old provider.
+              return p.getDetails().isEnableNodeAgent();
             })
         .orElse(false);
-  }
-
-  // This checks if node agent is enabled for the universe with the optional parameter to include or
-  // exclude the flag or field set in provider details.
-  private Optional<Boolean> isNodeAgentEnabled(
-      Universe universe, Predicate<Provider> includeProviderFlag) {
-    Map<String, Boolean> providerEnabledMap = new HashMap<>();
-    for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      if (cluster.userIntent == null
-          || cluster.userIntent.providerType == CloudType.kubernetes
-          || cluster.userIntent.provider == null) {
-        // Unsupported cluster is found.
-        return Optional.empty();
-      }
-      boolean enabled =
-          providerEnabledMap.computeIfAbsent(
-              cluster.userIntent.provider,
-              k -> {
-                Provider provider =
-                    Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-                if (!confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient)) {
-                  log.debug("Node agent is not enabled for provider {}", provider.getUuid());
-                  return false;
-                }
-                if (includeProviderFlag != null
-                    && includeProviderFlag.test(provider)
-                    && !provider.getDetails().isEnableNodeAgent()) {
-                  log.debug("Node agent is not enabled for old provider {}", provider.getUuid());
-                  return false;
-                }
-                return true;
-              });
-      if (!enabled) {
-        return Optional.of(false);
-      }
-    }
-    return Optional.of(universe.getUniverseDetails().clusters.size() > 0);
   }
 
   /**

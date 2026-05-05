@@ -15,6 +15,7 @@
 
 #include <arpa/inet.h>
 
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
@@ -429,7 +430,7 @@ std::vector<WaitStatesDescription> WaitStateInfo::GetWaitStatesDescription() {
 }
 
 int WaitStateInfo::GetCircularBufferSizeInKiBs() {
-  int num_cpus = base::NumCPUs();
+  int num_cpus = NumEffectiveCPUs();
   int bytes;
   if (num_cpus <= 2) {
     bytes = 32_MB;

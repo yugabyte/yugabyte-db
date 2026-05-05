@@ -817,21 +817,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             ? taskUniverseDetails.getReadOnlyClusters().get(0)
             : taskUniverseDetails.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+
     // TODO Support overriden instance types
-    InstanceType instanceType =
-        InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), userIntent.instanceType);
     if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       log.info(
           "Config parameter {}", confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources));
       log.error(
-          "Unable to fetch InstanceType for {}, {}",
-          userIntent.providerType,
-          userIntent.instanceType);
+          "Unable to fetch InstanceType for {}, {}", provider.getUuid(), userIntent.instanceType);
       throw new RuntimeException(
-          "Unable to fetch InstanceType "
-              + userIntent.providerType
-              + ": "
-              + userIntent.instanceType);
+          "Unable to fetch InstanceType " + provider.getUuid() + ": " + userIntent.instanceType);
     }
 
     int numNodes = 0, replicationFactorZone = 0, replicationFactor = 0;
@@ -1570,12 +1565,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     // TODO gflags which have precedence over helm overrides should be merged here.
 
+    // For single AZ azUUID may be null, use non-null values
+    UUID azUuid =
+        azUUID != null ? azUUID : AvailabilityZone.getByCode(provider, placementZone).getUuid();
     // Handle STS index overrides
-    handleStsIndexOverrides(overrides, pi, savedPi, azUUID);
+    handleStsIndexOverrides(overrides, pi, savedPi, azUuid);
     // Handle volume overrides
-    handleVolumeOverrides(overrides, userIntent, userIntentFromDB, azUUID);
+    handleVolumeOverrides(overrides, userIntent, userIntentFromDB, pi, savedPi, azUuid);
     // Handle full move overrides
-    handleFullMoveOverrides(overrides, userIntent, pi, azUUID);
+    handleFullMoveOverrides(overrides, userIntent, pi, azUuid);
 
     validateOverrides(overrides);
 
@@ -1690,6 +1688,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, Object> overrides,
       UserIntent taskUserIntent,
       UserIntent savedUserIntent,
+      PlacementInfo newPi,
+      PlacementInfo savedPi,
       UUID azUUID) {
     // Override disk count and size for the tserver/master pods according to user intent.
     Map<String, Object> storageOverrides =
@@ -1699,33 +1699,38 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, Object> masterDiskSpecs =
         (HashMap) storageOverrides.getOrDefault("master", new HashMap<>());
 
-    DeviceInfo savedTsDeviceInfo =
-        savedUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
-    DeviceInfo savedMasterDeviceInfo =
-        savedUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+    boolean newlyAddedAZ = savedPi.findByAZUUID(azUUID) == null;
 
-    if (savedTsDeviceInfo != null) {
-      if (savedTsDeviceInfo.numVolumes != null) {
-        tserverDiskSpecs.put("count", savedTsDeviceInfo.numVolumes);
+    // Add old deviceInfo/masterDeviceInfo spec if existing AZ
+    if (!newlyAddedAZ) {
+      DeviceInfo savedTsDeviceInfo =
+          savedUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
+      DeviceInfo savedMasterDeviceInfo =
+          savedUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+
+      if (savedTsDeviceInfo != null) {
+        if (savedTsDeviceInfo.numVolumes != null) {
+          tserverDiskSpecs.put("count", savedTsDeviceInfo.numVolumes);
+        }
+        if (savedTsDeviceInfo.volumeSize != null) {
+          tserverDiskSpecs.put("size", String.format("%dGi", savedTsDeviceInfo.volumeSize));
+        }
+        // Storage class override applies to both tserver and master.
+        if (savedTsDeviceInfo.storageClass != null) {
+          tserverDiskSpecs.put("storageClass", savedTsDeviceInfo.storageClass);
+        }
       }
-      if (savedTsDeviceInfo.volumeSize != null) {
-        tserverDiskSpecs.put("size", String.format("%dGi", savedTsDeviceInfo.volumeSize));
-      }
-      // Storage class override applies to both tserver and master.
-      if (savedTsDeviceInfo.storageClass != null) {
-        tserverDiskSpecs.put("storageClass", savedTsDeviceInfo.storageClass);
-      }
-    }
-    // Override disk count and size for master pods
-    if (savedMasterDeviceInfo != null) {
-      if (savedMasterDeviceInfo.numVolumes != null) {
-        masterDiskSpecs.put("count", savedMasterDeviceInfo.numVolumes);
-      }
-      if (savedMasterDeviceInfo.volumeSize != null) {
-        masterDiskSpecs.put("size", String.format("%dGi", savedMasterDeviceInfo.volumeSize));
-      }
-      if (savedMasterDeviceInfo.storageClass != null) {
-        masterDiskSpecs.put("storageClass", savedMasterDeviceInfo.storageClass);
+      // Override disk count and size for master pods
+      if (savedMasterDeviceInfo != null) {
+        if (savedMasterDeviceInfo.numVolumes != null) {
+          masterDiskSpecs.put("count", savedMasterDeviceInfo.numVolumes);
+        }
+        if (savedMasterDeviceInfo.volumeSize != null) {
+          masterDiskSpecs.put("size", String.format("%dGi", savedMasterDeviceInfo.volumeSize));
+        }
+        if (savedMasterDeviceInfo.storageClass != null) {
+          masterDiskSpecs.put("storageClass", savedMasterDeviceInfo.storageClass);
+        }
       }
     }
 
@@ -1738,7 +1743,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().oldMasterDiskSize != null) {
       masterDiskSpecs.put("size", String.format("%dGi", taskParams().oldMasterDiskSize));
     }
-    if (taskParams().useNewMasterDeviceInfo) {
+    // Use new masterDeviceInfo for newly added AZs or full move
+    if (taskParams().useNewMasterDeviceInfo || newlyAddedAZ) {
       if (taskMasterDeviceInfo.numVolumes != null) {
         masterDiskSpecs.put("count", taskMasterDeviceInfo.numVolumes);
       }
@@ -1753,7 +1759,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (taskParams().oldTsDiskSize != null) {
       tserverDiskSpecs.put("size", String.format("%dGi", taskParams().oldTsDiskSize));
     }
-    if (taskParams().useNewTserverDeviceInfo) {
+    // Use new deviceInfo for newly added AZs or full move
+    if (taskParams().useNewTserverDeviceInfo || newlyAddedAZ) {
       if (taskTsDeviceInfo.numVolumes != null) {
         tserverDiskSpecs.put("count", taskTsDeviceInfo.numVolumes);
       }

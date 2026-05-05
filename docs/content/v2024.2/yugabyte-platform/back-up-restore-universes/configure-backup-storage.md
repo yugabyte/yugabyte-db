@@ -75,6 +75,16 @@ The following S3 IAM permissions are required:
 "s3:GetBucketLocation"
 ```
 
+### Using a proxy
+
+By default, **Proxy Configuration** for S3 storage is not available in the UI. To make it available, navigate to `https://<my-yugabytedb-anywhere-ip>/features` and enable the **enableS3BackupProxy** option.
+
+Configure a proxy for your S3 backup configuration by setting the following options under **Proxy Configuration**:
+
+- **Host**: The full URL or IP address of the HTTP/HTTPS proxy server.
+- **Port**: The port used by the HTTP/HTTPS proxy server.
+- **Username** and **Password**: If your proxy requires authentication, enter the Username and Password.
+
 ## Google Cloud Storage
 
 You can configure Google Cloud Storage (GCS) as your backup target.

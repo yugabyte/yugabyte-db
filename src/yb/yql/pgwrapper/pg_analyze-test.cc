@@ -744,7 +744,8 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
       auto read_rpc_call_remote_method_cb = [this, &table_id](void* arg) {
         const auto* read_req = CHECK_NOTNULL(pointer_cast<tserver::ReadRequestMsg*>(arg));
         // Skip non-sampling requests.
-        if (read_req->pgsql_batch().empty() || !read_req->pgsql_batch(0).has_sampling_state()) {
+        if (read_req->pgsql_batch().empty() ||
+            !read_req->pgsql_batch().front().has_sampling_state()) {
           return;
         }
 
@@ -759,9 +760,9 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
                                           tablet_locations_pb.partition().partition_key_end()))
                                     : status.ToString())
                     << " partition_key: "
-                    << Slice(read_req->pgsql_batch(0).partition_key()).ToDebugHexString()
+                    << Slice(read_req->pgsql_batch().front().partition_key()).ToDebugHexString()
                     << " sampling_state: "
-                    << read_req->pgsql_batch(0).sampling_state().ShortDebugString();
+                    << read_req->pgsql_batch().front().sampling_state().ShortDebugString();
         }
 
         const auto active_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
@@ -779,11 +780,12 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
       auto read_rpc_notify_batchr_cb = [this, &table_id, num_total_data_blocks](void* arg) {
         const auto* read_resp = CHECK_NOTNULL(pointer_cast<tserver::ReadResponseMsg*>(arg));
         // Skip non-sampling responses.
-        if (read_resp->pgsql_batch().empty() || !read_resp->pgsql_batch(0).has_sampling_state()) {
+        if (read_resp->pgsql_batch().empty() ||
+            !read_resp->pgsql_batch().front().has_sampling_state()) {
           return;
         }
 
-        const auto& sampling_state = read_resp->pgsql_batch(0).sampling_state();
+        const auto& sampling_state = read_resp->pgsql_batch().front().sampling_state();
         LOG(INFO) << "Intercepted sampling response for tablet: "
                   << read_resp->tablet_consensus_info().tablet_id() << " sampling_state: "
                   << sampling_state.ShortDebugString();

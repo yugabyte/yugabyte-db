@@ -42,6 +42,8 @@ g_verbose = False
 EXPECTED_ARCHIVE_EXTENSION = '.tar.gz'
 CHECKSUM_EXTENSION = '.sha256'
 ARTIFACT_URL_SUFFIX = '/zip'
+MAX_DOWNLOAD_ATTEMPTS = 5
+RETRY_DELAY_SEC = 5
 
 
 def remove_ignore_errors(file_path: str) -> None:
@@ -98,11 +100,18 @@ def verify_sha256sum(checksum_file_path: str, data_file_path: str) -> bool:
         raise ValueError("Checksum file path must end with '%s', got: %s" % (
             CHECKSUM_EXTENSION, checksum_file_path))
 
-    # Guard against someone passing in the actual data file instead of the checksum file.
+    # Guard against someone passing in the actual data file instead of the checksum file, or
+    # against the server returning an HTML error page in place of the checksum.
     checksum_file_size = os.stat(checksum_file_path).st_size
     if checksum_file_size > 4096:
-        raise IOError("Checksum file size is too big: %d bytes (file path: %s)" % (
-            checksum_file_size, checksum_file_path))
+        try:
+            with open(checksum_file_path, 'rb') as f:
+                preview = f.read(1024).decode('utf-8', errors='replace')
+        except Exception as ex:
+            preview = "<failed to read file: %s>" % ex
+        raise IOError(
+            "Checksum file size is too big: %d bytes (file path: %s). First 1024 bytes:\n%s" % (
+                checksum_file_size, checksum_file_path, preview))
 
     expected_checksum = read_file_and_strip(checksum_file_path).split()[0]
 
@@ -122,7 +131,20 @@ def download_url(url: str, dest_path: str, other_curl_flags: List[str] = []) -> 
     dest_dir = os.path.dirname(dest_path)
     if not os.path.isdir(dest_dir):
         raise IOError("Destination directory %s does not exist" % dest_dir)
-    run_cmd(['curl', '-LsS', url, '-o', dest_path] + other_curl_flags)
+    # -f / --fail: don't write the response body for HTTP error responses, so we don't end up
+    #              with an HTML error page on disk masquerading as the requested artifact.
+    # --retry / --retry-delay: retry transient failures (5xx, connection errors) before giving up.
+    #              Note: curl --retry counts retries after the initial attempt, so we pass
+    #              MAX_DOWNLOAD_ATTEMPTS - 1 to get MAX_DOWNLOAD_ATTEMPTS total attempts.
+    # --retry-connrefused: also retry on ECONNREFUSED, which curl does not retry by default
+    #              and which is a common transient failure in CI environments.
+    run_cmd([
+        'curl', '-LsSf',
+        '--retry', str(MAX_DOWNLOAD_ATTEMPTS - 1),
+        '--retry-delay', str(RETRY_DELAY_SEC),
+        '--retry-connrefused',
+        url, '-o', dest_path,
+    ] + other_curl_flags)
     if not os.path.exists(dest_path):
         raise IOError("Failed to download %s: file %s does not exist" % (url, dest_path))
     elapsed_sec = time.time() - start_time_sec

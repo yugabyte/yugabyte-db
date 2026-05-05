@@ -3032,6 +3032,12 @@ void CDCSDKYsqlTest::PollUntilTabletSplit(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
     GetChangesResponsePB* change_resp,
     int tablet_idx) {
+  GetChangesResponsePB local_resp;
+  if (change_resp == nullptr) {
+    int idx = (tablet_idx >= 0) ? tablet_idx : 0;
+    local_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, nullptr, idx));
+    change_resp = &local_resp;
+  }
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto result = (tablet_idx >= 0)
@@ -3067,8 +3073,10 @@ void CDCSDKYsqlTest::VerifyTabletList(
 }
 
 void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
-    const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
-    const xrepl::StreamId& stream_id, const std::string timeout_msg, bool include_catalog_tables) {
+    const std::unordered_set<TabletId>& expected_tablet_ids, client::YBClient* client,
+    const xrepl::StreamId& stream_id,
+    const std::unordered_set<TabletId>& expected_colocated_table_ids, const std::string timeout_msg,
+    bool include_catalog_tables) {
   auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   auto table_range = ASSERT_RESULT(cdc_state_table.GetTableRange({}, &s));
@@ -3081,6 +3089,7 @@ void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         std::unordered_set<TabletId> seen_tablet_ids;
+        std::unordered_set<TableId> seen_colocated_table_ids;
         uint32_t seen_rows = 0;
         for (auto row_result : table_range) {
           RETURN_NOT_OK(row_result);
@@ -3094,13 +3103,17 @@ void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
           }
 
           seen_tablet_ids.insert(row.key.tablet_id);
+          if (!row.key.colocated_table_id.empty()) {
+            seen_colocated_table_ids.insert(row.key.colocated_table_id);
+          }
           seen_rows += 1;
         }
         RETURN_NOT_OK(s);
 
         return (
             all_expected_tablet_ids == seen_tablet_ids &&
-            seen_rows == all_expected_tablet_ids.size());
+            seen_colocated_table_ids == expected_colocated_table_ids &&
+            seen_rows == all_expected_tablet_ids.size() + expected_colocated_table_ids.size());
       },
       MonoDelta::FromSeconds(60), timeout_msg));
 }
@@ -5076,6 +5089,27 @@ Status CDCSDKYsqlTest::GetIntentEntriesAndSSTFileCountForTablet(
       initial_intents_and_intent_sst_file_count->emplace(
           std::move(peer->permanent_uuid()), std::make_pair(intent_count, intent_sst_file_count));
     }
+  }
+  return Status::OK();
+}
+
+Status CDCSDKYsqlTest::CdcReleaseBarriersOnTablet(const TabletId& tablet_id) {
+  UpdateCdcReplicatedIndexRequestPB req;
+  UpdateCdcReplicatedIndexResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+  req.add_tablet_ids(tablet_id);
+  req.add_replicated_indices(std::numeric_limits<int64_t>::max());
+  req.add_replicated_terms(std::numeric_limits<int64_t>::max());
+  OpId::Max().ToPB(req.add_cdc_sdk_consumed_ops());
+  req.add_cdc_sdk_ops_expiration_ms(0);
+  req.add_cdc_sdk_safe_times(HybridTime::kInvalid.ToUint64());
+  req.set_initial_retention_barrier(false);
+
+  RETURN_NOT_OK(cdc_proxy_->UpdateCdcReplicatedIndex(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
   }
   return Status::OK();
 }

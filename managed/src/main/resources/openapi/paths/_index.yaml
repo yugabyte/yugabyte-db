@@ -886,6 +886,49 @@
         checkOnlyPermission: false
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListUniverses
+    summary: List universes
+    description: |
+      Returns universes for the specified customer
+      WARNING: This is a preview API that could change.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniversePagedReq.yaml"
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/UniversePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/clusters':
   parameters:
     - name: cUUID

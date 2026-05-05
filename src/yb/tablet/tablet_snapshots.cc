@@ -871,7 +871,7 @@ Status TabletRestorePatch::Finish() {
     }
     // Insert this kv into the write batch.
     if (value_to_insert.last_value) {
-      QLValuePB value_pb;
+      LWQLValuePB value_pb(nullptr);
       value_pb.set_int64_value(*(value_to_insert.last_value));
       VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.last_value);
       auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("last_value"));
@@ -882,7 +882,7 @@ Status TabletRestorePatch::Finish() {
       IncrementTicker(RestoreTicker::kInserts);
     }
     if (value_to_insert.is_called) {
-      QLValuePB value_pb;
+      LWQLValuePB value_pb(nullptr);
       value_pb.set_bool_value(*(value_to_insert.is_called));
       VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.is_called);
       auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("is_called"));

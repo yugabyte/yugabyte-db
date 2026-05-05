@@ -50,7 +50,7 @@ Download and install the YugabyteDB node-postgres smart driver using the followi
 npm install @yugabytedb/pg
 ```
 
-The driver requires YugabyteDB version 2.7.2.0 or higher.
+The driver requires YugabyteDB version 2.8 or higher.
 
 You can start using the driver in your code.
 

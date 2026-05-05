@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { mui, YBButton, YBDropdown } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
+import { useQuery, useQueryClient } from 'react-query';
 import { yupResolver } from '@hookform/resolvers/yup';
 import {
   StyledContent,
@@ -15,6 +17,20 @@ import {
   getClusterByType,
   useEditUniverseContext
 } from '../EditUniverseUtils';
+
+import { EditConnectionPoolModal } from '@app/redesign/features/universe/universe-actions/edit-connection-pool/EditConnectionPoolModal';
+import { EditPGCompatibilityModal } from '@app/redesign/features/universe/universe-actions/edit-pg-compatibility/EditPGCompatibilityModal';
+import { EnableYSQLModal } from '@app/redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
+import { EnableYCQLModal } from '@app/redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
+import { api, QUERY_KEY } from '@app/redesign/utils/api';
+import {
+  api as universeFormApi,
+  QUERY_KEY as universeFormQueryKey
+} from '@app/redesign/features/universe/universe-form/utils/api';
+import { RunTimeConfigEntry } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
+import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 import {
   ClusterGFlagsAllOfGflagGroupsItem,
@@ -44,9 +60,43 @@ const DisabledIcon = styled(Disabled)({
 
 export const DatabaseTab = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.database' });
+  const queryClient = useQueryClient();
   const { universeData } = useEditUniverseContext();
 
+  const [connectionPoolModalOpen, setConnectionPoolModalOpen] = useState(false);
+  const [pgCompatibilityModalOpen, setPgCompatibilityModalOpen] = useState(false);
+  const [ysqlModalOpen, setYsqlModalOpen] = useState(false);
+  const [ycqlModalOpen, setYcqlModalOpen] = useState(false);
+
+  const universeUUID = universeData?.info?.universe_uuid;
+
+  const { data: legacyUniverse, isLoading: isLegacyUniverseLoading } = useQuery(
+    [QUERY_KEY.fetchUniverse, universeUUID],
+    () => api.fetchUniverse(universeUUID!),
+    { enabled: !!universeUUID }
+  );
+
+  const { data: runtimeConfigs } = useQuery(
+    [universeFormQueryKey.fetchCustomerRunTimeConfigs],
+    () => universeFormApi.fetchRunTimeConfigs(true)
+  );
+
+  const isAuthEnforced = !!(
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.IS_UNIVERSE_AUTH_ENFORCED
+    )?.value === 'true'
+  );
+
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
+  const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
+
+  const invalidateUniverseQueries = () => {
+    if (universeUUID) {
+      void queryClient.invalidateQueries([QUERY_KEY.fetchUniverse, universeUUID]);
+      void queryClient.invalidateQueries(getGetUniverseQueryKey(universeUUID));
+    }
+  };
 
   const { control } = useForm<DatabaseSettingsProps>({
     resolver: yupResolver(DatabaseValidationSchema()),
@@ -87,7 +137,12 @@ export const DatabaseTab = () => {
                 </YBButton>
               }
             >
-              <MenuItem data-test-id="edit-ysql-settings">
+              <MenuItem
+                data-test-id="edit-ysql-settings"
+                data-testid="edit-ysql-settings"
+                disabled={isLegacyUniverseLoading || !legacyUniverse}
+                onClick={() => setYsqlModalOpen(true)}
+              >
                 <Box
                   sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
                 >
@@ -95,7 +150,12 @@ export const DatabaseTab = () => {
                 </Box>
                 {t('editYSQLSettings')}
               </MenuItem>
-              <MenuItem data-test-id="edit-ycql-settings">
+              <MenuItem
+                data-test-id="edit-ycql-settings"
+                data-testid="edit-ycql-settings"
+                disabled={isLegacyUniverseLoading || !legacyUniverse}
+                onClick={() => setYcqlModalOpen(true)}
+              >
                 <Box
                   sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
                 >
@@ -158,7 +218,12 @@ export const DatabaseTab = () => {
                 </YBButton>
               }
             >
-              <MenuItem data-test-id="edit-pooling-settings">
+              <MenuItem
+                data-test-id="edit-pooling-settings"
+                data-testid="edit-pooling-settings"
+                disabled={isLegacyUniverseLoading || !legacyUniverse}
+                onClick={() => setConnectionPoolModalOpen(true)}
+              >
                 <Box
                   sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
                 >
@@ -166,7 +231,12 @@ export const DatabaseTab = () => {
                 </Box>
                 {t('editConnectionPooling')}
               </MenuItem>
-              <MenuItem data-test-id="edit-postgres-compatibility-settings">
+              <MenuItem
+                data-test-id="edit-postgres-compatibility-settings"
+                data-testid="edit-postgres-compatibility-settings"
+                disabled={isLegacyUniverseLoading || !legacyUniverse}
+                onClick={() => setPgCompatibilityModalOpen(true)}
+              >
                 <Box
                   sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
                 >
@@ -213,6 +283,46 @@ export const DatabaseTab = () => {
           />
         </StyledContent>
       </StyledPanel>
+      {legacyUniverse && universeUUID && (
+        <>
+          <EditConnectionPoolModal
+            open={connectionPoolModalOpen}
+            onClose={() => {
+              setConnectionPoolModalOpen(false);
+              invalidateUniverseQueries();
+            }}
+            universeData={legacyUniverse}
+            isItKubernetesUniverse={isItKubernetesUniverse}
+          />
+          <EditPGCompatibilityModal
+            open={pgCompatibilityModalOpen}
+            onClose={() => {
+              setPgCompatibilityModalOpen(false);
+              invalidateUniverseQueries();
+            }}
+            universeData={legacyUniverse}
+          />
+          <EnableYSQLModal
+            open={ysqlModalOpen}
+            onClose={() => {
+              setYsqlModalOpen(false);
+              invalidateUniverseQueries();
+            }}
+            universeData={legacyUniverse}
+            enforceAuth={isAuthEnforced}
+          />
+          <EnableYCQLModal
+            open={ycqlModalOpen}
+            onClose={() => {
+              setYcqlModalOpen(false);
+              invalidateUniverseQueries();
+            }}
+            universeData={legacyUniverse}
+            enforceAuth={isAuthEnforced}
+            isItKubernetesUniverse={isItKubernetesUniverse}
+          />
+        </>
+      )}
     </Box>
   );
 };

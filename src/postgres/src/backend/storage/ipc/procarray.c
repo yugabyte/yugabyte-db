@@ -2108,6 +2108,15 @@ GlobalVisHorizonKindForRel(Relation rel)
 TransactionId
 GetOldestNonRemovableTransactionId(Relation rel)
 {
+	/*
+	 * YB has custom logic for history retention, and doesn't rely on
+	 * Postgres's xid based mechanism.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		return InvalidTransactionId;
+	}
+
 	ComputeXidHorizonsResult horizons;
 
 	ComputeXidHorizons(&horizons);

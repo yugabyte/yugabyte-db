@@ -324,6 +324,7 @@ package_for_platform() {
     cp -rf ../ynp_requirements.txt "${script_dir}"/ynp_requirements.txt
     cp -rf ../ynp_requirements_3.6.txt "${script_dir}"/ynp_requirements_3.6.txt
     cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/systemd/templates/
+    cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/rootsystemd/templates/
     chmod 755 "${script_dir}"/*.sh
     chmod 755 "${bin_dir}"/*.sh
     popd

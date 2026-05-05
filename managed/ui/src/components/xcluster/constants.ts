@@ -12,7 +12,7 @@ export const XClusterConfigStatus = {
   FAILED: 'Failed',
   DRAINED_DATA: 'DrainedData'
 } as const;
-export type XClusterConfigStatus = typeof XClusterConfigStatus[keyof typeof XClusterConfigStatus];
+export type XClusterConfigStatus = (typeof XClusterConfigStatus)[keyof typeof XClusterConfigStatus];
 
 export const BROKEN_XCLUSTER_CONFIG_STATUSES: readonly XClusterConfigStatus[] = [
   XClusterConfigStatus.DELETED_UNIVERSE,
@@ -32,7 +32,7 @@ export const XClusterConfigState = {
   RUNNING: XClusterConfigStatus.RUNNING,
   PAUSED: 'Paused'
 } as const;
-export type XClusterConfigState = typeof XClusterConfigState[keyof typeof XClusterConfigState];
+export type XClusterConfigState = (typeof XClusterConfigState)[keyof typeof XClusterConfigState];
 
 export const XClusterTableStatus = {
   RUNNING: 'Running',
@@ -53,7 +53,7 @@ export const XClusterTableStatus = {
   DROPPED_FROM_SOURCE: 'DroppedFromSource',
   DROPPED_FROM_TARGET: 'DroppedFromTarget'
 } as const;
-export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
+export type XClusterTableStatus = (typeof XClusterTableStatus)[keyof typeof XClusterTableStatus];
 
 /**
  * Tables status which indicate the table only exists on the target universe.
@@ -68,9 +68,8 @@ export const SOURCE_MISSING_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatu
  * Table statuses which are considered in the xCluster config, but may require bootstrapping if present in
  * the edit table selection.
  */
-export const POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES: readonly XClusterTableStatus[] = [
-  XClusterTableStatus.DROPPED_FROM_TARGET
-];
+export const POTENTIAL_IN_CONFIG_SET_UP_BOOTSTRAP_REQUIRED_TABLES_STATUSES: readonly XClusterTableStatus[] =
+  [XClusterTableStatus.DROPPED_FROM_TARGET];
 
 export const UNCONFIGURED_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
   XClusterTableStatus.EXTRA_TABLE_ON_SOURCE,
@@ -106,14 +105,14 @@ export const XClusterConfigAction = {
   EDIT: 'edit',
   DB_SYNC: 'dbSync'
 } as const;
-export type XClusterConfigAction = typeof XClusterConfigAction[keyof typeof XClusterConfigAction];
+export type XClusterConfigAction = (typeof XClusterConfigAction)[keyof typeof XClusterConfigAction];
 
 export const XClusterConfigType = {
   BASIC: 'Basic',
   TXN: 'Txn',
   DB_SCOPED: 'Db'
 } as const;
-export type XClusterConfigType = typeof XClusterConfigType[keyof typeof XClusterConfigType];
+export type XClusterConfigType = (typeof XClusterConfigType)[keyof typeof XClusterConfigType];
 
 export const XClusterConfigTypeLabel = {
   [XClusterConfigType.BASIC]: 'Basic',
@@ -128,13 +127,14 @@ export const XClusterSchemaChangeMode = {
   DB_SCOPED: 'dbScoped',
   AUTOMATIC_DDL_REPLICATION: 'automaticDdlReplication'
 } as const;
-export type XClusterSchemaChangeMode = typeof XClusterSchemaChangeMode[keyof typeof XClusterSchemaChangeMode];
+export type XClusterSchemaChangeMode =
+  (typeof XClusterSchemaChangeMode)[keyof typeof XClusterSchemaChangeMode];
 
 export const UniverseXClusterRole = {
   SOURCE: 'source',
   TARGET: 'target'
 } as const;
-export type UniverseXClusterRole = typeof UniverseXClusterRole[keyof typeof UniverseXClusterRole];
+export type UniverseXClusterRole = (typeof UniverseXClusterRole)[keyof typeof UniverseXClusterRole];
 
 //------------------------------------------------------------------------------------
 // Table Selection Constants
@@ -153,7 +153,8 @@ export const XClusterTableEligibility = {
   // Eligible - The table is already in the current xCluster config
   ELIGIBLE_IN_CURRENT_CONFIG: 'eligibleInCurrentConfig'
 } as const;
-export type XClusterTableEligibility = typeof XClusterTableEligibility[keyof typeof XClusterTableEligibility];
+export type XClusterTableEligibility =
+  (typeof XClusterTableEligibility)[keyof typeof XClusterTableEligibility];
 
 export const XCLUSTER_TABLE_INELIGIBLE_STATUSES: readonly XClusterTableEligibility[] = [
   XClusterTableEligibility.INELIGIBLE_IN_USE
@@ -181,7 +182,7 @@ export const BootstrapCategory = {
   TARGET_TABLE_MISSING: 'targetTableMissing',
   DR_WITH_AUTOMATIC_DDL_MODE: 'drWithAutomaticDdlMode'
 } as const;
-export type BootstrapCategory = typeof BootstrapCategory[keyof typeof BootstrapCategory];
+export type BootstrapCategory = (typeof BootstrapCategory)[keyof typeof BootstrapCategory];
 
 //------------------------------------------------------------------------------------
 
@@ -266,7 +267,7 @@ export const MetricName = {
   HA_BACKUP_LAG: 'yba_ha_backup_lag',
   HA_LAST_BACKUP_SIZE: 'yba_ha_last_backup_size_mb'
 } as const;
-export type MetricName = typeof MetricName[keyof typeof MetricName];
+export type MetricName = (typeof MetricName)[keyof typeof MetricName];
 
 // TODO: Add as type for layout alias keys in Metric type.
 export const MetricTraceName = {
@@ -293,7 +294,8 @@ export const PollingIntervalMs = {
   XCLUSTER_CONFIG: 30_000,
   XCLUSTER_CONFIG_STATE_TRANSITIONS: 10_000,
   XCLUSTER_METRICS: 15_000,
-  ALERT_CONFIGURATION: 15_000
+  ALERT_CONFIGURATION: 15_000,
+  FOCUSED_TASK: 10_000
 } as const;
 
 export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_METRICS;
