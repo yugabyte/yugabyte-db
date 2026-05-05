@@ -141,12 +141,13 @@ def download_url(url: str, dest_path: str, other_curl_flags: List[str] = []) -> 
         try:
             run_cmd(cmd)
             break
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as ex:
             if attempt == MAX_DOWNLOAD_ATTEMPTS:
                 raise
             logging.warning(
-                "curl failed downloading %s (attempt %d/%d), retrying in %ds",
-                url, attempt, MAX_DOWNLOAD_ATTEMPTS, RETRY_DELAY_SEC)
+                "curl failed downloading %s (attempt %d/%d) with exit code %d, "
+                "retrying in %ds",
+                url, attempt, MAX_DOWNLOAD_ATTEMPTS, ex.returncode, RETRY_DELAY_SEC)
             time.sleep(RETRY_DELAY_SEC)
     if not os.path.exists(dest_path):
         raise IOError("Failed to download %s: file %s does not exist" % (url, dest_path))
