@@ -5,7 +5,7 @@ from models.work_queue_task import WorkQueueTask
 from rag_pipeline.rag_handler import RagPipelineHandler
 from db.source_document_tracking import SourceDocumentTracking
 from uuid import UUID
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple
 
 
 class DocumentPreprocessor(TaskProcessor):
@@ -138,33 +138,36 @@ class DocumentPreprocessor(TaskProcessor):
                 self.connection_pool.return_connection(connection)
         return None
 
-    def _retrieve_rag_index_name(self, index_id: UUID) -> str:
+    def _retrieve_rag_index_name(
+        self, index_id: UUID
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
-        Retrieve the RAG index name.
+        Retrieve (index_name, schema_name) for the given index.
         """
         connection = None
+        cursor = None
         try:
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
             query = """
-                SELECT index_name
+                SELECT index_name, schema_name
                 FROM dist_rag.vector_indexes
                 WHERE id = %s
             """
             cursor.execute(query, (str(index_id),))
             result = cursor.fetchone()
             if result:
-                return result[0]  # name is the first column
+                return result[0], result[1]
         except Exception as e:
             connection.rollback()
             self.logger.error(f"Error fetching RAG index name for index_id {index_id}: {str(e)}")
-            return None
+            return None, None
         finally:
             if cursor:
                 cursor.close()
             if connection:
                 self.connection_pool.return_connection(connection)
-        return None
+        return None, None
 
     def process(self, task: WorkQueueTask) -> Dict[str, Any]:
         """
@@ -183,6 +186,9 @@ class DocumentPreprocessor(TaskProcessor):
             source_id = task_details.get('source_id')
             document_id = task_details.get('document_id')
             document_uri = task_details.get('document_uri')
+            # tenant_id is optional in task_details for backward compatibility
+            # with tasks queued before the tenant_id column was added.
+            tenant_id = task_details.get('tenant_id')
 
             # Validate extracted parameters
             if not all([index_id, source_id, document_id, document_uri]):
@@ -230,8 +236,25 @@ class DocumentPreprocessor(TaskProcessor):
                 self.logger.error(f"Error retrieving source metadata: {str(e)}")
                 raise
 
+            # Fall back to looking up tenant_id on the source if it wasn't
+            # included in the task payload (e.g. older queued tasks).
+            if not tenant_id:
+                try:
+                    source_details = (
+                        self.source_document_tracking.get_source_details(
+                            source_id=source_id
+                        )
+                    )
+                    if source_details:
+                        tenant_id = source_details.get('tenant_id')
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to resolve tenant_id from sources table "
+                        f"for source_id {source_id}: {str(e)}"
+                    )
+
             try:
-                rag_index_name = self._retrieve_rag_index_name(index_id=index_id)
+                rag_index_name, rag_schema_name = self._retrieve_rag_index_name(index_id=index_id)
                 if not rag_index_name:
                     raise ValueError(f"Failed to retrieve RAG index name for index_id: {index_id}")
             except Exception as e:
@@ -248,9 +271,11 @@ class DocumentPreprocessor(TaskProcessor):
                     document_id=document_id,
                     document_uri=document_uri,
                     table_name=rag_index_name,
+                    schema_name=rag_schema_name,
                     metadata=source_metadata,
                     chunk_kwargs=chunking_params,
-                    embedding_model_params=embedding_model_params
+                    embedding_model_params=embedding_model_params,
+                    tenant_id=tenant_id
                 )
                 self.logger.info(f"Task {task.id} processed successfully")
                 self.source_document_tracking.update_document_status(
