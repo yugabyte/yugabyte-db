@@ -36,4 +36,4 @@ type: docs
 
 </ul>
 
-Refer to the [GKE deployment](../../../kubernetes/) instructions in the Kubernetes section.
+To deploy Kubernetes clusters, see [Google Kubernetes Engine](../../../kubernetes/single-zone/gke/helm-chart/).
