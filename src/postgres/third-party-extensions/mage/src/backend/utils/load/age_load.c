@@ -517,79 +517,19 @@ static void yb_insert_edge_simple(Relation label_relation, graphid edge_id,
                                   graphid start_id, graphid end_id,
                                   agtype *edge_properties)
 {
-    EState *estate = CreateExecutorState();
-    ResultRelInfo *resultRelInfo = makeNode(ResultRelInfo);
-    TupleTableSlot *slot;
-
-    InitResultRelInfo(resultRelInfo, label_relation, 1, NULL,
-                      estate->es_instrument);
-    estate->es_result_relations = &resultRelInfo;
-
-    slot = MakeSingleTupleTableSlot(RelationGetDescr(label_relation),
-                                    &TTSOpsVirtual);
-    ExecClearTuple(slot);
-
-    slot->tts_values[0] = GRAPHID_GET_DATUM(edge_id);
-    slot->tts_isnull[0] = false;
-    slot->tts_values[1] = GRAPHID_GET_DATUM(start_id);
-    slot->tts_isnull[1] = false;
-    slot->tts_values[2] = GRAPHID_GET_DATUM(end_id);
-    slot->tts_isnull[2] = false;
-    slot->tts_values[3] = AGTYPE_P_GET_DATUM(edge_properties);
-    slot->tts_isnull[3] = false;
-
-    /* YB: TODO(#31338) caller does not yet supply meko_* tenant values. */
-    slot->tts_values[4] = (Datum) 0;
-    slot->tts_isnull[4] = true;
-    slot->tts_values[5] = (Datum) 0;
-    slot->tts_isnull[5] = true;
-    slot->tts_values[6] = (Datum) 0;
-    slot->tts_isnull[6] = true;
-    slot->tts_values[7] = (Datum) 0;
-    slot->tts_isnull[7] = true;
-
-    ExecStoreVirtualTuple(slot);
-    YBCHeapInsert(resultRelInfo, slot, NULL, estate, ONCONFLICT_NONE);
-
-    ExecDropSingleTupleTableSlot(slot);
-    FreeExecutorState(estate);
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("simple edge insert is not supported on "
+                    "YugabyteDB yet (#31338)")));
 }
 
 static void yb_insert_vertex_simple(Relation label_relation, graphid vertex_id,
                                     agtype *vertex_properties)
 {
-    EState *estate = CreateExecutorState();
-    ResultRelInfo *resultRelInfo = makeNode(ResultRelInfo);
-    TupleTableSlot *slot;
-
-    InitResultRelInfo(resultRelInfo, label_relation, 1, NULL,
-                      estate->es_instrument);
-    estate->es_result_relations = &resultRelInfo;
-
-    slot = MakeSingleTupleTableSlot(RelationGetDescr(label_relation),
-                                    &TTSOpsVirtual);
-    ExecClearTuple(slot);
-
-    slot->tts_values[0] = GRAPHID_GET_DATUM(vertex_id);
-    slot->tts_isnull[0] = false;
-    slot->tts_values[1] = AGTYPE_P_GET_DATUM(vertex_properties);
-    slot->tts_isnull[1] = false;
-
-    /* YB: TODO(#31338) caller does not yet supply meko_* tenant values. */
-    slot->tts_values[2] = (Datum) 0;
-    slot->tts_isnull[2] = true;
-    slot->tts_values[3] = (Datum) 0;
-    slot->tts_isnull[3] = true;
-    slot->tts_values[4] = (Datum) 0;
-    slot->tts_isnull[4] = true;
-    slot->tts_values[5] = (Datum) 0;
-    slot->tts_isnull[5] = true;
-
-    ExecStoreVirtualTuple(slot);
-    YBCHeapInsert(resultRelInfo, slot, NULL, estate, ONCONFLICT_NONE);
-
-    ExecDropSingleTupleTableSlot(slot);
-    FreeExecutorState(estate);
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("simple vertex insert is not supported on "
+                    "YugabyteDB yet (#31338)")));
 }
 
 /*

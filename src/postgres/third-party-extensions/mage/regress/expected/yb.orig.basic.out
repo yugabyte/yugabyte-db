@@ -41,6 +41,22 @@ SELECT * FROM cypher('basic', $$ MATCH (n:person) RETURN count(n) $$) AS (cnt ag
  2
 (1 row)
 
+-- YB: create_complete_graph and age_create_barbell_graph reach
+-- yb_insert_*_simple, which lacks tenant column support yet (#31338).
+-- Confirm they raise feature_not_supported rather than violating the
+-- meko_* NOT NULL constraints.
+SELECT create_complete_graph('basic', 3, 'gen_edge', 'gen_vertex');
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+NOTICE:  VLabel "gen_vertex" has been created
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+NOTICE:  ELabel "gen_edge" has been created
+ERROR:  simple vertex insert is not supported on YugabyteDB yet (#31338)
+SELECT age_create_barbell_graph('basic', 3, 0, 'bb_vertex', NULL, 'bb_edge', NULL);
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+NOTICE:  VLabel "bb_vertex" has been created
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+NOTICE:  ELabel "bb_edge" has been created
+ERROR:  simple vertex insert is not supported on YugabyteDB yet (#31338)
 RESET search_path;
 -- DROP EXTENSION must trigger ag_ProcessUtility_hook -> drop_age_extension,
 -- which cleans up the per-graph schema. The two count(*) queries below catch
