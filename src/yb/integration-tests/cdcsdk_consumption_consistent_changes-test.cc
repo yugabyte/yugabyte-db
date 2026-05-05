@@ -3932,10 +3932,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestIntentGC) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_stream_active_check) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 10;
   ASSERT_OK(SetUpWithParams(1, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(
@@ -3944,7 +3943,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestIntentGC) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 2);
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   auto conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   int num_batches = 50;
@@ -3957,29 +3956,15 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestIntentGC) {
     ASSERT_OK(conn1.Execute("COMMIT"));
   }
 
-  // Sleep for UpdatePeersAndMetrics to move retention barriers that will lead to garbage collection
-  // of intents.
+  // Wait for UpdatePeersAndMetrics to release retention barriers that will lead to garbage
+  // collection of intents.
   SleepFor(MonoDelta::FromSeconds(30 * kTimeMultiplier));
-  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
-  bool received_gc_error = false;
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto vwal1_result = GetConsistentChangesFromCDC(stream_id);
 
-        if (!vwal1_result.ok()) {
-          if (vwal1_result.status().IsInternalError() &&
-              vwal1_result.status().message().ToBuffer().find(
-                  "CDCSDK Trying to fetch already GCed intents") != std::string::npos) {
-            received_gc_error = true;
-            return true;
-          }
-        }
-
-        return false;
-      },
-      MonoDelta::FromSeconds(60), "Did not see Intents GC error"));
-
-  ASSERT_TRUE(received_gc_error);
+  // Verify that retention barriers have been lifted on all tablets of the table, indicating that
+  // intents are eligible for GC.
+  for (const auto& tablet : tablets) {
+    VerifyTransactionParticipant(tablet.tablet_id(), OpId::Max());
+  }
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocationWithIndexes) {

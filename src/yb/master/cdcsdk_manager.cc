@@ -63,19 +63,17 @@ void CdcsdkManager::RunBgTasks(const LeaderEpoch& epoch) {
   }
 
   if (FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
-    // Find if there are any non eligible tables (indexes, mat views) present in cdcsdk
-    // stream that are not associated with a replication slot.
-    TableStreamIdsMap non_user_tables_to_streams_map;
+    // Find if there are any non eligible tables (indexes, mat views) present in cdcsdk streams.
+    TableStreamIdsMap non_eligible_tables_to_streams_map;
     // In case of master leader restart or leadership changes, we would have scanned all
-    // streams (without replication slot) in ACTIVE/DELETING METADATA state for non eligible
-    // tables and marked such tables for removal in
-    // namespace_to_cdcsdk_non_eligible_table_map_.
+    // streams in ACTIVE/DELETING METADATA state for non eligible tables and marked such tables for
+    // removal in namespace_to_cdcsdk_non_eligible_table_map_.
     Status s =
-        catalog_manager_.FindCDCSDKStreamsForNonEligibleTables(&non_user_tables_to_streams_map);
+        catalog_manager_.FindCDCSDKStreamsForNonEligibleTables(&non_eligible_tables_to_streams_map);
 
-    if (s.ok() && !non_user_tables_to_streams_map.empty()) {
+    if (s.ok() && !non_eligible_tables_to_streams_map.empty()) {
       s = catalog_manager_.ProcessTablesToBeRemovedFromCDCSDKStreams(
-          non_user_tables_to_streams_map, /* non_eligible_table_cleanup */ true, epoch);
+          non_eligible_tables_to_streams_map, /* non_eligible_table_cleanup */ true, epoch);
     }
     if (!s.ok()) {
       YB_LOG_EVERY_N(WARNING, 10) << "Encountered failure while trying to remove non eligible "
@@ -98,6 +96,22 @@ void CdcsdkManager::RunBgTasks(const LeaderEpoch& epoch) {
     if (!s.ok()) {
       YB_LOG_EVERY_N(WARNING, 10) << "Encountered failure while trying to remove unqualified "
                                      "tables from stream metadata & updating cdc_state table: "
+                                  << s.ToString();
+    }
+  }
+
+  if (FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
+    TableStreamIdsMap ineligible_tables_to_streams_map;
+    Status s =
+        catalog_manager_.FindCDCSDKStreamsForIneligibleTables(&ineligible_tables_to_streams_map);
+    if (s.ok() && !ineligible_tables_to_streams_map.empty()) {
+      s = catalog_manager_.ProcessTablesToBeDeletedFromCDCStateTable(
+          ineligible_tables_to_streams_map, epoch);
+    }
+
+    if (!s.ok()) {
+      YB_LOG_EVERY_N(WARNING, 10) << "Encountered failure while trying to delete entries for "
+                                     "ineligible tables from cdc_state table: "
                                   << s.ToString();
     }
   }

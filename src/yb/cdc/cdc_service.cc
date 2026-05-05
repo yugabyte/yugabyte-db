@@ -2724,8 +2724,7 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
   if (!status.ok()) {
     // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
     // such entries to the expired_tables_map.
-    if (expired_tables_map && checkpoint != OpId::Max() &&
-        !IsReplicationSlotStream(stream_metadata)) {
+    if (expired_tables_map && checkpoint != OpId::Max()) {
       AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
     }
 
@@ -2742,8 +2741,7 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
   if (!status.ok()) {
     // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
     // such entries to the expired_tables_map.
-    if (expired_tables_map && checkpoint != OpId::Max() &&
-        !IsReplicationSlotStream(stream_metadata)) {
+    if (expired_tables_map && checkpoint != OpId::Max()) {
       AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
     }
 
@@ -3597,11 +3595,18 @@ Status CDCServiceImpl::CleanupExpiredTables(const TableIdToStreamIdMap& expired_
         return Status::OK();
       }
 
+      auto stream_metadata = VERIFY_RESULT(GetStream(stream_id));
       auto colocated = tablet_peer->tablet_metadata()->colocated();
+      auto sys_catalog = tablet_peer->tablet_metadata()->IsSysCatalog();
 
-      auto table_ids = colocated
-                           ? tablet_peer->tablet_metadata()->GetAllColocatedTables()
-                           : std::vector<TableId>{table_id};
+      std::vector<TableId> table_ids;
+      if (sys_catalog) {
+        table_ids = VERIFY_RESULT(GetStreamableCatalogTables(stream_metadata->GetNamespaceId()));
+      } else if (colocated) {
+        table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
+      } else {
+        table_ids = std::vector<TableId>{table_id};
+      }
 
       if (colocated) {
         for (auto it = table_ids.begin(); it != table_ids.end();) {

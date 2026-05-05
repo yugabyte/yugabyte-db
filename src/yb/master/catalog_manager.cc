@@ -12164,7 +12164,8 @@ Status CatalogManager::SendCreateTabletRequests(
              !stream->GetCdcsdkYsqlReplicationSlotName().empty() &&
              IsTableEligibleForCDCSDKStream(
                  tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
-                 stream->IsTablesWithoutPrimaryKeyAllowed()))) {
+                 stream->IsTablesWithoutPrimaryKeyAllowed(),
+                 stream->DetectPublicationChangesImplicitly()))) {
           can_set_cdc_sdk_retention_barriers = true;
           break;
         }

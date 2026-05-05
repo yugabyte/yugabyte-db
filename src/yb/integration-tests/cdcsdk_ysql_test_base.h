@@ -924,6 +924,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestRemovalOfColocatedTableFromCDCStream(bool start_removal_from_first_table);
 
+  void TestCleanupOfTableNotOfInterest(bool use_logical_replication);
+
+  void TestCleanupOfExpiredTable(bool use_logical_replication);
+
   void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
 
   Status CreateTables(
