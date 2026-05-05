@@ -111,17 +111,14 @@ typedef struct cypher_merge_custom_scan_state
 
 /*
  * YB: Bundle of meko_* tenant column values extracted from a vertex/edge
- * properties map by yb_extract_meko_columns_from_properties(). Each column has
- * a Datum value and an accompanying isnull flag. Keys missing from the
- * source map are reported as isnull = true with the Datum left at 0.
+ * properties map by yb_extract_meko_columns_from_properties(). The first
+ * three columns are NOT NULL on the underlying tables, so only
+ * meko_conversation_id carries an explicit isnull flag.
  */
 typedef struct YbMekoDp
 {
-    bool  datapack_id_isnull;
     Datum datapack_id;
-    bool  user_id_isnull;
     Datum user_id;
-    bool  agent_id_isnull;
     Datum agent_id;
     bool  conversation_id_isnull;
     Datum conversation_id;

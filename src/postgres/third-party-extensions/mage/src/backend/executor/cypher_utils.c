@@ -98,11 +98,11 @@ void destroy_entity_result_rel_info(ResultRelInfo *result_rel_info)
 void yb_populate_vertex_meko_columns(TupleTableSlot *slot, YbMekoDp meko)
 {
     slot->tts_values[vertex_tuple_meko_datapack_id]     = meko.datapack_id;
-    slot->tts_isnull[vertex_tuple_meko_datapack_id]     = meko.datapack_id_isnull;
+    slot->tts_isnull[vertex_tuple_meko_datapack_id]     = false;
     slot->tts_values[vertex_tuple_meko_user_id]         = meko.user_id;
-    slot->tts_isnull[vertex_tuple_meko_user_id]         = meko.user_id_isnull;
+    slot->tts_isnull[vertex_tuple_meko_user_id]         = false;
     slot->tts_values[vertex_tuple_meko_agent_id]        = meko.agent_id;
-    slot->tts_isnull[vertex_tuple_meko_agent_id]        = meko.agent_id_isnull;
+    slot->tts_isnull[vertex_tuple_meko_agent_id]        = false;
     slot->tts_values[vertex_tuple_meko_conversation_id] = meko.conversation_id;
     slot->tts_isnull[vertex_tuple_meko_conversation_id] = meko.conversation_id_isnull;
 }
@@ -111,11 +111,11 @@ void yb_populate_vertex_meko_columns(TupleTableSlot *slot, YbMekoDp meko)
 void yb_populate_edge_meko_columns(TupleTableSlot *slot, YbMekoDp meko)
 {
     slot->tts_values[edge_tuple_meko_datapack_id]     = meko.datapack_id;
-    slot->tts_isnull[edge_tuple_meko_datapack_id]     = meko.datapack_id_isnull;
+    slot->tts_isnull[edge_tuple_meko_datapack_id]     = false;
     slot->tts_values[edge_tuple_meko_user_id]         = meko.user_id;
-    slot->tts_isnull[edge_tuple_meko_user_id]         = meko.user_id_isnull;
+    slot->tts_isnull[edge_tuple_meko_user_id]         = false;
     slot->tts_values[edge_tuple_meko_agent_id]        = meko.agent_id;
-    slot->tts_isnull[edge_tuple_meko_agent_id]        = meko.agent_id_isnull;
+    slot->tts_isnull[edge_tuple_meko_agent_id]        = false;
     slot->tts_values[edge_tuple_meko_conversation_id] = meko.conversation_id;
     slot->tts_isnull[edge_tuple_meko_conversation_id] = meko.conversation_id_isnull;
 }
@@ -356,73 +356,65 @@ static bool yb_lookup_meko_string(agtype *props, const char *key,
  * work without parser-level changes. Callers that mutate the map (for
  * example SET) are responsible for keeping the map and the columns in sync.
  *
- * If a key is missing from the properties map, the corresponding isnull is
- * set to true and the Datum is left at 0.
+ * meko_datapack_id, meko_user_id and meko_agent_id are NOT NULL on the
+ * underlying tables and so must be present in the properties map; this
+ * function raises ERRCODE_NOT_NULL_VIOLATION if any of them is missing or
+ * if the properties map itself is null/non-object. meko_conversation_id is
+ * nullable and reported via conversation_id_isnull.
  */
 YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
                                                  bool props_isnull)
 {
     YbMekoDp result;
     agtype *props_agtype;
+    char *str;
 
-    result.datapack_id = (Datum) 0;
-    result.datapack_id_isnull = true;
-    result.user_id = (Datum) 0;
-    result.user_id_isnull = true;
-    result.agent_id = (Datum) 0;
-    result.agent_id_isnull = true;
     result.conversation_id = (Datum) 0;
     result.conversation_id_isnull = true;
 
     if (props_isnull)
-    {
-        return result;
-    }
+        ereport(ERROR,
+                (errcode(ERRCODE_NOT_NULL_VIOLATION),
+                 errmsg("missing required tenant properties on vertex/edge")));
 
     props_agtype = DATUM_GET_AGTYPE_P(props_datum);
     if (!AGT_ROOT_IS_OBJECT(props_agtype))
-    {
-        return result;
-    }
+        ereport(ERROR,
+                (errcode(ERRCODE_NOT_NULL_VIOLATION),
+                 errmsg("missing required tenant properties on vertex/edge")));
 
     /*
      * Look up each meko key from the root container. yb_lookup_meko_string()
-     * does the find + pnstrdup; the caller is responsible for parsing and
-     * pfreeing the returned cstring.
+     * does the find + pnstrdup; we are responsible for pfreeing the returned
+     * cstring after passing it through the appropriate input function.
      */
+    if (!yb_lookup_meko_string(props_agtype, "meko_datapack_id", &str))
+        ereport(ERROR,
+                (errcode(ERRCODE_NOT_NULL_VIOLATION),
+                 errmsg("missing required tenant property \"meko_datapack_id\"")));
+    result.datapack_id = DirectFunctionCall1(uuid_in, CStringGetDatum(str));
+    pfree(str);
+
+    if (!yb_lookup_meko_string(props_agtype, "meko_user_id", &str))
+        ereport(ERROR,
+                (errcode(ERRCODE_NOT_NULL_VIOLATION),
+                 errmsg("missing required tenant property \"meko_user_id\"")));
+    result.user_id = DirectFunctionCall1(uuid_in, CStringGetDatum(str));
+    pfree(str);
+
+    if (!yb_lookup_meko_string(props_agtype, "meko_agent_id", &str))
+        ereport(ERROR,
+                (errcode(ERRCODE_NOT_NULL_VIOLATION),
+                 errmsg("missing required tenant property \"meko_agent_id\"")));
+    result.agent_id = CStringGetTextDatum(str);
+    pfree(str);
+
+    if (yb_lookup_meko_string(props_agtype, "meko_conversation_id", &str))
     {
-        char *str;
-
-        if (yb_lookup_meko_string(props_agtype, "meko_datapack_id", &str))
-        {
-            result.datapack_id =
-                DirectFunctionCall1(uuid_in, CStringGetDatum(str));
-            result.datapack_id_isnull = false;
-            pfree(str);
-        }
-
-        if (yb_lookup_meko_string(props_agtype, "meko_user_id", &str))
-        {
-            result.user_id =
-                DirectFunctionCall1(uuid_in, CStringGetDatum(str));
-            result.user_id_isnull = false;
-            pfree(str);
-        }
-
-        if (yb_lookup_meko_string(props_agtype, "meko_agent_id", &str))
-        {
-            result.agent_id = CStringGetTextDatum(str);
-            result.agent_id_isnull = false;
-            pfree(str);
-        }
-
-        if (yb_lookup_meko_string(props_agtype, "meko_conversation_id", &str))
-        {
-            result.conversation_id =
-                DirectFunctionCall1(uuid_in, CStringGetDatum(str));
-            result.conversation_id_isnull = false;
-            pfree(str);
-        }
+        result.conversation_id =
+            DirectFunctionCall1(uuid_in, CStringGetDatum(str));
+        result.conversation_id_isnull = false;
+        pfree(str);
     }
 
     return result;
