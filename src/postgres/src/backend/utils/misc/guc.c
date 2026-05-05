@@ -3465,6 +3465,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_fkey_batched_docdb_lookup_when_types_mismatch", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable batched DocDB lookup for foreign key constraint check "
+						 "when types mismatch."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_fkey_batched_docdb_lookup_when_types_mismatch,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_nop_alter_role_optimization", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Enable nop alter role statement optimization to avoid catalog version "
 						 "increment if the alter role statement does not involve any change."),
