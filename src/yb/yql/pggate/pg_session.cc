@@ -64,7 +64,10 @@ DEFINE_test_flag(bool, ysql_log_perdb_allocated_new_objectid, false,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
                        "The function yb_increment_db_catalog_version_with_inval_messages or "
                        "yb_increment_all_db_catalog_versions_with_inval_messages will delete "
-                       "invalidation messages older than this time");
+                       "invalidation messages older than this time. The effective expiration "
+                       "is automatically raised to at least 10 * --heartbeat_interval_ms so "
+                       "that messages survive long enough for every TServer to receive them "
+                       "via heartbeats.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
                        "If a DDL statement generates more than this number of invalidation "
