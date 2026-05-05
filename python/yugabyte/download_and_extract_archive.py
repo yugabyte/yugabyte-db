@@ -132,18 +132,22 @@ def download_url(url: str, dest_path: str, other_curl_flags: List[str] = []) -> 
     if not os.path.isdir(dest_dir):
         raise IOError("Destination directory %s does not exist" % dest_dir)
     # -f: exit 22 on HTTP errors instead of saving the error page as the artifact.
-    # --retry N: N retries after the initial attempt, so pass MAX_DOWNLOAD_ATTEMPTS - 1.
-    # --retry-connrefused: also retry on ECONNREFUSED (not retried by default).
-    # --retry-all-errors: also retry on non-default errors like transient 403s from
-    #     GitHub's signed release-asset redirects (default set is timeouts + 408/429/5xx).
-    run_cmd([
-        'curl', '-LsSf',
-        '--retry', str(MAX_DOWNLOAD_ATTEMPTS - 1),
-        '--retry-delay', str(RETRY_DELAY_SEC),
-        '--retry-connrefused',
-        '--retry-all-errors',
-        url, '-o', dest_path,
-    ] + other_curl_flags)
+    # Retry at the Python level so any curl failure is retried, including transient
+    # non-5xx HTTP errors (e.g. 403s on GitHub's signed release-asset redirects)
+    # that curl's --retry skips. --retry-all-errors would cover this but requires
+    # curl >= 7.71.0, which is unavailable on AlmaLinux 8 / RHEL 8 and similar.
+    cmd = ['curl', '-LsSf', url, '-o', dest_path] + other_curl_flags
+    for attempt in range(1, MAX_DOWNLOAD_ATTEMPTS + 1):
+        try:
+            run_cmd(cmd)
+            break
+        except subprocess.CalledProcessError:
+            if attempt == MAX_DOWNLOAD_ATTEMPTS:
+                raise
+            logging.warning(
+                "curl failed downloading %s (attempt %d/%d), retrying in %ds",
+                url, attempt, MAX_DOWNLOAD_ATTEMPTS, RETRY_DELAY_SEC)
+            time.sleep(RETRY_DELAY_SEC)
     if not os.path.exists(dest_path):
         raise IOError("Failed to download %s: file %s does not exist" % (url, dest_path))
     elapsed_sec = time.time() - start_time_sec
