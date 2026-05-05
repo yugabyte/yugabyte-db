@@ -178,7 +178,9 @@ export const QueryInfoSidePanel = ({
       | YcqlLiveQueryPrimativeFields
       | YsqlSlowQueryPrimativeFields
   ): string => {
-    const queryDataEntry = queryData?.[ysqlQueryKey];
+    const queryDataEntry = queryData
+      ? (queryData as unknown as Record<string, unknown>)[ysqlQueryKey]
+      : undefined;
 
     // The following formatters expect only string or finite number types.
     // This guard is used to catch undefined values or unhandled types.
@@ -192,8 +194,10 @@ export const QueryInfoSidePanel = ({
       return NO_DATA_PLACEHOLDER_TEXT;
     }
 
+    const primitive = queryDataEntry as string | number;
+
     if ((DURATION_FIELDS as readonly string[]).includes(ysqlQueryKey)) {
-      const duration = parseFloatIfDefined(queryDataEntry);
+      const duration = parseFloatIfDefined(primitive);
       return duration === undefined || isNaN(duration)
         ? NO_DATA_PLACEHOLDER_TEXT
         : `${duration?.toFixed(DURATION_FIELD_DECIMALS)} ms`;
@@ -201,13 +205,13 @@ export const QueryInfoSidePanel = ({
 
     if ((TIMESTAMP_FIELDS as readonly string[]).includes(ysqlQueryKey)) {
       return formatDatetime(
-        queryDataEntry,
+        primitive,
         YBTimeFormats.YB_DEFAULT_TIMESTAMP,
         YB_LIVE_QUERY_TIMESTAMP_FORMAT
       );
     }
 
-    return queryDataEntry.toString();
+    return primitive.toString();
   };
 
   /** `yb_latency_histogram` is not returned from queries on older YBDB versions */
@@ -244,7 +248,7 @@ export const QueryInfoSidePanel = ({
       </div>
       {queryData && (
         <div className={classes.content}>
-          <CodeBlock code={queryData.query} />
+          {queryData.query && <CodeBlock code={queryData.query} />}
           {islatencyPercentilesSupported ? (
             <TabContext value={currentTab}>
               <TabList

@@ -24,6 +24,12 @@ export interface YsqlSlowQuery {
   yb_latency_histogram: HistogramBucket[];
 }
 
+/**
+ * YSQL row from the live_queries API (merged from tserver /rpcz via `LiveQueryExecutor` in YBA).
+ *
+ * Rpcz JSON may omit the query key when the query string is empty; YBA normalizes that to an
+ * empty string so clients always see `query` as a string.
+ */
 export interface YsqlLiveQuery {
   appName: string;
   clientHost: string;

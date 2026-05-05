@@ -266,8 +266,12 @@ public class QueryHelper {
             // TODO: PLAT-3986 Sort and limit the merged data
             JsonNode ysqlResponse = response.get("result");
             for (JsonNode queryObject : ysqlResponse) {
-              String queryID = queryObject.get("queryid").asText();
-              String queryStatement = queryObject.get("query").asText();
+              ObjectNode queryRow = (ObjectNode) queryObject;
+              JsonNode queryFieldNode = queryRow.get("query");
+              String queryStatement =
+                  queryFieldNode == null || queryFieldNode.isNull() ? "" : queryFieldNode.asText();
+              queryRow.put("query", queryStatement);
+              String queryID = queryRow.get("queryid").asText();
               if (!isExcluded(queryStatement, config, supportsLatencyHistogram)) {
                 if (queryMap.containsKey(queryID)) {
                   // Calculate new query stats
