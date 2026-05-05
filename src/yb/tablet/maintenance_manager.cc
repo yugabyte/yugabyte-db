@@ -95,6 +95,7 @@ void MaintenanceOpStats::Clear() {
   ram_anchored_ = 0;
   logs_retained_bytes_ = 0;
   perf_improvement_ = 0;
+  cdcsdk_reset_stale_retention_barrier_ = false;
 }
 
 MaintenanceOp::MaintenanceOp(std::string name, IOUsage io_usage)
@@ -284,6 +285,9 @@ MaintenanceOp* MaintenanceManager::FindBestOp() {
 
   double best_perf_improvement = 0;
   MaintenanceOp* best_perf_improvement_op = nullptr;
+
+  MaintenanceOp* cdcsdk_reset_stale_retention_barrier_op = nullptr;
+
   for (OpMapTy::value_type &val : ops_) {
     MaintenanceOp* op(val.first);
     MaintenanceOpStats& stats(val.second);
@@ -318,6 +322,10 @@ MaintenanceOp* MaintenanceManager::FindBestOp() {
       best_perf_improvement_op = op;
       best_perf_improvement = stats.perf_improvement();
     }
+
+    if (stats.cdcsdk_reset_stale_retention_barrier()) {
+      cdcsdk_reset_stale_retention_barrier_op = op;
+    }
   }
 
   // Look at ops that we can run quickly that free up log retention.
@@ -351,6 +359,13 @@ MaintenanceOp* MaintenanceManager::FindBestOp() {
     return most_mem_anchored_op;
   }
 
+  if (cdcsdk_reset_stale_retention_barrier_op) {
+    VLOG_AND_TRACE("maintenance", 1)
+        << "Performing " << cdcsdk_reset_stale_retention_barrier_op->name() << ", "
+        << "because its retention barrier has gone stale";
+    return cdcsdk_reset_stale_retention_barrier_op;
+  }
+
   if (most_logs_retained_bytes_op) {
     VLOG_AND_TRACE("maintenance", 1)
             << "Performing " << most_logs_retained_bytes_op->name() << ", "
@@ -367,6 +382,7 @@ MaintenanceOp* MaintenanceManager::FindBestOp() {
       return best_perf_improvement_op;
     }
   }
+
   return nullptr;
 }
 
@@ -408,11 +424,13 @@ void MaintenanceManager::GetMaintenanceManagerStatusDump(MaintenanceManagerStatu
       op_pb->set_ram_anchored_bytes(stat.ram_anchored());
       op_pb->set_logs_retained_bytes(stat.logs_retained_bytes());
       op_pb->set_perf_improvement(stat.perf_improvement());
+      op_pb->set_cdcsdk_reset_stale_retention_barrier(stat.cdcsdk_reset_stale_retention_barrier());
     } else {
       op_pb->set_runnable(false);
       op_pb->set_ram_anchored_bytes(0);
       op_pb->set_logs_retained_bytes(0);
       op_pb->set_perf_improvement(0);
+      op_pb->set_cdcsdk_reset_stale_retention_barrier(false);
     }
 
     if (best_op == op) {

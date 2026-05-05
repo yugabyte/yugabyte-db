@@ -70,5 +70,31 @@ class LogGCOp : public MaintenanceOp {
   mutable Semaphore sem_;
 };
 
+// Maintenance task that resets CDC retention barriers when they go stale.
+//
+// Only one ResetStaleRetentionBarriers op can run at a time.
+class ResetStaleRetentionBarriersOp : public MaintenanceOp {
+ public:
+  explicit ResetStaleRetentionBarriersOp(TabletPeer* tablet_peer, const TabletPtr& tablet);
+
+  virtual void UpdateStats(MaintenanceOpStats* stats) override;
+
+  virtual bool Prepare() override;
+
+  virtual void Perform() override;
+
+  virtual scoped_refptr<EventStats> DurationHistogram() const override;
+
+  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override;
+
+ private:
+  TabletPtr tablet_;
+  TabletPeer* const tablet_peer_;
+  MonoTime op_last_successful_run_time_;
+  scoped_refptr<EventStats> cdcsdk_reset_retention_barriers_op_duration_;
+  scoped_refptr<AtomicGauge<uint32_t> > cdcsdk_reset_retention_barriers_ops_running_;
+  mutable Semaphore sem_;
+};
+
 } // namespace tablet
 } // namespace yb

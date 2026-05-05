@@ -412,10 +412,6 @@ class CDCServiceImpl : public CDCServiceIf {
   void TabletLeaderGetCheckpoint(
       const GetCheckpointRequestPB* req, GetCheckpointResponsePB* resp, rpc::RpcContext* context);
 
-  void UpdateTabletPeersWithMaxCheckpoint(
-      const std::unordered_set<TabletId>& tablet_ids_with_max_checkpoint,
-      std::unordered_set<TabletId>* failed_tablet_ids);
-
   void UpdateTabletPeersWithMinReplicatedIndex(TabletIdCDCCheckpointMap* tablet_min_checkpoint_map);
 
   Status UpdateTabletPeerWithCheckpoint(
@@ -482,7 +478,6 @@ class CDCServiceImpl : public CDCServiceIf {
   // This method deletes entries from the cdc_state table that are contained in the set.
   Status DeleteCDCStateTableMetadata(
       const TabletIdStreamIdSet& cdc_state_entries_to_delete,
-      const std::unordered_set<TabletId>& failed_tablet_ids,
       const StreamIdSet& slot_entries_to_be_deleted);
 
   // This method sends an rpc to the master to remove the expired / not of interest tables from the
@@ -506,9 +501,7 @@ class CDCServiceImpl : public CDCServiceIf {
       CreateCDCStreamResponsePB* resp,
       CoarseTimePoint deadline);
 
-  void FilterOutTabletsToBeDeletedByAllStreams(
-      TabletIdCDCCheckpointMap* tablet_checkpoint_map,
-      std::unordered_set<TabletId>* tablet_ids_with_max_checkpoint);
+  void RemoveTabletEntriesToBeDeletedByAllStreams(TabletIdCDCCheckpointMap* tablet_checkpoint_map);
 
   Result<bool> CheckBeforeImageActive(
       const TabletId& tablet_id, const StreamMetadata& stream_metadata,
@@ -635,6 +628,9 @@ class CDCServiceImpl : public CDCServiceIf {
   // True when this service is stopped. Used to inform
   // get_minimum_checkpoints_and_update_peers_thread_ that it should exit.
   bool cdc_service_stopped_ GUARDED_BY(mutex_){false};
+
+  std::shared_ptr<std::unordered_set<TabletStreamInfo, TabletStreamInfo::Hash>>
+      last_seen_tablet_stream_entries_;
 
   // True when the server is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
