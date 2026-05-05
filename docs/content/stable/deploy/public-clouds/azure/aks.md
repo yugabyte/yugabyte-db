@@ -24,12 +24,6 @@ type: docs
       Azure Kubernetes Service (AKS)
     </a>
   </li>
-  <li>
-    <a href="../terraform/" class="nav-link">
-      <i class="icon-shell"></i>
-      Terraform
-    </a>
-  </li>
 </ul>
 
 To deploy Kubernetes clusters, see [Azure Kubernetes Service](../../../kubernetes/single-zone/aks/helm-chart/).

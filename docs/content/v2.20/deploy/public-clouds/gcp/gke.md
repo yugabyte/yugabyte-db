@@ -27,13 +27,6 @@ type: docs
     </a>
   </li>
 
-  <li >
-    <a href="../terraform/" class="nav-link">
-      <i class="icon-shell"></i>
-      Terraform
-    </a>
-  </li>
-
 </ul>
 
 To deploy Kubernetes clusters, see [Google Kubernetes Engine](../../../kubernetes/single-zone/gke/helm-chart/).
