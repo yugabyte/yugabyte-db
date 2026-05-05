@@ -16,6 +16,8 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <tuple>
@@ -87,6 +89,13 @@ class Cgroup {
   // All values are cumulative since cgroup creation.
   Result<CgroupCpuStats> ReadCpuStats() const;
 
+  void VisitChildren(const std::function<void(Cgroup&)>& visitor);
+
+  void VisitTree(
+      const std::function<void(Cgroup&, size_t)>& visitor,
+      size_t current_depth = 0,
+      size_t max_depth = std::numeric_limits<size_t>::max());
+
   // These functions have an inherent race condition: the threads they read may change
   // cgroups or exit immediately after reading, and the thread id may even be reused by
   // another thread before returning. They should only be used for testing and for
@@ -94,7 +103,8 @@ class Cgroup {
   Result<std::vector<int64_t>> ReadThreadIds();
   Result<std::vector<std::string>> ReadThreadNames();
 
-  // The last part of the cgroup name, e.g. name() of /sys/fs/cgroup/a/b/c is "c".
+  // The part of the cgroup name under the root cgroup, e.g. name() of /sys/fs/cgroup/a/b/c with
+  // root cgroup of /sys/fs/cgroup/a is "b/c".
   std::string_view name() const { return name_; }
 
   // The full cgroup name, matching entries in /proc/$PID/cgroup, e.g. name() of
@@ -107,6 +117,8 @@ class Cgroup {
   Cgroup* parent() const { return parent_; }
 
   Cgroup* child(std::string_view name) EXCLUDES(mutex_);
+
+  bool is_leaf() const EXCLUDES(mutex_);
 
   double cpu_max_fraction() const EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);

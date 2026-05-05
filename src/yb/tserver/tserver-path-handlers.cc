@@ -72,12 +72,14 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/url-coding.h"
 
 using yb::consensus::GetConsensusRole;
@@ -497,6 +499,11 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       std::bind(&TabletServerPathHandlers::HandleObjectLocksPage, this, _1, _2),
       true /* styled */,
       false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/cgroups", "",
+      std::bind(&TabletServerPathHandlers::HandleCgroupsPage, this, _1, _2),
+      true /* styled */,
+      false /* is_on_nav_bar */);
   RegisterTabletPathHandler(
       server, tserver_, "/tablet-consensus-status", &HandleConsensusStatusPage);
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
@@ -651,6 +658,38 @@ void TabletServerPathHandlers::HandleObjectLocksPage(
     return;
   }
   ts_local_lock_manager->DumpLocksToHtml(*output);
+}
+
+void TabletServerPathHandlers::HandleCgroupsPage(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  *output << "<h2>Cgroups</h2>\n";
+#ifdef __linux__
+  auto cgroup_manager = tserver_->cgroup_manager();
+  if (!cgroup_manager) {
+    *output << "Cgroup management is not enabled.\n";
+    return;
+  }
+
+  auto it = req.parsed_args.find("sample_interval_ms");
+  // 1000ms is the maximum value for cfs_period_us, so we are guaranteed to sample at least one
+  // full period for all cgroups.
+  uint64_t sample_interval_ms = 1'000;
+  if (it != req.parsed_args.end()) {
+    auto result = CheckedStoull(it->second);
+    if (!result.ok()) {
+      *output << "Bad value for sample_interval_ms: ";
+      EscapeForHtml(AsString(result.status()), output);
+      *output << ".\n";
+      return;
+    }
+    sample_interval_ms = *result;
+  }
+
+  cgroup_manager->DumpCgroupsToHtml(*output, sample_interval_ms);
+#else
+  *output << "Only available on Linux builds\n";
+#endif
 }
 
 namespace {

@@ -16,6 +16,8 @@
 
 #include <condition_variable>
 #include <mutex>
+#include <optional>
+#include <ostream>
 #include <unordered_map>
 #include <vector>
 
@@ -80,6 +82,10 @@ class TServerCgroupManager {
   Status RegisterMetrics(MetricRegistry* registry);
 
   void Shutdown();
+
+  // Dump cgroups to HTML for the /cgroups endpoint. sample_interval_ms is the interval at which we
+  // sample statistics (we sample twice in order to determine if a cgroup is currently throttled).
+  void DumpCgroupsToHtml(std::ostream& out, uint64_t sample_interval_ms) const;
 
  private:
   struct CgroupMetrics {

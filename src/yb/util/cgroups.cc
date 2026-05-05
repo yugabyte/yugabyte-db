@@ -12,6 +12,7 @@
 #include "yb/util/cgroups.h"
 
 #include <cmath>
+#include <ranges>
 
 #include "yb/gutil/sysinfo.h"
 
@@ -429,6 +430,31 @@ Status Cgroup::MoveProcessToGroup(int64_t pid) {
   return WriteConfig("cgroup.procs", AsString(pid));
 }
 
+void Cgroup::VisitChildren(const std::function<void(Cgroup&)>& visitor) {
+  std::vector<Cgroup*> children;
+  {
+    std::lock_guard lock(mutex_);
+    children.reserve(children_.size());
+    for (auto& child : children_ | std::views::values) {
+      children.push_back(&child);
+    }
+  }
+  for (auto& child : children) {
+    visitor(*child);
+  }
+}
+
+void Cgroup::VisitTree(
+    const std::function<void(Cgroup&, size_t)>& visitor, size_t current_depth, size_t max_depth) {
+  visitor(*this, current_depth);
+  if (current_depth == max_depth) {
+    return;
+  }
+  VisitChildren([&](Cgroup& child) {
+    child.VisitTree(visitor, current_depth + 1, max_depth);
+  });
+}
+
 Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
   auto path = CgroupConfigPath(
       name_, cgroup_manager.version() == CgroupVersion::kVersion1 ? "tasks" : "cgroup.threads");
@@ -535,6 +561,11 @@ Cgroup* Cgroup::child(std::string_view name) {
     return nullptr;
   }
   return &itr->second;
+}
+
+bool Cgroup::is_leaf() const {
+  std::lock_guard lock(mutex_);
+  return children_.empty();
 }
 
 std::string Cgroup::ToString() const {
