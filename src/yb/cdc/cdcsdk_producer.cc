@@ -994,6 +994,8 @@ Status PopulateCDCSDKIntentRecord(
         auto tablet_info_result = tablet->metadata()->GetTableInfo(colocation_id);
         if (!tablet_info_result.ok()) {
           if (!tablet_info_result.status().IsNotFound()) {
+            *write_id = intent.write_id;
+            *reverse_index_key = intent.reverse_index_key;
             return tablet_info_result.status();
           }
           LOG(WARNING) << "Did not find table info for colocated table with colocation id: "
