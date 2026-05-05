@@ -4,17 +4,24 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -23,6 +30,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -440,5 +448,153 @@ public class KubernetesUtilTest extends FakeDBApplication {
     newCluster.userIntent.deviceInfo.volumeSize = 50;
     // Decreasing volume size is a device change (not only volume size increase)
     assertTrue(KubernetesUtil.needsFullMove(currCluster, newCluster));
+  }
+
+  /*--- Tests for KubernetesUtil.generateVolumeOverridesForUserIntent ---*/
+
+  /**
+   * Helper: creates a kubernetes AZ and sets {@code STORAGE_CLASS} on its provider config so that
+   * {@code CloudInfoInterface.fetchEnvVars(zone)} surfaces it - this is what the fallback path of
+   * {@code generateVolumeOverridesForUserIntent} reads from.
+   */
+  private AvailabilityZone createK8sAZWithStorageClass(
+      Region region, String code, String storageClass) {
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(region, code, code.toUpperCase(), "subnet-" + code);
+    if (storageClass != null) {
+      Map<String, String> azConfig = new HashMap<>();
+      azConfig.put("STORAGE_CLASS", storageClass);
+      CloudInfoInterface.setCloudProviderInfoFromConfig(az, azConfig);
+      az.save();
+    }
+    return az;
+  }
+
+  /**
+   * Helper: builds a UserIntentOverrides with a single tserver per-AZ deviceInfo entry for the
+   * given {@code azUuid}.
+   */
+  private UserIntentOverrides buildExistingTserverOverride(
+      UUID azUuid, int volumeSize, String storageClass) {
+    UserIntentOverrides overrides = new UserIntentOverrides();
+    Map<UUID, AZOverrides> azMap = new HashMap<>();
+    AZOverrides azOv = new AZOverrides();
+    Map<ServerType, PerProcessDetails> perProcess = new HashMap<>();
+    PerProcessDetails ppd = new PerProcessDetails();
+    DeviceInfo di = new DeviceInfo();
+    di.volumeSize = volumeSize;
+    di.numVolumes = 1;
+    di.storageClass = storageClass;
+    ppd.setDeviceInfo(di);
+    perProcess.put(ServerType.TSERVER, ppd);
+    azOv.setPerProcess(perProcess);
+    azMap.put(azUuid, azOv);
+    overrides.setAzOverrides(azMap);
+    return overrides;
+  }
+
+  @Test
+  public void testGenerateVolumeOverridesPopulatedAZOverrideIsPreserved() {
+    Provider provider = ModelFactory.kubernetesProvider(customer);
+    Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZWithStorageClass(region, "az-1", "provider-az1-sc");
+    AvailabilityZone az2 = createK8sAZWithStorageClass(region, "az-2", "provider-az2-sc");
+
+    // Existing override for az1 with a custom storageClass and volumeSize. Even though
+    // provider STORAGE_CLASS and a conflicting azOverrides string-map entry are configured for
+    // az1, the per-AZ deviceInfo on userIntentOverrides should remain authoritative on a
+    // per-field basis - neither source should overwrite values that are already set.
+    UserIntentOverrides existing =
+        buildExistingTserverOverride(az1.getUuid(), 500, "custom-az1-sc");
+
+    Map<String, String> azOverridesMap = new HashMap<>();
+    azOverridesMap.put("az-1", "storage:\n  tserver:\n    storageClass: should-not-overwrite\n");
+
+    UserIntentOverrides result =
+        KubernetesUtil.generateVolumeOverridesForUserIntent(
+            existing,
+            new HashSet<>(Set.of(az1.getUuid(), az2.getUuid())),
+            null /* universeOverridesStr */,
+            azOverridesMap,
+            null /* skipAZs */);
+
+    assertNotNull(result);
+    Map<UUID, AZOverrides> azOverrides = result.getAzOverrides();
+    assertNotNull(azOverrides);
+
+    // az1 TSERVER: existing override values must be preserved. Provider STORAGE_CLASS and the
+    // azOverrides string-map entry for az-1 must NOT override the populated fields.
+    AZOverrides az1Ov = azOverrides.get(az1.getUuid());
+    assertNotNull(az1Ov);
+    assertNotNull(az1Ov.getPerProcess());
+    PerProcessDetails az1Tserver = az1Ov.getPerProcess().get(ServerType.TSERVER);
+    assertNotNull(az1Tserver);
+    DeviceInfo az1Di = az1Tserver.getDeviceInfo();
+    assertNotNull(az1Di);
+    assertEquals("custom-az1-sc", az1Di.storageClass);
+    assertEquals(500, az1Di.volumeSize.intValue());
+    assertEquals(1, az1Di.numVolumes.intValue());
+
+    // az2 had no existing override, so it gets a freshly built override from the provider
+    // STORAGE_CLASS for both server types.
+    AZOverrides az2Ov = azOverrides.get(az2.getUuid());
+    assertNotNull(az2Ov);
+    assertNotNull(az2Ov.getPerProcess());
+    PerProcessDetails az2Tserver = az2Ov.getPerProcess().get(ServerType.TSERVER);
+    assertNotNull(az2Tserver);
+    assertEquals("provider-az2-sc", az2Tserver.getDeviceInfo().storageClass);
+    PerProcessDetails az2Master = az2Ov.getPerProcess().get(ServerType.MASTER);
+    assertNotNull(az2Master);
+    assertEquals("provider-az2-sc", az2Master.getDeviceInfo().storageClass);
+  }
+
+  @Test
+  public void testGenerateVolumeOverridesUsesProviderStorageClassAndAzOverridesMap() {
+    Provider provider = ModelFactory.kubernetesProvider(customer);
+    Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZWithStorageClass(region, "az-1", "provider-az1-sc");
+    AvailabilityZone az2 = createK8sAZWithStorageClass(region, "az-2", "provider-az2-sc");
+
+    // The userIntent.azOverrides map is keyed by AZ code (e.g. "az-1"). For az-1 we override
+    // the tserver storageClass via a YAML snippet matching the storage.<server>.storageClass
+    // structure that fetchDeviceInfo expects. az-2 has no entry, so it should fall through to
+    // just the provider STORAGE_CLASS.
+    Map<String, String> azOverridesMap = new HashMap<>();
+    azOverridesMap.put("az-1", "storage:\n  tserver:\n    storageClass: az1-tserver-special\n");
+
+    UserIntentOverrides result =
+        KubernetesUtil.generateVolumeOverridesForUserIntent(
+            null /* userIntentOverrides */,
+            new HashSet<>(Set.of(az1.getUuid(), az2.getUuid())),
+            null /* universeOverridesStr */,
+            azOverridesMap,
+            null /* skipAZs */);
+
+    assertNotNull(result);
+    Map<UUID, AZOverrides> azOverrides = result.getAzOverrides();
+    assertNotNull(azOverrides);
+
+    // az1 tserver: azOverrides string-map entry wins over provider STORAGE_CLASS.
+    AZOverrides az1Ov = azOverrides.get(az1.getUuid());
+    assertNotNull(az1Ov);
+    assertNotNull(az1Ov.getPerProcess());
+    PerProcessDetails az1Tserver = az1Ov.getPerProcess().get(ServerType.TSERVER);
+    assertNotNull(az1Tserver);
+    assertEquals("az1-tserver-special", az1Tserver.getDeviceInfo().storageClass);
+    // az1 master: no master entry in azOverrides, so provider STORAGE_CLASS is used.
+    PerProcessDetails az1Master = az1Ov.getPerProcess().get(ServerType.MASTER);
+    assertNotNull(az1Master);
+    assertEquals("provider-az1-sc", az1Master.getDeviceInfo().storageClass);
+
+    // az2: not in azOverrides at all - both server types pick up the provider STORAGE_CLASS.
+    AZOverrides az2Ov = azOverrides.get(az2.getUuid());
+    assertNotNull(az2Ov);
+    assertNotNull(az2Ov.getPerProcess());
+    PerProcessDetails az2Tserver = az2Ov.getPerProcess().get(ServerType.TSERVER);
+    assertNotNull(az2Tserver);
+    assertEquals("provider-az2-sc", az2Tserver.getDeviceInfo().storageClass);
+    PerProcessDetails az2Master = az2Ov.getPerProcess().get(ServerType.MASTER);
+    assertNotNull(az2Master);
+    assertEquals("provider-az2-sc", az2Master.getDeviceInfo().storageClass);
   }
 }

@@ -427,7 +427,10 @@ public class UniverseCRUDHandler {
           taskParams, universe, customer.getId(), cluster.uuid);
       if (taskParams.clusterOperation == ClusterOperationType.EDIT) {
         Cluster universePrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-        if (cluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+        // userIntentOverrides for kubernetes operator universes are managed by
+        // operator; skip the default handling here.
+        if (cluster.userIntent.providerType.equals(Common.CloudType.kubernetes)
+            && !taskParams.isKubernetesOperatorControlled) {
           cluster.userIntent.setUserIntentOverrides(
               KubernetesUtil.generateVolumeOverridesForUserIntent(
                   cluster.userIntent.getUserIntentOverrides(),
@@ -779,8 +782,11 @@ public class UniverseCRUDHandler {
         }
       }
 
-      // Update device info in userIntent for Kubernetes
-      if (c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+      // Update device info in userIntent for Kubernetes.
+      // For operator-controlled universes, userIntentOverrides (and the universe-overrides
+      // merge into base deviceInfo) are managed entirely by operator.
+      if (c.userIntent.providerType.equals(Common.CloudType.kubernetes)
+          && !taskParams.isKubernetesOperatorControlled) {
         KubernetesUtil.applyVolumeChanges(
             c.userIntent,
             c.placementInfo,
@@ -1379,15 +1385,18 @@ public class UniverseCRUDHandler {
       checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
       PlacementInfoUtil.applyK8sStsIndexIncrement(
           primaryCluster, taskParams.getNodesInCluster(primaryCluster.uuid));
-      primaryCluster.userIntent.setUserIntentOverrides(
-          KubernetesUtil.generateVolumeOverridesForUserIntent(
-              primaryCluster.userIntent.getUserIntentOverrides(),
-              primaryCluster.placementInfo.getAllAZUUIDs(),
-              primaryCluster.userIntent.universeOverrides,
-              primaryCluster.userIntent.azOverrides,
-              PlacementInfoUtil.findRetainedAZs(
-                  primaryCluster.placementInfo,
-                  u.getUniverseDetails().getPrimaryCluster().placementInfo)));
+      // Operator-controlled universes manage userIntentOverrides themselves.
+      if (!taskParams.isKubernetesOperatorControlled) {
+        primaryCluster.userIntent.setUserIntentOverrides(
+            KubernetesUtil.generateVolumeOverridesForUserIntent(
+                primaryCluster.userIntent.getUserIntentOverrides(),
+                primaryCluster.placementInfo.getAllAZUUIDs(),
+                primaryCluster.userIntent.universeOverrides,
+                primaryCluster.userIntent.azOverrides,
+                PlacementInfoUtil.findRetainedAZs(
+                    primaryCluster.placementInfo,
+                    u.getUniverseDetails().getPrimaryCluster().placementInfo)));
+      }
     } else {
       mergeNodeExporterInfo(u, taskParams);
     }
@@ -1406,15 +1415,18 @@ public class UniverseCRUDHandler {
       checkHelmChartExists(cluster.userIntent.ybSoftwareVersion);
       PlacementInfoUtil.applyK8sStsIndexIncrement(
           cluster, taskParams.getNodesInCluster(cluster.uuid));
-      cluster.userIntent.setUserIntentOverrides(
-          KubernetesUtil.generateVolumeOverridesForUserIntent(
-              cluster.userIntent.getUserIntentOverrides(),
-              cluster.placementInfo.getAllAZUUIDs(),
-              u.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides,
-              u.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides,
-              PlacementInfoUtil.findRetainedAZs(
-                  cluster.placementInfo,
-                  u.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo)));
+      // Operator-controlled universes manage userIntentOverrides themselves.
+      if (!taskParams.isKubernetesOperatorControlled) {
+        cluster.userIntent.setUserIntentOverrides(
+            KubernetesUtil.generateVolumeOverridesForUserIntent(
+                cluster.userIntent.getUserIntentOverrides(),
+                cluster.placementInfo.getAllAZUUIDs(),
+                u.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides,
+                u.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides,
+                PlacementInfoUtil.findRetainedAZs(
+                    cluster.placementInfo,
+                    u.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo)));
+      }
     }
     return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Cluster);
   }

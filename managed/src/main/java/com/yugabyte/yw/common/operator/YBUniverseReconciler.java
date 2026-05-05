@@ -12,6 +12,8 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -75,8 +77,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -667,6 +671,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         universeCRUDHandler.configure(customer, taskParams);
       }
 
+      // CRUDHandler intentionally skips userIntentOverrides handling for operator-controlled
+      // universes; compute them here using the operator-specific perAZ-or-fallback rules.
+      applyKubernetesOperatorVolumeOverrides(
+          taskParams, ybUniverse, customerUUID, null /* existingUniverse */);
+
       UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
       universeTaskMap.put(
           OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()), universeResp.taskUUID);
@@ -1168,6 +1177,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     taskConfigParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskConfigParams.currentClusterType = clusterType;
+    taskConfigParams.isKubernetesOperatorControlled = true;
     Universe oldUniverse;
     if (ybUniverse.getMetadata().getAnnotations() != null
         && ybUniverse
@@ -1188,6 +1198,10 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
     log.info("Updating universe with new info now");
     universeCRUDHandler.configure(cust, taskConfigParams);
+    // CRUDHandler skips userIntentOverrides handling for operator-controlled universes; recompute
+    // them here using the operator-specific perAZ-or-fallback rules before submitting the edit.
+    applyKubernetesOperatorVolumeOverrides(
+        taskConfigParams, ybUniverse, cust.getUuid(), oldUniverse);
     return universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
   }
 
@@ -1646,6 +1660,259 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     UserIntentOverrides overrides = applyUserIntentOverridesFromPerAZ(provider, perAZByServerType);
     userIntent.setUserIntentOverrides(
         (overrides == null || overrides.allNull()) ? null : overrides);
+  }
+
+  /**
+   * Recomputes the userIntentOverrides for kubernetes operator-controlled universes after
+   * CRUDHandler configure has finalized the placement. Decisions are made independently per-cluster
+   * and per-server-type:
+   *
+   * <p>If the spec defines perAZ for a given server type (tserver / master / read replica tserver),
+   * the resulting overrides for that server type come only from the perAZ entries (other sources
+   * such as provider storage class, provider/AZ helm overrides and universe-level helm overrides
+   * are ignored). Existing per-AZ entries previously stored on the userIntent for that server type
+   * are wiped first so the spec is the single source of truth.
+   *
+   * <p>Otherwise, KubernetesUtil.generateVolumeOverridesForUserIntent is used, which layers in
+   * provider storage class, provider/AZ helm overrides, universe-level helm overrides and any
+   * AZ-level helm overrides. For edits, AZs that already exist on the saved placement (the
+   * "retained" set) keep whatever overrides were stored on the userIntent, only newly added AZs get
+   * freshly computed overrides. For creates the saved placement is null, so all AZs are freshly
+   * computed.
+   *
+   * <p>The cases for tserver, master and the read replica tserver are handled independently, having
+   * perAZ for one does not change the source selection for the others. An empty perAZ block still
+   * counts as "present" and disables the fallback for that server type.
+   */
+  void applyKubernetesOperatorVolumeOverrides(
+      UniverseDefinitionTaskParams taskParams,
+      YBUniverse ybUniverse,
+      UUID customerUUID,
+      @Nullable Universe existingUniverse) {
+    Provider provider = getProvider(ybUniverse, customerUUID);
+
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    // The universe-level helm overrides (universeOverrides string and azOverrides map) are stored
+    // on the primary cluster's userIntent. Read-replica's own userIntent does not carry these.
+    String primaryUniverseOverrides =
+        primaryCluster != null ? primaryCluster.userIntent.universeOverrides : null;
+    Map<String, String> primaryAzOverrides =
+        primaryCluster != null ? primaryCluster.userIntent.azOverrides : null;
+    if (primaryCluster != null
+        && (existingUniverse == null
+            || taskParams.currentClusterType.equals(ClusterType.PRIMARY))) {
+      PlacementInfo savedPlacementInfo =
+          (existingUniverse != null
+                  && existingUniverse.getUniverseDetails().getPrimaryCluster() != null)
+              ? existingUniverse.getUniverseDetails().getPrimaryCluster().placementInfo
+              : null;
+      applyOverridesForCluster(
+          provider,
+          primaryCluster,
+          ybUniverse.getSpec().getTserverVolume(),
+          ybUniverse.getSpec().getMasterVolume(),
+          null /* readReplicaTserverVolume */,
+          false /* isReadReplica */,
+          savedPlacementInfo,
+          primaryUniverseOverrides,
+          primaryAzOverrides);
+    }
+
+    if (CollectionUtils.isNotEmpty(taskParams.getReadOnlyClusters())
+        && ybUniverse.getSpec().getReadReplica() != null
+        && (existingUniverse == null || taskParams.currentClusterType.equals(ClusterType.ASYNC))) {
+      Cluster rrCluster = taskParams.getReadOnlyClusters().get(0);
+      PlacementInfo savedPlacementInfo = null;
+      if (existingUniverse != null
+          && CollectionUtils.isNotEmpty(
+              existingUniverse.getUniverseDetails().getReadOnlyClusters())) {
+        savedPlacementInfo =
+            existingUniverse.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+      }
+      applyOverridesForCluster(
+          provider,
+          rrCluster,
+          null /* tserverVolume */,
+          null /* masterVolume */,
+          ybUniverse.getSpec().getReadReplica().getTserverVolume(),
+          true /* isReadReplica */,
+          savedPlacementInfo,
+          primaryUniverseOverrides,
+          primaryAzOverrides);
+    }
+  }
+
+  private void applyOverridesForCluster(
+      Provider provider,
+      Cluster cluster,
+      io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume,
+      io.yugabyte.operator.v1alpha1.ybuniversespec.MasterVolume masterVolume,
+      io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverVolume rrTserverVolume,
+      boolean isReadReplica,
+      @Nullable PlacementInfo savedPlacementInfo,
+      @Nullable String universeOverridesStr,
+      @Nullable Map<String, String> azOverrides) {
+    UserIntent userIntent = cluster.userIntent;
+    PlacementInfo placementInfo = cluster.placementInfo;
+    if (placementInfo == null) {
+      // Nothing we can do without a finalized placement.
+      return;
+    }
+    Set<UUID> azUUIDs = placementInfo.getAllAZUUIDs();
+
+    // Step 0: for the new cluster create case, merge universe-level helm overrides into the base
+    // tserver/master deviceInfo on the userIntent before any AZ-level overrides are computed. On
+    // edits the base deviceInfo was already established at create time, so we leave it alone to
+    // avoid re-applying the same overrides.
+    if (savedPlacementInfo == null) {
+      KubernetesUtil.applyUniverseOverridesToBaseDeviceInfo(userIntent, universeOverridesStr);
+    }
+
+    // Step 1: collect perAZ-derived overrides per server type, and remember which server types
+    // have a perAZ block in the spec (so the fallback is skipped for them).
+    Map<UniverseTaskBase.ServerType, Map<String, PerAZVolumeDto>> perAZByServerType =
+        new HashMap<>();
+    Set<UniverseTaskBase.ServerType> serverTypesWithPerAZ =
+        EnumSet.noneOf(UniverseTaskBase.ServerType.class);
+
+    if (isReadReplica) {
+      if (rrTserverVolume != null && rrTserverVolume.getPerAZ() != null) {
+        serverTypesWithPerAZ.add(UniverseTaskBase.ServerType.TSERVER);
+        perAZByServerType.put(
+            UniverseTaskBase.ServerType.TSERVER,
+            toPerAZVolumeDtoMapReadReplica(rrTserverVolume.getPerAZ()));
+      }
+    } else {
+      if (tserverVolume != null && tserverVolume.getPerAZ() != null) {
+        serverTypesWithPerAZ.add(UniverseTaskBase.ServerType.TSERVER);
+        perAZByServerType.put(
+            UniverseTaskBase.ServerType.TSERVER,
+            toPerAZVolumeDtoMapFromTserver(tserverVolume.getPerAZ()));
+      }
+      if (masterVolume != null && masterVolume.getPerAZ() != null) {
+        serverTypesWithPerAZ.add(UniverseTaskBase.ServerType.MASTER);
+        perAZByServerType.put(
+            UniverseTaskBase.ServerType.MASTER,
+            toPerAZVolumeDtoMapFromMaster(masterVolume.getPerAZ()));
+      }
+    }
+
+    // Step 2: start from the existing userIntentOverrides (clone so we don't mutate state we
+    // don't intend to). This is what carries over for the fallback case, existing per-AZ
+    // entries for retained AZs must be preserved as-is.
+    UserIntentOverrides combined =
+        userIntent.getUserIntentOverrides() != null
+            ? userIntent.getUserIntentOverrides().clone()
+            : new UserIntentOverrides();
+
+    // Step 3: for server types that have perAZ in spec, remove any existing entries for those
+    // server types so that the spec is the only source of truth (per design: perAZ presence,
+    // even if empty, fully controls overrides for that server type).
+    if (!serverTypesWithPerAZ.isEmpty()) {
+      stripServerTypeEntries(combined, serverTypesWithPerAZ);
+    }
+
+    // Step 4: add perAZ-derived entries for the server types that have perAZ in spec.
+    UserIntentOverrides perAZBuilt = applyUserIntentOverridesFromPerAZ(provider, perAZByServerType);
+    if (perAZBuilt != null && perAZBuilt.getAzOverrides() != null) {
+      mergeAzOverrides(combined, perAZBuilt);
+    }
+
+    // Step 5: for the server types that did not specify perAZ, run the standard fallback
+    // (generateVolumeOverridesForUserIntent) restricted to those server types. Pass the retained
+    // AZs as skipAZs on edits so existing AZs keep their saved overrides while only newly added
+    // AZs are recomputed. On create (savedPlacementInfo == null), skipAZs is null so all AZs are
+    // freshly computed.
+    Set<UniverseTaskBase.ServerType> serverTypesForFallback =
+        isReadReplica
+            ? EnumSet.of(UniverseTaskBase.ServerType.TSERVER)
+            : EnumSet.of(UniverseTaskBase.ServerType.TSERVER, UniverseTaskBase.ServerType.MASTER);
+    serverTypesForFallback.removeAll(serverTypesWithPerAZ);
+    if (!serverTypesForFallback.isEmpty()) {
+      Set<UUID> skipAZs =
+          savedPlacementInfo == null
+              ? null
+              : PlacementInfoUtil.findRetainedAZs(placementInfo, savedPlacementInfo);
+      UserIntentOverrides fallback =
+          KubernetesUtil.generateVolumeOverridesForUserIntent(
+              combined,
+              azUUIDs,
+              universeOverridesStr,
+              azOverrides,
+              skipAZs,
+              serverTypesForFallback);
+      if (fallback != null) {
+        combined = fallback;
+      }
+    }
+
+    userIntent.setUserIntentOverrides((combined == null || combined.allNull()) ? null : combined);
+    if (userIntent.getUserIntentOverrides() != null) {
+      userIntent.getUserIntentOverrides().removeNonRequiredAZs(azUUIDs);
+    }
+  }
+
+  /**
+   * Removes per-process entries for the given serverTypes from every AZ override in overrides. AZ
+   * entries that become empty are dropped; if overrides ends up with no remaining AZ data, its
+   * azOverrides map is cleared.
+   */
+  private static void stripServerTypeEntries(
+      UserIntentOverrides overrides, Set<UniverseTaskBase.ServerType> serverTypes) {
+    if (overrides == null
+        || MapUtils.isEmpty(overrides.getAzOverrides())
+        || serverTypes.isEmpty()) {
+      return;
+    }
+    Iterator<Map.Entry<UUID, AZOverrides>> iter = overrides.getAzOverrides().entrySet().iterator();
+    while (iter.hasNext()) {
+      Map.Entry<UUID, AZOverrides> entry = iter.next();
+      AZOverrides azOverrides = entry.getValue();
+      if (azOverrides == null) {
+        iter.remove();
+        continue;
+      }
+      Map<UniverseTaskBase.ServerType, PerProcessDetails> perProcess = azOverrides.getPerProcess();
+      if (MapUtils.isNotEmpty(perProcess)) {
+        perProcess.keySet().removeAll(serverTypes);
+        if (MapUtils.isEmpty(perProcess)) {
+          azOverrides.setPerProcess(null);
+        }
+      }
+      if (azOverrides.allNull()) {
+        iter.remove();
+      }
+    }
+    if (MapUtils.isEmpty(overrides.getAzOverrides())) {
+      overrides.setAzOverrides(null);
+    }
+  }
+
+  /**
+   * Merges source's per-AZ overrides into target. For overlapping AZs the source's per-process
+   * entries win on a per-server-type basis, leaving any other per-process entries on the target
+   * intact. The deviceInfo on overlapping AZs is replaced by the source's when present.
+   */
+  private static void mergeAzOverrides(UserIntentOverrides target, UserIntentOverrides source) {
+    if (source == null || MapUtils.isEmpty(source.getAzOverrides())) {
+      return;
+    }
+    Map<UUID, AZOverrides> targetMap =
+        target.getAzOverrides() != null ? target.getAzOverrides() : new HashMap<>();
+    for (Map.Entry<UUID, AZOverrides> entry : source.getAzOverrides().entrySet()) {
+      AZOverrides sourceAz = entry.getValue();
+      if (sourceAz == null) {
+        continue;
+      }
+      AZOverrides targetAz = targetMap.computeIfAbsent(entry.getKey(), k -> new AZOverrides());
+      if (MapUtils.isNotEmpty(sourceAz.getPerProcess())) {
+        Map<UniverseTaskBase.ServerType, PerProcessDetails> targetPerProcess =
+            targetAz.getPerProcess() != null ? targetAz.getPerProcess() : new HashMap<>();
+        targetPerProcess.putAll(sourceAz.getPerProcess());
+        targetAz.setPerProcess(targetPerProcess);
+      }
+    }
+    target.setAzOverrides(targetMap);
   }
 
   private static Map<String, PerAZVolumeDto> toPerAZVolumeDtoMapFromTserver(
@@ -2150,10 +2417,16 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
     taskConfigParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     taskConfigParams.currentClusterType = ClusterType.ASYNC;
+    taskConfigParams.isKubernetesOperatorControlled = true;
     taskConfigParams.setKubernetesResourceDetails(
         KubernetesResourceDetails.fromResource(ybUniverse));
     log.info("Adding read replica cluster to universe now");
     universeCRUDHandler.configure(cust, taskConfigParams);
+    // CRUDHandler skips userIntentOverrides handling for operator-controlled universes; recompute
+    // them here so the read replica cluster's overrides are populated correctly.
+    Universe existingUniverse = Universe.maybeGet(universeDetails.getUniverseUUID()).orElse(null);
+    applyKubernetesOperatorVolumeOverrides(
+        taskConfigParams, ybUniverse, cust.getUuid(), existingUniverse);
     taskConfigParams.clusters.remove(
         0); // Remove primary cluster since the createCluster accepts only RR
     Universe universe = Universe.getOrBadRequest(universeDetails.getUniverseUUID());
