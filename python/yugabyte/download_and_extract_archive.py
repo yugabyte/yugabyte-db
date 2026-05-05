@@ -131,18 +131,17 @@ def download_url(url: str, dest_path: str, other_curl_flags: List[str] = []) -> 
     dest_dir = os.path.dirname(dest_path)
     if not os.path.isdir(dest_dir):
         raise IOError("Destination directory %s does not exist" % dest_dir)
-    # -f / --fail: don't write the response body for HTTP error responses, so we don't end up
-    #              with an HTML error page on disk masquerading as the requested artifact.
-    # --retry / --retry-delay: retry transient failures (5xx, connection errors) before giving up.
-    #              Note: curl --retry counts retries after the initial attempt, so we pass
-    #              MAX_DOWNLOAD_ATTEMPTS - 1 to get MAX_DOWNLOAD_ATTEMPTS total attempts.
-    # --retry-connrefused: also retry on ECONNREFUSED, which curl does not retry by default
-    #              and which is a common transient failure in CI environments.
+    # -f: exit 22 on HTTP errors instead of saving the error page as the artifact.
+    # --retry N: N retries after the initial attempt, so pass MAX_DOWNLOAD_ATTEMPTS - 1.
+    # --retry-connrefused: also retry on ECONNREFUSED (not retried by default).
+    # --retry-all-errors: also retry on non-default errors like transient 403s from
+    #     GitHub's signed release-asset redirects (default set is timeouts + 408/429/5xx).
     run_cmd([
         'curl', '-LsSf',
         '--retry', str(MAX_DOWNLOAD_ATTEMPTS - 1),
         '--retry-delay', str(RETRY_DELAY_SEC),
         '--retry-connrefused',
+        '--retry-all-errors',
         url, '-o', dest_path,
     ] + other_curl_flags)
     if not os.path.exists(dest_path):
