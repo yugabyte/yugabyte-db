@@ -176,6 +176,7 @@ Some Apache Cassandra `cqlsh` commands differ or are not applicable on YugabyteD
 | Command | Alternative / notes |
 | :------ | :------------------- |
 | LIST ROLES | Query roles with `SELECT * FROM system_auth.roles;` |
+| SHOW SESSION | Not supported. |
 
 Shell features such as [`TRACING`](../../../api/ycqlsh/#tracing) and [`SERIAL CONSISTENCY`](../../../api/ycqlsh/#serial-consistency) are documented on the [ycqlsh](../../../api/ycqlsh/) page.
 
