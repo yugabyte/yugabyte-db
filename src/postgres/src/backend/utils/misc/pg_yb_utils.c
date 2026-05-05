@@ -1338,10 +1338,25 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 	 */
 	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
 
-	/* Wait up to 60 seconds, with a 0.1-second interval. */
+	/*
+	 * Wait with a 0.1-second polling interval. The maximum total wait time is
+	 * the larger of:
+	 *   - kBaseWaitMs (60 seconds), the historical timeout that has proved
+	 *     sufficient under the default heartbeat interval; and
+	 *   - kHeartbeatMultiplier heartbeat intervals, so that we always allow
+	 *     enough time for several TServer->Master heartbeats to deliver the
+	 *     new shared catalog version even when --heartbeat_interval_ms has
+	 *     been increased (for example for multi-region deployments).
+	 */
+	const int	kBaseWaitMs = 60 * 1000;
+	const int	kHeartbeatMultiplier = 10;
+	const int	kPollIntervalUs = 100000;
+	int			max_wait_ms =
+		Max(kBaseWaitMs, kHeartbeatMultiplier * YBGetHeartbeatIntervalMs());
+	int			max_count = max_wait_ms / (kPollIntervalUs / 1000);
 	int			count = 0;
 
-	while (shared_catalog_version < version && count++ < 600)
+	while (shared_catalog_version < version && count++ < max_count)
 	{
 		/*
 		 * This can happen if database MyDatabaseId is dropped by another session.
@@ -1355,8 +1370,7 @@ YbWaitForSharedCatalogVersionToCatchup(uint64_t version)
 							version),
 					 errhidestmt(true),
 					 errhidecontext(true)));
-		/* wait 0.1 sec */
-		pg_usleep(100000L);
+		pg_usleep(kPollIntervalUs);
 		shared_catalog_version = YbGetSharedCatalogVersion();
 	}
 	if (shared_catalog_version >= version)

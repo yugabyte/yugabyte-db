@@ -26,6 +26,7 @@
 #include "catalog/pg_yb_invalidation_messages.h"
 #include "catalog/schemapg.h"
 #include "catalog/yb_catalog_version.h"
+#include "common/pg_yb_common.h"
 #include "executor/spi.h"
 #include "executor/ybExpr.h"
 #include "executor/ybModifyTable.h"
@@ -466,7 +467,27 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 		{
 			bool		is_null = false;
 			Datum		messages = GetInvalidationMessages(invalMessages, nmsgs, &is_null);
-			int			expiration_secs = yb_invalidation_message_expiration_secs;
+
+			/*
+			 * The effective expiration must give every TServer a fair chance
+			 * to receive the new invalidation message via heartbeats before
+			 * the master purges it. With the default heartbeat interval
+			 * (1 second) the user-visible value of
+			 * yb_invalidation_message_expiration_secs (default 10 seconds)
+			 * is comfortably larger than the heartbeat interval. However,
+			 * deployments that increase --heartbeat_interval_ms (for example
+			 * for multi-region clusters) can easily push the heartbeat
+			 * interval close to or beyond the configured expiration, which
+			 * causes messages to be purged before some TServers ever
+			 * heartbeat. To avoid that, floor the expiration at
+			 * kHeartbeatMultiplier heartbeats so the effective retention
+			 * always scales with the heartbeat interval.
+			 */
+			const int	kHeartbeatMultiplier = 10;
+			int			heartbeat_min_secs =
+				(kHeartbeatMultiplier * YBGetHeartbeatIntervalMs() + 999) / 1000;
+			int			expiration_secs =
+				Max(yb_invalidation_message_expiration_secs, heartbeat_min_secs);
 
 			if (is_global_ddl)
 			{
