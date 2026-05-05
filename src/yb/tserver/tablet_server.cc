@@ -1321,6 +1321,7 @@ void TabletServer::RelcacheInitConnectionDone(
     std::lock_guard l(lock_);
     auto it = in_flight_superuser_connections_.find(dbname);
     if (it == in_flight_superuser_connections_.end()) {
+      LOG(DFATAL) << "Cannot find in-flight superuser connection for database " << dbname;
       return;
     }
     callbacks = std::move(it->second);
