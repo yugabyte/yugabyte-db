@@ -271,7 +271,7 @@ $(document).ready(() => {
             .then((text) => {
               // Copy content to clipboard.
               navigator.clipboard.writeText(text).then(() => {
-                button.innerHTML = '<i class="fa fa-copy me-2"></i><span>Copied to clipboard!</span>';
+                button.innerHTML = '<i class="fa fa-copy me-2"></i><span>Copied</span>';
 
                 setTimeout(() => {
                   button.innerHTML = originalHtml;
