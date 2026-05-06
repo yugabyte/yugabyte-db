@@ -103,15 +103,23 @@ YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
-inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(std::to_underlying(lhs) | std::to_underlying(rhs));
 }
 
-inline FlushFlags operator&(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator&(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(std::to_underlying(lhs) & std::to_underlying(rhs));
 }
 
-inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
+constexpr inline FlushFlags operator~(FlushFlags a) {
+  return static_cast<FlushFlags>(~std::to_underlying(a));
+}
+
+constexpr inline FlushFlags operator-(FlushFlags a, FlushFlags b) {
+  return a & ~b;
+}
+
+constexpr inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
   return (lhs & rhs) != FlushFlags::kNone;
 }
 
