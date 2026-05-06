@@ -199,7 +199,7 @@ TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
 
 TupleTableSlot *populate_edge_tts(
     TupleTableSlot *elemTupleSlot, agtype_value *id, agtype_value *startid,
-    agtype_value *endid, agtype_value *properties,YbMekoDp meko)
+    agtype_value *endid, agtype_value *properties, YbMekoDp meko)
 {
     bool properties_isnull;
 
