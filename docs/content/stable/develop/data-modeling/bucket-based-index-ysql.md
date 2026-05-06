@@ -74,8 +74,10 @@ You configure bucket-based scan optimizations in the [query planner](../../../ar
 
 - yb_enable_derived_equalities: Set to `true`.
 - yb_enable_derived_saops: Set to `true`.
-- yb_max_saop_merge_streams: Deprecated in v2025.2.3.0. Use `yb_max_merge_scan_streams` instead.
 - yb_max_merge_scan_streams: Maximum number of buckets to process in parallel. The recommended value is 64.
+- yb_max_saop_merge_streams: Used in v2025.2.1.0 and v2025.2.2.0; deprecated in v2025.2.3.0. Use `yb_max_merge_scan_streams` instead.
+
+For more information, see [Bucket-based index scan optimization](../../../reference/configuration/yb-tserver/#bucket-based-index-scan-optimization) parameters.
 
 In addition, the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (CBO) must be enabled (CBO is enabled by default when you deploy your universe using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon).
 
@@ -83,7 +85,7 @@ In addition, the [cost-based optimizer](../../../best-practices-operations/ysql-
 
 Follow the [setup instructions](../../../explore/cluster-setup-local/#multi-node-universe) to start a local multi-node universe with a replication factor of 3, and connect to universe using ysqlsh.
 
-You must be running v2025.2.3.0 or later.
+The following example assumes you are running v2025.2.3.0 or later.
 
 ### Configure bucket-based indexing
 
