@@ -399,7 +399,7 @@ The following sub-commands are available for the `yugabyted demo` command:
 
 #### connect
 
-Use the `yugabyted demo connect` sub-command to load the  [Northwind sample dataset](/stable/develop/sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the `ysqlsh` prompt for the same database.
+Use the `yugabyted demo connect` sub-command to load the [Northwind sample dataset](/stable/develop/sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the `ysqlsh` prompt for the same database.
 
 #### destroy
 
