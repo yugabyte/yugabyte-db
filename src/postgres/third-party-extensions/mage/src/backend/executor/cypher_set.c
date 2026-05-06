@@ -681,73 +681,23 @@ static void process_update_list(CustomScanState *node)
             if (HeapTupleIsValid(heap_tuple))
             {
                 /*
-                 * YB: For vertex/edge updates, carry over the meko tenant
-                 * columns from the existing tuple since SET only modifies
-                 * properties. The meko_* columns only exist on
-                 * YugabyteDB-hosted tables, so skip in vanilla PG.
+                 * YB: SET only rewrites the properties column, so carry the
+                 * tenant columns over from the on-disk tuple to keep the
+                 * row's tenant identity intact.
                  */
-                if (IsYugaByteEnabled() &&
-                    (original_entity_value->type == AGTV_VERTEX ||
-                     original_entity_value->type == AGTV_EDGE))
+                if (IsYugaByteEnabled())
                 {
-                    bool isnull;
-                    int dp_anum, user_anum, ag_anum, conv_anum;
-                    int dp_off, user_off, ag_off, conv_off;
                     TupleDesc desc =
                         RelationGetDescr(resultRelInfo->ri_RelationDesc);
 
                     if (original_entity_value->type == AGTV_VERTEX)
-                    {
-                        dp_anum = Anum_ag_label_vertex_table_meko_datapack_id;
-                        user_anum = Anum_ag_label_vertex_table_meko_user_id;
-                        ag_anum = Anum_ag_label_vertex_table_meko_agent_id;
-                        conv_anum = Anum_ag_label_vertex_table_meko_conversation_id;
-                        dp_off = vertex_tuple_meko_datapack_id;
-                        user_off = vertex_tuple_meko_user_id;
-                        ag_off = vertex_tuple_meko_agent_id;
-                        conv_off = vertex_tuple_meko_conversation_id;
-                    }
-                    else
-                    {
-                        dp_anum = Anum_ag_label_edge_table_meko_datapack_id;
-                        user_anum = Anum_ag_label_edge_table_meko_user_id;
-                        ag_anum = Anum_ag_label_edge_table_meko_agent_id;
-                        conv_anum = Anum_ag_label_edge_table_meko_conversation_id;
-                        dp_off = edge_tuple_meko_datapack_id;
-                        user_off = edge_tuple_meko_user_id;
-                        ag_off = edge_tuple_meko_agent_id;
-                        conv_off = edge_tuple_meko_conversation_id;
-                    }
-
-                    /*
-                     * YB: meko_datapack_id, meko_user_id and meko_agent_id
-                     * are NOT NULL columns on the table, so the existing
-                     * on-disk tuple is guaranteed to have non-null values
-                     * for them. Assert this and propagate the values
-                     * unconditionally as not-null. meko_conversation_id is
-                     * nullable, so its isnull flag is carried through.
-                     *
-                     * Read straight from heap_tuple via heap_getattr to
-                     * avoid allocating a TupleTableSlot per updated row.
-                     */
-                    slot->tts_values[dp_off] =
-                        heap_getattr(heap_tuple, dp_anum, desc, &isnull);
-                    Assert(!isnull);
-                    slot->tts_isnull[dp_off] = false;
-
-                    slot->tts_values[user_off] =
-                        heap_getattr(heap_tuple, user_anum, desc, &isnull);
-                    Assert(!isnull);
-                    slot->tts_isnull[user_off] = false;
-
-                    slot->tts_values[ag_off] =
-                        heap_getattr(heap_tuple, ag_anum, desc, &isnull);
-                    Assert(!isnull);
-                    slot->tts_isnull[ag_off] = false;
-
-                    slot->tts_values[conv_off] =
-                        heap_getattr(heap_tuple, conv_anum, desc, &isnull);
-                    slot->tts_isnull[conv_off] = isnull;
+                        yb_carry_vertex_meko_columns_from_tuple(slot,
+                                                                heap_tuple,
+                                                                desc);
+                    else if (original_entity_value->type == AGTV_EDGE)
+                        yb_carry_edge_meko_columns_from_tuple(slot,
+                                                              heap_tuple,
+                                                              desc);
                 }
 
                 heap_tuple = update_entity_tuple(resultRelInfo, slot, estate,

@@ -120,6 +120,74 @@ void yb_populate_edge_meko_columns(TupleTableSlot *slot, YbMekoDp meko)
     slot->tts_isnull[edge_tuple_meko_conversation_id] = meko.conversation_id_isnull;
 }
 
+/*
+ * YB: Helper for the SET path: copy the four meko_* columns from an
+ * on-disk tuple into the corresponding offsets on a slot. The first three
+ * columns are NOT NULL on the table so non-null is asserted; conversation
+ * is nullable and its flag is propagated.
+ */
+static inline void
+yb_carry_meko_columns_from_tuple(TupleTableSlot *slot, HeapTuple heap_tuple,
+                                 TupleDesc tupdesc,
+                                 int dp_anum, int user_anum,
+                                 int ag_anum, int conv_anum,
+                                 int dp_off, int user_off,
+                                 int ag_off, int conv_off)
+{
+    bool isnull;
+
+    slot->tts_values[dp_off] =
+        heap_getattr(heap_tuple, dp_anum, tupdesc, &isnull);
+    Assert(!isnull);
+    slot->tts_isnull[dp_off] = false;
+
+    slot->tts_values[user_off] =
+        heap_getattr(heap_tuple, user_anum, tupdesc, &isnull);
+    Assert(!isnull);
+    slot->tts_isnull[user_off] = false;
+
+    slot->tts_values[ag_off] =
+        heap_getattr(heap_tuple, ag_anum, tupdesc, &isnull);
+    Assert(!isnull);
+    slot->tts_isnull[ag_off] = false;
+
+    slot->tts_values[conv_off] =
+        heap_getattr(heap_tuple, conv_anum, tupdesc, &isnull);
+    slot->tts_isnull[conv_off] = isnull;
+}
+
+void yb_carry_vertex_meko_columns_from_tuple(TupleTableSlot *slot,
+                                             HeapTuple heap_tuple,
+                                             TupleDesc tupdesc)
+{
+    yb_carry_meko_columns_from_tuple(
+        slot, heap_tuple, tupdesc,
+        Anum_ag_label_vertex_table_meko_datapack_id,
+        Anum_ag_label_vertex_table_meko_user_id,
+        Anum_ag_label_vertex_table_meko_agent_id,
+        Anum_ag_label_vertex_table_meko_conversation_id,
+        vertex_tuple_meko_datapack_id,
+        vertex_tuple_meko_user_id,
+        vertex_tuple_meko_agent_id,
+        vertex_tuple_meko_conversation_id);
+}
+
+void yb_carry_edge_meko_columns_from_tuple(TupleTableSlot *slot,
+                                           HeapTuple heap_tuple,
+                                           TupleDesc tupdesc)
+{
+    yb_carry_meko_columns_from_tuple(
+        slot, heap_tuple, tupdesc,
+        Anum_ag_label_edge_table_meko_datapack_id,
+        Anum_ag_label_edge_table_meko_user_id,
+        Anum_ag_label_edge_table_meko_agent_id,
+        Anum_ag_label_edge_table_meko_conversation_id,
+        edge_tuple_meko_datapack_id,
+        edge_tuple_meko_user_id,
+        edge_tuple_meko_agent_id,
+        edge_tuple_meko_conversation_id);
+}
+
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
                                     agtype_value *id,
                                     agtype_value *properties,
@@ -352,9 +420,9 @@ static bool yb_lookup_meko_string(agtype *props, const char *key,
  * Datums for the caller.
  *
  * The meko_* keys are intentionally left inside the properties map so that
- * Cypher MATCH/MERGE containment predicates against those keys continue to
- * work without parser-level changes. Callers that mutate the map (for
- * example SET) are responsible for keeping the map and the columns in sync.
+ * Cypher MATCH/MERGE patterns can match on those keys without parser-level
+ * changes. Callers that mutate the map (for example SET) are responsible
+ * for keeping the map and the columns in sync.
  *
  * meko_datapack_id, meko_user_id and meko_agent_id are NOT NULL on the
  * underlying tables and so must be present in the properties map; this

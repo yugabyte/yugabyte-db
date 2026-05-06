@@ -136,6 +136,19 @@ YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
 void yb_populate_vertex_meko_columns(TupleTableSlot *slot, YbMekoDp meko);
 void yb_populate_edge_meko_columns(TupleTableSlot *slot, YbMekoDp meko);
 
+/*
+ * YB: Copy meko_* tenant column values from an existing on-disk tuple into
+ * the corresponding slot offsets on a vertex/edge tuple. Used by the SET
+ * path so that updates preserve the row's tenant identity. Caller is
+ * expected to gate the call with IsYugaByteEnabled().
+ */
+void yb_carry_vertex_meko_columns_from_tuple(TupleTableSlot *slot,
+                                             HeapTuple heap_tuple,
+                                             TupleDesc tupdesc);
+void yb_carry_edge_meko_columns_from_tuple(TupleTableSlot *slot,
+                                           HeapTuple heap_tuple,
+                                           TupleDesc tupdesc);
+
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
     agtype_value *id, agtype_value *properties, YbMekoDp meko); /* YB: tenant cols */
 TupleTableSlot *populate_edge_tts(
