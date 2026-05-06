@@ -92,7 +92,8 @@ generate_root_certs() {
     chmod 400 "$root_certs_path"/ca.key
     openssl req -new -x509 -config "$root_certs_path"/ca.conf \
                 -key "$root_certs_path"/ca.key \
-                -out "$root_certs_path"/ca.crt
+                -out "$root_certs_path"/ca.crt \
+                -days 730
 }
 
 generate_node_certs() {
