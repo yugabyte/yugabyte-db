@@ -1,0 +1,156 @@
+CREATE TABLE t(a INT, b VARCHAR);
+INSERT INTO t SELECT g % 100, MD5(g::VARCHAR) FROM generate_series(1,1000) g;
+SELECT COUNT(*) FROM t WHERE a % 10 = 0;
+ count 
+-------
+   100
+(1 row)
+
+CREATE MATERIALIZED VIEW tv AS SELECT * FROM t WHERE a % 10 = 0;
+SELECT COUNT(*) FROM tv;
+ count 
+-------
+   100
+(1 row)
+
+INSERT INTO t SELECT g % 100, MD5(g::TEXT) FROM generate_series(1,1000) g;
+SELECT COUNT(*) FROM t WHERE a % 10 = 0;
+ count 
+-------
+   200
+(1 row)
+
+REFRESH MATERIALIZED VIEW tv;
+SELECT COUNT(*) FROM tv;
+ count 
+-------
+   200
+(1 row)
+
+SELECT COUNT(*) FROM t WHERE (a % 10 = 0) AND (a < 3);
+ count 
+-------
+    20
+(1 row)
+
+SELECT COUNT(*) FROM tv WHERE a < 3;
+ count 
+-------
+    20
+(1 row)
+
+DROP MATERIALIZED VIEW tv;
+DROP TABLE t;
+-- materialized view where duckdb execution changes result types of query
+CREATE TABLE t_jsonb(data jsonb);
+INSERT INTO t_jsonb VALUES ('{"a": 1, "b": 2}');
+CREATE MATERIALIZED VIEW mv_json AS SELECT * FROM t_jsonb;
+SELECT * from mv_json;
+       data       
+------------------
+ {"a": 1, "b": 2}
+(1 row)
+
+-- Should return json, because that's the return type of the query duckdb query
+-- (since it does not have the jsonb type).
+SELECT atttypid::regtype FROM pg_attribute WHERE attrelid = 'mv_json'::regclass AND attname = 'data';
+ atttypid 
+----------
+ json
+(1 row)
+
+INSERT INTO t_jsonb VALUES ('{"a": 3, "b": 4}');
+REFRESH MATERIALIZED VIEW mv_json;
+SELECT * from mv_json;
+       data       
+------------------
+ {"a": 1, "b": 2}
+ {"a": 3, "b": 4}
+(2 rows)
+
+SET duckdb.force_execution = false;
+INSERT INTO t_jsonb VALUES ('{"a": 5, "b": 6}');
+REFRESH MATERIALIZED VIEW mv_json;
+SET duckdb.force_execution = true;
+DROP MATERIALIZED VIEW mv_json;
+-- Materialized view created without duckdb execution, and then refresh with
+-- duckdb execution enabled.
+SET duckdb.force_execution = false;
+CREATE MATERIALIZED VIEW mv_jsonb AS SELECT * FROM t_jsonb;
+SELECT * from mv_jsonb;
+       data       
+------------------
+ {"a": 1, "b": 2}
+ {"a": 3, "b": 4}
+ {"a": 5, "b": 6}
+(3 rows)
+
+SELECT atttypid::regtype FROM pg_attribute WHERE attrelid = 'mv_jsonb'::regclass AND attname = 'data';
+ atttypid 
+----------
+ jsonb
+(1 row)
+
+REFRESH MATERIALIZED VIEW mv_jsonb;
+SELECT * from mv_jsonb;
+       data       
+------------------
+ {"a": 1, "b": 2}
+ {"a": 3, "b": 4}
+ {"a": 5, "b": 6}
+(3 rows)
+
+SET duckdb.force_execution = true;
+REFRESH MATERIALIZED VIEW mv_jsonb;
+SET duckdb.force_execution = false;
+SELECT * from mv_jsonb;
+       data       
+------------------
+ {"a": 1, "b": 2}
+ {"a": 3, "b": 4}
+ {"a": 5, "b": 6}
+(3 rows)
+
+SET duckdb.force_execution = true;
+DROP MATERIALIZED VIEW mv_jsonb;
+-- materialized view from duckdb execution
+CREATE TABLE t_csv(a INT, b INT);
+INSERT INTO t_csv VALUES (1,1),(2,2),(3,3);
+\set pwd `pwd`
+\set csv_file_path '\'' :pwd '/tmp_check/t_csv.csv'  '\''
+COPY t_csv TO :csv_file_path (FORMAT CSV, HEADER TRUE, DELIMITER ',');
+CREATE MATERIALIZED VIEW mv_csv AS SELECT * FROM read_csv(:csv_file_path);
+SELECT COUNT(*) FROM mv_csv;
+ count 
+-------
+     3
+(1 row)
+
+SELECT * FROM mv_csv;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+INSERT INTO t_csv VALUES (4,4);
+COPY t_csv TO :csv_file_path (FORMAT CSV, HEADER TRUE, DELIMITER ',');
+REFRESH MATERIALIZED VIEW mv_csv;
+SELECT COUNT(*) FROM mv_csv;
+ count 
+-------
+     4
+(1 row)
+
+SELECT * FROM mv_csv;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+ 4 | 4
+(4 rows)
+
+DROP MATERIALIZED VIEW mv_csv;
+DROP TABLE t_csv;

@@ -1,0 +1,42 @@
+DROP EXTENSION pg_duckdb CASCADE;
+CREATE FUNCTION public.time_bucket(bucket_width interval, ts timestamp)
+RETURNS timestamp
+SET search_path = pg_catalog, pg_temp
+LANGUAGE sql AS $$
+SELECT '1924-01-01 00:00:00'::timestamp;
+$$;
+SELECT time_bucket('1 hour', '2014-01-01 00:00:00'::timestamp);
+       time_bucket        
+--------------------------
+ Tue Jan 01 00:00:00 1924
+(1 row)
+
+CREATE EXTENSION pg_duckdb;
+WARNING:  time_bucket function already exists, use duckdb.time_bucket instead. This is usually because the timescale extension is installed.
+SELECT count(*) from pg_proc where proname = 'time_bucket' and pronamespace = 'public'::regnamespace;
+ count 
+-------
+     7
+(1 row)
+
+SELECT count(*) from pg_proc where proname = 'time_bucket' and pronamespace = 'duckdb'::regnamespace;
+ count 
+-------
+    16
+(1 row)
+
+DROP function public.time_bucket(bucket_width interval, ts timestamp);
+DROP EXTENSION pg_duckdb CASCADE;
+CREATE EXTENSION pg_duckdb;
+SELECT count(*) from pg_proc where proname = 'time_bucket' and pronamespace = 'public'::regnamespace;
+ count 
+-------
+    16
+(1 row)
+
+SELECT count(*) from pg_proc where proname = 'time_bucket' and pronamespace = 'duckdb'::regnamespace;
+ count 
+-------
+    16
+(1 row)
+

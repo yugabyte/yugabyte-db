@@ -1,0 +1,69 @@
+PG_CONFIG ?= pg_config
+
+PG_MIN_VER = 14
+PG_VER = $(shell $(PG_CONFIG) --version | sed "s/^[^ ]* \([0-9]*\).*$$/\1/" 2>/dev/null)
+ifeq ($(shell expr "$(PG_MIN_VER)" \<=  "$(PG_VER)"), 0)
+$(error Minimum version of PostgreSQL required is $(PG_MIN_VER) (but have $(PG_VER)))
+endif
+
+# If you want to test with an unsupported PG version you can pass a different value to make
+PG_MAX_VER ?= 18
+ifeq ($(shell expr "$(PG_MAX_VER)" \>=  "$(PG_VER)"), 0)
+$(error Maximum supported version of PostgreSQL is $(PG_MAX_VER) (but have $(PG_VER)))
+endif
+
+PGXS := $(shell $(PG_CONFIG) --pgxs)
+PG_LIB := $(shell $(PG_CONFIG) --pkglibdir)
+PG_LIBDIR := $(shell $(PG_CONFIG) --libdir)
+INCLUDEDIR := ${shell $(PG_CONFIG) --includedir}
+INCLUDEDIR_SERVER := ${shell $(PG_CONFIG) --includedir-server}
+
+USE_PGXS = 1
+include $(PGXS)
+
+# All the below stuff is vendored in from Postgres its Makefile.global. It's
+# normally only enabled when --enabled-depend is provided to Postgres its
+# ./configure script. This enables it even if that is not the case, so that
+# running "make clean" is pretty much never necessary anymore to re-trigger
+# builds of C/C++ files when their headers are modified.
+ifneq ($(autodepend), yes)
+
+ifndef COMPILE.c
+COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS) -c
+endif
+
+ifndef COMPILE.cc
+COMPILE.cc = $(CXX) $(CXXFLAGS) $(CPPFLAGS) -c
+endif
+
+DEPDIR = .deps
+
+ifeq ($(GCC), yes)
+
+# GCC allows us to create object and dependency file in one invocation.
+%.o : %.c
+	@if test ! -d $(DEPDIR); then mkdir -p $(DEPDIR); fi
+	$(COMPILE.c) -o $@ $< -MMD -MP -MF $(DEPDIR)/$(*F).Po
+
+%.o : %.cpp
+	@if test ! -d $(DEPDIR); then mkdir -p $(DEPDIR); fi
+	$(COMPILE.cc) -o $@ $< -MMD -MP -MF $(DEPDIR)/$(*F).Po
+
+endif # GCC
+
+# Include all the dependency files generated for the current
+# directory. Note that make would complain if include was called with
+# no arguments.
+Po_files := $(wildcard $(DEPDIR)/*.Po)
+ifneq (,$(Po_files))
+include $(Po_files)
+endif
+
+# hook for clean-up
+clean distclean: clean-deps
+
+.PHONY: clean-deps
+clean-deps:
+	@rm -rf $(DEPDIR)
+
+endif # autodepend

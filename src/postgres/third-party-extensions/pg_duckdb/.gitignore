@@ -1,0 +1,16 @@
+.clangd
+.depend
+.deps
+
+.vscode
+.ccls
+compile_commands.json
+
+*.a
+*.so
+*.o
+*.bc
+*.dylib
+*.pyc
+
+env/

@@ -1,0 +1,18 @@
+CREATE TABLE foo(t text);
+set standard_conforming_strings = off;
+INSERT INTO foo VALUES('foo\'bar');
+WARNING:  nonstandard use of \' in a string literal
+LINE 1: INSERT INTO foo VALUES('foo\'bar');
+                               ^
+HINT:  Use '' to write quotes in strings, or use the escape string syntax (E'...').
+select * from foo where t = 'foo\'bar';
+WARNING:  nonstandard use of \' in a string literal
+LINE 1: select * from foo where t = 'foo\'bar';
+                                    ^
+HINT:  Use '' to write quotes in strings, or use the escape string syntax (E'...').
+    t    
+---------
+ foo'bar
+(1 row)
+
+DROP TABLE foo;

@@ -1,0 +1,410 @@
+-- Don't force duckdb execution, all these functions should automatically
+-- trigger duckdb execution.
+set duckdb.force_duckdb_execution = false;
+-- NOTE: In PG17 some of these functions, like JSON_EXISTS and JSON_VALUE, were
+-- introduced into Postgres as keywords. This means that to reference those
+-- DuckDB functions from Postgres we need specify their "public" schema. We do
+-- this for all of these functions just to be sure (except for the one test
+-- where we explicitily test correct serialization of the JSON_EXISTS keyword).
+-- <JSON_EXISTS>
+-- Path exists in a simple JSON object (using a json type)
+SELECT public.json_exists('{"a": {"b": 1}}'::json, '$.a.b'); -- Expected: true
+ json_exists 
+-------------
+ t
+(1 row)
+
+-- Path does not exist in a simple JSON object (using JSONB)
+CREATE TABLE jsonb_table (j JSONB);
+INSERT INTO jsonb_table VALUES ('{"a": {"b": 1}}');
+SELECT public.json_exists(j, '$.a.c') FROM jsonb_table; -- Expected: false
+ json_exists 
+-------------
+ f
+(1 row)
+
+-- Without public, but with requiring DuckDB execution. To ensure serialization
+-- of JSON_EXISTS keyword is correct.
+SELECT json_exists('{"a": {"b": 1}}', '$.a.c') FROM duckdb.query($$ SELECT 1 $$); -- Expected: false
+ json_exists 
+-------------
+ f
+(1 row)
+
+-- BUG: Explicitly specifying the jsonb type causes DuckDB to not understand
+-- the query anymore. We should probably serialize this to the json type when
+-- we build the query.
+SELECT public.json_exists('{"a": {"b": 1}}'::jsonb, '$.a.c');
+ERROR:  (PGDuckDB/CreatePlan) Prepared query returned an error: Catalog Error: Type with name jsonb does not exist!
+Did you mean "blob"?
+-- </JSON_EXISTS>
+-- <JSON_EXTRACT>
+-- Basic JSON Extraction (using a string literal)
+SELECT public.json_extract('{"key": "value"}', '$.key') AS result; -- Expected: "value"
+ result  
+---------
+ "value"
+(1 row)
+
+-- Nested JSON Extraction (from a duckdb.query result, i.e. a value of type duckdb.unresolved_type)
+SELECT public.json_extract(r['data'], '$.a.b.c') AS result FROM duckdb.query($$ SELECT '{"a": {"b": {"c": 42}}}'::json AS data $$) r; -- Expected: 42
+ result 
+--------
+ 42
+(1 row)
+
+SELECT public.json_extract('["a", "b", "c"]', 1) AS result; -- Expected: "b"
+ result 
+--------
+ "b"
+(1 row)
+
+-- Multiple paths to nested objects
+SELECT public.json_extract('{"a": {"b": {"c": 42}}, "x": {"y": "value"}}', ARRAY['$.a.b.c', '$.x.y']) AS result; -- Expected: [42, "value"]
+      result      
+------------------
+ {42,"\"value\""}
+(1 row)
+
+-- </JSON_EXTRACT>
+-- <JSON_EXTRACT_STRING>
+-- Basic JSON Extraction
+SELECT public.json_extract_string('{"key": "value"}', '$.key') AS result; -- Expected: "value"
+ result 
+--------
+ value
+(1 row)
+
+SELECT public.json_extract_string('["a", "b", "c"]', 1) AS result; -- Expected: b
+ result 
+--------
+ b
+(1 row)
+
+-- Nested JSON Extraction
+SELECT public.json_extract_string('{"a": {"b": {"c": 42}}}', '$.a.b.c') AS result; -- Expected: 42
+ result 
+--------
+ 42
+(1 row)
+
+-- Multiple paths to nested objects
+SELECT public.json_extract_string('{"a": {"b": {"c": 42}}, "x": {"y": "value"}}', ARRAY['$.a.b.c', '$.x.y']) AS result; -- Expected: [42, "value"]
+   result   
+------------
+ {42,value}
+(1 row)
+
+-- </JSON_EXTRACT_STRING>
+-- Boolean and Numeric Values
+SELECT public.json_extract_string('{"key": true}', '$.key') AS result; -- Expected: true
+ result 
+--------
+ true
+(1 row)
+
+SELECT public.json_extract_string('{"key": 123}', '$.key') AS result; -- Expected: 123
+ result 
+--------
+ 123
+(1 row)
+
+-- </JSON_EXTRACT_STRING>
+-- <JSON_VALUE>
+-- Nested JSON Extraction
+SELECT public.json_value('{"a": {"b": {"c": 42}}}', '$.a.b.c') AS result; -- Expected: 42
+ result 
+--------
+ 42
+(1 row)
+
+SELECT public.json_value('["a", "b", "c"]', 1) AS result; -- Expected: "b'
+ result 
+--------
+ "b"
+(1 row)
+
+-- Non-existent Path
+SELECT public.json_value('{"key": "value"}', '$.nonexistent') AS result; -- Expected: NULL
+ result 
+--------
+ 
+(1 row)
+
+-- Multiple maths
+SELECT public.json_value('{"a": {"b": {"c": 42}}}', ARRAY['$.a.b.c', '$.a.b']) AS result; -- Expected: 42
+  result   
+-----------
+ {42,NULL}
+(1 row)
+
+-- </JSON_VALUE>
+-- <JSON_ARRAY_LENGTH>
+SELECT public.json_array_length('[1, 2, 3, 4, 5]') AS array_length; -- Expected: 5
+ array_length 
+--------------
+            5
+(1 row)
+
+-- Test with a JSON array at the root and using a JSON path
+SELECT public.json_array_length('[1, 2, 3, 4, 5]', '$') AS array_length; -- Expected: 5
+ array_length 
+--------------
+            5
+(1 row)
+
+-- Test with a JSON object that doesn't contain an array at the path
+SELECT public.json_array_length('{"not_an_array": {"key": "value"}}', '$.not_an_array') AS array_length; -- Expected: 0 (this  is expected DuckDB behaviour)
+ array_length 
+--------------
+            0
+(1 row)
+
+-- BUG: This fails due to not being able to convert the UBIGINT array to a
+-- postgres type yet.
+SELECT public.json_array_length('{"a": [1, 2, 3, 4, 5], "b": [1]}', ARRAY['$.a', 'b']) AS array_length;
+ERROR:  (PGDuckDB/CreatePlan) Not implemented Error: Unsupported DuckDB `LIST` subtype: UBIGINT
+-- </JSON_ARRAY_LENGTH>
+-- <JSON_CONTAINS>
+-- Simple JSON array with numeric needle
+SELECT public.json_contains('[1, 2, 3, 4]', '2') AS contains_numeric; -- Expected: TRUE
+ contains_numeric 
+------------------
+ t
+(1 row)
+
+-- JSON object containing the needle as a value
+SELECT public.json_contains('{"key1": "value1", "key2": 42}', '"value1"') AS contains_object_value; -- Expected: TRUE
+ contains_object_value 
+-----------------------
+ t
+(1 row)
+
+-- </JSON_CONTAINS>
+-- <JSON_Keys>
+-- Test 1: Extract keys from a simple JSON object
+SELECT public.json_keys('{"key1": "value1", "key2": "value2", "key3": "value3"}');
+    json_keys     
+------------------
+ {key1,key2,key3}
+(1 row)
+
+-- Test 2: Extract keys from an empty JSON object
+SELECT public.json_keys('{}');
+ json_keys 
+-----------
+ {}
+(1 row)
+
+-- With path
+SELECT public.json_keys('{"key1": {"a": "b", "c": 123}}', 'key1');
+ json_keys 
+-----------
+ {a,c}
+(1 row)
+
+SELECT public.json_keys('{"key1": {"a": "b", "c": 123}, "key2": {"abc": 567, "xyz": 123}}', ARRAY['key1', 'key2']);
+     json_keys     
+-------------------
+ {{a,c},{abc,xyz}}
+(1 row)
+
+-- NOTE: This fails due to not Postgres only supporting multi-dimensional arrays
+-- when the dimensions are of the same size.
+SELECT public.json_keys('{"key1": {"a": "b", "c": 123}, "key2": {"abc": 567}}', ARRAY['key1', 'key2']);
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Invalid Input Error: Expected 2 values in list at dimension 1, found 1 instead
+-- </JSON_Keys>
+-- <JSON_STRUCTURE>
+-- Test 1: Consistent structure (simple nested JSON object)
+SELECT public.json_structure('{"name": "John", "age": 30, "address": {"city": "New York", "zip": "10001"}}')
+AS structure;
+                                    structure                                    
+---------------------------------------------------------------------------------
+ {"name":"VARCHAR","age":"UBIGINT","address":{"city":"VARCHAR","zip":"VARCHAR"}}
+(1 row)
+
+-- Expected Output:
+-- { "name": "string", "age": "number", "address": { "city": "string", "zip": "string" } }
+-- Test 2: Inconsistent structure (array with incompatible types)
+SELECT public.json_structure('{"data": [1, "string", {"key": "value"}]}')
+AS structure;
+     structure     
+-------------------
+ {"data":["JSON"]}
+(1 row)
+
+-- Expected Output:
+-- JSON (due to inconsistent types in the array)
+-- </JSON_STRUCTURE>
+-- <JSON_TYPE>
+-- Determine the type of the top-level JSON
+SELECT public.json_type('{"name": "John", "age": 30, "isEmployed": true, "skills": ["SQL", "Python"]}')
+AS top_level_type;
+ top_level_type 
+----------------
+ OBJECT
+(1 row)
+
+-- Expected Output:
+-- OBJECT (because the top-level JSON is an object)
+-- Detect the type of a specific element
+SELECT public.json_type('{"name": "John", "age": 30, "isEmployed": true, "skills": ["SQL", "Python"]}', 'name')
+AS element_type;
+ element_type 
+--------------
+ VARCHAR
+(1 row)
+
+-- Determine the types of multiple elements at specific paths
+SELECT public.json_type('{"name": "John", "age": 30, "isEmployed": true, "skills": ["SQL", "Python"]}', ARRAY['name', 'age', 'isEmployed', 'skills'])
+AS element_types;
+          element_types          
+---------------------------------
+ {VARCHAR,UBIGINT,BOOLEAN,ARRAY}
+(1 row)
+
+-- Expected Output:
+-- LIST ['VARCHAR', 'BIGINT', 'BOOLEAN', 'ARRAY'] (corresponding to the types of the specified elements)
+-- </JSON_TYPE>
+-- <JSON_VALID>
+-- Test 1: Valid JSON
+SELECT public.json_valid('{"name": "John", "age": 30, "skills": ["SQL", "Python"]}') AS is_valid;
+ is_valid 
+----------
+ t
+(1 row)
+
+-- Expected Output:
+-- true (since the JSON is well-formed)
+-- Test 2: Invalid JSON
+SELECT public.json_valid('{"name": "John", "age": 30, "skills": ["SQL", "Python"'::duckdb.json) AS is_valid;
+ is_valid 
+----------
+ f
+(1 row)
+
+-- Expected Output:
+-- false
+-- </JSON_VALID>
+-- <JSON>
+    -- SELECT json('{
+    --     "name": "John",
+    --     "age": 30,
+    --     "skills": ["SQL", "Python"]
+    -- }') AS minified_json;
+-- </JSON>
+CREATE TABLE example1 (k VARCHAR, v INTEGER);
+INSERT INTO example1 VALUES ('duck', 42), ('goose', 7);
+-- <JSON_GROUP_ARRAY>
+SELECT public.json_group_array(v) FROM example1;
+ json_group_array 
+------------------
+ [42,7]
+(1 row)
+
+-- </JSON_GROUP_ARRAY>
+-- <JSON_GROUP_OBJECT>
+SELECT public.json_group_object(k, v) FROM example1;
+   json_group_object   
+-----------------------
+ {"duck":42,"goose":7}
+(1 row)
+
+SELECT public.json_group_object(123, 'abc');
+ json_group_object 
+-------------------
+ {"123":"abc"}
+(1 row)
+
+-- </JSON_GROUP_OBJECT>
+-- <JSON_GROUP_STRUCTURE>
+CREATE TABLE example2 (j JSON);
+INSERT INTO example2 VALUES
+    ('{"family": "anatidae", "species": ["duck", "goose"], "coolness": 42.42}'),
+    ('{"family": "canidae", "species": ["labrador", "bulldog"], "hair": true}');
+SELECT public.json_group_structure(j) FROM example2;
+                              json_group_structure                               
+---------------------------------------------------------------------------------
+ {"family":"VARCHAR","species":["VARCHAR"],"coolness":"DOUBLE","hair":"BOOLEAN"}
+(1 row)
+
+-- </JSON_GROUP_STRUCTURE>
+-- NOTE: Converting a DuckDB STRUCT type to a Postgres type is not
+-- implemented yet, so we test the next to functions in a convoluted way.
+-- CREATE TABLE example (j JSON);
+-- INSERT INTO example VALUES
+--     ('{"family": "anatidae", "species": ["duck", "goose"], "coolness": 42.42}'),
+--     ('{"family": "canidae", "species": ["labrador", "bulldog"], "hair": true}');
+-- -- <JSON_TRANSFORM>
+SELECT public.json_transform(j, '{"family": "VARCHAR", "coolness": "DOUBLE"}') FROM example2;
+             json_transform              
+-----------------------------------------
+ {'family': anatidae, 'coolness': 42.42}
+ {'family': canidae, 'coolness': NULL}
+(2 rows)
+
+SELECT public.json_transform(j, '{"family": "TINYINT", "coolness": "DECIMAL(4, 2)"}') FROM example2;
+           json_transform            
+-------------------------------------
+ {'family': NULL, 'coolness': 42.42}
+ {'family': NULL, 'coolness': NULL}
+(2 rows)
+
+SELECT res['family'] family, res['coolness'] coolness FROM (
+    SELECT public.json_transform(j, '{"family": "VARCHAR", "coolness": "DOUBLE"}') res FROM example2
+) q;
+  family  | coolness 
+----------+----------
+ anatidae |    42.42
+ canidae  |         
+(2 rows)
+
+SELECT res['family'] family, res['coolness'] coolness FROM (
+    SELECT public.json_transform(j, '{"family": "TINYINT", "coolness": "DECIMAL(4, 1)"}') res FROM example2
+) q;
+ family | coolness 
+--------+----------
+        |     42.4
+        |         
+(2 rows)
+
+SELECT res['family'] family, res['coolness'] coolness FROM (
+    SELECT public.from_json(j, '{"family": "TINYINT", "coolness": "DECIMAL(4, 1)"}') res FROM example2
+) q;
+ family | coolness 
+--------+----------
+        |     42.4
+        |         
+(2 rows)
+
+-- -- </JSON_TRANSFORM>
+-- -- <JSON_TRANSFORM_STRICT>
+SELECT public.json_transform_strict(j, '{"family": "TINYINT", "coolness": "DOUBLE"}') FROM example2;
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Invalid Input Error: Failed to cast value to numerical: "canidae"
+SELECT res['family'] family FROM (
+    SELECT public.json_transform_strict(j, '{"family": "VARCHAR"}') res FROM example2
+) q;
+  family  
+----------
+ anatidae
+ canidae
+(2 rows)
+
+SELECT res['family'] family, res['coolness'] coolness FROM (
+    SELECT public.json_transform_strict(j, '{"family": "TINYINT", "coolness": "DOUBLE"}') res FROM example2
+) q;
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Invalid Input Error: Failed to cast value to numerical: "canidae"
+SELECT res['family'] family FROM (
+    SELECT public.from_json_strict(j, '{"family": "VARCHAR"}') res FROM example2
+) q;
+  family  
+----------
+ anatidae
+ canidae
+(2 rows)
+
+SELECT res['family'] family, res['coolness'] coolness FROM (
+    SELECT public.from_json_strict(j, '{"family": "TINYINT", "coolness": "DOUBLE"}') res FROM example2
+) q;
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Invalid Input Error: Failed to cast value to numerical: "canidae"
+-- -- </JSON_TRANSFORM_STRICT>

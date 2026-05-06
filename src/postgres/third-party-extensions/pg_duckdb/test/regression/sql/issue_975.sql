@@ -1,0 +1,6 @@
+-- Initialize duckdb in this session
+SELECT * FROM duckdb.query($$ SELECT 1 $$);
+-- Have the timezone change be rolled back at the end transaction
+BEGIN;
+SET TimeZone TO 'UTC';
+ROLLBACK;

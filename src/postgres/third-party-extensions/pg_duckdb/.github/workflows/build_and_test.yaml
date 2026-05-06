@@ -1,0 +1,154 @@
+name: CI
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  pull_request:
+
+# Cancel in-progress jobs if a new commit is pushed to the same branch (except for main)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'main') }}
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    name: "Linting and formatting"
+
+    steps:
+      - name: Checkout pg_duckdb extension code
+        uses: actions/checkout@v4
+      - name: Fetch main branch
+        run: git fetch --depth=1 origin +main:refs/remotes/origin/main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install clang-format and ruff
+        run: python3 -m pip install -r dev_requirements.txt
+      - name: Run clang-format
+        run: find src include -iname '*.hpp' -o -iname '*.h' -o -iname '*.cpp' -o -iname '*.c' | xargs git clang-format --diff origin/main
+      - name: Run ruff check
+        run: ruff check --output-format=github .
+      - name: Run ruff format
+        run: ruff format --diff
+
+  build-and-test:
+    name: "Build and test"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - version: REL_14_STABLE
+          type: Release
+        - version: REL_15_STABLE
+          type: Release
+        - version: REL_16_STABLE
+          type: Release
+        - version: REL_17_STABLE
+          type: Release
+        # For PG18 we build DuckDB as a static library. There's nothing special
+        # about the static library, nor PG18. This is only done so that we have
+        # CI coverage for our logic to build a static library version.
+        - version: REL_18_STABLE
+          type: ReleaseStatic
+        - version: REL_18_STABLE
+          type: Debug
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Test details
+        run: echo Build and test pg_duckdb with PostgreSQL ${{ matrix.version }} branch
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E298A3A825C0D65DFD57CBB651716619E084DAB9
+          sudo apt-get install -y build-essential libreadline-dev zlib1g-dev flex bison libxml2-dev libxslt-dev \
+            libssl-dev libxml2-utils xsltproc pkg-config libc++-dev libc++abi-dev libglib2.0-dev libtinfo6 cmake \
+            libstdc++-12-dev ninja-build libcurl4-openssl-dev
+          echo "${PWD}/postgres/inst/bin:$PATH'" > $GITHUB_PATH
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ubuntu-24.04-${{ matrix.version }}
+          create-symlink: true
+
+      - name: Checkout pg_duckdb extension code
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+          path: duckdb
+
+      - name: Checkout PostgreSQL code
+        run: |
+          rm -rf postgres
+          git clone --branch ${{ matrix.version }} --single-branch --depth 1 https://github.com/postgres/postgres.git
+
+      - name: Compute Version SHAs
+        id: versions
+        run: |
+          pushd duckdb/third_party/duckdb
+          DUCKDB_SHA=`git rev-parse HEAD`
+          echo "duckdb_sha=${DUCKDB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Got DUCKDB_SHA='${DUCKDB_SHA}'"
+          popd
+          pushd postgres
+          POSTGRES_SHA=`git rev-parse HEAD`
+          echo "postgres_sha=${POSTGRES_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Got POSTGRES_SHA='${POSTGRES_SHA}'"
+
+      - name: Setup PG build cache
+        id: cache-pg-build
+        uses: actions/cache@v4
+        with:
+          path: postgres/inst
+          key: pg-build-ubuntu-24.04-${{ steps.versions.outputs.postgres_sha }}
+
+      - name: Build PostgreSQL code
+        if: steps.cache-pg-build.outputs.cache-hit != 'true'
+        working-directory: postgres
+        run: |
+          ./configure --prefix=$PWD/inst/ --enable-cassert --enable-debug --with-openssl --with-icu --with-libxml --with-lz4
+          make -j8 install
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup DuckDB build cache
+        id: cache-duckdb-build
+        uses: actions/cache@v4
+        with:
+          path: duckdb/third_party/duckdb/build/
+          key: duckdb-build-ubuntu-24.04-${{ steps.versions.outputs.duckdb_sha }}-ninja
+
+      - name: Install pytest and other test requirements
+        run: python3 -m pip install -r duckdb/requirements.txt
+
+      - name: Build pg_duckdb extension
+        id: build
+        working-directory: duckdb
+        run: ERROR_ON_WARNING=1 make -j8 install DUCKDB_BUILD=${{ matrix.type }}
+
+      - name: Run make installcheck
+        id: installcheck
+        working-directory: duckdb
+        run: make installcheck DUCKDB_BUILD=${{ matrix.type }}
+
+      - name: Run make pycheck
+        id: pycheck
+        working-directory: duckdb
+        run: make pycheck DUCKDB_BUILD=${{ matrix.type }}
+
+      - name: Print regression.diffs if regression tests failed
+        if: failure() && steps.installcheck.outcome == 'failure'
+        # Always "fail" this task by adding "&& false", so that rits output
+        # gets expanded in the github UI.
+        run: cat duckdb/test/regression/regression.diffs && false
+
+      - name: Print postmaster.log if regression tests failed
+        if: failure() && steps.installcheck.outcome == 'failure'
+        run: cat duckdb/test/regression/log/postmaster.log

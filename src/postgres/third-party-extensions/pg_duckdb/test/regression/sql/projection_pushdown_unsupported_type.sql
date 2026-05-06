@@ -1,0 +1,10 @@
+-- XML is not supported, pushdown should avoid problems
+CREATE TABLE my_table(a TEXT, b XML, c INTEGER);
+INSERT INTO my_table (a, b, c) SELECT * from (
+	VALUES
+		('a', '<root><element>value</element></root>'::XML, 42),
+		(NULL, NULL, NULL),
+		('b', '<root><element>value</element></root>'::XML, -128),
+		('c', '<root><element>value</element></root>'::XML, 2000000)
+) t(a);
+SELECT a, c FROM my_table;

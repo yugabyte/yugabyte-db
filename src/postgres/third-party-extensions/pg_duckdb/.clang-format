@@ -1,0 +1,37 @@
+---
+BasedOnStyle: LLVM
+TabWidth: 4
+IndentWidth: 4
+ColumnLimit: 120
+AllowShortFunctionsOnASingleLine: false
+---
+UseTab: ForIndentation
+DerivePointerAlignment: false
+PointerAlignment: Right
+AlignConsecutiveMacros: true
+AlignTrailingComments: true
+AllowAllArgumentsOnNextLine: true
+AllowAllConstructorInitializersOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+AlwaysBreakAfterReturnType: AllDefinitions
+AlignAfterOpenBracket: Align
+IncludeBlocks: Preserve
+IncludeCategories: # we want to ensure postgres.h appear first
+  - Regex:           '^"postgres\.h"'
+    Priority:        -2
+  - Regex:           '^"c\.h"'
+    Priority:        -1
+IncludeIsMainRegex: ''
+KeepEmptyLinesAtTheStartOfBlocks: true
+SortIncludes: false
+SpaceBeforeCpp11BracedList: true
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpacesInAngles: false
+SpacesInCStyleCastParentheses: false
+SpacesInConditionalStatement: false
+AllowShortLambdasOnASingleLine: Inline
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+Language: Cpp
+AccessModifierOffset: -4

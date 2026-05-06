@@ -1,0 +1,7 @@
+pytest
+pytest-asyncio
+pytest-timeout
+pytest-xdist
+psycopg
+filelock
+duckdb

@@ -1,0 +1,2 @@
+{"add":{"path":"2b2caa9d-1999-4270-9e11-af37ec38b898.parquet","partitionValues":{},"size":1243,"modificationTime":0,"dataChange":true,"stats":null,"tags":null,"deletionVector":null,"baseRowId":null,"defaultRowCommitVersion":null,"clusteringProvider":null}}
+{"commitInfo":{"timestamp":1730972865251,"operation":"WRITE","operationParameters":{"mode":"Append"},"clientVersion":"delta-rs.0.21.0"}}

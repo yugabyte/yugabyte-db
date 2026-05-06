@@ -1,0 +1,27 @@
+CREATE TABLE int_as_varchar(a varchar);
+INSERT INTO int_as_varchar SELECT * from (
+	VALUES
+		('abc')
+) t(a);
+SELECT a::INTEGER FROM int_as_varchar;
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Conversion Error: Could not convert string 'abc' to INT32 when casting from source column a
+
+LINE 1:  SELECT (a)::integer AS a FROM pgduckdb.public.int_as_varchar
+                   ^
+DROP TABLE int_as_varchar;
+\set VERBOSITY verbose
+select * from duckdb.raw_query('aaaaa');
+WARNING:  01000: (PGDuckDB/CreatePlan) Prepared query returned an error: Catalog Error: Table Function with name raw_query does not exist!
+Did you mean "main.pragma_user_agent"?
+
+LINE 1: SELECT raw_query FROM duckdb.raw_query('aaaaa'::text) raw_query(raw_query)
+                              ^
+LOCATION:  CreatePlan, pgduckdb_planner.cpp:66
+ERROR:  XX000: (PGDuckDB/pgduckdb_raw_query_cpp) Parser Error: syntax error at or near "aaaaa"
+
+LINE 1: aaaaa
+        ^
+
+LINE 1: aaaaa
+        ^
+LOCATION:  pgduckdb_raw_query_cpp, pgduckdb_options.cpp:80
