@@ -16,6 +16,9 @@ SELECT * FROM cypher('basic', $$ CREATE (:person {name: 'Bob',
 SELECT * FROM cypher('basic', $$ MATCH (n:person) RETURN count(n) $$) AS (cnt agtype);
 -- cypher CREATE without the required meko_* tenant properties errors out.
 SELECT * FROM cypher('basic', $$ CREATE (:person {name: 'NoTenant'}) $$) AS (a agtype);
+-- SET cannot mutate meko_* tenant properties.
+SELECT * FROM cypher('basic', $$ MATCH (n:person {name: 'Alice'})
+    SET n.meko_user_id = '00000000-0000-0000-0000-000000000099' $$) AS (a agtype);
 -- create_complete_graph and age_create_barbell_graph reach
 -- yb_insert_*_simple, which lacks tenant column support yet (#31338).
 -- Confirm they raise feature_not_supported rather than violating the

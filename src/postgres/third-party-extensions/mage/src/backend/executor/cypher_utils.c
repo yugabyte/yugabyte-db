@@ -126,14 +126,27 @@ void yb_populate_edge_meko_columns(TupleTableSlot *slot, YbMekoDp meko)
  * columns are NOT NULL on the table so non-null is asserted; conversation
  * is nullable and its flag is propagated.
  */
-static inline void
-yb_carry_meko_columns_from_tuple(TupleTableSlot *slot, HeapTuple heap_tuple,
-                                 TupleDesc tupdesc,
-                                 int dp_anum, int user_anum,
-                                 int ag_anum, int conv_anum,
-                                 int dp_off, int user_off,
-                                 int ag_off, int conv_off)
+void yb_carry_meko_columns_from_tuple(TupleTableSlot *slot,
+                                      HeapTuple heap_tuple,
+                                      TupleDesc tupdesc,
+                                      bool is_edge)
 {
+    int dp_anum   = is_edge ? Anum_ag_label_edge_table_meko_datapack_id
+                            : Anum_ag_label_vertex_table_meko_datapack_id;
+    int user_anum = is_edge ? Anum_ag_label_edge_table_meko_user_id
+                            : Anum_ag_label_vertex_table_meko_user_id;
+    int ag_anum   = is_edge ? Anum_ag_label_edge_table_meko_agent_id
+                            : Anum_ag_label_vertex_table_meko_agent_id;
+    int conv_anum = is_edge ? Anum_ag_label_edge_table_meko_conversation_id
+                            : Anum_ag_label_vertex_table_meko_conversation_id;
+    int dp_off    = is_edge ? edge_tuple_meko_datapack_id
+                            : vertex_tuple_meko_datapack_id;
+    int user_off  = is_edge ? edge_tuple_meko_user_id
+                            : vertex_tuple_meko_user_id;
+    int ag_off    = is_edge ? edge_tuple_meko_agent_id
+                            : vertex_tuple_meko_agent_id;
+    int conv_off  = is_edge ? edge_tuple_meko_conversation_id
+                            : vertex_tuple_meko_conversation_id;
     bool isnull;
 
     slot->tts_values[dp_off] =
@@ -154,38 +167,6 @@ yb_carry_meko_columns_from_tuple(TupleTableSlot *slot, HeapTuple heap_tuple,
     slot->tts_values[conv_off] =
         heap_getattr(heap_tuple, conv_anum, tupdesc, &isnull);
     slot->tts_isnull[conv_off] = isnull;
-}
-
-void yb_carry_vertex_meko_columns_from_tuple(TupleTableSlot *slot,
-                                             HeapTuple heap_tuple,
-                                             TupleDesc tupdesc)
-{
-    yb_carry_meko_columns_from_tuple(
-        slot, heap_tuple, tupdesc,
-        Anum_ag_label_vertex_table_meko_datapack_id,
-        Anum_ag_label_vertex_table_meko_user_id,
-        Anum_ag_label_vertex_table_meko_agent_id,
-        Anum_ag_label_vertex_table_meko_conversation_id,
-        vertex_tuple_meko_datapack_id,
-        vertex_tuple_meko_user_id,
-        vertex_tuple_meko_agent_id,
-        vertex_tuple_meko_conversation_id);
-}
-
-void yb_carry_edge_meko_columns_from_tuple(TupleTableSlot *slot,
-                                           HeapTuple heap_tuple,
-                                           TupleDesc tupdesc)
-{
-    yb_carry_meko_columns_from_tuple(
-        slot, heap_tuple, tupdesc,
-        Anum_ag_label_edge_table_meko_datapack_id,
-        Anum_ag_label_edge_table_meko_user_id,
-        Anum_ag_label_edge_table_meko_agent_id,
-        Anum_ag_label_edge_table_meko_conversation_id,
-        edge_tuple_meko_datapack_id,
-        edge_tuple_meko_user_id,
-        edge_tuple_meko_agent_id,
-        edge_tuple_meko_conversation_id);
 }
 
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
@@ -456,33 +437,63 @@ YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
      * does the find + pnstrdup; we are responsible for pfreeing the returned
      * cstring after passing it through the appropriate input function.
      */
-    if (!yb_lookup_meko_string(props_agtype, "meko_datapack_id", &str))
+    if (!yb_lookup_meko_string(props_agtype,
+                               AG_VERTEX_COLNAME_MEKO_DATAPACK_ID, &str))
         ereport(ERROR,
                 (errcode(ERRCODE_NOT_NULL_VIOLATION),
-                 errmsg("missing required tenant property \"meko_datapack_id\"")));
+                 errmsg("missing required tenant property \"%s\"",
+                        AG_VERTEX_COLNAME_MEKO_DATAPACK_ID)));
     result.datapack_id = DirectFunctionCall1(uuid_in, CStringGetDatum(str));
     pfree(str);
 
-    if (!yb_lookup_meko_string(props_agtype, "meko_user_id", &str))
+    if (!yb_lookup_meko_string(props_agtype,
+                               AG_VERTEX_COLNAME_MEKO_USER_ID, &str))
         ereport(ERROR,
                 (errcode(ERRCODE_NOT_NULL_VIOLATION),
-                 errmsg("missing required tenant property \"meko_user_id\"")));
+                 errmsg("missing required tenant property \"%s\"",
+                        AG_VERTEX_COLNAME_MEKO_USER_ID)));
     result.user_id = DirectFunctionCall1(uuid_in, CStringGetDatum(str));
     pfree(str);
 
-    if (!yb_lookup_meko_string(props_agtype, "meko_agent_id", &str))
+    if (!yb_lookup_meko_string(props_agtype,
+                               AG_VERTEX_COLNAME_MEKO_AGENT_ID, &str))
         ereport(ERROR,
                 (errcode(ERRCODE_NOT_NULL_VIOLATION),
-                 errmsg("missing required tenant property \"meko_agent_id\"")));
+                 errmsg("missing required tenant property \"%s\"",
+                        AG_VERTEX_COLNAME_MEKO_AGENT_ID)));
     result.agent_id = CStringGetTextDatum(str);
     pfree(str);
 
-    if (yb_lookup_meko_string(props_agtype, "meko_conversation_id", &str))
+    /*
+     * meko_conversation_id is nullable, but if the user does supply it the
+     * value must be a string we can feed to uuid_in. Distinguish "missing"
+     * from "present but wrong type" so the latter raises a clear error
+     * instead of being silently treated as NULL.
+     */
     {
-        result.conversation_id =
-            DirectFunctionCall1(uuid_in, CStringGetDatum(str));
-        result.conversation_id_isnull = false;
-        pfree(str);
+        agtype_value search_key;
+        agtype_value *val;
+
+        search_key.type = AGTV_STRING;
+        search_key.val.string.val =
+            (char *) AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID;
+        search_key.val.string.len =
+            strlen(AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID);
+        val = find_agtype_value_from_container(&props_agtype->root,
+                                               AGT_FOBJECT, &search_key);
+        if (val != NULL && val->type != AGTV_NULL)
+        {
+            if (val->type != AGTV_STRING)
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+                         errmsg("tenant property \"%s\" must be a string",
+                                AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID)));
+            str = pnstrdup(val->val.string.val, val->val.string.len);
+            result.conversation_id =
+                DirectFunctionCall1(uuid_in, CStringGetDatum(str));
+            result.conversation_id_isnull = false;
+            pfree(str);
+        }
     }
 
     return result;

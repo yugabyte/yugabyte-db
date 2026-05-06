@@ -26,6 +26,7 @@
 
 /* YB includes */
 #include "catalog/ag_label.h"
+#include "commands/label_commands.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "utils/age_global_graph.h"
@@ -525,6 +526,30 @@ static void process_update_list(CustomScanState *node)
                             clause_name)));
         }
 
+        /*
+         * YB: meko_* tenant columns are derived from row identity and must
+         * not be mutated by SET/REMOVE; they have to be re-set by dropping
+         * the row and recreating it.
+         */
+        if (IsYugaByteEnabled() &&
+            update_item->prop_name != NULL &&
+            (strcmp(update_item->prop_name,
+                    AG_VERTEX_COLNAME_MEKO_DATAPACK_ID) == 0 ||
+             strcmp(update_item->prop_name,
+                    AG_VERTEX_COLNAME_MEKO_USER_ID) == 0 ||
+             strcmp(update_item->prop_name,
+                    AG_VERTEX_COLNAME_MEKO_AGENT_ID) == 0 ||
+             strcmp(update_item->prop_name,
+                    AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID) == 0))
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg("tenant property \"%s\" cannot be modified by %s",
+                            update_item->prop_name, clause_name),
+                     errhint("Drop and recreate the vertex/edge to change "
+                             "its tenant identity.")));
+        }
+
         /* get the id and label for later */
         id = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "id");
         label = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "label");
@@ -685,20 +710,13 @@ static void process_update_list(CustomScanState *node)
                  * tenant columns over from the on-disk tuple to keep the
                  * row's tenant identity intact.
                  */
-                if (IsYugaByteEnabled())
-                {
-                    TupleDesc desc =
-                        RelationGetDescr(resultRelInfo->ri_RelationDesc);
-
-                    if (original_entity_value->type == AGTV_VERTEX)
-                        yb_carry_vertex_meko_columns_from_tuple(slot,
-                                                                heap_tuple,
-                                                                desc);
-                    else if (original_entity_value->type == AGTV_EDGE)
-                        yb_carry_edge_meko_columns_from_tuple(slot,
-                                                              heap_tuple,
-                                                              desc);
-                }
+                if (IsYugaByteEnabled() &&
+                    (original_entity_value->type == AGTV_VERTEX ||
+                     original_entity_value->type == AGTV_EDGE))
+                    yb_carry_meko_columns_from_tuple(
+                        slot, heap_tuple,
+                        RelationGetDescr(resultRelInfo->ri_RelationDesc),
+                        original_entity_value->type == AGTV_EDGE);
 
                 heap_tuple = update_entity_tuple(resultRelInfo, slot, estate,
                                                  heap_tuple);
