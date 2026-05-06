@@ -783,22 +783,22 @@ public class GFlagsValidation {
     public Map<String, String> masterGFlagsErrors = new HashMap<>();
     public Map<String, String> tserverGFlagsErrors = new HashMap<>();
 
+    private static void appendErrors(StringBuilder sb, String label, Map<String, String> errors) {
+      if (errors == null || errors.isEmpty()) {
+        return;
+      }
+      sb.append("\n    ").append(label).append(":");
+      for (Map.Entry<String, String> entry : errors.entrySet()) {
+        sb.append("\n      ").append(entry.getKey()).append(": ").append(entry.getValue());
+      }
+    }
+
     @Override
     public String toString() {
       StringBuilder sb = new StringBuilder();
-      sb.append("GFlagsValidationErrorsPerAZ{");
-      sb.append("azUuid=").append(azUuid);
-      sb.append(", clusterUuid=").append(clusterUuid);
-
-      if (masterGFlagsErrors != null && !masterGFlagsErrors.isEmpty()) {
-        sb.append(", masterGFlagsErrors=").append(masterGFlagsErrors);
-      }
-
-      if (tserverGFlagsErrors != null && !tserverGFlagsErrors.isEmpty()) {
-        sb.append(", tserverGFlagsErrors=").append(tserverGFlagsErrors);
-      }
-
-      sb.append("}");
+      sb.append("Cluster=").append(clusterUuid).append(", AZ=").append(azUuid).append(":");
+      appendErrors(sb, "MASTER", masterGFlagsErrors);
+      appendErrors(sb, "TSERVER", tserverGFlagsErrors);
       return sb.toString();
     }
   }
@@ -808,21 +808,16 @@ public class GFlagsValidation {
 
     @Override
     public String toString() {
-      StringBuilder sb = new StringBuilder();
-      sb.append("GFlagsValidationErrors{");
-
-      if (gFlagsValidationErrorsPerAZs != null && !gFlagsValidationErrorsPerAZs.isEmpty()) {
-        sb.append("gFlagsValidationErrorsPerAZs=[");
-        for (int i = 0; i < gFlagsValidationErrorsPerAZs.size(); i++) {
-          if (i > 0) sb.append(", ");
-          sb.append(gFlagsValidationErrorsPerAZs.get(i));
-        }
-        sb.append("]");
-      } else {
-        sb.append("gFlagsValidationErrorsPerAZs=[]");
+      if (gFlagsValidationErrorsPerAZs == null || gFlagsValidationErrorsPerAZs.isEmpty()) {
+        return "(no errors)";
       }
-
-      sb.append("}");
+      StringBuilder sb = new StringBuilder();
+      for (GFlagsValidationErrorsPerAZ perAZ : gFlagsValidationErrorsPerAZs) {
+        if (perAZ.masterGFlagsErrors.isEmpty() && perAZ.tserverGFlagsErrors.isEmpty()) {
+          continue;
+        }
+        sb.append("\n  ").append(perAZ);
+      }
       return sb.toString();
     }
   }

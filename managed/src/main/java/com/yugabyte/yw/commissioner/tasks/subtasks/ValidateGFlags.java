@@ -28,10 +28,13 @@ import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -504,23 +507,25 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
           nodeUniverseManager.runCommand(
               node, universe, command, shellContext, false /* use bash */);
       if (response.code != 0) {
-        log.warn(
-            "Shell response returned with non-zero exit code with message: {}",
+        String redactedMessage =
             RedactingService.redactSensitiveInfoInString(
-                response.message, taskParams().ybSoftwareVersion, gFlagsValidation));
+                response.message, taskParams().ybSoftwareVersion, gFlagsValidation);
+        log.warn(
+            "Shell response returned with non-zero exit code with message: {}", redactedMessage);
         // All gflag validation errors from the binary start with "ERROR" prefix.
         if (response.message.contains("ERROR")) {
-          serverGFlagsValidationErrors.put(
-              serverType.toString(),
-              "Invalid gflags detected. "
-                  + RedactingService.redactSensitiveInfoInString(
-                      response.message, taskParams().ybSoftwareVersion, gFlagsValidation));
+          Map<String, String> perFlagErrors = extractGFlagBinaryErrors(redactedMessage);
+          if (!perFlagErrors.isEmpty()) {
+            serverGFlagsValidationErrors.putAll(perFlagErrors);
+          } else {
+            // Fallback when the output didn't match the expected ERROR format —
+            // surface the raw (redacted) message rather than silently swallowing it.
+            serverGFlagsValidationErrors.put(
+                serverType.toString(), "Invalid gflags detected. " + redactedMessage);
+          }
         } else {
           throw new PlatformServiceException(
-              INTERNAL_SERVER_ERROR,
-              "Command to call RPC failed: "
-                  + RedactingService.redactSensitiveInfoInString(
-                      response.message, taskParams().ybSoftwareVersion, gFlagsValidation));
+              INTERNAL_SERVER_ERROR, "Command to call RPC failed: " + redactedMessage);
         }
       }
     } catch (Exception e) {
@@ -542,6 +547,46 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
                   e.getMessage(), taskParams().ybSoftwareVersion, gFlagsValidation));
     }
     return serverGFlagsValidationErrors;
+  }
+
+  // ERROR line emitted by the yb-server binary when a flag fails validation, e.g.:
+  //   ERROR: failed validation of new value '90' for flag 'default_memory_limit_to_ram_ratio'
+  private static final Pattern BINARY_ERROR_LINE =
+      Pattern.compile("ERROR: failed validation of new value '.*' for flag '([^']+)'");
+
+  // glog line preceding the ERROR line that contains the human-readable reason, e.g.:
+  //   E0506 15:36:40.347 110098 mem_tracker.cc:1003] Invalid value '90' for flag '...': <reason>
+  private static final Pattern BINARY_REASON_LINE =
+      Pattern.compile(".*\\]\\s*(Invalid value '.*' for flag '[^']+'.*)");
+
+  /**
+   * Extracts per-flag validation errors from the yb-server binary's stderr/stdout. Returns a map
+   * keyed by flag name with a concise human-readable reason as the value. Strips bash-trace lines,
+   * Python deprecation warnings, tracebacks, and the command-line arg dump that otherwise drown out
+   * the actual error.
+   */
+  static Map<String, String> extractGFlagBinaryErrors(String binaryOutput) {
+    Map<String, String> errorsByFlag = new LinkedHashMap<>();
+    if (StringUtils.isEmpty(binaryOutput)) {
+      return errorsByFlag;
+    }
+    String pendingReason = null;
+    for (String rawLine : binaryOutput.split("\\R")) {
+      String line = rawLine.trim();
+      Matcher reasonMatcher = BINARY_REASON_LINE.matcher(line);
+      if (reasonMatcher.matches()) {
+        pendingReason = reasonMatcher.group(1);
+        continue;
+      }
+      Matcher errorMatcher = BINARY_ERROR_LINE.matcher(line);
+      if (errorMatcher.find()) {
+        String flagName = errorMatcher.group(1);
+        String message = pendingReason != null ? pendingReason : line;
+        errorsByFlag.merge(flagName, message, (a, b) -> a + "; " + b);
+        pendingReason = null;
+      }
+    }
+    return errorsByFlag;
   }
 
   /**
