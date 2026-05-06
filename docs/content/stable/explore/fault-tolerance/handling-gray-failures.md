@@ -23,7 +23,7 @@ Examples include:
 - Local storage write failures
 - Partial or asymmetric [network partitions](../../../architecture/key-concepts/#network-partition)
 
-gray failures are harder to detect than clean failures because the affected component can still respond some of the time. YugabyteDB mitigates these failures using quorum-based replication, leader election, and topology-aware replica placement.
+Gray failures are harder to detect than clean failures because the affected component can still respond some of the time. YugabyteDB mitigates these failures using quorum-based replication, leader election, and topology-aware replica placement.
 
 {{< note title="Note" >}}
 YugabyteDB does not use a separate gray-failure subsystem. Instead, it relies on the same fault-tolerance mechanisms that protect against node and network failures.
@@ -348,7 +348,7 @@ Two outcomes are possible:
 
 ## What to expect during a gray failure
 
-gray failures are often visible as performance issues before they are visible as hard failures.
+Gray failures are often visible as performance issues before they are visible as hard failures.
 
 Common symptoms include:
 
@@ -372,6 +372,9 @@ To reduce the impact of gray failures:
 - Use client drivers that support retries and reconnection.
 - Investigate nodes with recurring stalls, long GC pauses, storage latency spikes, or intermittent network loss.
 - Configure alerting to detect degraded nodes before they become fully unavailable.
+- Workloads should not rely on the underlying system to detect and mitigate failures. Applications should have their own observability and recovery mechanisms so as to be able to detect and mitigate the impact of gray failures.
+
+
 
 ## Summary
 
