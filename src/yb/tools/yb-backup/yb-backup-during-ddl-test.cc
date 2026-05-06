@@ -55,7 +55,6 @@ DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_mark_snapshot_as_failed);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_use_yb_controller);
-DECLARE_bool(enable_db_clone);
 DECLARE_bool(enable_pg_anonymizer);
 DECLARE_bool(ysql_beta_features);
 
@@ -1004,7 +1003,6 @@ TEST_F(YBBackupWithAnonymizerTest, RestoreAfterRoleRenameWithAnonymizer) {
 class YBCloneWithAnonymizerTest : public YBBackupWithAnonymizerTest {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_beta_features) = true;
     YBBackupWithAnonymizerTest::SetUp();
   }

@@ -87,7 +87,6 @@
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(data_size_metric_updater_interval_sec);
 DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_bool(enable_db_clone);
 DECLARE_bool(enforce_tablet_replica_limits);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
@@ -637,7 +636,6 @@ class PgCloneInitiallyEmptyDBTest : public PostgresMiniClusterTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
     PostgresMiniClusterTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_pg_host_port) = pg_host_port().ToString();
     ASSERT_OK(CreateProxies());
     ASSERT_OK(CreateSourceDbAndSnapshotSchedule(ColocateDatabase()));

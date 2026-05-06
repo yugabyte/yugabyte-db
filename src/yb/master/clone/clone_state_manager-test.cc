@@ -42,8 +42,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(enable_db_clone);
-
 // This is needed for the mock of GetBlacklist - must be in std namespace for ADL.
 namespace std {
 std::ostream& operator<<(
@@ -197,7 +195,6 @@ class CloneStateManagerTest : public YBTest {
  protected:
   void SetUp() override {
     YBTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
     clone_state_manager_ = std::unique_ptr<CloneStateManager>(
         new CloneStateManager(std::make_unique<MockExternalFunctions>()));
 

@@ -49,7 +49,6 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
-DECLARE_bool(enable_db_clone);
 DECLARE_bool(enable_pg_cron);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -4967,8 +4966,6 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
 }
 
 TEST_F(XClusterDDLReplicationTest, CloneSourceDatabaseIncludesDDLReplicationTables) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
-
   ASSERT_OK(SetUpClustersAndReplication());
   ASSERT_OK(EnablePITROnClusters());
 

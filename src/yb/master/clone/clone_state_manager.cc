@@ -52,6 +52,7 @@
 
 #include "yb/tablet/tablet.h"
 
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
@@ -59,7 +60,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-DEFINE_RUNTIME_bool(enable_db_clone, false, "Enable DB cloning.");
+DEFINE_RUNTIME_AUTO_bool(enable_db_clone, kLocalPersisted, false, true, "Enable DB cloning.");
 TAG_FLAG(enable_db_clone, advanced);
 
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
