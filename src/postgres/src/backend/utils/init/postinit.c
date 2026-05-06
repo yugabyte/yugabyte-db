@@ -524,17 +524,31 @@ YbCheckMyDatabase(const char *name, bool am_superuser,
 	/*
 	 * OK, we're golden.  Next to-do item is to save the encoding info out of
 	 * the pg_database tuple.
-	 * YB: GUC SOURCE has been changed to PGC_S_CLIENT from
-	 * PGC_S_DEFAULT_DYNAMIC in order to avoid setting defaults and sending
-	 * PARAMETER STATUS packets back on auth failure.
+	 *
+	 * YB: Ideally, during an Auth Passthrough authentication, GUC modifications
+	 * need to:
+	 *   - Set the current value of the GUC (change visible on calling SHOW)
+	 *   - Be reported to the client *only if* they were
+	 *       - set by the client (startup packet); or
+	 *       - marked to be reported by default (GUC_REPORT).
+	 *   - Not set the GUC default (GUC sources >= PGC_S_INTERACTIVE)
+	 *
+	 * However, here we make an exception to the last rule as this setting is
+	 * done for every authentication before any text encoding conversion is
+	 * done. Conversely, these encoding set calls need to be here because both
+	 * these vars are GUC_REPORT, and will always be reported back to the
+	 * client.
+	 *
+	 * Thus, every incoming client sees the encoding set for their supplied db
+	 * only (or encoding set via startup packet, if suppliec).
 	 */
 	SetDatabaseEncoding(dbform->encoding);
 	/* Record it as a GUC internal option, too */
 	SetConfigOption("server_encoding", GetDatabaseEncodingName(), PGC_INTERNAL,
-					PGC_S_CLIENT);
+					PGC_S_DYNAMIC_DEFAULT);
 	/* If we have no other source of client_encoding, use server encoding */
 	SetConfigOption("client_encoding", GetDatabaseEncodingName(), PGC_BACKEND,
-					PGC_S_CLIENT);
+					PGC_S_DYNAMIC_DEFAULT);
 }
 
 /*
