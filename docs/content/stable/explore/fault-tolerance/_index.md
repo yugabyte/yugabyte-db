@@ -69,12 +69,12 @@ This is similar to zone-level fault tolerance, but on a larger scale, where node
 Learn how YugabyteDB [handles region failures](./handling-region-failures/).
 {{</lead>}}
 
-### Grey failure
+### Gray failure
 
-A grey failure is a partial failure in which a node, disk, or network path is not completely down, but is unhealthy enough to affect performance or availability.
+A gray failure is a partial failure in which a node, disk, or network path is not completely down, but is unhealthy enough to affect performance or availability.
 
-{{<lead link="./handling-grey-failures/">}}
-Learn how YugabyteDB [handles grey failures](./handling-grey-failures/).
+{{<lead link="./handling-gray-failures/">}}
+Learn how YugabyteDB [handles gray failures](./handling-gray-failures/).
 {{</lead>}}
 
 ## Planned maintenance

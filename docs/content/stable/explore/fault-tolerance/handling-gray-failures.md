@@ -1,17 +1,17 @@
 ---
-title: Handle grey failures
-linkTitle: Grey failures
+title: Handle gray failures
+linkTitle: gray failures
 description: Learn how YugabyteDB mitigates partial failures such as slow nodes, intermittent timeouts, and asymmetric connectivity.
 headcontent: Mitigate partial failures in YugabyteDB
 menu:
   stable:
-    identifier: handling-grey-failures
+    identifier: handling-gray-failures
     parent: fault-tolerance
     weight: 45
 type: docs
 ---
 
-A grey failure is a partial failure in which a node, disk, or network path is not completely down, but is unhealthy enough to affect performance or availability.
+A gray failure is a partial failure in which a node, disk, or network path is not completely down, but is unhealthy enough to affect performance or availability.
 
 Examples include:
 
@@ -23,17 +23,17 @@ Examples include:
 - Local storage write failures
 - Partial or asymmetric [network partitions](../../../architecture/key-concepts/#network-partition)
 
-Grey failures are harder to detect than clean failures because the affected component can still respond some of the time. YugabyteDB mitigates these failures using quorum-based replication, leader election, and topology-aware replica placement.
+gray failures are harder to detect than clean failures because the affected component can still respond some of the time. YugabyteDB mitigates these failures using quorum-based replication, leader election, and topology-aware replica placement.
 
 {{< note title="Note" >}}
-YugabyteDB does not use a separate grey-failure subsystem. Instead, it relies on the same fault-tolerance mechanisms that protect against node and network failures.
+YugabyteDB does not use a separate gray-failure subsystem. Instead, it relies on the same fault-tolerance mechanisms that protect against node and network failures.
 {{< /note >}}
 
-## What is a grey failure?
+## What is a gray failure?
 
 In a clean failure, a node is fully unavailable and the cluster can quickly determine that it is down.
 
-In a grey failure, a node may still be partially functional. For example, it may be:
+In a gray failure, a node may still be partially functional. For example, it may be:
 
 - Reachable from some nodes but not others
 - Responding slowly
@@ -44,11 +44,11 @@ In a grey failure, a node may still be partially functional. For example, it may
 
 These conditions can increase latency before the system has enough evidence to treat the component as failed.
 
-A network partition is a communication failure in which parts of the cluster cannot reach each other. A _partial network partition_ is a less clear-cut form in which communication fails only on some paths, in one direction, or intermittently. Partial network partitions are a common type of grey failure.
+A network partition is a communication failure in which parts of the cluster cannot reach each other. A _partial network partition_ is a less clear-cut form in which communication fails only on some paths, in one direction, or intermittently. Partial network partitions are a common type of gray failure.
 
-A local storage write failure is another common type of grey failure. In this case, a node may remain reachable and appear healthy at the process or network level, but it cannot reliably perform durable writes because of storage I/O errors, a full disk, a read-only filesystem, or severe storage latency.
+A local storage write failure is another common type of gray failure. In this case, a node may remain reachable and appear healthy at the process or network level, but it cannot reliably perform durable writes because of storage I/O errors, a full disk, a read-only filesystem, or severe storage latency.
 
-## How YugabyteDB mitigates grey failures
+## How YugabyteDB mitigates gray failures
 
 ### Per-tablet Raft replication
 
@@ -68,7 +68,7 @@ For more information, see [Replication](../../../architecture/docdb-replication/
 
 Every tablet has a single Raft leader that coordinates writes. If the leader becomes too slow, stops sending heartbeats, can no longer make durable write progress, or loses communication with a majority of replicas, followers can start an election and choose a new leader.
 
-This is especially important when a grey failure affects the current leader:
+This is especially important when a gray failure affects the current leader:
 
 - If the leader is only slightly degraded, requests may succeed but take longer.
 - If the degradation becomes severe enough, heartbeats and RPCs begin to time out or write progress stalls.
@@ -82,7 +82,7 @@ Raft requires a majority of replicas to make progress. This protects against spl
 
 For example, if a leader can communicate with only one of two followers in an RF3 configuration, it no longer has a majority and cannot continue committing writes. A leader in the majority side of the partition can be elected instead.
 
-This does not eliminate latency spikes during a grey failure, but it preserves consistency.
+This does not eliminate latency spikes during a gray failure, but it preserves consistency.
 
 ### Master and tablet server heartbeats
 
@@ -94,7 +94,7 @@ If a node remains unhealthy long enough, the cluster can respond by:
 - Re-replicating tablets to other nodes
 - Rebalancing load away from the affected node
 
-This is more relevant for prolonged grey failures than for short transient events.
+This is more relevant for prolonged gray failures than for short transient events.
 
 {{< note title="Note" >}}
 Heartbeats help detect many failures, but a node can still appear alive while suffering from a local storage write failure. In these cases, the node may remain reachable even though it cannot reliably make durable replication progress.
@@ -108,15 +108,15 @@ YugabyteDB supports placement across failure domains such as:
 - Racks
 - Regions
 
-Spreading replicas across independent failure domains reduces the chance that a grey failure in one host, rack, or AZ affects quorum for a tablet.
+Spreading replicas across independent failure domains reduces the chance that a gray failure in one host, rack, or AZ affects quorum for a tablet.
 
 For more information, see [Synchronous replication](../../../architecture/docdb-replication/replication/).
 
 ### Client retries and reconnection
 
-Applications should use retry-capable drivers and connect using multiple nodes where possible. Grey failures can cause transient timeouts or errors during leader changes. Client-side retry logic helps absorb these short disruptions.
+Applications should use retry-capable drivers and connect using multiple nodes where possible. gray failures can cause transient timeouts or errors during leader changes. Client-side retry logic helps absorb these short disruptions.
 
-## Typical grey-failure scenarios
+## Typical gray-failure scenarios
 
 ### Slow follower
 
@@ -141,7 +141,7 @@ Typical outcome:
 - Once heartbeat or RPC delays exceed failure-detection thresholds, a new election occurs.
 - Clients retry failed or timed-out requests.
 
-This is one of the most visible grey-failure patterns because all writes for the tablet go through the leader.
+This is one of the most visible gray-failure patterns because all writes for the tablet go through the leader.
 
 ### Local storage write failure
 
@@ -154,7 +154,7 @@ Typical outcome:
 - Because the node can still appear healthy at the network level, detection may take longer than in a clean node failure.
 - Once the failure is severe enough to affect Raft progress, leadership can move to a healthy replica.
 
-This is a grey failure because the node is not fully down, but it cannot reliably perform its role in durable replication.
+This is a gray failure because the node is not fully down, but it cannot reliably perform its role in durable replication.
 
 ### Partial or asymmetric network partition
 
@@ -181,7 +181,7 @@ Typical outcome:
 
 ## Failure timeline: slow leader during a partial network partition
 
-The following example shows how YugabyteDB typically handles a grey failure affecting a tablet leader in an RF=3 deployment. In this example, the failure is caused by a partial network partition: the leader remains reachable from some peers or clients some of the time, but communication becomes delayed or intermittent.
+The following example shows how YugabyteDB typically handles a gray failure affecting a tablet leader in an RF=3 deployment. In this example, the failure is caused by a partial network partition: the leader remains reachable from some peers or clients some of the time, but communication becomes delayed or intermittent.
 
 ### Initial state
 
@@ -242,7 +242,7 @@ Effects:
 - Write latency returns closer to normal once traffic reaches the new leader.
 - `R1` can no longer make progress as leader because it does not have a quorum.
 
-At this point, the grey failure has been isolated to the degraded former leader and its network path.
+At this point, the gray failure has been isolated to the degraded former leader and its network path.
 
 ### T4: Former leader recovers or remains degraded
 
@@ -261,7 +261,7 @@ Two outcomes are possible:
 
 ## Failure timeline: leader loses local storage write capability
 
-The following example shows how YugabyteDB typically handles a grey failure affecting a tablet leader in an RF=3 deployment. In this example, the failure is caused by a local storage write problem: the leader remains reachable over the network, but it can no longer reliably persist writes.
+The following example shows how YugabyteDB typically handles a gray failure affecting a tablet leader in an RF=3 deployment. In this example, the failure is caused by a local storage write problem: the leader remains reachable over the network, but it can no longer reliably persist writes.
 
 ### Initial state
 
@@ -346,9 +346,9 @@ Two outcomes are possible:
     - The affected replica may remain unavailable for the tablet.
     - If the condition persists, operational remediation or re-replication may be required.
 
-## What to expect during a grey failure
+## What to expect during a gray failure
 
-Grey failures are often visible as performance issues before they are visible as hard failures.
+gray failures are often visible as performance issues before they are visible as hard failures.
 
 Common symptoms include:
 
@@ -363,7 +363,7 @@ In most cases, YugabyteDB preserves correctness and eventually restores normal s
 
 ## Best practices
 
-To reduce the impact of grey failures:
+To reduce the impact of gray failures:
 
 - Use a replication factor of 3 or 5.
 - Place replicas across multiple AZs or racks.
@@ -375,7 +375,7 @@ To reduce the impact of grey failures:
 
 ## Summary
 
-YugabyteDB mitigates grey failures through:
+YugabyteDB mitigates gray failures through:
 
 - Raft quorum replication for each tablet
 - Automatic leader election and failover
