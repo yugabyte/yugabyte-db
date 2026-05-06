@@ -7,11 +7,11 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -767,6 +767,15 @@ public class UniverseTest extends FakeDBApplication {
       Set<NodeActionType> actions = new AllowedActionsHelper(u, nd).listAllowedActions();
       assertEquals(nd.isRemovable(), actions.contains(NodeActionType.DELETE));
     }
+  }
+
+  @Test
+  public void testGetNodeActions_StoppedNode() {
+    Universe u = createUniverseWithNodes(1 /* rf */, 3 /* numNodes */, true /* setMasters */);
+    NodeDetails nd = u.getNodes().iterator().next();
+    nd.state = NodeState.Stopped;
+    assertEquals(true, nd.isActionAllowedOnState(NodeActionType.DECOMMISSION));
+    assertEquals(true, nd.isActionAllowedOnState(NodeActionType.REPLACE));
   }
 
   @Test
