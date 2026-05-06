@@ -396,6 +396,49 @@ static bool yb_lookup_meko_string(agtype *props, const char *key,
 }
 
 /*
+ * YB: Require `key` to be present in `props` as a string and palloc a
+ * NUL-terminated copy. Raises ERRCODE_NOT_NULL_VIOLATION if the key is
+ * missing or a non-string type. Caller pfrees the returned cstring.
+ */
+static char *yb_require_meko_string(agtype *props, const char *key)
+{
+    char *str;
+
+    if (!yb_lookup_meko_string(props, key, &str))
+        ereport(ERROR,
+                (errcode(ERRCODE_NOT_NULL_VIOLATION),
+                 errmsg("missing required tenant property \"%s\"", key)));
+    return str;
+}
+
+/*
+ * YB: Look up an optional `key` in `props`. Returns true and sets *out_str
+ * to a palloc'd copy when the key is present and string-typed (caller
+ * pfrees). Returns false when the key is absent or set to JSON null. A
+ * present-but-non-string value raises ERRCODE_INVALID_TEXT_REPRESENTATION.
+ */
+static bool yb_optional_meko_string(agtype *props, const char *key,
+                                    char **out_str)
+{
+    agtype_value search_key;
+    agtype_value *val;
+
+    search_key.type = AGTV_STRING;
+    search_key.val.string.val = (char *) key;
+    search_key.val.string.len = strlen(key);
+    val = find_agtype_value_from_container(&props->root, AGT_FOBJECT,
+                                           &search_key);
+    if (val == NULL || val->type == AGTV_NULL)
+        return false;
+    if (val->type != AGTV_STRING)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+                 errmsg("tenant property \"%s\" must be a string", key)));
+    *out_str = pnstrdup(val->val.string.val, val->val.string.len);
+    return true;
+}
+
+/*
  * Read meko_datapack_id, meko_user_id, meko_agent_id, meko_conversation_id
  * from a vertex or edge properties map and materialize them as column
  * Datums for the caller.
@@ -433,67 +476,35 @@ YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
                  errmsg("missing required tenant properties on vertex/edge")));
 
     /*
-     * Look up each meko key from the root container. yb_lookup_meko_string()
-     * does the find + pnstrdup; we are responsible for pfreeing the returned
-     * cstring after passing it through the appropriate input function.
+     * The three NOT NULL keys must be present and string-typed; the helper
+     * raises ERRCODE_NOT_NULL_VIOLATION otherwise. Caller pfrees the
+     * returned cstring after passing it through the appropriate input
+     * function.
      */
-    if (!yb_lookup_meko_string(props_agtype,
-                               AG_VERTEX_COLNAME_MEKO_DATAPACK_ID, &str))
-        ereport(ERROR,
-                (errcode(ERRCODE_NOT_NULL_VIOLATION),
-                 errmsg("missing required tenant property \"%s\"",
-                        AG_VERTEX_COLNAME_MEKO_DATAPACK_ID)));
+    str = yb_require_meko_string(props_agtype, AG_COLNAME_MEKO_DATAPACK_ID);
     result.datapack_id = DirectFunctionCall1(uuid_in, CStringGetDatum(str));
     pfree(str);
 
-    if (!yb_lookup_meko_string(props_agtype,
-                               AG_VERTEX_COLNAME_MEKO_USER_ID, &str))
-        ereport(ERROR,
-                (errcode(ERRCODE_NOT_NULL_VIOLATION),
-                 errmsg("missing required tenant property \"%s\"",
-                        AG_VERTEX_COLNAME_MEKO_USER_ID)));
+    str = yb_require_meko_string(props_agtype, AG_COLNAME_MEKO_USER_ID);
     result.user_id = DirectFunctionCall1(uuid_in, CStringGetDatum(str));
     pfree(str);
 
-    if (!yb_lookup_meko_string(props_agtype,
-                               AG_VERTEX_COLNAME_MEKO_AGENT_ID, &str))
-        ereport(ERROR,
-                (errcode(ERRCODE_NOT_NULL_VIOLATION),
-                 errmsg("missing required tenant property \"%s\"",
-                        AG_VERTEX_COLNAME_MEKO_AGENT_ID)));
+    str = yb_require_meko_string(props_agtype, AG_COLNAME_MEKO_AGENT_ID);
     result.agent_id = CStringGetTextDatum(str);
     pfree(str);
 
     /*
-     * meko_conversation_id is nullable, but if the user does supply it the
-     * value must be a string we can feed to uuid_in. Distinguish "missing"
-     * from "present but wrong type" so the latter raises a clear error
-     * instead of being silently treated as NULL.
+     * meko_conversation_id is nullable. If the key is absent or set to JSON
+     * null, leave conversation_id_isnull = true. If it is present, require
+     * a string value (anything else is a clear user error).
      */
+    if (yb_optional_meko_string(props_agtype,
+                                AG_COLNAME_MEKO_CONVERSATION_ID, &str))
     {
-        agtype_value search_key;
-        agtype_value *val;
-
-        search_key.type = AGTV_STRING;
-        search_key.val.string.val =
-            (char *) AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID;
-        search_key.val.string.len =
-            strlen(AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID);
-        val = find_agtype_value_from_container(&props_agtype->root,
-                                               AGT_FOBJECT, &search_key);
-        if (val != NULL && val->type != AGTV_NULL)
-        {
-            if (val->type != AGTV_STRING)
-                ereport(ERROR,
-                        (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-                         errmsg("tenant property \"%s\" must be a string",
-                                AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID)));
-            str = pnstrdup(val->val.string.val, val->val.string.len);
-            result.conversation_id =
-                DirectFunctionCall1(uuid_in, CStringGetDatum(str));
-            result.conversation_id_isnull = false;
-            pfree(str);
-        }
+        result.conversation_id =
+            DirectFunctionCall1(uuid_in, CStringGetDatum(str));
+        result.conversation_id_isnull = false;
+        pfree(str);
     }
 
     return result;

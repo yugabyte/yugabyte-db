@@ -590,9 +590,9 @@ static void yb_create_label_pk_index(char *schema_name, char *rel_name)
     index_stmt->accessMethod = "lsm";
     index_stmt->tableSpace = NULL;
     index_stmt->indexParams = list_make4(
-        yb_make_meko_hash_elem(AG_VERTEX_COLNAME_MEKO_DATAPACK_ID),
-        yb_make_meko_hash_elem(AG_VERTEX_COLNAME_MEKO_USER_ID),
-        yb_make_meko_asc_elem(AG_VERTEX_COLNAME_MEKO_AGENT_ID, NULL),
+        yb_make_meko_hash_elem(AG_COLNAME_MEKO_DATAPACK_ID),
+        yb_make_meko_hash_elem(AG_COLNAME_MEKO_USER_ID),
+        yb_make_meko_asc_elem(AG_COLNAME_MEKO_AGENT_ID, NULL),
         yb_make_meko_asc_elem(AG_VERTEX_COLNAME_ID, "graphid_ops"));
     index_stmt->options = NIL;
     index_stmt->whereClause = NULL;
@@ -644,27 +644,27 @@ static List *yb_append_meko_column_defs(List *cols, bool is_edge)
     ColumnDef *meko_conversation_id;
 
     /* "meko_datapack_id" UUID NOT NULL */
-    meko_datapack_id = makeColumnDef(is_edge ? AG_EDGE_COLNAME_MEKO_DATAPACK_ID
-                                             : AG_VERTEX_COLNAME_MEKO_DATAPACK_ID,
+    meko_datapack_id = makeColumnDef(is_edge ? AG_COLNAME_MEKO_DATAPACK_ID
+                                             : AG_COLNAME_MEKO_DATAPACK_ID,
                                      UUIDOID, -1, InvalidOid);
     meko_datapack_id->constraints = list_make1(build_not_null_constraint());
 
     /* "meko_user_id" UUID NOT NULL */
-    meko_user_id = makeColumnDef(is_edge ? AG_EDGE_COLNAME_MEKO_USER_ID
-                                         : AG_VERTEX_COLNAME_MEKO_USER_ID,
+    meko_user_id = makeColumnDef(is_edge ? AG_COLNAME_MEKO_USER_ID
+                                         : AG_COLNAME_MEKO_USER_ID,
                                  UUIDOID, -1, InvalidOid);
     meko_user_id->constraints = list_make1(build_not_null_constraint());
 
     /* "meko_agent_id" TEXT NOT NULL */
-    meko_agent_id = makeColumnDef(is_edge ? AG_EDGE_COLNAME_MEKO_AGENT_ID
-                                          : AG_VERTEX_COLNAME_MEKO_AGENT_ID,
+    meko_agent_id = makeColumnDef(is_edge ? AG_COLNAME_MEKO_AGENT_ID
+                                          : AG_COLNAME_MEKO_AGENT_ID,
                                   TEXTOID, -1, InvalidOid);
     meko_agent_id->constraints = list_make1(build_not_null_constraint());
 
     /* "meko_conversation_id" UUID (nullable) */
     meko_conversation_id =
-        makeColumnDef(is_edge ? AG_EDGE_COLNAME_MEKO_CONVERSATION_ID
-                              : AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID,
+        makeColumnDef(is_edge ? AG_COLNAME_MEKO_CONVERSATION_ID
+                              : AG_COLNAME_MEKO_CONVERSATION_ID,
                       UUIDOID, -1, InvalidOid);
 
     cols = lappend(cols, meko_datapack_id);
@@ -689,7 +689,7 @@ static List *yb_append_meko_column_defs(List *cols, bool is_edge)
  *   1. The "id" column is no longer declared PRIMARY KEY inline; the PK is
  *      created later as a composite tenant-scoped index over
  *      (meko_datapack_id, meko_user_id, meko_agent_id, id) via
- *      yb_create_edge_pk_index().
+ *      yb_create_label_pk_index().
  *   2. Four meko_* tenant columns are appended so that all rows in an edge
  *      label can be partitioned/sharded by tenant:
  *        "meko_datapack_id"     UUID NOT NULL,
@@ -715,7 +715,7 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
          * YB: "id" is only NOT NULL here; the PRIMARY KEY is added later
          * as a composite tenant-scoped index over
          * (meko_datapack_id, meko_user_id, meko_agent_id, id) by
-         * yb_create_edge_pk_index().
+         * yb_create_label_pk_index().
          */
         id->constraints = list_make2(build_not_null_constraint(),
                                      build_id_default(graph_name, label_name,
@@ -765,7 +765,7 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
  *   1. The "id" column is no longer declared PRIMARY KEY inline; the PK is
  *      created later as a composite tenant-scoped index over
  *      (meko_datapack_id, meko_user_id, meko_agent_id, id) via
- *      yb_create_vertex_pk_index().
+ *      yb_create_label_pk_index().
  *   2. Four meko_* tenant columns are appended so that all rows in a vertex
  *      label can be partitioned/sharded by tenant:
  *        "meko_datapack_id"     UUID NOT NULL,

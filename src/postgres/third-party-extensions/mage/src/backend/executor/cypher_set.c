@@ -38,10 +38,10 @@
  * single list covers both.
  */
 static const char *const yb_meko_property_keys[] = {
-    AG_VERTEX_COLNAME_MEKO_DATAPACK_ID,
-    AG_VERTEX_COLNAME_MEKO_USER_ID,
-    AG_VERTEX_COLNAME_MEKO_AGENT_ID,
-    AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID,
+    AG_COLNAME_MEKO_DATAPACK_ID,
+    AG_COLNAME_MEKO_USER_ID,
+    AG_COLNAME_MEKO_AGENT_ID,
+    AG_COLNAME_MEKO_CONVERSATION_ID,
 };
 
 static void begin_cypher_set(CustomScanState *node, EState *estate,
@@ -51,6 +51,19 @@ static void end_cypher_set(CustomScanState *node);
 static void rescan_cypher_set(CustomScanState *node);
 
 static void process_update_list(CustomScanState *node);
+
+/*
+ * YB: Returns true if `key` is one of the meko_* tenant property names.
+ */
+static bool yb_is_meko_property_key(const char *key)
+{
+    if (key == NULL)
+        return false;
+    for (size_t i = 0; i < lengthof(yb_meko_property_keys); i++)
+        if (strcmp(key, yb_meko_property_keys[i]) == 0)
+            return true;
+    return false;
+}
 
 /*
  * YB: Returns true if the agtype object contains any meko_* tenant key.
@@ -595,23 +608,13 @@ static void process_update_list(CustomScanState *node)
          * the row and recreating it.
          */
         if (IsYugaByteEnabled() &&
-            update_item->prop_name != NULL &&
-            (strcmp(update_item->prop_name,
-                    AG_VERTEX_COLNAME_MEKO_DATAPACK_ID) == 0 ||
-             strcmp(update_item->prop_name,
-                    AG_VERTEX_COLNAME_MEKO_USER_ID) == 0 ||
-             strcmp(update_item->prop_name,
-                    AG_VERTEX_COLNAME_MEKO_AGENT_ID) == 0 ||
-             strcmp(update_item->prop_name,
-                    AG_VERTEX_COLNAME_MEKO_CONVERSATION_ID) == 0))
-        {
+            yb_is_meko_property_key(update_item->prop_name))
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                      errmsg("tenant property \"%s\" cannot be modified by %s",
                             update_item->prop_name, clause_name),
                      errhint("Drop and recreate the vertex/edge to change "
                              "its tenant identity.")));
-        }
 
         /* get the id and label for later */
         id = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "id");
