@@ -19,6 +19,19 @@ SELECT * FROM cypher('basic', $$ CREATE (:person {name: 'NoTenant'}) $$) AS (a a
 -- SET cannot mutate meko_* tenant properties.
 SELECT * FROM cypher('basic', $$ MATCH (n:person {name: 'Alice'})
     SET n.meko_user_id = '00000000-0000-0000-0000-000000000099' $$) AS (a agtype);
+-- A full-map SET that targets meko_* keys is also rejected.
+SELECT * FROM cypher('basic', $$ MATCH (n:person {name: 'Alice'})
+    SET n = {name: 'Alice2',
+             meko_datapack_id: '00000000-0000-0000-0000-000000000099'} $$) AS (a agtype);
+-- A `+=` merge SET that targets meko_* keys is rejected too.
+SELECT * FROM cypher('basic', $$ MATCH (n:person {name: 'Alice'})
+    SET n += {meko_user_id: '00000000-0000-0000-0000-000000000099'} $$) AS (a agtype);
+-- A full-map SET that omits meko_* keys must NOT drop them from the JSON map,
+-- otherwise containment matches like {meko_user_id: ...} would miss the row.
+SELECT * FROM cypher('basic', $$ MATCH (n:person {name: 'Alice'})
+    SET n = {name: 'AliceRenamed'} $$) AS (a agtype);
+SELECT * FROM cypher('basic', $$ MATCH (n:person {meko_user_id:
+    '00000000-0000-0000-0000-000000000002'}) RETURN count(n) $$) AS (cnt agtype);
 -- create_complete_graph and age_create_barbell_graph reach
 -- yb_insert_*_simple, which lacks tenant column support yet (#31338).
 -- Confirm they raise feature_not_supported rather than violating the
