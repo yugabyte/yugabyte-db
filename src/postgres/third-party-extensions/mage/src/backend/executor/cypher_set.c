@@ -23,7 +23,6 @@
 
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
-#include "utils/agtype.h"
 
 /* YB includes */
 #include "catalog/ag_label.h"
@@ -31,6 +30,7 @@
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "utils/age_global_graph.h"
+#include "utils/agtype.h"
 
 /*
  * YB: Names of the four tenant-scoping properties / columns. The vertex and
