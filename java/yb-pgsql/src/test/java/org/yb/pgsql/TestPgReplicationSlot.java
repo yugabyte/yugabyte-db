@@ -16,6 +16,7 @@ import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
@@ -3967,8 +3968,26 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       .start();
     Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
     LogSequenceNumber lastLsn = stream.getLastReceiveLSN();
+
+    // Queried this way because when this test is run with Conn Mgr enabled in Auth
+    // Passthrough mode, the process of authentication opens up a replication
+    // backend for internal use, causing an extra row in pg_stat_replication.
+    // Querying with a JOIN this way preserves the intent of the test while
+    // simplifying assertions/checks in the test.
+    // TODO (vikram.damle) (#31418): Once repl slot registering is disabled for
+    // control backends, assert that only 1 entry is present in pg_stat_replication.
+    String statReplicationQuery;
+    if(isTestRunningWithConnectionManager()) {
+      statReplicationQuery = "SELECT sr.pid FROM pg_stat_replication sr " +
+          "JOIN pg_replication_slots rs ON sr.pid = rs.active_pid WHERE rs.slot_name = '"
+          + slotName + "'";
+    } else {
+      statReplicationQuery = "SELECT pid FROM pg_stat_replication";
+    }
+
     try (Statement stmt = connection.createStatement()) {
-      ResultSet res1 = stmt.executeQuery("SELECT pid FROM pg_stat_replication");
+
+      ResultSet res1 = stmt.executeQuery(statReplicationQuery);
       int activePid1 = -2;
       assertTrue(res1.next());
       activePid1 = res1.getInt("pid");
@@ -3989,7 +4008,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     conn = getConnectionBuilder().withTServer(0).replicationConnect();
     replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
     try (Statement stmt = connection.createStatement()) {
-      ResultSet res = stmt.executeQuery("SELECT active_pid FROM pg_replication_slots");
+      ResultSet res = stmt.executeQuery("SELECT rs.active_pid FROM pg_replication_slots rs " +
+          "WHERE rs.slot_name = '" + slotName + "'");
       assertTrue(res.next());
       int activePid = res.getInt("active_pid");
       assertTrue(res.wasNull());
@@ -4007,7 +4027,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       .start();
     Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
     try (Statement stmt1 = connection.createStatement()) {
-      ResultSet res1 = stmt1.executeQuery("SELECT * FROM pg_stat_replication");
+      ResultSet res1 = stmt1.executeQuery(statReplicationQuery);
       int activePid1 = -2;
       if (res1.next()) {
           activePid1 = res1.getInt("pid");
@@ -4068,7 +4088,19 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     int activePid3 = -3;
     int activePid4 = -4;
     try (Statement stmt = conn2_2.createStatement()) {
-      ResultSet res1 = stmt.executeQuery("SELECT * FROM pg_stat_replication");
+      // Refer to comments in `testActivePidAndWalStatusPopulationOnStreamRestart`
+      // reg. why a JOIN is being used here.
+      // TODO (vikram.damle) (#31418): Assert no extra rows in pg_stat_replication
+      // once initWalSender() is skipped for repl control backends.
+      String statReplicationQuery;
+      if(isTestRunningWithConnectionManager()) {
+        statReplicationQuery = "SELECT sr.pid FROM pg_stat_replication sr " +
+            "JOIN pg_replication_slots rs ON sr.pid = rs.active_pid WHERE rs.slot_name = '"
+            + slotName + "'";
+      } else {
+        statReplicationQuery = "SELECT pid FROM pg_stat_replication";
+      }
+      ResultSet res1 = stmt.executeQuery(statReplicationQuery);
       assertTrue(res1.next());
       activePid1 = res1.getInt("pid");
 
