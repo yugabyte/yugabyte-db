@@ -1565,6 +1565,7 @@ YBCAbortTransaction()
 		else
 			elog(FATAL, "Failed to abort DDL transaction: %s",
 				 YBCMessageAsCString(status));
+		YBCFreeStatus(status);
 	}
 
 	status = YBCPgAbortPlainTransaction();
@@ -1577,6 +1578,7 @@ YBCAbortTransaction()
 		else
 			elog(FATAL, "Failed to abort DML transaction: %s",
 				 YBCMessageAsCString(status));
+		YBCFreeStatus(status);
 	}
 }
 
