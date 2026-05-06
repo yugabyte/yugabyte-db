@@ -1144,7 +1144,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     data.put(BACKUP_LOCATION_FIELDNAME, "s3://" + bucketName);
     data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
     data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
-    data.put("IMMUTABLE STORAGE", true);
+    data.put("IMMUTABLE_STORAGE", true);
     CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_S3, data);
 
     S3Client client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
@@ -1191,7 +1191,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, "gs://" + bucketName);
     data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
-    data.put("IMMUTABLE STORAGE", true);
+    data.put("IMMUTABLE_STORAGE", true);
     CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
 
     Storage storage = ((StubbedCustomerConfigValidator) customerConfigValidator).gcpStorage;
@@ -1234,7 +1234,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, containerUrl);
     data.put(AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME, "fakeToken");
-    data.put("IMMUTABLE STORAGE", true);
+    data.put("IMMUTABLE_STORAGE", true);
     CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_AZURE, data);
 
     BlobContainerClient blobContainerClient =

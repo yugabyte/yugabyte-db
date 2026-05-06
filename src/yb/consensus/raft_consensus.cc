@@ -127,12 +127,24 @@ TAG_FLAG(evict_failed_followers, advanced);
 DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
                  "Whether a follower will return an error for all UpdateConsensus() requests.");
 
+DEFINE_test_flag(bool, skip_write_stop_check_in_update_consensus, false,
+    "When true, RaftConsensus::Update() does not reject UpdateConsensus RPCs when "
+    "writes are stopped. Used for negative testing of the write stall cascade fix. "
+    "See #30728.");
+
 DEFINE_test_flag(bool, follower_pause_update_consensus_requests, false,
                  "Whether a follower will pause all UpdateConsensus() requests.");
 
 DEFINE_test_flag(int32, delay_update_consensus_requests_ms, 0,
     "Delay execution of UpdateConsensus() requests for specified amount of milliseconds during "
     "tests");
+
+DEFINE_test_flag(string, delay_update_consensus_before_mark_committed_tablet_id, "",
+    "If non-empty, delay UpdateConsensus before MarkOperationsAsCommitted for this tablet id.");
+
+DEFINE_test_flag(int32, delay_update_consensus_before_mark_committed_ms, 0,
+    "Delay UpdateConsensus before MarkOperationsAsCommitted by this many ms, for the tablet "
+    "specified by TEST_delay_update_consensus_before_mark_committed_tablet_id.");
 
 DEFINE_test_flag(int32, follower_reject_update_consensus_requests_seconds, 0,
                  "Whether a follower will return an error for all UpdateConsensus() requests for "
@@ -479,6 +491,15 @@ RaftConsensus::RaftConsensus(
 
 RaftConsensus::~RaftConsensus() {
   Shutdown();
+}
+
+void RaftConsensus::SetPerDbCgroup(Cgroup* cgroup) {
+  if (raft_pool_concurrent_token_) {
+    raft_pool_concurrent_token_->SetTaskCgroup(cgroup);
+  }
+  if (queue_) {
+    queue_->SetNotificationStrandCgroup(cgroup);
+  }
 }
 
 Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
@@ -1580,6 +1601,22 @@ Status RaftConsensus::Update(
 
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request.ShortDebugString();
 
+  // Reject RPCs carrying operations when the tablet's RocksDB is in a hard write stop.
+  // This check runs BEFORE acquiring update_mutex_ to prevent RPC thread pile-up: if a
+  // thread is already blocked in DelayWrite() while holding update_mutex_, all subsequent
+  // threads would pile up on the mutex and never reach ShouldApplyWrite(). By checking
+  // here, we free the RPC thread immediately. Heartbeat-only RPCs (no ops) are allowed
+  // through to maintain leader leases and committed index advancement. See #30728.
+  if (!PREDICT_FALSE(FLAGS_TEST_skip_write_stop_check_in_update_consensus) &&
+      !request.ops().empty() && state_->context()->AreWritesStopped()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 5) << LogPrefix()
+        << "Rejecting UpdateConsensus with " << request.ops().size()
+        << " ops: writes are stopped on this tablet";
+    return STATUS(ServiceUnavailable,
+        "Writes are stopped on this tablet, rejecting UpdateConsensus to prevent "
+        "RPC thread pile-up on update_mutex_");
+  }
+
   UpdateReplicaResult result;
   {
     // see var declaration
@@ -2039,6 +2076,13 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
   // 3 - Enqueue the writes.
   auto last_from_leader = EnqueueWritesUnlocked(
       deduped_req, WriteEmpty(prev_committed_op_id != deduped_req.committed_op_id));
+
+  if (PREDICT_FALSE(!deduped_req.messages.empty() &&
+                    FLAGS_TEST_delay_update_consensus_before_mark_committed_ms != 0 &&
+                    FLAGS_TEST_delay_update_consensus_before_mark_committed_tablet_id ==
+                        tablet_id())) {
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_update_consensus_before_mark_committed_ms);
+  }
 
   // 4 - Mark operations as committed
   RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(request, deduped_req, last_from_leader));

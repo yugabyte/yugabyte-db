@@ -991,4 +991,66 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(1, listenerCounter1.get());
     assertEquals(0, listenerCounter2.get());
   }
+
+  @Test
+  public void testSubTaskPause() throws InterruptedException {
+    ITask task = mockTaskCommon(true);
+    ITask subTask1 = mockTaskCommon(true);
+    ITask subTask2 = mockTaskCommon(true);
+    AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
+
+    doAnswer(
+            inv -> {
+              RunnableTask runnable = taskExecutor.getRunnableTask(taskUUIDRef.get());
+              // Invoke subTask from the parent task.
+              SubTaskGroup subTasksGroup1 = taskExecutor.createSubTaskGroup("test1");
+              subTasksGroup1.setPausedAfter(true);
+              subTasksGroup1.addSubTask(subTask1);
+              runnable.addSubTaskGroup(subTasksGroup1);
+              SubTaskGroup subTasksGroup2 = taskExecutor.createSubTaskGroup("test2");
+              subTasksGroup2.addSubTask(subTask2);
+              runnable.addSubTaskGroup(subTasksGroup2);
+              runnable.runSubTasks();
+              return null;
+            })
+        .when(task)
+        .run();
+
+    CountDownLatch latch1 = new CountDownLatch(1);
+    CountDownLatch latch2 = new CountDownLatch(1);
+    doAnswer(
+            inv -> {
+              latch1.countDown();
+              latch2.await();
+              return null;
+            })
+        .when(subTask1)
+        .run();
+
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
+    taskUUIDRef.set(taskRunner.getTaskUUID());
+    UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
+    if (!latch1.await(200, TimeUnit.SECONDS)) {
+      fail();
+    }
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    assertEquals(TaskInfo.State.Running, taskInfo.getTaskState());
+    latch2.countDown();
+
+    taskInfo = waitForTask(taskUUID);
+
+    verify(subTask1, times(1)).run();
+    verify(subTask2, times(0)).run();
+
+    List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    assertEquals(2, subTasksByPosition.size());
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
+    assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
+    assertEquals(TaskInfo.State.Created, subTaskInfos.get(1).getTaskState());
+    assertNotNull(taskInfo.getYbaVersion());
+    assertEquals(Util.getYbaVersion(), taskInfo.getYbaVersion());
+  }
 }

@@ -2411,3 +2411,28 @@ templates:
       summary: >-
         Embedded Performance Advisor collector initialization failed -
         check YBA logs for details or contact YB support team
+
+  DB_PROCESS_LIMITS:
+    name: DB process limits
+    description: Incorrect process limits detected on DB TServer/Master instances
+    queryTemplate: count by (universe_uuid) (yb_process_limits_status{universe_uuid="__universeUuid__"} < 1)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid, node_name)
+        (yb_process_limits_status{universe_uuid='{{ $labels.universe_uuid }}'} < 1)
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Incorrect process limits detected for universe '{{ $labels.source_name }}'
+        on {{ $value | printf "%.0f" }} instance(s).
+
+        Affected nodes: {{ $labels.affected_node_names }}

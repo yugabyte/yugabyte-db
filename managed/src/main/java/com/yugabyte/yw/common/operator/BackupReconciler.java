@@ -1,6 +1,7 @@
 package com.yugabyte.yw.common.operator;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
@@ -9,6 +10,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
 import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
@@ -17,6 +19,7 @@ import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Backup;
+import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import java.util.ArrayList;
@@ -27,6 +30,7 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
+import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Slf4j
@@ -125,6 +129,27 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
       backupRequestParams = operatorUtils.getBackupRequestFromCr(backup, scInformer);
     } catch (Exception e) {
       log.error("Got Exception in converting to backup params", e);
+      return;
+    }
+
+    // Validate the backup request has at least one table to backup
+    Universe universe = Universe.getOrBadRequest(backupRequestParams.getUniverseUUID());
+    TableType tableType = null;
+    if (backup.getSpec().getBackupType() == BackupSpec.BackupType.PGSQL_TABLE_TYPE) {
+      tableType = TableType.PGSQL_TABLE_TYPE;
+    } else if (backup.getSpec().getBackupType() == BackupSpec.BackupType.YQL_TABLE_TYPE) {
+      tableType = TableType.YQL_TABLE_TYPE;
+    } else {
+      log.error("Invalid backup type: {}", backup.getSpec().getBackupType());
+      updateStatus(backup, "", "", "Invalid backup type: " + backup.getSpec().getBackupType());
+      return;
+    }
+    try {
+      backupHelper.validateTables(
+          new ArrayList<>(), universe, backup.getSpec().getKeyspace(), tableType);
+    } catch (PlatformServiceException e) {
+      log.error("Got Exception in validating tables", e);
+      updateStatus(backup, "", "", "Failed in validating tables " + e.getMessage());
       return;
     }
 

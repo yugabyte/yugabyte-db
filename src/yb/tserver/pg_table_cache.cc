@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 
 #include "yb/gutil/thread_annotations.h"
@@ -326,9 +327,22 @@ class PgTableCache::Impl {
   void LoadEntry(
       TableIdView table_id, master::IncludeHidden include_hidden, const CacheEntryPtr& entry) {
     auto callback = [entry, table_id](const Result<client::YBTablePtr>& result) {
-      VLOG(4)
-          << "PG table cache entry response for " << table_id << ": "
-          << (result.ok() ? (*result)->ToString() : result.status().ToString());
+      if (VLOG_IS_ON(4)) {
+        if (result.ok()) {
+          // Include schema_version, num_columns, and the full schema dump so we can verify
+          // exactly what the master returned for this fetch. Needed to diagnose stale-
+          // schema races that surface in pggate as "Invalid column number N".
+          const auto& s = (*result)->schema();
+          VLOG(4) << "PG table cache entry response for " << table_id << ": "
+                  << (*result)->ToString()
+                  << " schema_version=" << s.version()
+                  << " num_columns=" << s.num_columns()
+                  << " schema=" << s.ToString();
+        } else {
+          VLOG(4) << "PG table cache entry response for " << table_id << ": "
+                  << result.status().ToString();
+        }
+      }
       entry->SetValue(CheckTableType(result));
     };
 

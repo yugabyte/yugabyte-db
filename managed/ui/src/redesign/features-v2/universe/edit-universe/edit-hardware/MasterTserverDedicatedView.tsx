@@ -20,6 +20,7 @@ export const MasterTserverDedicatedView = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.hardware' });
   const { universeData } = useEditUniverseContext();
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const readReplicaCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
   const masterTserverNodesCount = countMasterAndTServerNodes(
     universeData!,
     primaryCluster!.placement_spec!
@@ -64,6 +65,14 @@ export const MasterTserverDedicatedView = () => {
           setEditHardwareModalVisible(true);
         }}
       />
+      {readReplicaCluster && (
+        <InstanceCard
+          title={t('rrInstance', { keyPrefix: 'readReplica.addRR' })}
+          nodeSpec={readReplicaCluster.node_spec}
+          storageSpec={readReplicaCluster.node_spec?.storage_spec}
+          onEditClicked={() => {}}
+        />
+      )}
       <EditHardwareConfirmModal
         visible={isEditHardwareModalVisible}
         onSubmit={() => {

@@ -33,6 +33,23 @@ var registeredServices = []struct {
 	{"node_exporter.service", "", true},
 }
 
+// Paths in yb_home_dir that are expected to cleaned up on destroy.
+var cleanupSubPaths = map[string]struct{}{
+	".yugabytedb":                {},
+	"bin":                        {},
+	"master":                     {},
+	"tserver":                    {},
+	"controller":                 {},
+	"cores":                      {},
+	"releases":                   {},
+	"yb-software":                {},
+	"metrics":                    {},
+	"otel-collector":             {},
+	"yugabyte-client-tls-config": {},
+	"yugabyte-tls-config":        {},
+	"collect_metrics.pid":        {},
+}
+
 type DestroyServerHandler struct {
 	param    *pb.DestroyServerInput
 	username string
@@ -80,9 +97,7 @@ func (h *DestroyServerHandler) cleanInstance(ctx context.Context) error {
 		return fmt.Errorf("Error reading ybHomeDir %s - %s", ybHomeDir, err.Error())
 	}
 	for _, entry := range entries {
-		// Skip these paths as they are expected to survive the cleanup.
-		if entry.Name() == "node-agent" ||
-			(strings.HasPrefix(entry.Name(), ".") && entry.Name() != ".yugabytedb") {
+		if _, ok := cleanupSubPaths[entry.Name()]; !ok {
 			util.FileLogger().Infof(ctx, "Skipping path %s", entry.Name())
 			continue
 		}

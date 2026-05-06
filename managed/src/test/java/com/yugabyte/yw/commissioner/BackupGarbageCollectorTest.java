@@ -523,7 +523,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   private CustomerConfig createImmutableStorageConfig(String configName) {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, configName);
     ObjectNode data = (ObjectNode) customerConfig.getData();
-    data.put("IMMUTABLE STORAGE", true);
+    data.put("IMMUTABLE_STORAGE", true);
     customerConfig.setData(data);
     customerConfig.update();
     return customerConfig;
@@ -580,21 +580,6 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
         () ->
             customerConfigService.getOrBadRequest(
                 defaultCustomer.getUuid(), customerConfig.getConfigUUID()));
-    verify(mockStorageUtilFactory, times(0)).getCloudUtil(anyString());
-  }
-
-  @Test
-  public void testDeleteForcedBackupWithImmutableStorage() {
-    CustomerConfig customerConfig = createImmutableStorageConfig("TEST_IMMUT4");
-    BackupTableParams bp = new BackupTableParams();
-    bp.storageConfigUUID = customerConfig.getConfigUUID();
-    bp.setUniverseUUID(UUID.randomUUID());
-    Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
-    backup.transitionState(BackupState.QueuedForForcedDeletion);
-    backupGC.scheduleRunner();
-    assertThrows(
-        PlatformServiceException.class,
-        () -> Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID()));
     verify(mockStorageUtilFactory, times(0)).getCloudUtil(anyString());
   }
 

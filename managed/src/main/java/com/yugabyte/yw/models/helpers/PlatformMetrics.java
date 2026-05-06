@@ -52,6 +52,7 @@ public enum PlatformMetrics {
   HEALTH_CHECK_C2N_CERT("TServer expired Client to Node certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_CLIENT_CA_CERT("TServer expired Client CA certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_YB_CONTROLLER_DOWN("YB-Controller process down nodes count", Unit.COUNT),
+  HEALTH_CHECK_PROCESS_LIMITS_ERROR("Process limits error nodes count", Unit.COUNT),
 
   // Tasks
   CREATE_BACKUP_STATUS("Backup creation task status for universe", Unit.STATUS),

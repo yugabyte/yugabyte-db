@@ -14,7 +14,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -83,6 +82,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = replicationFactor;
     userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -440,7 +440,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
             defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
-
     assertThrows(PlatformServiceException.class, () -> submitTask(taskParams, "host-n9"));
   }
 
@@ -452,13 +451,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
             defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
-    ShellResponse dummyShellResponse = new ShellResponse();
-    dummyShellResponse.message = null;
-    doReturn(dummyShellResponse).when(mockNodeManager).nodeCommand(any(), any());
-
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());
-
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

@@ -31,6 +31,7 @@
 #include "yb/server/skewed_clock.h"
 
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/csv_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -276,7 +277,7 @@ Status MasterTServerParseFlagsAndInit(
 
   RETURN_NOT_OK(GetPrivateIpMode());
 
-  LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
+  LOG(INFO) << "NumCPUs determined to be: " << NumEffectiveCPUs();
 
   DLOG(INFO) << "Process id: " << getpid();
 

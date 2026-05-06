@@ -1,8 +1,8 @@
 import { AxiosError } from 'axios';
 import { FormHelperText, makeStyles, Typography } from '@material-ui/core';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
-import { Trans, useTranslation } from 'react-i18next';
 import { SubmitHandler, useForm } from 'react-hook-form';
+import { Trans, useTranslation } from 'react-i18next';
+import { useMutation, useQuery } from 'react-query';
 
 import {
   YBInputField,
@@ -11,21 +11,20 @@ import {
   type YBModalProps,
   YBTooltip
 } from '@app/redesign/components';
-import { universeQueryKey } from '@app/redesign/helpers/api';
-import { hasNecessaryPerm } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
+import { hasNecessaryPerm } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { RBAC_ERR_MSG_NO_PERM } from '@app/redesign/features/rbac/common/validator/ValidatorUtils';
-import {
-  getUniverse,
-  getGetUniverseQueryKey,
-  rollbackSoftwareUpgrade
-} from '@app/v2/api/universe/universe';
-import type { UniverseRollbackUpgradeReqBody } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { AZUpgradeStatus, TaskState, TaskType } from '@app/redesign/features/tasks/dtos';
+import { api, taskQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
+import { SortDirection } from '@app/redesign/utils/dtos';
+import { getPrimaryCluster } from '@app/redesign/utils/universeUtils';
 import { handleServerError } from '@app/utils/errorHandlingUtils';
 import { formatYbSoftwareVersionString } from '@app/utils/Formatters';
+import { getUniverse, rollbackSoftwareUpgrade } from '@app/v2/api/universe/universe';
+import type { UniverseRollbackUpgradeReqBody } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { UpgradePace } from './constants';
-import { getPrimaryCluster } from '@app/redesign/utils/universeUtils';
 import { getPlacementAzMetadataList } from './utils/formUtils';
+import { useRefreshUniverseTasksCache } from '@app/redesign/helpers/cacheUtils';
 
 import ClockRewindIcon from '@app/redesign/assets/clock-rewind.svg';
 import InfoIcon from '@app/redesign/assets/info-message.svg';
@@ -209,11 +208,28 @@ export const DbUpgradeRollBackModal = ({
 }: DbUpgradeRollBackModalProps) => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
-  const queryClient = useQueryClient();
+  const refreshUniverseTasksCache = useRefreshUniverseTasksCache(universeUuid);
 
-  const universeDetailsQuery = useQuery(universeQueryKey.detailsV2(universeUuid), () =>
-    getUniverse(universeUuid)
+  const isModalOpen = !!modalProps.open;
+
+  const universeDetailsQuery = useQuery(
+    universeQueryKey.detailsV2(universeUuid),
+    () => getUniverse(universeUuid),
+    { enabled: isModalOpen && !!universeUuid }
   );
+  const getPagedSoftwareUpgradeTasksRequest = {
+    direction: SortDirection.DESC,
+    filter: {
+      typeList: [TaskType.SOFTWARE_UPGRADE],
+      targetUUIDList: [universeUuid]
+    }
+  };
+  const softwareUpgradeTasksQuery = useQuery(
+    taskQueryKey.paged(getPagedSoftwareUpgradeTasksRequest),
+    () => api.fetchPagedCustomerTasks(getPagedSoftwareUpgradeTasksRequest),
+    { enabled: isModalOpen && !!universeUuid }
+  );
+  const latestSoftwareUpgradeTask = softwareUpgradeTasksQuery.data?.entities[0];
 
   const universe = universeDetailsQuery.data;
   const prevVersion = universe?.info?.previous_yb_software_details?.yb_software_version ?? '';
@@ -224,9 +240,13 @@ export const DbUpgradeRollBackModal = ({
     upgradedAzMetadataList.map((az) => [az.azUuid, az.displayName])
   );
 
-  // TODO: YBA backend change required to return AZ upgrade status in the task info response.
-  // For now, we assume all AZs are upgraded.
-  const upgradedAzDisplayNames = Object.values(upgradedAzDisplayNameByUuid);
+  const upgradedAzs =
+    latestSoftwareUpgradeTask?.softwareUpgradeProgress?.tserverAZUpgradeStatesList
+      ?.filter((az) => az.status === AZUpgradeStatus.COMPLETED)
+      .map((az) => ({
+        azUuid: az.azUUID,
+        displayName: upgradedAzDisplayNameByUuid[az.azUUID] ?? az.azName ?? az.azUUID
+      })) ?? [];
 
   const formMethods = useForm<DbUpgradeRollBackFormFields>({
     defaultValues: {
@@ -241,8 +261,7 @@ export const DbUpgradeRollBackModal = ({
     (data: UniverseRollbackUpgradeReqBody) => rollbackSoftwareUpgrade(universeUuid, data),
     {
       onSuccess: () => {
-        queryClient.invalidateQueries(getGetUniverseQueryKey(universeUuid));
-        queryClient.invalidateQueries(universeQueryKey.detailsV2(universeUuid));
+        refreshUniverseTasksCache();
         modalProps.onClose();
       },
       onError: (error: Error | AxiosError) =>
@@ -272,8 +291,9 @@ export const DbUpgradeRollBackModal = ({
     ...ApiPermissionMap.UPGRADE_UNIVERSE_ROLLBACK
   });
   const rollbackPace = formMethods.watch('rollBackPace');
-  const isFormDisabled = formMethods.formState.isSubmitting;
+  const isFormDisabled = formMethods.formState.isSubmitting || !hasRollbackPermission;
   const isRollingOptionsDisabled = rollbackPace === UpgradePace.CONCURRENT;
+  const isDbUpgradeTaskCompleted = latestSoftwareUpgradeTask?.status === TaskState.SUCCESS;
 
   const handleRollbackPaceChange = (pace: DbUpgradeRollBackFormFields['rollBackPace']) => {
     formMethods.setValue('rollBackPace', pace);
@@ -302,7 +322,7 @@ export const DbUpgradeRollBackModal = ({
       hideCloseBtn={false}
       buttonProps={{
         primary: {
-          disabled: !hasRollbackPermission || !prevVersion
+          disabled: isFormDisabled
         }
       }}
       submitButtonTooltip={!hasRollbackPermission ? RBAC_ERR_MSG_NO_PERM : ''}
@@ -331,7 +351,11 @@ export const DbUpgradeRollBackModal = ({
             }}
           >
             <YBRadio checked={rollbackPace === UpgradePace.ROLLING} disabled={isFormDisabled} />
-            <Typography className={classes.paceOptionLabel}>{t('rollbackPaceRolling')}</Typography>
+            <Typography className={classes.paceOptionLabel}>
+              {t(
+                `rollbackPaceRolling.${isDbUpgradeTaskCompleted ? 'postUpgrade' : 'upgradeInProgress'}`
+              )}
+            </Typography>
           </div>
           <div className={classes.rollingSettingsWrapper}>
             <div className={classes.rollingSettings}>
@@ -469,7 +493,9 @@ export const DbUpgradeRollBackModal = ({
           >
             <YBRadio checked={rollbackPace === UpgradePace.CONCURRENT} disabled={isFormDisabled} />
             <Typography className={classes.paceOptionLabel}>
-              {t('rollbackPaceConcurrent')}
+              {t(
+                `rollbackPaceConcurrent.${isDbUpgradeTaskCompleted ? 'postUpgrade' : 'upgradeInProgress'}`
+              )}
             </Typography>
           </div>
           {rollbackPace === UpgradePace.CONCURRENT && (
@@ -491,13 +517,13 @@ export const DbUpgradeRollBackModal = ({
         </div>
       </div>
 
-      {upgradedAzDisplayNames.length > 0 && (
+      {upgradedAzs.length > 0 && !isDbUpgradeTaskCompleted && (
         <div className={classes.upgradedAzsSection}>
           <Typography className={classes.upgradedAzsLabel}>{t('upgradedAzsLabel')}</Typography>
           <div className={classes.azTagsContainer}>
-            {upgradedAzDisplayNames.map((name) => (
-              <span key={name} className={classes.azTag}>
-                {name}
+            {upgradedAzs.map(({ azUuid, displayName }) => (
+              <span key={azUuid} className={classes.azTag}>
+                {displayName}
               </span>
             ))}
           </div>

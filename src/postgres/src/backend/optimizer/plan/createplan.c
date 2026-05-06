@@ -46,6 +46,7 @@
 /* YB includes */
 #include "access/htup_details.h"
 #include "access/yb_scan.h"
+#include "catalog/partition.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
@@ -133,6 +134,7 @@ static SetOp *create_setop_plan(PlannerInfo *root, SetOpPath *best_path,
 static RecursiveUnion *create_recursiveunion_plan(PlannerInfo *root, RecursiveUnionPath *best_path);
 static LockRows *create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 									  int flags);
+static bool yb_update_modifies_partition_key(Relation leaf_rel, Bitmapset *update_attrs);
 static bool yb_single_row_update_or_delete_path(PlannerInfo *root,
 												ModifyTablePath *path,
 												List **modify_tlist,
@@ -3235,6 +3237,46 @@ has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *updated_attr
 }
 
 /*
+ * yb_leaf_update_modifies_partition_key
+ *
+ * Returns true if any column in the input bitmapset is a partition key column
+ * of any ancestor partitioned table.
+ * Note that ancestor partitioned tables may have non-overlapping partition keys
+ * as well as different column orderings. An update that modifies the partition
+ * key at any level counts as a cross-partition update and must be handled as a
+ * distributed transaction.
+ * For example:
+ * Root table: (k1 INT, k2 INT, v INT) PARTITION BY RANGE (k1)
+ * Mid-level table: (k2 INT, k1 INT, v INT) PARTITION BY RANGE (k2)
+ * Leaf table: (v INT, k1 INT, k2 INT)
+ * UPDATE leaf SET k1 = 10 WHERE k2 = 1;
+ */
+static bool
+yb_update_modifies_partition_key(Relation leaf_rel, Bitmapset *update_attrs)
+{
+	List	   *ancestors = get_partition_ancestors(RelationGetRelid(leaf_rel));
+	ListCell   *lc;
+	bool		result = false;
+
+	foreach(lc, ancestors)
+	{
+		Oid			ancestor_relid = lfirst_oid(lc);
+		Relation	ancestor_rel = RelationIdGetRelation(ancestor_relid);
+
+		result = yb_has_ancestor_partition_attrs(leaf_rel, ancestor_rel,
+												 update_attrs);
+
+		RelationClose(ancestor_rel);
+
+		if (result)
+			break;
+	}
+
+	list_free(ancestors);
+	return result;
+}
+
+/*
  * yb_fetch_subpaths
  *
  * Helper function for yb_single_row_update_or_delete_path to fetch the
@@ -3624,6 +3666,26 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	update_attrs = bms_add_members(update_attrs, affected_generated_attrs);
 	bms_free(generated_cols_source_attrs);
 	bms_free(affected_generated_attrs);
+
+	/*
+	 * In most cases, the primary key of a leaf partition is a superset of the
+	 * partition key. However, it is possible that the two are non-overlapping
+	 * and in such cases, the primary key functions purely as a clustering key.
+	 * An example of this is when the root partition has no primary key while
+	 * leaf partition declare a partition level primary key:
+	 * CREATE TABLE root (part_key INT, cluster_key INT, v INT) PARTITION BY RANGE (part_key);
+	 * CREATE TABLE leaf PARTITION OF root (PRIMARY KEY (cluster_key)) FOR VALUES ...;
+	 *
+	 * In such cases, an update that modifies a partitioning key column could
+	 * result in the row being moved to a different partition. Disallow single
+	 * shard updates in such scenarios.
+	 */
+	if (path->operation == CMD_UPDATE && relation->rd_rel->relispartition &&
+		yb_update_modifies_partition_key(relation, update_attrs))
+	{
+		RelationClose(relation);
+		return false;
+	}
 
 	/*
 	 * Cannot support before row triggers for single-row update/delete, as the

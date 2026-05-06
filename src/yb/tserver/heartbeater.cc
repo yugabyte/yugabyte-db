@@ -63,9 +63,11 @@
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -216,7 +218,13 @@ Heartbeater::Impl::Impl(
 }
 
 Status Heartbeater::Impl::Start() {
-  return poll_scheduler_.Start();
+  Cgroup* cgroup = nullptr;
+#ifdef __linux__
+  if (server_.cgroup_manager()) {
+    cgroup = server_.cgroup_manager()->SystemHighCgroup();
+  }
+#endif
+  return poll_scheduler_.Start(cgroup);
 }
 
 void Heartbeater::Impl::Shutdown() {
@@ -599,7 +607,7 @@ Status HeartbeatPoller::SetupRegistration(master::TSRegistrationPB* reg) {
   reg->Clear();
   RETURN_NOT_OK(server_.GetRegistration(reg->mutable_common()));
   auto* resources = reg->mutable_resources();
-  resources->set_core_count(base::NumCPUs());
+  resources->set_core_count(NumEffectiveCPUs());
   int64_t tablet_overhead_limit = yb::tserver::ComputeTabletOverheadLimit();
   if (tablet_overhead_limit > 0) {
     resources->set_tablet_overhead_ram_in_bytes(tablet_overhead_limit);

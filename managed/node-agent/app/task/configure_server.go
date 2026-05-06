@@ -43,6 +43,7 @@ var CgroupScriptFilesToCopy = []struct {
 	Dest string
 }{
 	{"yb-tserver-cgroup-exec.sh.j2", "bin/yb-tserver-cgroup-exec.sh"},
+	{"check_cpu_cgroup.sh.j2", "bin/check_cpu_cgroup.sh"},
 }
 
 type ConfigureServerHandler struct {

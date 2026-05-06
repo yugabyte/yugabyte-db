@@ -52,6 +52,7 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 
@@ -73,7 +74,6 @@
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/hnsw/hnsw_block_cache.h"
 
@@ -108,10 +108,12 @@
 #include "yb/tserver/remote_snapshot_transfer_client.h"
 #include "yb/tserver/tablet_limits.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
@@ -335,6 +337,8 @@ DECLARE_bool(lazily_flush_superblock);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
+DECLARE_bool(qos_compaction_per_db_cgroups);
+DECLARE_bool(qos_consensus_per_db_cgroups);
 
 namespace yb::tserver {
 
@@ -540,7 +544,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .Build(&log_sync_pool_));
   auto num_flush_threads = FLAGS_flush_bootstrap_state_pool_max_threads;
   if (num_flush_threads < 0) {
-    num_flush_threads = base::NumCPUs();
+    num_flush_threads = NumEffectiveCPUs();
     if (num_flush_threads < 2) {
       num_flush_threads = 2;
     }
@@ -645,7 +649,7 @@ Status TSTabletManager::Init() {
   // This has to be done in Init() instead of the constructor, since the
   // FsManager isn't initialized until this point.
   int max_bootstrap_threads = FLAGS_num_tablets_to_open_simultaneously;
-  int num_cpus = base::NumCPUs();
+  int num_cpus = NumEffectiveCPUs();
   if (max_bootstrap_threads == 0) {
     if (num_cpus <= 2) {
       max_bootstrap_threads = 2;
@@ -663,6 +667,43 @@ Status TSTabletManager::Init() {
                     .set_max_threads(max_bootstrap_threads)
                     .set_metrics(std::move(bootstrap_metrics))
                     .Build(&open_tablet_pool_));
+
+#ifdef __linux__
+  if (auto* cm = server_->cgroup_manager()) {
+    auto* sys_high = cm->SystemHighCgroup();
+    auto* sys_med = cm->SystemMedCgroup();
+
+    const bool consensus_system_mode = !FLAGS_qos_consensus_per_db_cgroups;
+    const bool compaction_system_mode = !FLAGS_qos_compaction_per_db_cgroups;
+
+    if (consensus_system_mode) {
+      // system-high: consensus, WAL, Raft coordination.
+      raft_pool_->SetCgroup(sys_high);
+      raft_notifications_pool_->SetCgroup(sys_high);
+      log_sync_pool_->SetCgroup(sys_high);
+      append_pool_->SetCgroup(sys_high);
+      allocation_pool_->SetCgroup(sys_high);
+      tablet_prepare_pool_->SetCgroup(sys_high);
+      apply_pool_->SetCgroup(sys_high);
+    }
+    // In per_db mode, pool-level cgroups are not set; per-task cgroup switching
+    // is configured per-tablet when tablets are opened (see SetTabletPerDbCgroup).
+
+    if (compaction_system_mode) {
+      // system-med: background work (compaction, flush, maintenance).
+      docdb::GetGlobalPriorityThreadPool()->SetCgroup(sys_med);
+      full_compaction_pool_->SetCgroup(sys_med);
+      admin_triggered_compaction_pool_->SetCgroup(sys_med);
+    }
+
+    // These pools always go to system-med regardless of compaction mode flag,
+    // since they are not per-tablet in nature.
+    open_tablet_pool_->SetCgroup(sys_med);
+    flush_bootstrap_state_pool_->SetCgroup(sys_med);
+    waiting_txn_pool_->SetCgroup(sys_med);
+    read_pool_->SetCgroup(sys_med);
+  }
+#endif
 
   CleanupCheckpoints();
 
@@ -1991,6 +2032,36 @@ Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
   return Status::OK();
 }
 
+#ifdef __linux__
+namespace {
+
+Status MaybeAssignPerDbCgroups(
+    TabletPeer* tablet_peer, tablet::Tablet* tablet,
+    const RaftGroupMetadata& meta, TServerCgroupManager* cm) {
+  if (!cm) return Status::OK();
+  bool consensus_per_db = FLAGS_qos_consensus_per_db_cgroups;
+  bool compaction_per_db = FLAGS_qos_compaction_per_db_cgroups;
+  if (!consensus_per_db && !compaction_per_db) return Status::OK();
+
+  if (meta.table_type() != PGSQL_TABLE_TYPE) return Status::OK();
+  auto namespace_id = meta.namespace_id();
+  if (namespace_id.empty()) return Status::OK();
+
+  auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  auto& cgroup = VERIFY_RESULT_REF(cm->CgroupForDb(db_oid));
+  cm->RegisterDbName(db_oid, meta.namespace_name());
+  if (consensus_per_db) {
+    tablet_peer->SetPerDbCgroup(&cgroup);
+  }
+  if (compaction_per_db) {
+    tablet->SetRocksDbTaskCgroup(&cgroup);
+  }
+  return Status::OK();
+}
+
+} // namespace
+#endif
+
 void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
                                  const scoped_refptr<TransitionInProgressDeleter>& deleter) {
   string tablet_id = meta->raft_group_id();
@@ -2197,6 +2268,13 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       tablet_peer->SetFailed(s);
       return;
     }
+
+#ifdef __linux__
+    WARN_NOT_OK(
+        MaybeAssignPerDbCgroups(
+            tablet_peer.get(), tablet.get(), *meta, server_->cgroup_manager()),
+        kLogPrefix + "Failed to assign per-db cgroups");
+#endif
 
     // Enable flush retryable requests after the peer is fully initialized.
     tablet_peer->EnableFlushBootstrapState();
@@ -3329,13 +3407,16 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
   bool restorations_updated;
   RestorationCompleteTimeMap restoration_complete_time;
   {
-    std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+    std::lock_guard lock(snapshot_schedule_info_mutex_);
     ++snapshot_schedules_version_;
-    snapshot_schedule_allowed_history_cutoff_.clear();
+    snapshot_schedule_info_.clear();
     for (const auto& schedule : info.schedules()) {
       auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id()));
-      snapshot_schedule_allowed_history_cutoff_.emplace(
-          schedule_id, HybridTime::FromPB(schedule.last_snapshot_hybrid_time()));
+      snapshot_schedule_info_.emplace(schedule_id, SnapshotScheduleInfo{
+          .last_snapshot_ht = HybridTime::FromPB(schedule.last_snapshot_hybrid_time()),
+          .retention_duration_sec = schedule.has_retention_duration_sec()
+              ? schedule.retention_duration_sec() : 0,
+      });
       missing_snapshot_schedules_.erase(schedule_id);
     }
     HybridTime restorations_update_ht(info.last_restorations_update_ht());
@@ -3367,6 +3448,13 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
     RETURN_NOT_OK(tablet->CheckRestorations(restoration_complete_time));
   }
   return Status::OK();
+}
+
+HybridTime TSTabletManager::TEST_LastSnapshotHybridTime(
+    const SnapshotScheduleId& schedule_id) const {
+  std::lock_guard lock(snapshot_schedule_info_mutex_);
+  auto it = snapshot_schedule_info_.find(schedule_id);
+  return it != snapshot_schedule_info_.end() ? it->second.last_snapshot_ht : HybridTime::kMin;
 }
 
 docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
@@ -3406,10 +3494,19 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
   auto schedules = metadata->SnapshotSchedules();
   if (!schedules.empty()) {
     std::vector<SnapshotScheduleId> schedules_to_remove;
+    bool is_sequences_data = metadata->table_id() == kPgSequencesDataTableId;
     {
-      std::lock_guard lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+      std::lock_guard lock(snapshot_schedule_info_mutex_);
+      // The sequences_data table is shared across all YSQL databases but its tablets only track
+      // last_snapshot_ht_ (which advances with each new snapshot). For clone/restore at an older
+      // timestamp, we need to retain history back to now - retention_duration_sec.
+      uint64_t max_retention_sec = 0;
       for (const auto& schedule_id : schedules) {
-        if (snapshot_schedule_allowed_history_cutoff_.contains(schedule_id)) {
+        auto it = snapshot_schedule_info_.find(schedule_id);
+        if (it != snapshot_schedule_info_.end()) {
+          if (is_sequences_data) {
+            max_retention_sec = std::max(max_retention_sec, it->second.retention_duration_sec);
+          }
           continue;
         }
         // We don't know this schedule.
@@ -3424,6 +3521,10 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
           // master, but response not yet received on TServer.
           schedules_to_remove.push_back(schedule_id);
         }
+      }
+      if (max_retention_sec > 0) {
+        auto retention_cutoff = server_->Clock()->Now().AddSeconds(-max_retention_sec);
+        result.MakeAtMost(retention_cutoff);
       }
     }
     bool any_removed = false;

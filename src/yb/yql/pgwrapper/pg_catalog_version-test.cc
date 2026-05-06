@@ -485,7 +485,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     // Create a number of databases.
     auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
     const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
-    const int num_databases = IsTsan() ? 5 : 10;
+    const int num_databases = (IsTsan() || IsAsan()) ? 5 : 10;
     for (int i = 0; i < num_databases; ++i) {
       ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE test_db$0", i));
     }
@@ -530,7 +530,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
                               "WHERE datid != 1 ORDER BY datid ASC, local_catalog_version ASC";
     auto result = ASSERT_RESULT((conn_yugabyte.FetchAllAsString(query)));
     const string expected =
-        IsTsan()
+        (IsTsan() || IsAsan())
             ? Format(
                   "$0, 21; 16384, 6; 16385, 6; 16385, 7; 16386, 7; 16386, 8; 16386, 9; 16387, 9; "
                   "16387, 10; 16387, 11; 16387, 12; 16388, 12; 16388, 13; 16388, 14; 16388, 15; "
@@ -640,6 +640,25 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   int64_t GetNumAuthorizedConnections() {
     return GetInt64MetricsHelper("AuthorizedConnection");
+  }
+
+  static std::string ConnInitLatencyMetricName(bool auth_backend) {
+    return auth_backend ? "handler_latency_yb_ysqlserver_SQLProcessor_ConnMgrAuthBackendInit"
+                        : "handler_latency_yb_ysqlserver_SQLProcessor_BackendInit";
+  }
+
+  // Returns {count, sum_us} for the conn-init-latency metric
+  std::pair<int64_t, int64_t> GetConnInitLatencyStats(bool auth_backend) {
+    const std::string kMetricName = ConnInitLatencyMetricName(auth_backend);
+    auto json_metrics = GetJsonMetrics();
+    for (const auto& metric : json_metrics) {
+      if (metric.name == kMetricName) {
+        LOG(INFO) << kMetricName << ": count=" << metric.value << " sum_us=" << metric.sum;
+        return {metric.value, metric.sum};
+      }
+    }
+    ADD_FAILURE() << kMetricName << " not found in metrics output";
+    return {-1, -1};
   }
 
   // This function is extracted and adapted from ysql_upgrade.cc.
@@ -3478,6 +3497,22 @@ TEST_P(PgCatalogVersionConnManagerTest,
             << ", master_read_count_after: " << master_read_count_after;
   auto expected_count = (enable_ysql_conn_mgr ? 0 : 2) * num_logical_connections;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
+
+  // Validate the conn-init-latency metrics:
+  // - BackendInit covers all regular (non-auth) backends.
+  // - ConnMgrAuthBackendInit appears only when connection manager is active.
+  auto [regular_count, regular_sum] = GetConnInitLatencyStats(/*auth_backend=*/false);
+  ASSERT_GT(regular_count, 0) << "Expected BackendInit count > 0";
+  ASSERT_GT(regular_sum, 0) << "Expected BackendInit sum_us > 0";
+
+  auto [auth_count, auth_sum] = GetConnInitLatencyStats(/*auth_backend=*/true);
+  if (enable_ysql_conn_mgr) {
+    ASSERT_GT(auth_count, 0) << "Expected ConnMgrAuthBackendInit count with conn manager";
+    ASSERT_GT(auth_sum, 0) << "Expected ConnMgrAuthBackendInit sum_us with conn manager";
+  } else {
+    // Metric is always registered but should have zero auth connections without conn mgr.
+    ASSERT_EQ(auth_count, 0) << "Expected no ConnMgrAuthBackendInit without conn manager";
+  }
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
@@ -3627,18 +3662,52 @@ TEST_P(PgCatalogVersionConnManagerTest,
     LOG(INFO) << ", master_read_count_before: " << master_read_count_before
               << ", master_read_count_after: " << master_read_count_after;
 
-    // Rebuilding the expired tserver cache entry costs 1 master RPCs. But because
+    // Rebuilding the expired tserver cache entry costs 1 master RPC. But because
     // we now use shared memory catalog version for both auth phase and
     // RelationCacheInitializePhase3() prefetching, after we reset
     // --TEST_tserver_disable_catalog_refresh_on_heartbeat=false which causes a new
-    // shared memory catalog version, we will have two expired tserver cache entries
-    // to rebuild:
+    // shared memory catalog version, we may have to rebuild up to two expired
+    // tserver cache entries during the verify loop:
     // (1) expired entry for the auth phase
     // (2) expired entry for the RelationCacheInitializePhase3() phase
-    // Earlier we were using master catalog version for RelationCacheInitializePhase3(),
-    // in that case we would have rebuilt (2) in the verify() that has "First verify"
-    // comment above.
-    const int num_rebuild_rpcs = 2;
+    // Earlier we were using master catalog version for
+    // RelationCacheInitializePhase3(), in that case we would have rebuilt (2)
+    // in the verify() that has "First verify" comment above.
+    //
+    // The expected count depends on how the relcache init file on ts-0 gets
+    // refreshed to the new catalog version *before* this loop runs:
+    //
+    //   Release (object locking enabled): the ALTER USER DDL commit codepath
+    //   force-refreshes the catalog version on all tservers despite
+    //   TEST_tserver_disable_catalog_refresh_on_heartbeat=true, so ts-0's
+    //   shared catalog version reaches v_new shortly after the ALTER USER
+    //   above and well before the "First verify" call. The local tserver
+    //   already has the v_new invalidation messages, so when the regular
+    //   backend forked by the new-password connect in "First verify" enters
+    //   load_relcache_init_file() -> YbTryRevalidateRelcacheFile(),
+    //   YbWaitForSharedCatalogVersionToCatchup() returns immediately and
+    //   YBCGetTserverCatalogMessageLists() succeeds. The init file is updated
+    //   from v_old to v_new without a master RPC and without populating either
+    //   tserver response-cache slot. Both (1) and (2) are still cold when we
+    //   enter the loop, so both expirations are observable -> 2 master RPCs.
+    //
+    //   Fastdebug (object locking disabled): the test flag is fully effective,
+    //   so ts-0's shared catalog version stays at v_old throughout "First
+    //   verify" and the local tserver does not yet have the v_new invalidation
+    //   messages. The regular backend's call into YbTryRevalidateRelcacheFile()
+    //   blocks in YbWaitForSharedCatalogVersionToCatchup() for the full 60s
+    //   timeout (twice -- once for the shared init file, once for the per-DB
+    //   init file) and then YBCGetTserverCatalogMessageLists() returns reason
+    //   "no match found". It falls back to a full relcache preload using
+    //   TRUST_CACHE @ master_catalog_version, which writes a new init file
+    //   stamped at v_new and populates a response-cache slot at v_new -- all
+    //   before master_read_count_before is captured. When we enter the loop,
+    //   each new connect's load_relcache_init_file() finds the init file
+    //   already fresh, so YbNeedNewCacheFileForPgAuthBackend stays false and
+    //   Phase3 skips its full prefetch entirely. Only the auth phase's
+    //   pg_authid lookup hits the response cache, so (1) and (2) collapse into
+    //   a single master RPC.
+    const int num_rebuild_rpcs = IsObjectLockingEnabled() ? 2 : 1;
 
     // Each pg auth backend still costs 1 master RPC due to logical catalog version read.
     ASSERT_EQ(master_read_count_before + num_rebuild_rpcs,
@@ -3815,6 +3884,15 @@ TEST_F(PgCatalogVersionTest, ConcurrentNonSuperuserNewConnectionsTest) {
   auto authorized_connections = GetNumAuthorizedConnections();
   LOG(INFO) << "authorized_connections: " << authorized_connections;
   ASSERT_GT(authorized_connections, relcache_preloads);
+
+  auto [regular_count, regular_sum] = GetConnInitLatencyStats(/*auth_backend=*/false);
+  ASSERT_GE(regular_count, authorized_connections)
+      << "BackendInit count should be at least authorized_connections";
+  ASSERT_GT(regular_sum, 0) << "Expected BackendInit sum_us > 0";
+
+  auto [auth_count, auth_sum] = GetConnInitLatencyStats(/*auth_backend=*/true);
+  // The metric is always registered but should have zero connections without conn mgr.
+  ASSERT_EQ(auth_count, 0) << "No auth backends expected without connection manager";
 }
 
 // Test the two-step upgrade process for enabling negative caching safely.
@@ -3980,6 +4058,68 @@ TEST_F(PgCatalogVersionTest, RefreshMaterializedViewConcurrently) {
   ASSERT_STR_CONTAINS(result, "Keyboard");
   ASSERT_STR_CONTAINS(result, "Laptop");
   ASSERT_STR_CONTAINS(result, "Mouse");
+}
+
+// GHI 31309: reproduce the race condition where a new connection sees the master catalog
+// version (already incremented by a DDL commit) but the local tserver does not yet have
+// the corresponding invalidation messages (because YBCPgSetTserverCatalogMessageList has
+// not been called yet). This causes YbTryRevalidateRelcacheFile to fail and log
+// "Cannot revalidate shared relcache init file".
+// The fix is to add YbWaitForSharedCatalogVersionToCatchup in YbTryRevalidateRelcacheFile
+// so that the new connection waits for the local tserver to catch up before attempting
+// to fetch invalidation messages.
+TEST_F(PgCatalogVersionTest, RelcacheInitFileRevalidationRace) {
+  RestartClusterWithInvalMessageEnabled();
+  pg_ts = cluster_->tablet_server(0);
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Execute("CREATE TABLE race_test(id INT)"));
+
+  // Widen the race window: after DDL commit bumps the master catalog version,
+  // the PG backend sleeps before calling YBCPgSetTserverCatalogMessageList.
+  // During this sleep, new connections read the new master version but the
+  // local tserver has no messages for it yet.
+  ASSERT_OK(conn.Execute("SET yb_test_delay_set_local_tserver_inval_message_ms = 5000"));
+
+  // Ensure a shared relcache init file exists.
+  {
+    auto temp_conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+    ASSERT_RESULT(temp_conn.FetchAllAsString("SELECT 1"));
+  }
+
+  TestThreadHolder thread_holder;
+  constexpr int kNewConnThreads = 3;
+
+  // Threads that continuously spawn new connections during the race window.
+  for (int i = 0; i < kNewConnThreads; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+      while (!stop.load(std::memory_order_acquire)) {
+        auto new_conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+        auto result = ASSERT_RESULT(new_conn.FetchAllAsString("SELECT 1"));
+        ASSERT_EQ(result, "1");
+      }
+    });
+  }
+
+  // Main thread: execute DDLs that bump the catalog version. Each DDL has
+  // a 5-second window (from yb_test_delay_set_local_tserver_inval_message_ms)
+  // between master version bump and local tserver message update.
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_OK(conn.Execute("ALTER TABLE race_test ADD COLUMN val TEXT"));
+    ASSERT_OK(conn.Execute("ALTER TABLE race_test DROP COLUMN val"));
+  }
+
+  thread_holder.Stop();
+
+  auto json_metrics = GetJsonMetrics();
+  auto revalidated = GetMetricValue(json_metrics, "RelCacheInitFileRevalidated");
+  auto revalidation_failed = GetMetricValue(json_metrics, "RelCacheInitFileRevalidationFailed");
+  LOG(INFO) << "RelCacheInitFileRevalidated: " << revalidated
+            << ", RelCacheInitFileRevalidationFailed: " << revalidation_failed;
+  // With the fix (YbWaitForSharedCatalogVersionToCatchup in YbTryRevalidateRelcacheFile),
+  // revalidation should succeed and failures should be 0.
+  // Without the fix, some new connections will fail to revalidate (reason 4).
+  ASSERT_EQ(revalidation_failed, 0);
+  ASSERT_GT(revalidated, 0);
 }
 
 } // namespace pgwrapper

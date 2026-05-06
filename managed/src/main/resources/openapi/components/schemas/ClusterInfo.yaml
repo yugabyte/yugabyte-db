@@ -7,6 +7,11 @@ properties:
     type: string
     format: uuid
     example: 19ebde21-d537-47dc-8fab-3edc243c6f68
+  geo_partitioned:
+    description: Whether universe is treated as geo partitioned (i.e. tablespaces are created).
+    type: boolean
+    example: false
+    x-yba-api-visibility: internal
   spot_price:
     description: TBD
     type: number

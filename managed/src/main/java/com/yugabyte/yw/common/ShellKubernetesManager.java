@@ -1356,7 +1356,7 @@ public class ShellKubernetesManager extends KubernetesManager {
     PlacementInfo pi = cluster.getOverallPlacement();
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(cluster);
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
       Map<String, String> config = entry.getValue();
@@ -1408,7 +1408,7 @@ public class ShellKubernetesManager extends KubernetesManager {
     PlacementInfo pi = cluster.placementInfo;
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(cluster);
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     // Create a PDB policy for each AZ at the namespace level, filtering the pod selector
     // to match pods across the entire namespace. This results in the PDB policy being applied
@@ -1489,7 +1489,7 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   private Optional<Object> createPDBMatchExpressions(
       Universe universe, UniverseDefinitionTaskParams.Cluster cluster) {
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(cluster);
     Set<String> helmReleaseNames = new HashSet<>();
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {

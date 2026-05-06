@@ -33,6 +33,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetSta
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterDbReplicationSetup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterFailoverWithOnDemandSnapshot;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromOutboundReplicationGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromTargetUniverse;
 import com.yugabyte.yw.common.DrConfigStates;
@@ -485,6 +486,26 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   protected SubTaskGroup createSetReplicationPausedTask(
       XClusterConfig xClusterConfig, String status) {
     return createSetReplicationPausedTask(xClusterConfig, status.equals("Paused"));
+  }
+
+  /**
+   * Creates a subtask that initiates the DB-side XClusterFailover RPC and polls until the failover
+   * completes. This replaces the PITR-based failover path when on-demand failover is enabled.
+   */
+  protected SubTaskGroup createXClusterFailoverWithOnDemandSnapshotTask(
+      XClusterConfig xClusterConfig) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterFailoverWithOnDemandSnapshot");
+    XClusterFailoverWithOnDemandSnapshot.Params params =
+        new XClusterFailoverWithOnDemandSnapshot.Params();
+    params.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    params.xClusterConfig = xClusterConfig;
+
+    XClusterFailoverWithOnDemandSnapshot task =
+        createTask(XClusterFailoverWithOnDemandSnapshot.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   protected SubTaskGroup createXClusterConfigRenameTask(

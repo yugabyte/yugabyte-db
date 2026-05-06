@@ -28,6 +28,7 @@ export const colors = {
     900: '#000041'
   } as PaletteColor,
   grey: {
+    50: '#F7F9FB',
     100: '#F0F4F7',
     200: '#E9EEF2',
     300: '#D7DEE4', // sometimes refered as #D7DDE1 in designs
@@ -39,6 +40,7 @@ export const colors = {
     900: '#0B1117'
   } as PaletteColor,
   error: {
+    50: '#FEEDED',
     100: '#FDE2E2',
     300: '#F9ACAC',
     500: '#DA1515',
@@ -169,7 +171,8 @@ export const colors = {
     ybOrangeFocus: '#EF582480',
     ybPurple: '#5D5FEF',
     grey005: '#FBFCFD',
-    grey050: '#F7F9FB'
+    grey050: '#F7F9FB',
+    success005: '#F0FAF6'
   },
   ybaShadows: {
     inputBoxShadow: 'inset 0 1px 1px rgb(0 0 0 / 8%), 0 0 8px rgb(239 88 36 / 20%)'

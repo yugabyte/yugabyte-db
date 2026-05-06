@@ -61,6 +61,10 @@
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/thread_local.h"
 
+namespace yb {
+class Cgroup;
+}  // namespace yb
+
 namespace rocksdb {
 
 class MemTable;
@@ -202,6 +206,7 @@ class DBImpl : public DB {
                        ColumnFamilyHandle* column_family) override;
   using DB::WaitForFlush;
   virtual Status WaitForFlush(ColumnFamilyHandle* column_family) override;
+  virtual Status UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) override;
   virtual Status SyncWAL() override;
 
   virtual SequenceNumber GetLatestSequenceNumber() const override;
@@ -497,7 +502,7 @@ class DBImpl : public DB {
   // And max seqno of imported database is less that active seqno of destination db.
   Status Import(const std::string& source_dir) override;
 
-  bool AreWritesStopped();
+  bool AreWritesStopped() override;
   bool NeedsDelay() override;
 
   Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
@@ -519,6 +524,11 @@ class DBImpl : public DB {
       CompactionFileExcluderPtr exclude_from_compaction) {
     return TEST_SetExcludeFromCompaction(DefaultColumnFamily(), std::move(exclude_from_compaction));
   }
+
+  DBOptions& TEST_db_options() { return const_cast<DBOptions&>(db_options_); }
+
+  void SetTaskCgroup(yb::Cgroup* cgroup) { task_cgroup_ = cgroup; }
+  yb::Cgroup* task_cgroup() const { return task_cgroup_; }
 
  protected:
   Env* const env_;
@@ -1085,6 +1095,8 @@ class DBImpl : public DB {
   bool ShouldntRunManualCompaction(ManualCompaction* m);
   bool HaveManualCompaction(ColumnFamilyData* cfd);
   bool MCOverlap(ManualCompaction* m, ManualCompaction* m1);
+
+  [[maybe_unused]] yb::Cgroup* task_cgroup_ = nullptr;
 };
 
 // Sanitize db options.  The caller should delete result.info_log if

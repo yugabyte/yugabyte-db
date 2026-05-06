@@ -77,6 +77,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.controllers.UniverseControllerTestBase;
@@ -126,6 +127,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
   protected UUID universeUuid;
   protected UUID rootCA;
   protected UUID clientRootCA;
+  protected SettableRuntimeConfigFactory settableRuntimeConfigFactory;
   protected String rootCAContents =
       "-----BEGIN CERTIFICATE-----\n"
           + "MIIDEjCCAfqgAwIBAgIUEdzNoxkMLrZCku6H1jQ4pUgPtpQwDQYJKoZIhvcNAQEL\n"
@@ -170,6 +172,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   @Before
   public void setUpV2Client() throws NoSuchAlgorithmException, IOException, ApiException {
+    settableRuntimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
     ApiClient v2ApiClient = Configuration.getDefaultApiClient();
     String basePath = String.format("http://localhost:%d/api/v2", port);
     v2ApiClient = v2ApiClient.setBasePath(basePath).addDefaultHeader("X-AUTH-TOKEN", authToken);
@@ -667,6 +670,9 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     assertThat(v2Cluster.getReplicationFactor(), is(dbCluster.userIntent.replicationFactor));
     validateClusterNodeSpec(
         v2Cluster.getNodeSpec(), dbCluster.userIntent, v2PrimaryCluster.getNodeSpec());
+    if (v2Cluster.getPartitionsSpec() != null && v2Cluster.getPartitionsSpec().size() > 1) {
+      assertThat(dbCluster.isGeoPartitioned(), is(true));
+    }
     if (v2Cluster.getUseSpotInstance() == null) {
       if (v2PrimaryCluster.getUseSpotInstance() == null) {
         assertThat(dbCluster.userIntent.useSpotInstance, is(false));

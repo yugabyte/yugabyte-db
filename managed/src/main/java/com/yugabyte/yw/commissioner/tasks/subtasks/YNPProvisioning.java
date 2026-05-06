@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -28,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 public class YNPProvisioning extends NodeTaskBase {
   private final YNPConfigGenerator ynpConfigGenerator;
   private ShellProcessContext shellContext =
-      ShellProcessContext.builder().logCmdOutput(true).build();
+      ShellProcessContext.builder().useSshConnectionOnly(true).logCmdOutput(true).build();
 
   @Inject
   protected YNPProvisioning(
@@ -81,18 +82,17 @@ public class YNPProvisioning extends NodeTaskBase {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
-    Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
 
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
+    Provider provider = Util.getProviderForNode(node, universe);
 
     /*
      *  But First, setup the dual NIC on YBM if needed. Let's do that even before we run
      *  YNP based provisioning because dual NIC setup will require a reboot which might
      *  clean up the tmp directory where the YNP config is created.
      */
-    AnsibleSetupServer.Params ansibleParams = buildDualNicSetupParams(universe, node, provider);
+    AnsibleSetupServer.Params ansibleParams =
+        buildDualNicSetupParams(universe, node, provider, taskParams().userIntent);
     nodeManager
         .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
         .processErrors("Dual NIC setup failed");
@@ -132,11 +132,13 @@ public class YNPProvisioning extends NodeTaskBase {
   }
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(
-      Universe universe, NodeDetails node, Provider provider) {
-    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+      Universe universe, NodeDetails node, Provider provider, UserIntent taskUserIntent) {
+    UserIntent userIntent =
+        taskUserIntent == null
+            ? universe.getCluster(node.placementUuid).userIntent
+            : taskUserIntent;
     AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
     fillSetupParamsForNode(ansibleParams, userIntent, node);
-    ansibleParams.skipAnsiblePlaybook = true;
     ansibleParams.sshUserOverride = node.sshUserOverride;
     ansibleParams.sshPortOverride = node.sshPortOverride;
     return ansibleParams;

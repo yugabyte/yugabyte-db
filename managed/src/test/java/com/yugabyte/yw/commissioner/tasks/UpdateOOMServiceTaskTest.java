@@ -9,7 +9,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -99,7 +98,7 @@ public class UpdateOOMServiceTaskTest extends CommissionerBaseTest {
       agentMap.put(nodeDetails.cloudInfo.private_ip, nodeAgent);
     }
 
-    when(mockNodeUniverseManager.maybeUpgradeAndGetNodeAgent(any(), any(), anyBoolean()))
+    when(mockNodeUniverseManager.maybeUpgradeAndGetNodeAgent(any(), any()))
         .then(
             invocation -> {
               NodeDetails node = invocation.getArgument(1);

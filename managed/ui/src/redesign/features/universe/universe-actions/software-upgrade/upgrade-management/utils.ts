@@ -1,6 +1,7 @@
 import {
   AZUpgradeState,
   AZUpgradeStatus,
+  CanaryPauseState,
   DbUpgradePrecheckStatus,
   Task
 } from '@app/redesign/features/tasks/dtos';
@@ -88,14 +89,28 @@ const classifyUpgradeMasterServersStage = (
   return AccordionCardState.NEUTRAL;
 };
 
-export interface DbUpgradeStages {
+export interface AzUpgradeStageMetadata {
+  accordionCardState: AccordionCardState;
+  isLastAzBeforeCanaryPause: boolean;
+}
+
+export interface DbUpgradeStagesMetadata {
   preCheckStage: AccordionCardState;
   upgradeMasterServersStage: AccordionCardState;
-  upgradeAzStages: Record<string, AccordionCardState>;
+  upgradeAzStages: Record<string, AzUpgradeStageMetadata>;
   finalizeStage: AccordionCardState;
 }
-export const classifyDbUpgradeStages = (dbUpgradeTask: Task): DbUpgradeStages => {
-  if (!dbUpgradeTask.canaryUpgradeProgress) {
+
+export type DbUpgradeStages = DbUpgradeStagesMetadata;
+
+/**
+ * Classifies a DB software-upgrade task into accordion card states for the progress panel.
+ 
+ * Assumptions:
+ * - tserverAzUpgradeStatesList returned by the backend is ordered by AZ upgrade order.
+ */
+export const classifyDbUpgradeStages = (dbUpgradeTask: Task): DbUpgradeStagesMetadata => {
+  if (!dbUpgradeTask.softwareUpgradeProgress) {
     return {
       preCheckStage: AccordionCardState.NEUTRAL,
       upgradeMasterServersStage: AccordionCardState.NEUTRAL,
@@ -104,20 +119,43 @@ export const classifyDbUpgradeStages = (dbUpgradeTask: Task): DbUpgradeStages =>
     };
   }
 
+  const softwareUpgradeProgress = dbUpgradeTask.softwareUpgradeProgress;
   const preCheckStage = mapDbUpgradePrecheckStatusToAccordionCardState(
-    dbUpgradeTask.canaryUpgradeProgress.precheckStatus
+    softwareUpgradeProgress.precheckStatus
   );
   const upgradeMasterServersStage = classifyUpgradeMasterServersStage(
-    dbUpgradeTask.canaryUpgradeProgress.masterAZUpgradeStatesList
+    softwareUpgradeProgress.masterAZUpgradeStatesList
   );
-  const upgradeAzStages =
-    dbUpgradeTask.canaryUpgradeProgress.tserverAZUpgradeStatesList?.reduce(
-      (accumulator, azUpgradeState) => ({
-        ...accumulator,
-        [azUpgradeState.azUUID]: mapAzUpgradeStatusToAccordionCardState(azUpgradeState.status)
-      }),
-      {} as Record<string, AccordionCardState>
-    ) ?? {};
+
+  const tserverAZUpgradeStatesList = softwareUpgradeProgress.tserverAZUpgradeStatesList ?? [];
+  const upgradeAzStages: Record<string, AzUpgradeStageMetadata> = {};
+  let lastCompletedTserverAzUUID: string | undefined;
+  let hasNotStartedTserverAz = false;
+
+  for (const azUpgradeState of tserverAZUpgradeStatesList) {
+    if (azUpgradeState.status === AZUpgradeStatus.NOT_STARTED) {
+      hasNotStartedTserverAz = true;
+    }
+    if (azUpgradeState.status === AZUpgradeStatus.COMPLETED) {
+      lastCompletedTserverAzUUID = azUpgradeState.azUUID;
+    }
+    upgradeAzStages[azUpgradeState.azUUID] = {
+      accordionCardState: mapAzUpgradeStatusToAccordionCardState(azUpgradeState.status),
+      isLastAzBeforeCanaryPause: false
+    };
+  }
+
+  if (
+    softwareUpgradeProgress.canaryPauseState === CanaryPauseState.PAUSED_AFTER_TSERVERS_AZ &&
+    hasNotStartedTserverAz &&
+    lastCompletedTserverAzUUID !== undefined
+  ) {
+    const azUpgradeStageMetadata = upgradeAzStages[lastCompletedTserverAzUUID];
+    if (azUpgradeStageMetadata) {
+      azUpgradeStageMetadata.isLastAzBeforeCanaryPause = true;
+    }
+  }
+
   const finalizeStage = AccordionCardState.NEUTRAL;
   return { preCheckStage, upgradeMasterServersStage, upgradeAzStages, finalizeStage };
 };

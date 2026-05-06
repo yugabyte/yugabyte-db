@@ -944,15 +944,11 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     KeyInfo keyInfo = new KeyInfo();
     keyInfo.publicKey = createTempFile("PUBLIC-KEY");
     keyInfo.privateKey = createTempFile("PRIVATE-KEY");
-    keyInfo.vaultFile = createTempFile("VAULT-FILE");
-    keyInfo.vaultPasswordFile = createTempFile("VAULT-PASSWORD-FILE");
     AccessKey accessKey = AccessKey.create(defaultProvider.getUuid(), "key-code-1", keyInfo);
 
     accessKeyHandler.delete(accessKey);
     assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().publicKey)));
     assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().privateKey)));
-    assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().vaultFile)));
-    assertTrue(Files.notExists(Paths.get(accessKey.getKeyInfo().vaultPasswordFile)));
     Result result =
         assertPlatformException(
             () -> AccessKey.getOrBadRequest(defaultProvider.getUuid(), "key-code-1"));

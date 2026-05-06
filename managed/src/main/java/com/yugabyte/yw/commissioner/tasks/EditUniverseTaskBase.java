@@ -345,8 +345,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createStartTserverProcessTasks(newTservers, userIntent.enableYSQL);
 
       if (universe.isYbcEnabled()) {
-        createStartYbcProcessTasks(
-            newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+        createStartYbcProcessTasks(newTservers);
       }
 
       // Update swamper target files to fetch metrics from new tservers.
@@ -512,6 +511,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           EnumSet.of(ServerType.TSERVER),
           false /* remove master from quorum */,
           false /* deconfigure */,
+          false /* flushTablets */,
           SubTaskGroupType.UpdatingGFlags);
 
       AnsibleConfigureServers.Params params =

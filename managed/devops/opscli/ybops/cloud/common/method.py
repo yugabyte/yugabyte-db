@@ -27,7 +27,6 @@ from ybops.utils import get_path_from_yb, \
     generate_random_password, validate_cron_status, retry_operation_for_timeout, \
     YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
     DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
-from ansible_vault import Vault
 from ybops.utils.remote_shell import copy_to_tmp, wait_for_server, get_host_port_user, RemoteShell
 from ybops.utils.ssh import wait_for_ssh, format_rsa_key, validated_key_file, \
     generate_rsa_keypair, get_public_key_content, \
@@ -82,9 +81,7 @@ class AbstractMethod(object):
         """Hook for subclasses to add extra parsing arguments that may be shared with other methods
         that are not part of the same enheritance chain.
         """
-        self.parser.add_argument("--vault_password_file", default=None)
         self.parser.add_argument("--ask_sudo_pass", action='store_true', default=False)
-        self.parser.add_argument("--vars_file", default=None)
         self.parser.add_argument("--ssh2_enabled", action='store_true', default=False)
         self.parser.add_argument("--connection_type", default=None, required=False)
         self.parser.add_argument("--architecture", required=False, help="Architecture for machine "
@@ -124,7 +121,7 @@ class AbstractMethod(object):
 
 
 class AbstractInstancesMethod(AbstractMethod):
-    """Superclass for instance-specific method preparation, such as the Ansible extra_vars and the
+    """Superclass for instance-specific method preparation, such as extra_vars and the
     options for search_pattern, as all instance methods can take instances as parameters.
     """
     YB_SERVER_TYPE = "cluster-server"
@@ -155,8 +152,6 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument('--tags', action='append', default=None)
         self.parser.add_argument("--skip_tags", action='append', default=None)
 
-        # If we do not have this entry from ansible.env, then set a None default, else, assume the
-        # pem file is in the same location as the ansible.env file.
         default_key_pair = os.environ.get("YB_EC2_KEY_PAIR_NAME")
         if default_key_pair is not None:
             default_key_pair = get_path_from_yb(default_key_pair + ".pem")
@@ -211,10 +206,6 @@ class AbstractInstancesMethod(AbstractMethod):
                                  help="Node agent auth token")
         self.parser.add_argument("--node_agent_home", required=False,
                                  help="Node agent home path")
-        self.parser.add_argument("--offload_ansible",
-                                 required=False,
-                                 action="store_true",
-                                 help="Offload ansible tasks to the DB node")
         self.parser.add_argument("--imdsv2required",
                                  action="store_true",
                                  default=False,
@@ -230,8 +221,8 @@ class AbstractInstancesMethod(AbstractMethod):
         """Used by subclasses to ensure an appropriate ssh_user is used for certain operations"""
         return None
 
-    def update_ansible_vars_with_args(self, args):
-        """Hook for subclasses to update Ansible extra-vars with arguments passed."""
+    def update_extra_vars_with_args(self, args):
+        """Hook for subclasses to update extra-vars with arguments passed."""
         updated_args = {
             "server_type": args.type,
             "instance_name": args.search_pattern,
@@ -241,10 +232,6 @@ class AbstractInstancesMethod(AbstractMethod):
             "ssh2_enabled": args.ssh2_enabled,
             "remote_tmp_dir": args.remote_tmp_dir
         }
-        if args.vars_file:
-            updated_args["vars_file"] = args.vars_file
-        if args.vault_password_file:
-            updated_args["vault_password_file"] = args.vault_password_file
         if args.ask_sudo_pass:
             updated_args["ask_sudo_pass"] = True
         if args.volume_size:
@@ -286,13 +273,12 @@ class AbstractInstancesMethod(AbstractMethod):
 
         if args.instance_tags:
             updated_args["instance_tags"] = json.loads(args.instance_tags)
-        updated_args["offload_ansible"] = args.offload_ansible
         updated_args["imdsv2required"] = args.imdsv2required
 
         self.extra_vars.update(updated_args)
 
-    def update_ansible_vars_with_host_info(self, host_info, custom_ssh_port):
-        """Hook for subclasses to update Ansible extra-vars with host specifics before calling out.
+    def update_extra_vars_with_host_info(self, host_info, custom_ssh_port):
+        """Hook for subclasses to update extra-vars with host specifics before calling out.
         """
         self.extra_vars.update({
             "private_ip": host_info["private_ip"],
@@ -476,10 +462,9 @@ class AddAuthorizedKey(AbstractInstancesMethod):
             "command": "add-authorized-key",
             "public_key_content": public_key_content
         }
-        self.update_ansible_vars_with_args(args)
-        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
+        self.update_extra_vars_with_args(args)
+        self.update_extra_vars_with_host_info(host_info, args.custom_ssh_port)
         updated_vars.update(self.extra_vars)
-        self.cloud.setup_ansible(args).run("edit_authorized_keys.yml", updated_vars)
 
         # confirm connection with new key
         newKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
@@ -542,10 +527,9 @@ class RemoveAuthorizedKey(AbstractInstancesMethod):
             "command": "remove-authorized-key",
             "public_key_content": public_key_content
         }
-        self.update_ansible_vars_with_args(args)
-        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
+        self.update_extra_vars_with_args(args)
+        self.update_extra_vars_with_host_info(host_info, args.custom_ssh_port)
         updated_vars.update(self.extra_vars)
-        self.cloud.setup_ansible(args).run("edit_authorized_keys.yml", updated_vars)
 
         # confirm connection with old key does not work
         oldKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
@@ -688,7 +672,7 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError(
                 "Instance {} not found, was it stopped?".format(args.search_pattern))
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         self._replace_root_volume(args, *self._host_info_with_current_root_volume(args, host_info))
 
 
@@ -764,8 +748,8 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({
             "volume_type": args.volume_type
         })
-        self.update_ansible_vars_with_args(args)
-        create_output = self.run_ansible_create(args)
+        self.update_extra_vars_with_args(args)
+        create_output = self.run_create_instance(args)
         host_info = self.wait_for_host(args)
         normalized_state = self.cloud.normalize_instance_state(host_info.get("instance_state"))
         logging.info("Host {} is in normalized state {}({})."
@@ -833,8 +817,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="The os name to provision the universe in.",
                                  default=self.DEFAULT_OS_NAME,
                                  type=str.lower)
-        self.parser.add_argument("--disable_custom_ssh", action="store_true",
-                                 help="Disable running the ansible task for using custom SSH.")
         self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
                                  help="Max memory for postgress process.")
         self.parser.add_argument("--use_chrony", action="store_true",
@@ -858,9 +840,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Path to GCP credentials file used for logs export.")
         self.parser.add_argument('--ycql_audit_log_level', default=None,
                                  help="YCQL audit log level.")
-        self.parser.add_argument('--skip_ansible_playbook', action='store_true', default=False,
-                                 help='If set YBA will only setup the dual NIC for the'
-                                 'node but not run ansible setup server')
         self.parser.add_argument('--reboot_node_allowed', action='store_true', default=False,
                                  help='If set YBA will reboot the node for configuring the ulimits')
 
@@ -870,7 +849,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             raise YBOpsRuntimeError("Could not find host {} to provision!".format(
                 args.search_pattern))
 
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
 
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port,
                                                          default_port=True))
@@ -895,100 +874,12 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             if args.boot_script:
                 # copy and run the script
                 self.cloud.execute_boot_script(args, self.extra_vars)
-        # Short Circuit for only setup dual NIC, used by YNP provisioning.
-        if args.skip_ansible_playbook:
-            return
-
-        if args.air_gap:
-            self.extra_vars.update({"air_gap": args.air_gap})
-
-        if not args.skip_preprovision:
-            self.preprovision(args)
-            self.extra_vars["device_names"] = self.get_device_names(args, host_info)
-
-        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
-        if args.local_package_path:
-            self.extra_vars.update({"local_package_path": args.local_package_path})
-        if args.node_exporter_port:
-            self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
-        if args.install_node_exporter:
-            self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
-        if args.node_exporter_user:
-            self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
-        if args.remote_package_path:
-            self.extra_vars.update({"remote_package_path": args.remote_package_path})
-        if args.pg_max_mem_mb:
-            self.extra_vars.update({"pg_max_mem_mb": args.pg_max_mem_mb})
-        if args.ntp_server:
-            self.extra_vars.update({"ntp_servers": args.ntp_server})
-        self.extra_vars["use_chrony"] = args.use_chrony
-        self.extra_vars.update({"systemd_option": args.systemd_services})
-        self.extra_vars.update({"instance_type": args.instance_type})
-        self.extra_vars.update({"configure_ybc": args.configure_ybc})
-        self.extra_vars["lun_indexes"] = args.lun_indexes
-        if args.install_otel_collector:
-            self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
-        if args.otel_col_max_memory:
-            self.extra_vars.update({"otel_col_max_memory": args.otel_col_max_memory})
-        if args.otel_col_config_file:
-            self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
-        if args.otel_col_aws_access_key:
-            self.extra_vars.update({"otel_col_aws_access_key": args.otel_col_aws_access_key})
-        if args.otel_col_aws_secret_key:
-            self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
-        if args.otel_col_gcp_creds_file:
-            self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        self.extra_vars.update({
-            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
-        })
-        if args.reboot_node_allowed:
-            self.extra_vars.update({"reboot_node_allowed": args.reboot_node_allowed})
-
-        if wait_for_server(self.extra_vars):
-            self.cloud.setup_ansible(args).run("yb-server-provision.yml",
-                                               self.extra_vars, host_info)
-        else:
-            host_port_user = get_host_port_user(self.extra_vars)
-            raise YBOpsRecoverableError("Could not connect({}) into node {}:{} using username {}"
-                                        .format(host_port_user["connection_type"],
-                                                host_port_user["host"],
-                                                host_port_user["port"],
-                                                host_port_user["user"]))
 
     def get_device_names(self, args, host_info=None):
         return self.cloud.get_device_names(args)
 
-    def update_ansible_vars(self, args):
-        for arg_name in ["cloud_subnet",
-                         "machine_image",
-                         "instance_type",
-                         "num_volumes",
-                         "os_name"]:
-            arg_value = getattr(args, arg_name)
-            if arg_value is not None:
-                self.extra_vars[arg_name] = arg_value
-
-        # The reason we can't put network_name in the loop above is that the Ansible variable name
-        # ("network_name") is different from the ybcloud argument name ("network") in this case.
-        if args.network is not None:
-            self.extra_vars["network_name"] = args.network
-
     def preprovision(self, args):
-        self.update_ansible_vars(args)
-        ssh_port_updated = self.update_open_ssh_port(args)
-        use_default_ssh_port = not ssh_port_updated
-        host_info = self.wait_for_host(args, use_default_ssh_port)
-        ansible = self.cloud.setup_ansible(args)
-        if args.install_locales:
-            self.extra_vars["install_locales"] = True
-        ansible.run("preprovision.yml", self.extra_vars, host_info, disable_offloading=True)
-
-        # Disabling custom_ssh_port for onprem provider when ssh2_enabled, because
-        # we won't be able to know whether the nodes used are having openssh/tectia server.
-        if not args.disable_custom_ssh and use_default_ssh_port and \
-                not (args.ssh2_enabled and self.cloud.name == "onprem") and \
-                int(args.custom_ssh_port) != DEFAULT_SSH_PORT:
-            ansible.run("use_custom_ssh_port.yml", self.extra_vars, host_info)
+        pass
 
 
 class CreateRootVolumesMethod(AbstractInstancesMethod):
@@ -1128,7 +1019,7 @@ class UpdateDiskMethod(AbstractInstancesMethod):
     def callback(self, args):
         self.cloud.update_disk(args)
         host_info = self.cloud.get_host_info(args)
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         self.cloud.expand_file_system(args, self.extra_vars)
 
@@ -1140,25 +1031,14 @@ class UpdateMountedDisksMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(UpdateMountedDisksMethod, self).__init__(base_command, "update_mounted_disks")
 
-    def update_ansible_vars_with_args(self, args):
-        super(UpdateMountedDisksMethod, self).update_ansible_vars_with_args(args)
+    def update_extra_vars_with_args(self, args):
+        super(UpdateMountedDisksMethod, self).update_extra_vars_with_args(args)
 
-    def get_device_names(args, host_info=None):
+    def get_device_names(self, args, host_info=None):
         self.cloud.get_device_names(args)
 
     def callback(self, args):
-        # Need to verify that all disks are mounted by UUUID
-        host_info = self.cloud.get_host_info(args)
-        if not host_info:
-            raise YBOpsRuntimeError("Could not find host {} to provision!".format(
-                args.search_pattern))
-        ansible = self.cloud.setup_ansible(args)
-        self.update_ansible_vars_with_args(args)
-        self.extra_vars["device_names"] = self.get_device_names(args, host_info)
-        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
-        ansible.playbook_args["remote_role"] = "mount_ephemeral_drives"
-        logging.debug(pprint(self.extra_vars))
-        ansible.run("remote_role.yml", self.extra_vars, host_info)
+        pass
 
 
 class ChangeInstanceTypeMethod(AbstractInstancesMethod):
@@ -1186,12 +1066,12 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Instance {} not found".format(args.search_pattern))
 
-        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_host_info(host_info, args.custom_ssh_port)
+        self.update_extra_vars_with_args(args)
         self._resize_instance(args, self._host_info(args, host_info))
 
-    def update_ansible_vars_with_args(self, args):
-        super(ChangeInstanceTypeMethod, self).update_ansible_vars_with_args(args)
+    def update_extra_vars_with_args(self, args):
+        super(ChangeInstanceTypeMethod, self).update_extra_vars_with_args(args)
         self.extra_vars["pg_max_mem_mb"] = args.pg_max_mem_mb
         self.extra_vars["air_gap"] = args.air_gap
         self.extra_vars["systemd_option"] = args.systemd_services
@@ -1227,9 +1107,6 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
                 self.cloud.update_user_data(args)
             self._start_instance(args, host_info)
             logging.info('Instance {} is started'.format(args.search_pattern))
-        # Make sure we are using the updated cgroup value if instance type is changing.
-        if args.pg_max_mem_mb > 0:
-            self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
 
     def _start_instance(self, args, host_info):
         server_ports = self.get_server_ports_to_check(args)
@@ -1249,7 +1126,7 @@ class CronCheckMethod(AbstractInstancesMethod):
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         connect_options = {}
         connect_options.update(self.extra_vars)
         connect_options.update({
@@ -1309,7 +1186,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--cert_rotate_action', default=None,
                                  choices=self.CERT_ROTATE_ACTIONS)
         self.parser.add_argument('--num_cores_to_keep', type=int, default=5,
-                                 help="number of clean cores to keep in the ansible layer")
+                                 help="number of clean cores to keep")
         self.parser.add_argument('--skip_cert_validation',
                                  default=None, choices=self.SKIP_CERT_VALIDATION_OPTIONS)
         self.parser.add_argument('--cert_valid_duration', default=365)
@@ -1378,8 +1255,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                  help="Path to GCP credentials file used for logs export.")
         self.parser.add_argument('--ycql_audit_log_level', default=None,
                                  help="YCQL audit log level.")
-        self.parser.add_argument('--skip_ansible_configure_playbook', action="store_true",
-                                 help="If specified will not run the ansible playbooks.")
 
     def get_ssh_user(self):
         # Force the yugabyte user for configuring instances. The configure step performs YB specific
@@ -1428,7 +1303,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.extra_vars["yb_num_cores_to_keep"] = args.num_cores_to_keep
 
         # Make sure we set server_type so we pick the right configure.
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
 
         if args.gflags is not None:
             # Allow gflag to be set during software upgrade 'install-software' to include
@@ -1490,14 +1365,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                         .format(args.search_pattern,
                                                 host_info['server_type'],
                                                 args.type))
-            self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
-            # If we have a package, then manually copy it over using scp instead of going over
-            # ansible, so we do not have issues such as ENG-3424.
-            # Python based paramiko seemed to have the same problems as ansible copy module!
-            #
-            # NOTE: we should only do this if we have to download the package...
-            # NOTE 2: itest should download package from s3 to improve speed for instances in AWS.
-            # TODO: Add a variable to specify itest ssh_user depending on VM users.
+            self.update_extra_vars_with_host_info(host_info, args.custom_ssh_port)
             start_time = time.time()
             if args.package and (args.tags is None or "download-software" in args.tags):
                 if args.s3_remote_download:
@@ -1557,20 +1425,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         "Variables to download {} directly on the remote host added."
                         .format(args.package))
 
-                elif args.itest_s3_package_path and args.type == self.YB_SERVER_TYPE:
-                    itest_extra_vars = self.extra_vars.copy()
-                    itest_extra_vars["itest_s3_package_path"] = args.itest_s3_package_path
-                    itest_extra_vars["ssh_user"] = "centos"
-                    # Runs all itest-related tasks (e.g. download from s3 bucket).
-                    itest_extra_vars["tags"] = "itest"
-                    self.cloud.setup_ansible(args).run(
-                        "configure-{}.yml".format(args.type), itest_extra_vars,
-                        host_info)
-                    logging.info(("[app] Running itest tasks including S3 " +
-                                  "package download {} to {} took {:.3f} sec").format(
-                        args.itest_s3_package_path,
-                        args.search_pattern, time.time() - start_time))
-                else:
+                elif args.itest_s3_package_path and args.type != self.YB_SERVER_TYPE:
                     if (args.package is not None and
                         copy_to_tmp(self.extra_vars, args.package,
                                     remote_tmp_dir=args.remote_tmp_dir)):
@@ -1598,8 +1453,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             return
 
         if args.install_third_party_packages:
-            self.cloud.setup_ansible(args).run(
-                "install-third-party.yml", self.extra_vars, host_info)
             return
 
         rotate_certs = False
@@ -1725,10 +1578,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.extra_vars["expected_yb_process_state"] = "stopped"
             if delete_paths:
                 self.extra_vars["delete_paths"] = delete_paths
-        # If we are just rotating certs, we don't need to do any configuration changes.
-        if not rotate_certs and not args.skip_ansible_configure_playbook:
-            self.cloud.setup_ansible(args).run(
-                "configure-{}.yml".format(args.type), self.extra_vars, host_info)
 
 
 class InitYSQLMethod(AbstractInstancesMethod):
@@ -1742,7 +1591,7 @@ class InitYSQLMethod(AbstractInstancesMethod):
                                  help="host:port csv of tserver's masters.")
 
     def callback(self, args):
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         connect_options = {}
         connect_options.update(self.extra_vars)
         # TODO: replace with args.ssh_user when it's setup in the flow
@@ -1795,120 +1644,12 @@ class ControlInstanceMethod(AbstractInstancesMethod):
         logging.info("Running ctl command {} for process: {} in instance: {}".format(
             self.name, self.base_command.name, args.search_pattern))
 
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.deconfigure:
             self.extra_vars.update({"deconfigure": True})
         self.cloud.run_control_script(
             self.base_command.name, self.name, args, self.extra_vars, host_info)
-
-
-class AbstractVaultMethod(AbstractMethod):
-    def __init__(self, base_command, method_name):
-        super(AbstractVaultMethod, self).__init__(base_command, method_name)
-        self.cluster_vault = dict()
-
-    def add_extra_args(self):
-        super(AbstractVaultMethod, self).add_extra_args()
-        self.parser.add_argument("--private_key_file", required=True, help="Private key filename.")
-        self.parser.add_argument("--has_sudo_password", action="store_true", help="sudo password.")
-        self.parser.add_argument("--vault_file", required=False, help="Vault filename.")
-
-
-class AccessCreateVaultMethod(AbstractVaultMethod):
-    def __init__(self, base_command):
-        super(AccessCreateVaultMethod, self).__init__(base_command, "create-vault")
-
-    def callback(self, args):
-        file_prefix = os.path.splitext(args.private_key_file)[0]
-
-        try:
-            if args.vault_password_file is None:
-                vault_password = generate_random_password()
-                args.vault_password_file = "{}.vault_password".format(file_prefix)
-                with open(args.vault_password_file, "w") as f:
-                    f.write(vault_password)
-            elif os.path.exists(args.vault_password_file):
-                with open(args.vault_password_file, "r") as f:
-                    vault_password = f.read().strip()
-
-                if vault_password is None:
-                    raise YBOpsRuntimeError("Unable to read {}".format(args.vault_password_file))
-            else:
-                raise YBOpsRuntimeError("Vault password file doesn't exist.")
-
-            if args.vault_file is None:
-                args.vault_file = "{}.vault".format(file_prefix)
-
-            rsa_key = validated_key_file(args.private_key_file)
-        except Exception:
-            self._cleanup_dir(os.path.dirname(args.private_key_file))
-            raise
-
-        # TODO: validate if the file provided is actually a private key file or not.
-        public_key = format_rsa_key(rsa_key, public_key=True)
-        private_key = format_rsa_key(rsa_key, public_key=False)
-        self.cluster_vault.update(
-            id_rsa=private_key,
-            id_rsa_pub=public_key,
-            authorized_keys=public_key
-        )
-
-        # These are saved for itest specific improvements.
-        aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID', "")
-        aws_secret = os.environ.get('AWS_SECRET_ACCESS_KEY', "")
-        if aws_access_key and aws_secret:
-            self.cluster_vault.update(
-                AWS_ACCESS_KEY_ID=os.environ['AWS_ACCESS_KEY_ID'],
-                AWS_SECRET_ACCESS_KEY=os.environ['AWS_SECRET_ACCESS_KEY']
-            )
-
-        vault_data = dict(cluster_server_vault=self.cluster_vault)
-        if args.has_sudo_password:
-            sudo_password = getpass.getpass("SUDO Password: ")
-            vault_data.update({"ansible_become_pass": sudo_password})
-
-        vault = Vault(vault_password)
-        vault.dump(vault_data, open(args.vault_file, 'w'))
-        print(json.dumps({
-            "vault_file": args.vault_file,
-            "vault_password": args.vault_password_file
-        }))
-
-
-class AccessEditVaultMethod(AbstractVaultMethod):
-    def __init__(self, base_command):
-        super(AccessEditVaultMethod, self).__init__(base_command, "edit-vault")
-
-    def callback(self, args):
-        file_prefix = os.path.splitext(args.private_key_file)[0]
-        args.vault_password_file = args.vault_password_file or \
-            "{}.vault_password".format(file_prefix)
-        if os.path.exists(args.vault_password_file):
-            with open(args.vault_password_file, "r") as f:
-                vault_password = f.read().strip()
-
-            if vault_password is None:
-                raise YBOpsRuntimeError("Unable to read {}".format(args.vault_password_file))
-        else:
-            raise YBOpsRuntimeError("Vault password file doesn't exists.")
-
-        if args.vault_file is None:
-            args.vault_file = "{}.vault".format(file_prefix)
-
-        vault = Vault(vault_password)
-        data = vault.load(open(args.vault_file).read())
-
-        if args.has_sudo_password:
-            if not YB_SUDO_PASS:
-                raise YBOpsRuntimeError("Did not find sudo password.")
-            data['ansible_become_pass'] = YB_SUDO_PASS
-
-        vault.dump(data, open(args.vault_file, 'w'))
-        print(json.dumps({
-            "vault_file": args.vault_file,
-            "vault_password": args.vault_password_file
-        }))
 
 
 class AbstractAccessMethod(AbstractMethod):
@@ -2014,7 +1755,7 @@ class TransferXClusterCerts(AbstractInstancesMethod):
             self.ssh_user = args.ssh_user
         host_info = self.cloud.get_host_info(args)
         # Populate extra_vars.
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         connect_options = {}
         connect_options.update(self.extra_vars)
         connect_options.update({
@@ -2071,7 +1812,7 @@ class RebootInstancesMethod(AbstractInstancesMethod):
             ssh_user = DEFAULT_SSH_USER
 
         # Populate extra_vars.
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         if args.use_ssh:
             self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port,
                                                              default_port=True))
@@ -2113,7 +1854,7 @@ class HardRebootInstancesMethod(AbstractInstancesMethod):
             logging.info("Stopping instance {}".format(args.search_pattern))
             self.cloud.stop_instance(host_info)
         logging.info("Starting instance {}".format(args.search_pattern))
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         if args.boot_script is not None and self.cloud.name == "gcp":
             # GCP executes boot_script as part of each boot, pause/resume.
             self.cloud.update_user_data(args)
@@ -2174,7 +1915,7 @@ class RunHooks(AbstractInstancesMethod):
             else:
                 ssh_user = DEFAULT_SSH_USER
 
-        self.update_ansible_vars_with_args(args)
+        self.update_extra_vars_with_args(args)
         host_info = self.cloud.get_host_info(args)
         self.extra_vars.update(
             self.get_server_host_port(
@@ -2223,8 +1964,8 @@ class WaitForConnection(AbstractInstancesMethod):
             raise YBOpsRecoverableError("Host {} is in invalid state {}."
                                         .format(args.search_pattern,
                                                 host_info.get("instance_state")))
-        # Update the ansible args (particularly connection params).
-        self.update_ansible_vars_with_args(args)
+        # Update the extra_vars with args (particularly connection params).
+        self.update_extra_vars_with_args(args)
         # Set the host and default port.
         self.extra_vars.update(
             self.get_server_host_port(host_info, args.custom_ssh_port, default_port=True))
@@ -2267,46 +2008,5 @@ class ManageOtelCollector(AbstractInstancesMethod):
         self.parser.add_argument("--use_sudo", action='store_true', default=False)
 
     def callback(self, args):
-        host_info = self.cloud.get_host_info(args)
-        if not host_info:
-            raise YBOpsRuntimeError("Could not find host {} to provision!".format(
-                args.search_pattern))
+        pass
 
-        # Update the ansible args (particularly connection params).
-        self.update_ansible_vars_with_args(args)
-        # Set the host and default port.
-        self.extra_vars.update(
-            self.get_server_host_port(host_info, args.custom_ssh_port, default_port=True))
-        # Update with the open port.
-        self.update_open_ssh_port(args)
-
-        if args.local_package_path:
-            self.extra_vars.update({"local_package_path": args.local_package_path})
-        if args.install_otel_collector:
-            self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
-        if args.otel_col_max_memory:
-            self.extra_vars.update({"otel_col_max_memory": args.otel_col_max_memory})
-        if args.otel_col_config_file:
-            self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
-        if args.otel_col_aws_access_key:
-            self.extra_vars.update({"otel_col_aws_access_key": args.otel_col_aws_access_key})
-        if args.otel_col_aws_secret_key:
-            self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
-        if args.otel_col_gcp_creds_file:
-            self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        self.extra_vars.update({
-            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
-        })
-        if args.use_sudo:
-            self.extra_vars.update({"use_sudo": args.use_sudo})
-
-        if wait_for_server(self.extra_vars):
-            self.cloud.setup_ansible(args).run("yb-otel-collector.yml",
-                                               self.extra_vars, host_info)
-        else:
-            host_port_user = get_host_port_user(self.extra_vars)
-            raise YBOpsRecoverableError("Could not connect({}) into node {}:{} using username {}"
-                                        .format(host_port_user["connection_type"],
-                                                host_port_user["host"],
-                                                host_port_user["port"],
-                                                host_port_user["user"]))

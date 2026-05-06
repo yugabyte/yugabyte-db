@@ -1986,9 +1986,12 @@ const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
       return read_only_placement;
     }
   }
-  // Should never get here.
-  LOG(DFATAL) << "Could not find read only cluster with placement uuid: "
-              << state_->options_->placement_uuid;
+  // We can legitimately get here if the cluster's read-replica configuration changed (e.g. via
+  // yb-admin add_read_replica_placement_info / delete_read_replica_placement_info) between when
+  // the tablespace map was populated with this placement_uuid and now. Fall back to the first
+  // read-replica cluster; the next tablespace-map refresh will rebind to the current config.
+  LOG(WARNING) << "Could not find read only cluster with placement uuid: "
+               << state_->options_->placement_uuid;
   return replication_info.read_replicas(0);
 }
 

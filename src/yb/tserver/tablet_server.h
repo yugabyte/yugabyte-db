@@ -168,6 +168,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::string ToString() const override;
 
   uint32_t GetAutoFlagConfigVersion() const override;
+  std::map<std::string, std::string> ExtendedFlagValidation(
+      const std::map<std::string, std::string>& flags_to_validate,
+      CoarseTimePoint deadline) override;
   void HandleMasterHeartbeatResponse(
       HybridTime heartbeat_sent_time, std::optional<AutoFlagsConfigPB> new_config);
 
@@ -400,6 +403,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void RegisterCertificateReloader(CertificateReloader reloader) override;
   void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override;
   void RegisterPgProcessKiller(std::function<Status(void)> killer) override;
+  void RegisterPgConfigGenerator(pgwrapper::PgConfigGenerator generator) override;
   void RegisterConnectionManagerRestarter(std::function<Status(void)> restarter);
 
   Status StartYSQLLeaseRefresher();
@@ -671,6 +675,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
                                   const Status& status);
   void DoUpdateMasterAddresses();
 
+  std::map<std::string, std::string> ValidateConfCsvViaPg(
+      const std::map<std::string, std::string>& conf_flags, CoarseTimePoint deadline);
+
   std::string log_prefix_;
 
   // Bind address of postgres proxy under this tserver.
@@ -688,6 +695,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::vector<CertificateReloader> certificate_reloaders_;
   std::function<Status(void)> pg_restarter_;
   std::function<Status(void)> pg_killer_;
+  pgwrapper::PgConfigGenerator pg_config_generator_;
 
   std::function<Status(void)> conn_manager_restarter_;
 

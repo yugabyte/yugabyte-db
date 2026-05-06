@@ -54,6 +54,7 @@ import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -1988,9 +1989,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   @Test
   public void testThirdpartyUpgradeOnpremWithManual() {
     Universe onprem = ModelFactory.createUniverse("onprem", customer.getId(), CloudType.onprem);
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(onprem.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getSingleProvider(onprem.getUniverseDetails().getPrimaryCluster());
     provider.getDetails().skipProvisioning = true;
     provider.save();
     PlatformServiceException exception =

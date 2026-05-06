@@ -15,10 +15,11 @@ import {
 import AuthenticatedArea from '@app/pages/AuthenticatedArea';
 import { getUniverse } from '@app/v2/api/universe/universe';
 
-import YBLogo from '../../../../assets/yb_logo.svg';
-import Close from '../../../../assets/close rounded inverted.svg';
 import { SwitchRRSteps } from './SwitchRRSteps';
 import { getRRSteps, getInitialValues } from './AddReadReplicaUtils';
+import { getReadReplicaExitRoute } from '../readReplicaUtils';
+import YBLogo from '../../../../assets/yb_logo.svg';
+import Close from '../../../../assets/close rounded inverted.svg';
 
 const { Grid2: Grid, Typography } = mui;
 const { YBButton } = yba;
@@ -37,17 +38,20 @@ interface AddRRProps {
 
 export const AddReadReplica: FC<AddRRProps> = (props) => {
   const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
+  const universeUUID = props.params?.uuid ?? '';
+  const exitRoute = getReadReplicaExitRoute(universeUUID);
 
-  const addRRContextData = useMethods(addRRFormMethods, initialAddRRFormState);
+  const addRRContextData = useMethods(addRRFormMethods, {
+    ...initialAddRRFormState,
+    universeUuid: universeUUID
+  });
 
   const [addRRContext, addRRMethods] = addRRContextData;
   const { activeStep } = addRRContext;
   const steps = useMemo(() => getRRSteps(t), [t]);
   const currentStepRef = useRef<StepsRef>(null);
 
-  const universeUUID = props.params?.uuid ?? '';
-
-  const { data: universeData, isSuccess, isLoading: isUniverseDataLoading } = useQuery(
+  const { isLoading: isUniverseDataLoading } = useQuery(
     [universeUUID],
     () => getUniverse(universeUUID),
     {
@@ -65,7 +69,7 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
   return (
     <ReadReplicaRoot>
       <AuthenticatedArea simpleMode>
-        <AddRRContext.Provider value={([...addRRContextData, {}] as unknown) as AddRRContextProps}>
+        <AddRRContext.Provider value={addRRContextData as unknown as AddRRContextProps}>
           <Grid
             container
             sx={{
@@ -86,7 +90,12 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
                 {t('title')}
               </Typography>
             </div>
-            <Close style={{ cursor: 'pointer' }} />
+            <Close
+              style={{ cursor: 'pointer' }}
+              onClick={() => {
+                window.location.href = exitRoute;
+              }}
+            />
           </Grid>
           <Grid container spacing={2}>
             <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }}>
@@ -96,7 +105,7 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
               container
               direction="column"
               size="grow"
-              sx={{ padding: '16px', maxWidth: '1024px', minWidth: '856px', gap: 0 }}
+              sx={{ padding: '16px', maxWidth: '1144px', minWidth: '856px', gap: 0 }}
             >
               <SwitchRRSteps ref={currentStepRef} />
               <Grid
@@ -106,7 +115,14 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
                 direction="row"
                 sx={{ marginTop: '32px' }}
               >
-                <YBButton variant="secondary" size="large" dataTestId="add-rr-cancel-button">
+                <YBButton
+                  variant="secondary"
+                  size="large"
+                  dataTestId="add-rr-cancel-button"
+                  onClick={() => {
+                    window.location.href = exitRoute;
+                  }}
+                >
                   {t('cancel', { keyPrefix: 'common' })}
                 </YBButton>
                 <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>

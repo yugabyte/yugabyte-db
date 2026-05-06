@@ -62,6 +62,10 @@ class ThreadPoolTask {
     return submit_time_;
   }
 
+  // Per-task cgroup for per-DB cgroup switching in per_db pool mode.
+  void set_cgroup(Cgroup* cgroup) { task_cgroup_ = cgroup; }
+  Cgroup* cgroup() const { return task_cgroup_; }
+
  protected:
   virtual ~ThreadPoolTask() {}
 
@@ -78,6 +82,7 @@ class ThreadPoolTask {
   ThreadPoolTask* next_ = nullptr;
   std::optional<std::weak_ptr<void>> run_token_;
   MonoTime submit_time_;
+  [[maybe_unused]] Cgroup* task_cgroup_ = nullptr;
 };
 
 template <typename T>
@@ -212,6 +217,10 @@ class YBThreadPool : public TaskRecipient<ThreadPoolTask> {
 
   size_t NumWorkers() const;
   bool Idle() const;
+
+#ifdef __linux__
+  void SetCgroup(Cgroup* cgroup);
+#endif
 
   // Used to disable detailed logging in pggate thread pools.
   static void DisableDetailedLogging();

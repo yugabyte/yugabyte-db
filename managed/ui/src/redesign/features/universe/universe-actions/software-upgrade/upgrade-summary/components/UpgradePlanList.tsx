@@ -1,5 +1,5 @@
-import { makeStyles } from '@material-ui/core';
 import { Fragment } from 'react';
+import { makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
 import { CanaryUpgradeConfig } from '../../types';

@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
 import com.yugabyte.yw.commissioner.ITask;
-import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -48,6 +47,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PersistEnableMultiTenancy;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress;
@@ -110,7 +110,6 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
-import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
@@ -2491,9 +2490,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Must use ansible provisioning for non-systemd universes
     Customer customer = Customer.get(universe.getCustomerId());
-    boolean useAnsibleProvisioning =
-        confGetter.getConfForScope(customer, CustomerConfKeys.useAnsibleProvisioning)
-            || !userIntent.useSystemd;
     boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -2546,24 +2542,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               if (userIntent.providerType != CloudType.local && !isUniverseManuallyProvisioned) {
                 createSetupYNPTask(universe, filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-                if (!useAnsibleProvisioning) {
-                  // TODO hack to get the custom params.
-                  AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-                  if (setupParamsCustomizer != null) {
-                    setupParamsCustomizer.accept(params);
-                  }
-                  boolean isYbPrebuiltImage =
-                      !shouldInstallDbSoftware(
-                          universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType);
-                  createYNPProvisioningTask(universe, filteredNodes, isYbPrebuiltImage)
-                      .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+                // TODO hack to get the custom params.
+                AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+                if (setupParamsCustomizer != null) {
+                  setupParamsCustomizer.accept(params);
                 }
+                boolean isYbPrebuiltImage =
+                    !shouldInstallDbSoftware(
+                        universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType);
+                createYNPProvisioningTask(universe, filteredNodes, isYbPrebuiltImage)
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               }
               createInstallNodeAgentTasks(universe, filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-              if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
+              if (userIntent.providerType == CloudType.local) {
                 createSetupServerTasks(filteredNodes, setupParamsCustomizer)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               } else {
@@ -2975,12 +2969,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodesToBeStarted nodes on which yb-controller processes are to be started.
    */
-  public void createStartYbcProcessTasks(Set<NodeDetails> nodesToBeStarted, boolean isSystemd) {
+  public void createStartYbcProcessTasks(Set<NodeDetails> nodesToBeStarted) {
     // Create Start yb-controller tasks for non-systemd only
-    if (!isSystemd || !confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)) {
-      createStartYbcTasks(nodesToBeStarted).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    }
-
+    createStartYbcTasks(nodesToBeStarted).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     // Wait for yb-controller to be responsive on each node.
     createWaitForYbcServerTask(nodesToBeStarted)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -3635,46 +3626,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * that there are no leaderless tablets
    */
   protected void addBasicPrecheckTasks() {
-    verifyNodeAgentInstallation();
     if (isFirstTry()) {
       checkLeaderlessTablets();
       verifyClustersConsistency();
-    }
-  }
-
-  /** Verify that node agents are installed. */
-  protected void verifyNodeAgentInstallation() {
-    Universe universe = getUniverse();
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
-    CloudType cloudType = provider.getCloudCode();
-    if (cloudType.isPublicCloud()
-        && cloudType == CloudType.onprem
-        && getInstanceOf(NodeAgentEnabler.class).isNodeAgentServerEnabled(provider, universe)) {
-      Set<String> nodeIps =
-          universe.getNodes().stream()
-              .filter(
-                  n ->
-                      n.state == NodeState.Live
-                          && n.cloudInfo != null
-                          && n.cloudInfo.private_ip != null)
-              .map(n -> n.cloudInfo.private_ip)
-              .collect(Collectors.toSet());
-      if (nodeIps.size() > 0) {
-        Map<String, NodeAgent> nodeAgents =
-            NodeAgent.getByIps(provider.getCustomerUUID(), nodeIps).stream()
-                .filter(NodeAgent::isActive)
-                .collect(Collectors.toMap(NodeAgent::getIp, Function.identity()));
-        Set<String> missingIps = new HashSet<>(Sets.difference(nodeIps, nodeAgents.keySet()));
-        if (missingIps.size() > 0) {
-          String errMsg =
-              String.format(
-                  "Node agents are not installed or in inactive states for IPs %s", missingIps);
-          log.error(errMsg);
-          throw new IllegalStateException(errMsg);
-        }
-      }
     }
   }
 
@@ -4152,6 +4106,47 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subtask.initialize(params);
     persistClockboundSubtaskGroup.addSubTask(subtask);
     getRunnableTask().addSubTaskGroup(persistClockboundSubtaskGroup);
+  }
+
+  protected void createPersistCpuCgroupConfiguredTask(Universe universe) {
+    createUpdateUniverseFieldsTask(
+            u -> {
+              boolean configureCgroup = true;
+              // If any cluster cannot configure cgroup, set it to false.
+              for (Cluster c : u.getUniverseDetails().clusters) {
+                Provider provider =
+                    Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
+                boolean configure = Util.configureCgroup(c.userIntent, provider, true, confGetter);
+                configureCgroup = configure && configureCgroup;
+              }
+              u.getUniverseDetails()
+                  .getPrimaryCluster()
+                  .userIntent
+                  .setCpuCgroupConfigured(configureCgroup);
+              if (CollectionUtils.isNotEmpty(u.getUniverseDetails().getReadOnlyClusters())) {
+                u.getUniverseDetails()
+                    .getReadOnlyClusters()
+                    .get(0)
+                    .userIntent
+                    .setCpuCgroupConfigured(configureCgroup);
+              }
+            })
+        .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+  }
+
+  protected SubTaskGroup createPersistMultiTenancyTask(
+      UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig multiTenancy) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("PersistEnableMultiTenancy", SubTaskGroupType.PersistEnableMultiTenancy);
+    PersistEnableMultiTenancy.Params params = new PersistEnableMultiTenancy.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.multiTenancy = multiTenancy;
+    PersistEnableMultiTenancy subtask = createTask(PersistEnableMultiTenancy.class);
+    subtask.initialize(params);
+    subtask.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(subtask);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   protected void updateUniverseHttpsEnabledUI(int nodeToNodeChange) {

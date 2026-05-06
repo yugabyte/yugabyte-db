@@ -1,17 +1,24 @@
 # node-agent-provision.yaml
 
 ynp:
-  # Home directory for the 'yugabyte' user.
-  # This is where the YugabyteDB software and data will reside.
-  yb_home_dir: /home/yugabyte
 
   # NTP (Network Time Protocol) servers for time synchronization.
   # Example: ["0.pool.ntp.org", "1.pool.ntp.org"]
   chrony_servers: []
 
+  # Custom home directory for the software installation.
+  # This is where the YugabyteDB software and data will reside.
+  yb_home_dir: /home/yugabyte
+
+  # Home directory for the 'yugabyte' user.
+  # This is where the YugabyteDB software and data will reside.
+  # This defaults to the value of yb_home_dir if not set.
+  yb_user_home: /home/yugabyte
+
   # User ID for the 'yugabyte' user.
   # Applies to new user creation only if the user does not already exist.
   yb_user_id: 1004
+
   no_proxy_list: []
   # Indicates if the node is in an air-gapped environment (no internet access).
   # Set to 'true' if the node cannot access external networks.

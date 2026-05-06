@@ -2355,6 +2355,9 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   ASSERT_OK(tablet_peer->log()->GC(std::numeric_limits<int64_t>::max(), &num_gced));
   ASSERT_EQ(num_gced, segment_sequence.size());
 
+  // Reset before teardown so the master tablet's WAL pre-allocation doesn't hit simulated ENOSPC.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = -1;
+
   // Read from 0.0.  This should start reading from the beginning of the logs.
   GetChanges(tablet_id, stream_id_, /* term */ 0, /* index */ 0);
 }

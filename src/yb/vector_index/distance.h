@@ -212,4 +212,27 @@ DistanceFunction<Vector, DistanceResult> GetDistanceFunction(DistanceKind distan
   FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind);
 }
 
+// Sort a heap's underlying data, truncate to max_results, and return as a vector of
+// VectorWithDistance. The transform converts each heap entry to VectorWithDistance.
+template<ValidDistanceResultType DistanceResult, class Collection, class Transform>
+std::vector<VectorWithDistance<DistanceResult>> MakeResult(
+    size_t max_results, Collection& data, Transform&& transform) {
+  std::sort(data.begin(), data.end());
+  data.resize(std::min(data.size(), max_results));
+  std::vector<VectorWithDistance<DistanceResult>> result;
+  result.reserve(data.size());
+  for (auto& entry : data) {
+    result.push_back(transform(entry));
+  }
+  return result;
+}
+
+template<
+    ValidDistanceResultType DistanceResult,
+    ContainerOf<VectorWithDistance<DistanceResult>> Collection>
+std::vector<VectorWithDistance<DistanceResult>> MakeResult(
+    size_t max_results, Collection& data) {
+  return MakeResult<DistanceResult>(max_results, data, [](const auto& e) { return e; });
+}
+
 }  // namespace yb::vector_index

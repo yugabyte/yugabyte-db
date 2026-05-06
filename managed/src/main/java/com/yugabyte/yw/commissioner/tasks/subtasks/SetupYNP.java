@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
@@ -92,9 +93,7 @@ public class SetupYNP extends NodeTaskBase {
     if (taskParams().sshUser != null) {
       shellContext = defaultShellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    Provider provider = Util.getProviderForNode(node, universe);
 
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);

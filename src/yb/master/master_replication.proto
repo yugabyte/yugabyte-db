@@ -602,6 +602,10 @@ message GetTableSchemaFromSysCatalogResponsePB {
 
   // Table schema version
   optional uint32 version = 3;
+
+  // Schema name of the table, fetched authoritatively from pg_namespace.
+  // Should only be used by CDC.
+  optional string pgschema_name = 4;
 }
 
 message XClusterReportNewAutoFlagConfigVersionRequestPB {

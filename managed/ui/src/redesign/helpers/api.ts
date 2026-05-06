@@ -256,7 +256,7 @@ export interface CreateDrConfigRequest {
       storageConfigUUID: string;
     };
   };
-  pitrParams: {
+  pitrParams?: {
     retentionPeriodSec: number;
   };
 
@@ -836,6 +836,7 @@ class ApiService {
       })
       .then((response) => response.data);
   };
+
   getAlerts = (
     offset: number,
     limit: number,

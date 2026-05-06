@@ -77,7 +77,7 @@ TAG_FLAG(memory_limit_hard_bytes, stable);
 // NOTE: The default here is for tools and tests; the actual defaults
 // for the TServer and master processes are set in server_main_util.cc.
 DEFINE_NON_RUNTIME_double(default_memory_limit_to_ram_ratio, 0.85,
-    "The percentage of available RAM to use if --memory_limit_hard_bytes is 0. "
+    "The ratio of available RAM to use if --memory_limit_hard_bytes is 0. "
     "The special value " BOOST_PP_STRINGIZE(USE_RECOMMENDED_MEMORY_VALUE)
     " means to instead use a recommended percentage determined "
     "in part by the amount of RAM available.");
@@ -143,6 +143,8 @@ namespace {
 // Total amount of memory from calls to Release() since the last GC. If this
 // is greater than mem_tracker_tcmalloc_gc_release_bytes, this will trigger a tcmalloc gc.
 Atomic64 released_memory_since_gc;
+
+DEFINE_validator(default_memory_limit_to_ram_ratio, &::yb::internal::ValidateMemoryLimitToRamRatio);
 
 // Marked as unused because this is not referenced in release mode.
 DEFINE_validator(memory_limit_soft_percentage, &::yb::ValidatePercentageFlag);
@@ -990,5 +992,22 @@ bool CheckMemoryPressureWithLogging(
 
   return false;
 }
+
+namespace internal {
+
+bool ValidateMemoryLimitToRamRatio(const char* flag_name, double value) {
+  if (value == USE_RECOMMENDED_MEMORY_VALUE) {
+    return true;  // Special sentinel value is allowed.
+  }
+  if (value <= 0.0 || value > 1.0) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+      << "Must be in the range (0, 1] or "
+      << USE_RECOMMENDED_MEMORY_VALUE << ".";
+    return false;
+  }
+  return true;
+}
+
+} // namespace internal
 
 } // namespace yb

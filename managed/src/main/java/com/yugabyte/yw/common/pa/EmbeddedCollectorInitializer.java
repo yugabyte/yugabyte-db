@@ -2,6 +2,7 @@ package com.yugabyte.yw.common.pa;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
@@ -63,22 +64,21 @@ public class EmbeddedCollectorInitializer {
     platformScheduler.scheduleOnce(
         getClass().getSimpleName(),
         Duration.ZERO, // InitialDelay
-        this::initialize);
+        this::initializeAll);
   }
 
-  private void initialize() {
-    try {
-      initializeInternal();
-      metricService.setOkStatusMetric(
-          buildMetricTemplate(PlatformMetrics.PA_EMBEDDED_COLLECTOR_INIT_STATUS));
-    } catch (Exception e) {
-      log.error("Failed to initialize embedded PA collector", e);
-      metricService.setFailureStatusMetric(
-          buildMetricTemplate(PlatformMetrics.PA_EMBEDDED_COLLECTOR_INIT_STATUS));
+  private void initializeAll() {
+    initializeInternal(Customer.getAll());
+  }
+
+  public void initialize(Customer customer) {
+    initializeInternal(ImmutableList.of(customer));
+  }
+
+  private void initializeInternal(List<Customer> customers) {
+    if (customers.isEmpty()) {
+      return;
     }
-  }
-
-  private void initializeInternal() {
     String embeddedPaUrl = configFactory.staticApplicationConf().getString("yb.pa.url");
     String embeddedPaToken = configFactory.staticApplicationConf().getString("yb.pa.api_token");
     String platformUrl = configFactory.staticApplicationConf().getString("yb.platform.url");
@@ -112,86 +112,95 @@ public class EmbeddedCollectorInitializer {
         configFactory
             .staticApplicationConf()
             .getString(GlobalConfKeys.metricsAuthPassword.getKey());
-    for (Customer customer : Customer.getAll()) {
-      PACollector embeddedCollector = allCollectors.get(customer.getUuid());
-      if (StringUtils.isEmpty(embeddedPaUrl) && embeddedCollector == null) {
-        continue;
-      } else if (StringUtils.isNotEmpty(embeddedPaUrl) && embeddedCollector == null) {
-        List<PACollector> existing =
-            perfAdvisorService.list(
-                PACollectorFilter.builder()
-                    .customerUuid(customer.getUuid())
-                    .paUrl(embeddedPaUrl)
-                    .build());
-
-        if (!existing.isEmpty()) {
-          log.info(
-              "Embedded collector already exists for customer {}, skipping", customer.getUuid());
+    for (Customer customer : customers) {
+      try {
+        PACollector embeddedCollector = allCollectors.get(customer.getUuid());
+        if (StringUtils.isEmpty(embeddedPaUrl) && embeddedCollector == null) {
           continue;
-        }
+        } else if (StringUtils.isNotEmpty(embeddedPaUrl) && embeddedCollector == null) {
+          List<PACollector> existing =
+              perfAdvisorService.list(
+                  PACollectorFilter.builder()
+                      .customerUuid(customer.getUuid())
+                      .paUrl(embeddedPaUrl)
+                      .build());
 
-        String paUserEmail = "pa_collector_" + customer.getId() + "@yugabyte.com";
-        Users paUser = Users.getByEmail(paUserEmail);
-        if (paUser == null) {
-          log.info("Creating PA collector service account {}", paUserEmail);
-          paUser =
-              Users.create(
-                  paUserEmail,
-                  Util.getRandomPassword(),
-                  Users.Role.Admin,
-                  customer.getUuid(),
-                  false);
+          if (!existing.isEmpty()) {
+            log.info(
+                "Embedded collector already exists for customer {}, skipping", customer.getUuid());
+            continue;
+          }
 
-          Role adminRole = Role.get(customer.getUuid(), Users.Role.Admin.name());
-          ResourceGroup resourceGroup =
-              ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), paUser);
-          roleBindingUtil.createRoleBinding(
-              paUser.getUuid(), adminRole.getRoleUUID(), RoleBindingType.System, resourceGroup);
-        }
-        String apiToken = paUser.upsertApiToken();
+          String paUserEmail = "pa_collector_" + customer.getId() + "@yugabyte.com";
+          Users paUser = Users.getByEmail(paUserEmail);
+          if (paUser == null) {
+            log.info("Creating PA collector service account {}", paUserEmail);
+            paUser =
+                Users.create(
+                    paUserEmail,
+                    Util.getRandomPassword(),
+                    Users.Role.Admin,
+                    customer.getUuid(),
+                    false);
 
-        log.info("Adding embedded collector for customer {}", customer.getUuid());
-        PACollector collector = new PACollector();
-        collector.setUuid(customer.getUuid());
-        collector.setPaApiToken(embeddedPaToken);
-        collector.setApiToken(apiToken);
-        collector.setPaUrl(embeddedPaUrl);
-        collector.setCustomerUUID(customer.getUuid());
-        collector.setMetricsUrl(prometheusUrl);
-        collector.setMetricsUsername(metricsUsername);
-        collector.setMetricsPassword(metricsPassword);
-        collector.setYbaUrl(platformUrl);
-        collector.setMetricsScrapePeriodSecs(scrapeInterval);
-        perfAdvisorService.create(collector);
-      } else if (StringUtils.isEmpty(embeddedPaUrl) && embeddedCollector != null) {
-        log.info("Removing embedded collector for customer {}", customer.getUuid());
-        perfAdvisorService.delete(customer.getUuid(), customer.getUuid(), true);
-        for (Universe universe : Universe.getAllWithoutResources(customer)) {
-          if (universe.getUniverseDetails().getPaCollectorUuid() != null
-              && universe.getUniverseDetails().getPaCollectorUuid().equals(customer.getUuid())) {
-            Universe.saveDetails(
-                universe.getUniverseUUID(), u -> u.getUniverseDetails().setPaCollectorUuid(null));
+            Role adminRole = Role.get(customer.getUuid(), Users.Role.Admin.name());
+            ResourceGroup resourceGroup =
+                ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), paUser);
+            roleBindingUtil.createRoleBinding(
+                paUser.getUuid(), adminRole.getRoleUUID(), RoleBindingType.System, resourceGroup);
+          }
+          String apiToken = paUser.upsertApiToken();
+
+          log.info("Adding embedded collector for customer {}", customer.getUuid());
+          PACollector collector = new PACollector();
+          collector.setUuid(customer.getUuid());
+          collector.setPaApiToken(embeddedPaToken);
+          collector.setApiToken(apiToken);
+          collector.setPaUrl(embeddedPaUrl);
+          collector.setCustomerUUID(customer.getUuid());
+          collector.setMetricsUrl(prometheusUrl);
+          collector.setMetricsUsername(metricsUsername);
+          collector.setMetricsPassword(metricsPassword);
+          collector.setYbaUrl(platformUrl);
+          collector.setMetricsScrapePeriodSecs(scrapeInterval);
+          perfAdvisorService.create(collector);
+        } else if (StringUtils.isEmpty(embeddedPaUrl) && embeddedCollector != null) {
+          log.info("Removing embedded collector for customer {}", customer.getUuid());
+          perfAdvisorService.delete(customer.getUuid(), customer.getUuid(), true);
+          for (Universe universe : Universe.getAllWithoutResources(customer)) {
+            if (universe.getUniverseDetails().getPaCollectorUuid() != null
+                && universe.getUniverseDetails().getPaCollectorUuid().equals(customer.getUuid())) {
+              Universe.saveDetails(
+                  universe.getUniverseUUID(), u -> u.getUniverseDetails().setPaCollectorUuid(null));
+            }
+          }
+        } else {
+          if (embeddedCollector.getMetricsScrapePeriodSecs() != scrapeInterval
+              || !embeddedCollector.getPaUrl().equals(embeddedPaUrl)
+              || !embeddedCollector.getPaApiToken().equals(embeddedPaToken)
+              || !embeddedCollector.getYbaUrl().equals(platformUrl)
+              || !embeddedCollector.getMetricsUrl().equals(prometheusUrl)
+              || !embeddedCollector.getMetricsUsername().equals(metricsUsername)
+              || !embeddedCollector.getMetricsPassword().equals(metricsPassword)) {
+
+            log.info("Updating embedded collector for customer {}", customer.getUuid());
+            embeddedCollector.setPaApiToken(embeddedPaToken);
+            embeddedCollector.setPaUrl(embeddedPaUrl);
+            embeddedCollector.setMetricsUrl(prometheusUrl);
+            embeddedCollector.setMetricsUsername(metricsUsername);
+            embeddedCollector.setMetricsPassword(metricsPassword);
+            embeddedCollector.setYbaUrl(platformUrl);
+            embeddedCollector.setMetricsScrapePeriodSecs(scrapeInterval);
+            perfAdvisorService.save(embeddedCollector, true);
           }
         }
-      } else {
-        if (embeddedCollector.getMetricsScrapePeriodSecs() != scrapeInterval
-            || !embeddedCollector.getPaUrl().equals(embeddedPaUrl)
-            || !embeddedCollector.getPaApiToken().equals(embeddedPaToken)
-            || !embeddedCollector.getYbaUrl().equals(platformUrl)
-            || !embeddedCollector.getMetricsUrl().equals(prometheusUrl)
-            || !embeddedCollector.getMetricsUsername().equals(metricsUsername)
-            || !embeddedCollector.getMetricsPassword().equals(metricsPassword)) {
-
-          log.info("Updating embedded collector for customer {}", customer.getUuid());
-          embeddedCollector.setPaApiToken(embeddedPaToken);
-          embeddedCollector.setPaUrl(embeddedPaUrl);
-          embeddedCollector.setMetricsUrl(prometheusUrl);
-          embeddedCollector.setMetricsUsername(metricsUsername);
-          embeddedCollector.setMetricsPassword(metricsPassword);
-          embeddedCollector.setYbaUrl(platformUrl);
-          embeddedCollector.setMetricsScrapePeriodSecs(scrapeInterval);
-          perfAdvisorService.save(embeddedCollector, true);
-        }
+        metricService.setOkStatusMetric(
+            buildMetricTemplate(PlatformMetrics.PA_EMBEDDED_COLLECTOR_INIT_STATUS, customer));
+      } catch (Exception e) {
+        log.error(
+            "Failed to initialize embedded PA collector for customer {}", customer.getUuid(), e);
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.PA_EMBEDDED_COLLECTOR_INIT_STATUS, customer));
       }
     }
   }

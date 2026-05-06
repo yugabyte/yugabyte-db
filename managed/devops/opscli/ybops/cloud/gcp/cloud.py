@@ -295,11 +295,13 @@ class GcpCloud(AbstractCloud):
                     if region in result[name]["prices"]:
                         continue
                     try:
-                        result[name]["prices"][region] = self.get_os_price_map(pricing_map,
-                                                                               name,
-                                                                               region,
-                                                                               result[name]["numCores"],
-                                                                               result[name]["isShared"])
+                        result[name]["prices"][region] = self.get_os_price_map(
+                            pricing_map,
+                            name,
+                            region,
+                            result[name]["numCores"],
+                            result[name]["isShared"]
+                        )
                     except Exception as e:
                         logging.warning("[app] Error {} getting price info for {}".format(e, name))
                         result[name]["prices"][region] = 0.0

@@ -16,6 +16,8 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <tuple>
@@ -28,6 +30,15 @@
 namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(ClearChildCgroups);
+
+struct CgroupCpuStats {
+  int64_t nr_periods = 0;
+  int64_t nr_throttled = 0;
+  int64_t throttled_time_ns = 0;
+  int64_t usage_ns = 0;
+  int64_t usage_user_ns = 0;
+  int64_t usage_sys_ns = 0;
+};
 
 class Cgroup {
  public:
@@ -68,7 +79,22 @@ class Cgroup {
 
   Result<Cgroup&> CreateOrLoadChild(std::string_view name) EXCLUDES(mutex_);
 
+  Status MoveThreadToGroup(int64_t thread_id) EXCLUDES(mutex_);
   Status MoveCurrentThreadToGroup() EXCLUDES(mutex_);
+
+  // Move a child process (by PID) into this cgroup. Writes to cgroup.procs.
+  Status MoveProcessToGroup(int64_t pid) EXCLUDES(mutex_);
+
+  // Read CPU throttling stats (cpu.stat) and usage counters (cpuacct.usage*).
+  // All values are cumulative since cgroup creation.
+  Result<CgroupCpuStats> ReadCpuStats() const;
+
+  void VisitChildren(const std::function<void(Cgroup&)>& visitor);
+
+  void VisitTree(
+      const std::function<void(Cgroup&, size_t)>& visitor,
+      size_t current_depth = 0,
+      size_t max_depth = std::numeric_limits<size_t>::max());
 
   // These functions have an inherent race condition: the threads they read may change
   // cgroups or exit immediately after reading, and the thread id may even be reused by
@@ -77,7 +103,8 @@ class Cgroup {
   Result<std::vector<int64_t>> ReadThreadIds();
   Result<std::vector<std::string>> ReadThreadNames();
 
-  // The last part of the cgroup name, e.g. name() of /sys/fs/cgroup/a/b/c is "c".
+  // The part of the cgroup name under the root cgroup, e.g. name() of /sys/fs/cgroup/a/b/c with
+  // root cgroup of /sys/fs/cgroup/a is "b/c".
   std::string_view name() const { return name_; }
 
   // The full cgroup name, matching entries in /proc/$PID/cgroup, e.g. name() of
@@ -90,6 +117,8 @@ class Cgroup {
   Cgroup* parent() const { return parent_; }
 
   Cgroup* child(std::string_view name) EXCLUDES(mutex_);
+
+  bool is_leaf() const EXCLUDES(mutex_);
 
   double cpu_max_fraction() const EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
@@ -171,5 +200,23 @@ Result<std::string> GetThreadCpuCgroup(int64_t thread_id = -1);
 
 Status MoveProcessToCgroupPath(std::string_view cgroup_path);
 
+// Returns the effective CPU count derived from this process's cgroup CPU quota:
+// ceil(quota / period). Returns -1 if the cgroup has no CPU limit (e.g. cpu.max is "max",
+// or cgroups v1 cfs_quota_us is -1).
+Result<int> GetCgroupCpuQuota();
+
 } // namespace yb
+
 #endif // __linux__
+
+namespace yb {
+
+// Returns the effective number of CPUs available to the process. When --use_cgroups_cpu is set
+// and a cgroup CPU quota is present, returns ceil(quota / period); otherwise returns
+// base::NumCPUs(). The result is computed once and cached for the lifetime of the process.
+//
+// Prefer this over base::NumCPUs() in code outside gutil that sizes work to CPU count
+// (thread pools, partition counts, etc.).
+int NumEffectiveCPUs();
+
+} // namespace yb

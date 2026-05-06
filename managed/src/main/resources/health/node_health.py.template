@@ -88,6 +88,9 @@ MAX_THREADS = 10
 
 MAX_TRIES = 2
 
+MIN_OPEN_FILES = 1048576
+MIN_PROCESSES = 64000
+
 PER_PROCESS_VERSION = 4
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
@@ -262,6 +265,9 @@ YB_PROCESS_OPEN_FILES = MetricDefinition(
 YB_PROCESS_LIMIT = MetricDefinition(
     "yb_process_limit",
     "Process resource limits from /proc/<pid>/limits")
+YB_PROCESS_LIMITS_STATUS = MetricDefinition(
+    "yb_process_limits_status",
+    "Process limits status (1 = OK, 0 = incorrect)")
 YB_NODE_UNEXPECTED_TSERVER_RUNNING = MetricDefinition(
     "yb_node_unexpected_tserver_running",
     "Tserver is running on node (but should not)")
@@ -1988,7 +1994,7 @@ class NodeChecker():
 
     def check_process_limits(self, process_name):
         metric = Metric.from_definition(YB_PROCESS_LIMIT)
-        e = self._new_metric_entry("Per-process limits check", process_name)
+        e = self._new_entry("Per-process limits check", process_name)
         process = Label("process", process_name)
         try:
             pid = self.get_process_pid_by_name(process_name)
@@ -2005,6 +2011,7 @@ class NodeChecker():
                 'Max locked memory': 'max_locked_memory',
             }
 
+            actual_limits = {}
             for line in output.split('\n'):
                 for limit_name, label_value in limit_map.items():
                     if line.startswith(limit_name):
@@ -2014,6 +2021,9 @@ class NodeChecker():
                             hard = parts[1]
                             soft_val = -1 if soft == 'unlimited' else int(soft)
                             hard_val = -1 if hard == 'unlimited' else int(hard)
+                            actual_limits[label_value] = {
+                                'soft': soft_val, 'hard': hard_val
+                            }
                             metric.add_value(soft_val,
                                              labels=[process,
                                                      Label('limit', label_value),
@@ -2024,11 +2034,43 @@ class NodeChecker():
                                                      Label('type', 'hard')])
                         break
 
-            return e.fill_and_return_entry([], has_error=False, metrics=[metric])
+            issues = self._check_limit_thresholds(actual_limits)
+            status_metric = Metric.from_definition(YB_PROCESS_LIMITS_STATUS)
+            status_metric.add_value(0 if issues else 1, labels=[process])
+            all_metrics = [metric, status_metric]
+            if issues:
+                return e.fill_and_return_entry(
+                    ['Process {} has incorrect limits: {}'.format(
+                        process_name, '; '.join(issues))],
+                    has_error=True, metrics=all_metrics)
+
+            return e.fill_and_return_entry([], has_error=False, metrics=all_metrics)
         except Exception as ex:
             return e.fill_and_return_entry(
                 ["Failed to parse process limits: {}".format(str(ex))],
                 has_error=True, metrics=[metric])
+
+    def _check_limit_thresholds(self, actual_limits):
+        issues = []
+        threshold_checks = {
+            'max_open_files': MIN_OPEN_FILES,
+            'max_processes': MIN_PROCESSES,
+        }
+        for limit_label, min_val in threshold_checks.items():
+            if limit_label in actual_limits:
+                soft = actual_limits[limit_label]['soft']
+                if soft != -1 and soft < min_val:
+                    issues.append(
+                        '{} soft limit {} is below minimum {}'.format(
+                            limit_label, soft, min_val))
+
+        if 'max_core_file_size' in actual_limits:
+            core_soft = actual_limits['max_core_file_size']['soft']
+            if core_soft != -1:
+                issues.append(
+                    'max_core_file_size soft limit {} is not unlimited'.format(
+                        core_soft))
+        return issues
 
     def check_other_process_stats(self):
         metric = Metric.from_definition(YB_PROCESS_MEMORY_KB)

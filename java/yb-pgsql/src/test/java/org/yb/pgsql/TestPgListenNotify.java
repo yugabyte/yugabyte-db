@@ -38,6 +38,8 @@ import org.yb.CommonTypes;
 import org.yb.YBTestRunner;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.ModifyClusterConfigLiveReplicas;
+import org.yb.client.SnapshotInfo;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.client.ModifyClusterConfigReadReplicas;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.TestUtils;
@@ -587,16 +589,24 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, "yugabyte",
         /* retentionInSecs */ 600, /* timeIntervalInSecs */ 10);
 
-    // Wait for at least one snapshot to be created.
+    // Wait for at least one snapshot to reach COMPLETE state.
     TestUtils.waitFor(() -> {
       ListSnapshotSchedulesResponse resp = client.listSnapshotSchedules(null);
       for (SnapshotScheduleInfo info : resp.getSnapshotScheduleInfoList()) {
-        if (!info.getSnapshotInfoList().isEmpty()) {
-          return true;
+        for (SnapshotInfo snap : info.getSnapshotInfoList()) {
+          if (snap.getState()
+              == CatalogEntityInfo.SysSnapshotEntryPB.State.COMPLETE) {
+            return true;
+          }
         }
       }
       return false;
     }, 60000);
+
+    // The snapshot's timestamp is assigned as MaxGlobalNow, which can be ahead
+    // of the physical clock. The clone's restore timestamp uses the physical
+    // clock, so wait for it to exceed the snapshot's timestamp.
+    Thread.sleep(2000);
 
     final String cloneDb = "clone_db";
     try (Statement stmt = connection.createStatement()) {
@@ -870,6 +880,62 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     verifyListenNotifyWorks();
   }
 
+  /**
+   * When the NOTIFY queue is full, the notifications poller should terminate the slowest listener
+   * to let the queue tail advance if another listener has caught up to the head. Verify that the
+   * slow listener is terminated while the fast listener stays alive.
+   *
+   * Uses yb_test_notify_queue_max_pages to artificially limit the queue so it fills up with a
+   * handful of large-payload notifications.
+   */
+  @Test
+  public void testQueueFullTerminatesSlowestListener() throws Exception {
+    setNotifyQueueMaxPages("2");
+    try {
+      Connection connSlow = getConnectionBuilder().connect();
+      Connection connFast = getConnectionBuilder().connect();
+      Connection connNotifier = getConnectionBuilder().connect();
+
+      // Register a listener and make it slow by starting an indefinite transaction (notifications
+      // are not delivered when the backend is inside a transaction).
+      try (Statement stmt = connSlow.createStatement()) {
+        stmt.execute("LISTEN ch1");
+        stmt.execute("BEGIN");
+      }
+      try (Statement stmt = connFast.createStatement()) {
+        stmt.execute("LISTEN ch1");
+      }
+
+      // Send enough large-payload notifications to fill the small queue.
+      char[] chars = new char[7000];
+      Arrays.fill(chars, 'x');
+      String largePayload = new String(chars);
+      try (Statement stmt = connNotifier.createStatement()) {
+        for (int i = 0; i < 10; i++) {
+          stmt.execute("NOTIFY ch1, '" + largePayload + "'");
+        }
+      }
+
+      // Wait for the poller to detect the full queue and terminate the slow
+      // listener, then verify its connection is dead.
+      Thread.sleep(5000);
+      try (Statement stmt = connSlow.createStatement()) {
+        stmt.execute("SELECT 1");
+        fail("Slow listener should have been terminated");
+      } catch (SQLException e) {
+        LOG.info("Slow listener error (expected): {}", e.getMessage());
+      }
+
+      // Fast listener should still be alive.
+      waitForNotification(connFast, "ch1", largePayload);
+
+      connFast.close();
+      connNotifier.close();
+    } finally {
+      setNotifyQueueMaxPages("0");
+    }
+  }
+
   private void setFatalAfterNotifsQueueWriteFlag(boolean value) throws Exception {
     String v = value ? "true" : "false";
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
@@ -889,6 +955,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     Set<HostAndPort> tservers = miniCluster.getTabletServers().keySet();
     for (HostAndPort tserver : tservers) {
       miniCluster.getClient().setFlag(tserver, "cdc_max_virtual_wal_per_tserver", value);
+    }
+  }
+
+  private void setNotifyQueueMaxPages(String value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "ysql_yb_test_notify_queue_max_pages", value);
     }
   }
 

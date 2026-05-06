@@ -1,0 +1,9 @@
+# Local workspace for Buf CLI / VS Code "Buf" extension (proto navigation, lint).
+# Yugabyte CMake uses -I src for imports like "yb/common/common.proto".
+version: v2
+modules:
+  - path: src
+  # Local imports like "common.proto" (no yb/ prefix).
+  - path: managed/node-agent/proto
+deps:
+  - buf.build/googleapis/googleapis

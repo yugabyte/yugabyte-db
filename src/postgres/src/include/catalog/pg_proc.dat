@@ -12266,7 +12266,7 @@
   proname => 'levenshtein_less_equal', provolatile => 'i',
   prorettype => 'int4', proargtypes => 'text text int4 int4 int4 int4',
   prosrc => 'yb_levenshtein_less_equal_with_costs' },
-  
+
 # YB Query Plan Management (QPM)
 { oid => '8106',
   descr => 'Insert an entry into the QPM table',
@@ -12338,4 +12338,13 @@
   proargnames => '{db_name,table_oid,row_values}',
   prosrc => 'yb_get_tablet_for_key', proisstrict => 't'},
 
+{ oid => '8115',
+  descr => 'validate PostgreSQL configuration files without applying settings',
+  proname => 'yb_pg_validate_conf_file', proisstrict => 'f',
+  proretset => 'f', provolatile => 'v', proparallel => 'u',
+  prorettype => 'record', proargtypes => 'text text text',
+  proallargtypes => '{text,text,text,text,text,text}',
+  proargmodes => '{i,i,i,o,o,o}',
+  proargnames => '{hba_path,guc_path,ident_path,hba_error,guc_error,ident_error}',
+  prosrc => 'yb_pg_validate_conf_file'},
 ]

@@ -6272,4 +6272,162 @@ TEST_F_EX(
       "SELECT value FROM test_table WHERE key = 1")), "row_1");
 }
 
+// PITR restore must not rewind per-DB next-OID below the max OID
+// of HIDDEN tables that master still holds.
+//
+TEST_F(YbAdminSnapshotScheduleTestWithYsql, PgsqlNoOidCollisionAfterPitrWithHiddenTable) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  // Disable the TServer's per-DB OID prefetch cache so master's next_normal_pg_oid
+  // advances by exactly one for every OID consumed by PG.
+  //
+  // With the default prefetch size (256), master jumps next_normal_pg_oid forward by 256 on the
+  // first ReservePgsqlOids call - long before PG actually consumes those OIDs. PITR then rewinds
+  // to that chunk-boundary value, which sits well above the hidden table's OID, so the collision
+  // this test is trying to expose never occurs.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_oid_cache_prefetch_size", "1"));
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  // Helper to look up a table's PG OID.
+  auto get_table_oid = [&conn](const std::string& relname) -> Result<int32_t> {
+    return conn.FetchRow<int32_t>(
+        Format("SELECT oid::int4 FROM pg_class WHERE relname='$0'", relname));
+  };
+
+  ASSERT_OK(conn.Execute("CREATE TABLE pre_snapshot (k INT PRIMARY KEY)"));
+  auto pre_oid = ASSERT_RESULT(get_table_oid("pre_snapshot"));
+
+  LOG(INFO) << "Noting restore time";
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE post_snapshot_victim (k INT PRIMARY KEY)"));
+  auto victim_oid = ASSERT_RESULT(get_table_oid("post_snapshot_victim"));
+  ASSERT_GT(victim_oid, pre_oid) << "Sanity: victim allocated after pre_snapshot";
+
+  ASSERT_OK(conn.Execute("DROP TABLE post_snapshot_victim"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Reconnect after restore - PG backends may take time to come back up.
+  ASSERT_OK(WaitFor([this, &conn]() -> Result<bool> {
+    auto result = PgConnect(client::kTableName.namespace_name());
+    if (!result.ok()) {
+      return false;
+    }
+    conn = std::move(*result);
+    return true;
+  }, 60s * kTimeMultiplier, "Reconnect to PG after PITR restore"));
+
+  auto victim_visible = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM pg_class WHERE relname='post_snapshot_victim'"));
+  ASSERT_EQ(0, victim_visible) << "Hidden table should not be visible to PG after restore";
+
+  // Restart all tablet servers to clear the per-process in-memory OID cache hint.
+  //
+  // PgClientServiceImpl on each TServer keeps an oid_chunk.next_oid high-water mark per database.
+  // Even though Fast PITR correctly rewinds master's SysNamespaceEntryPB.next_normal_pg_oid in
+  // DocDB, the TServer continues to send its pre-restore high-water mark as next_oid in
+  // ReservePgsqlOidsRequestPB. Master then clamps the allocation to
+  // std::max(master_state.next_normal_pg_oid, req->next_oid()), silently undoing the rewind on
+  // the very first OID request after restore.
+  LOG(INFO) << "Restarting tablet servers to clear in-memory OID cache hint";
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->Shutdown();
+    ASSERT_OK(cluster_->tablet_server(i)->Restart());
+  }
+
+  // Reconnect to PG: the postmaster is a child of the TServer and was killed with it.
+  ASSERT_OK(WaitFor([this, &conn]() -> Result<bool> {
+    auto result = PgConnect(client::kTableName.namespace_name());
+    if (!result.ok()) {
+      return false;
+    }
+    conn = std::move(*result);
+    return true;
+  }, 60s * kTimeMultiplier, "Reconnect to PG after TServer restart"));
+
+  // Without the fix, this CREATE receives victim_oid and collides with the hidden
+  // DocDB table (whose table ID is derived from that OID).
+  ASSERT_OK(conn.Execute("CREATE TABLE post_restore_new (k INT PRIMARY KEY)"));
+  auto new_oid = ASSERT_RESULT(get_table_oid("post_restore_new"));
+
+  EXPECT_NE(new_oid, victim_oid)
+      << "Post-restore CREATE reused a hidden table's OID";
+  EXPECT_GT(new_oid, victim_oid)
+      << "Next-OID counter should be above max hidden-table OID, "
+      << "got " << new_oid << " vs hidden " << victim_oid;
+}
+
+TEST_F(YbAdminSnapshotScheduleTestWithYsql,
+       PgsqlNoOidCollisionOnTruncateAfterPitrWithHiddenTable) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  // Disable the TServer's per-DB OID prefetch cache so master's next_normal_pg_oid
+  // advances by exactly one for every OID consumed by PG. See the parallel comment in
+  // PgsqlNoOidCollisionAfterPitrWithHiddenTable for why the default prefetch size masks
+  // the collision this test is trying to expose.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_oid_cache_prefetch_size", "1"));
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1,100) i"));
+
+  LOG(INFO) << "Noting restore time";
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  // Consume OIDs via a create/drop that leaves a hidden table.
+  ASSERT_OK(conn.Execute("CREATE TABLE decoy (k INT PRIMARY KEY)"));
+  auto decoy_oid = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "SELECT oid::int4 FROM pg_class WHERE relname='decoy'"));
+  ASSERT_OK(conn.Execute("DROP TABLE decoy"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  ASSERT_OK(WaitFor([this, &conn]() -> Result<bool> {
+    auto result = PgConnect(client::kTableName.namespace_name());
+    if (!result.ok()) {
+      return false;
+    }
+    conn = std::move(*result);
+    return true;
+  }, 60s * kTimeMultiplier, "Reconnect to PG after PITR restore"));
+
+  // Restart all tablet servers to clear the per-process in-memory OID cache hint. Without this,
+  // PgClientServiceImpl's pre-restore oid_chunk.next_oid is sent as next_oid in
+  // ReservePgsqlOidsRequestPB, and master clamps the allocation to
+  // std::max(master_state.next_normal_pg_oid, req->next_oid()), silently undoing the PITR rewind.
+  LOG(INFO) << "Restarting tablet servers to clear in-memory OID cache hint";
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->Shutdown();
+    ASSERT_OK(cluster_->tablet_server(i)->Restart());
+  }
+
+  // Reconnect to PG: the postmaster is a child of the TServer and was killed with it.
+  ASSERT_OK(WaitFor([this, &conn]() -> Result<bool> {
+    auto result = PgConnect(client::kTableName.namespace_name());
+    if (!result.ok()) {
+      return false;
+    }
+    conn = std::move(*result);
+    return true;
+  }, 60s * kTimeMultiplier, "Reconnect to PG after TServer restart"));
+
+  // TRUNCATE internally creates a new DocDB table. On the buggy build this
+  // collides with decoy's DocDB table ID (derived from its OID).
+  ASSERT_OK(conn.Execute("SET statement_timeout = 60000"));
+  ASSERT_OK(conn.Execute("TRUNCATE TABLE t"));
+
+  auto row_count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(0, row_count);
+
+  // New CREATE should also get an OID above decoy's.
+  ASSERT_OK(conn.Execute("CREATE TABLE post_truncate_probe (k INT PRIMARY KEY)"));
+  auto probe_oid = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "SELECT oid::int4 FROM pg_class WHERE relname='post_truncate_probe'"));
+  EXPECT_GT(probe_oid, decoy_oid)
+      << "Post-TRUNCATE CREATE allocated an OID <= decoy's hidden table OID";
+}
+
 }  // namespace yb::tools

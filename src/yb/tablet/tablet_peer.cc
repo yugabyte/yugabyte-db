@@ -195,6 +195,21 @@ TabletPeer::~TabletPeer() {
   LOG_IF_WITH_PREFIX(DFATAL, tablet_) << "TabletPeer not fully shut down.";
 }
 
+void TabletPeer::SetPerDbCgroup(Cgroup* cgroup) {
+  {
+    std::lock_guard l(lock_);
+    if (consensus_) {
+      consensus_->SetPerDbCgroup(cgroup);
+    }
+  }
+  if (log_) {
+    log_->SetPerDbCgroup(cgroup);
+  }
+  if (prepare_thread_) {
+    prepare_thread_->SetPerDbCgroup(cgroup);
+  }
+}
+
 Status TabletPeer::InitTabletPeer(
     const TabletPtr& tablet,
     const std::shared_ptr<MemTracker>& server_mem_tracker,
@@ -1518,6 +1533,11 @@ void TabletPeer::SetMvccPropagatedSafeTime(HybridTime ht) {
 
 bool TabletPeer::ShouldApplyWrite() {
   return tablet_->ShouldApplyWrite();
+}
+
+bool TabletPeer::AreWritesStopped() {
+  auto tablet = shared_tablet_maybe_null();
+  return tablet && tablet->AreWritesStopped();
 }
 
 Result<std::shared_ptr<consensus::Consensus>> TabletPeer::GetConsensus() const {

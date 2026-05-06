@@ -5,7 +5,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.NodeManager;
@@ -23,7 +22,6 @@ import com.yugabyte.yw.nodeagent.YnpPreflightCheckInput;
 import com.yugabyte.yw.nodeagent.YnpPreflightCheckOutput;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Optional;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -107,19 +105,16 @@ public class PreflightNodeCheck extends NodeTaskBase {
   public void run() {
     log.info("Running preflight checks for node {}.", taskParams().nodeName);
     Provider provider = taskParams().getProvider();
-    if (provider.getCloudCode() == CloudType.onprem && provider.getDetails().skipProvisioning) {
-      Universe universe = getUniverse();
+    if (provider.isManualOnprem()) {
+      // Node agent must already be present and running for onprem manual (non-sudo).
       NodeInstance instance = NodeInstance.getOrBadRequest(taskParams().nodeUuid);
-      Optional<NodeAgent> nodeAgentOpt =
-          nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
-              instance.getDetails().ip, provider, null /* universe */);
-      if (nodeAgentOpt.isEmpty()
-          || confGetter.getGlobalConf(GlobalConfKeys.disableYnpNodePreflightCheck)) {
+      NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(instance.getDetails().ip);
+      if (confGetter.getGlobalConf(GlobalConfKeys.disableYnpNodePreflightCheck)) {
         // Run preflight_checks.sh.
         runLegacyPreflightChecks();
       } else {
         // Run the new YNP preflight checks implemented in node-agent.
-        runYnpPreflightChecks(provider, instance, nodeAgentOpt.get(), universe);
+        runYnpPreflightChecks(provider, instance, nodeAgent, getUniverse());
       }
     } else {
       // Sudo access is available, and YNP is not set up yet.

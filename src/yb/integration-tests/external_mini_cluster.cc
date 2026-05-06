@@ -2078,6 +2078,24 @@ Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(
       NotFound, Format("Could not find leader of tablet $0 among live tservers.", tablet_id));
 }
 
+Result<std::vector<size_t>> ExternalMiniCluster::GetTabletFollowerIndexes(
+    const TabletId& tablet_id) {
+  std::vector<size_t> result;
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
+    auto tserver = tablet_server(i);
+    if (tserver->IsProcessAlive() && !tserver->IsProcessPaused()) {
+      auto tablets = VERIFY_RESULT(GetTablets(tserver));
+      for (const auto& tablet : tablets) {
+        if (tablet.tablet_id() == tablet_id && !tablet.is_leader()) {
+          result.push_back(i);
+          break;
+        }
+      }
+    }
+  }
+  return result;
+}
+
 ExternalTabletServer* ExternalMiniCluster::tablet_server_by_uuid(const std::string& uuid) const {
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
     if (ts->instance_id().permanent_uuid() == uuid) {
@@ -2296,8 +2314,8 @@ Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
 }
 
 Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
-    const std::string& db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
-    const std::string& user) {
+    std::string_view db_name, std::optional<size_t> tserver_index, bool simple_query_protocol,
+    std::string_view user) {
   ExternalClusterPGConnectionOptions options;
   options.db_name = db_name;
   if (tserver_index) {

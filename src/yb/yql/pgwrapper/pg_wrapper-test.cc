@@ -10,6 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <functional>
+#include <regex>
+
 #include <boost/algorithm/string.hpp>
 #include "yb/client/yb_table_name.h"
 
@@ -23,11 +26,13 @@
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/result.h"
+#include "yb/util/test_util.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/tsan_util.h"
 
@@ -200,6 +205,47 @@ class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false
         "Compaction"
     ));
     LOG(INFO) << "Table " << table_id << " " << flush_or_compaction << " finished";
+  }
+
+  // Verifier signature: (hba_content, guc_content, ident_content,
+  //                      hba_error_expected, guc_error_expected, ident_error_expected)
+  // Empty content means "skip this config type". Empty error means "expect success".
+  using ConfVerifier = std::function<void(
+      const string&, const string&, const string&, const string&, const string&, const string&)>;
+
+  void RunConfValidationCases(ConfVerifier verify) {
+    // GUC validation
+    verify("", "enable_seqscan=on", "", "", "", "");
+    verify("", "enable_seqscan=onn", "", "", "enable_seqscan.*requires a boolean value", "");
+    verify("", "work_mem='not_a_number'", "", "", "invalid value.*work_mem", "");
+    verify("", "= bad_syntax", "", "", "syntax error", "");
+    verify("", "nonexistent_param=42", "", "", "nonexistent_param", "");
+    verify(
+        "", "log_min_messages='foo'", "", "",
+        "invalid value.*log_min_messages.*"
+        "Available values:.* "
+        "info, notice, warning, error, log, fatal, panic",
+        "");
+
+    // HBA validation
+    verify("host all all 0.0.0.0/0 trust", "", "", "", "", "");
+    verify(
+        "host all all 0.0.0.0/0 bogus_method", "", "",
+        "invalid authentication method \"bogus_method\"", "", "");
+    verify(
+        "host all all 999.999.999.999/32 trust", "", "",
+        "specifying both host name and CIDR mask is invalid", "", "");
+    verify("host all all 0.0.0.0/0", "", "", "end-of-line before authentication method", "", "");
+
+    // Ident validation
+    verify("", "", "mymap system_user pg_user", "", "", "");
+    verify("", "", "only_one_field", "", "", "missing entry");
+    verify("", "", "mymap /[invalid pg_user", "", "", "invalid regular expression");
+
+    // Multiple errors in one request
+    verify(
+        "host all all 0.0.0.0/0 bad_auth", "work_mem='not_a_number'", "",
+        "invalid authentication method", "work_mem", "");
   }
 };
 
@@ -651,6 +697,38 @@ class PgWrapperFlagsTest : public PgWrapperTest {
     }
     return Status::OK();
   }
+
+  Result<server::ValidateFlagValueResponsePB> ValidateFlagOnTServer(
+      size_t ts_idx, const std::map<string, string>& flags) {
+    auto proxy = cluster_->GetTServerProxy<server::GenericServiceProxy>(ts_idx);
+
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(30));
+    server::ValidateFlagValueRequestPB req;
+    server::ValidateFlagValueResponsePB resp;
+    for (const auto& [name, value] : flags) {
+      auto* flag_pb = req.add_flags();
+      flag_pb->set_name(name);
+      flag_pb->set_value(value);
+    }
+    RETURN_NOT_OK_PREPEND(proxy.ValidateFlagValue(req, &resp, &controller), "rpc failed");
+    return resp;
+  }
+
+  // Legacy single-flag validation via the flag_name/flag_value fields.
+  // Invalid values should return an RPC-level failure (not errors in the response map).
+  Status ValidateFlagLegacyOnTServer(
+      size_t ts_idx, const string& flag_name, const string& flag_value) {
+    auto proxy = cluster_->GetTServerProxy<server::GenericServiceProxy>(ts_idx);
+
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(30));
+    server::ValidateFlagValueRequestPB req;
+    server::ValidateFlagValueResponsePB resp;
+    req.set_flag_name(flag_name);
+    req.set_flag_value(flag_value);
+    return proxy.ValidateFlagValue(req, &resp, &controller);
+  }
 };
 
 // Verify the gFlag defaults match the guc defaults for PG gFlags.
@@ -662,6 +740,11 @@ TEST_F(PgWrapperFlagsTest, VerifyGFlagDefaults) {
     std::unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
     if (!tags.contains(FlagTag::kPg)) {
+      continue;
+    }
+    // Hidden gFlags use GUC_NO_SHOW_ALL on the corresponding GUC, which excludes them from
+    // pg_settings, so ValidateDefaultGucValue cannot read boot_val.
+    if (tags.contains(FlagTag::kHidden)) {
       continue;
     }
 
@@ -693,6 +776,11 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
     std::unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
     if (!tags.contains(FlagTag::kPg)) {
+      continue;
+    }
+    // Hidden gFlags use GUC_NO_SHOW_ALL on the corresponding GUC, which excludes them from
+    // pg_settings, so ValidateGucIsRuntime cannot read context.
+    if (tags.contains(FlagTag::kHidden)) {
       continue;
     }
 
@@ -883,6 +971,101 @@ TEST_F_EX(PgWrapperFlagsTest, ValidateYsqlPgConfCsv, ValidateYsqlPgConfCsvTest) 
   ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1,two "2")"));
   ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1,"tw"o")"));
   ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String with a \n char'"));
+}
+
+TEST_F(PgWrapperTest, ValidateConfViaSql) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  auto tmp_dir = GetTestDataDirectory();
+  using OptStr = std::optional<std::string>;
+
+  int file_counter = 0;
+  auto write_tmp_file = [&](const string& content) {
+    auto path = JoinPathSegments(tmp_dir, Format("test_conf_$0.conf", file_counter++));
+    CHECK_OK(WriteStringToFile(Env::Default(), content + "\n", path));
+    return path;
+  };
+
+  auto check_error = [](const OptStr& actual, const string& expected, const string& label,
+                        const string& content) {
+    if (expected.empty()) {
+      ASSERT_FALSE(actual.has_value()) << label << " expected success but got: " << *actual;
+    } else {
+      ASSERT_TRUE(actual.has_value()) << label << " expected error matching: " << expected;
+      LOG(INFO) << label << " got error [" << *actual << "] for content [" << content << "]";
+      ASSERT_TRUE(std::regex_search(*actual, std::regex(expected, std::regex::icase)))
+          << label << " error [" << *actual << "] did not match pattern [" << expected << "]";
+    }
+  };
+
+  auto verify = [&](const string& hba, const string& guc, const string& ident,
+                    const string& hba_err_expected, const string& guc_err_expected,
+                    const string& ident_err_expected) {
+    auto hba_arg = hba.empty() ? "NULL" : Format("'$0'", write_tmp_file(hba));
+    auto guc_arg = guc.empty() ? "NULL" : Format("'$0'", write_tmp_file(guc));
+    auto ident_arg = ident.empty() ? "NULL" : Format("'$0'", write_tmp_file(ident));
+
+    auto start = MonoTime::Now();
+    auto [hba_err, guc_err, ident_err] =
+        ASSERT_RESULT((conn.FetchRow<OptStr, OptStr, OptStr>(Format(
+            "SELECT * FROM yb_pg_validate_conf_file($0, $1, $2)", hba_arg, guc_arg, ident_arg))));
+    LOG(INFO) << "SQL validation took " << (MonoTime::Now() - start).ToMicroseconds() << " us";
+
+    check_error(hba_err, hba_err_expected, "HBA", hba);
+    check_error(guc_err, guc_err_expected, "GUC", guc);
+    check_error(ident_err, ident_err_expected, "Ident", ident);
+  };
+
+  RunConfValidationCases(verify);
+
+  // File-only test: comma in address is parsed differently when CSV-delimited.
+  verify(
+      "host all all 1.2.3.4,5.6.7.8 trust", "", "",
+      "multiple values specified for host address.*specify one address", "", "");
+}
+
+TEST_F(PgWrapperFlagsTest, ValidateConfViaGflagValidation) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+
+  auto check_flag_error = [](const server::ValidateFlagValueResponsePB& resp,
+                             const string& flag_name, const string& content,
+                             const string& expected_error) {
+    if (expected_error.empty()) {
+      ASSERT_FALSE(resp.errors().count(flag_name))
+          << flag_name << " expected success but got: " << resp.errors().at(flag_name);
+    } else {
+      ASSERT_TRUE(resp.errors().count(flag_name))
+          << "Expected error for " << flag_name << " matching: " << expected_error;
+      const auto& actual = resp.errors().at(flag_name);
+      LOG(INFO) << flag_name << " got error [" << actual << "] for content [" << content << "]";
+      ASSERT_TRUE(std::regex_search(actual, std::regex(expected_error, std::regex::icase)))
+          << flag_name << " error [" << actual << "] did not match pattern [" << expected_error
+          << "]";
+    }
+  };
+
+  auto verify = [&](const string& hba, const string& guc, const string& ident,
+                    const string& hba_err, const string& guc_err, const string& ident_err) {
+    std::map<string, string> flags;
+    if (!hba.empty()) flags["ysql_hba_conf_csv"] = hba;
+    if (!guc.empty()) flags["ysql_pg_conf_csv"] = guc;
+    if (!ident.empty()) flags["ysql_ident_conf_csv"] = ident;
+    ASSERT_FALSE(flags.empty());
+
+    auto start = MonoTime::Now();
+    auto resp = ASSERT_RESULT(ValidateFlagOnTServer(0, flags));
+    LOG(INFO) << "Gflag validation took " << (MonoTime::Now() - start).ToMilliseconds() << " ms";
+
+    if (!hba.empty()) check_flag_error(resp, "ysql_hba_conf_csv", hba, hba_err);
+    if (!guc.empty()) check_flag_error(resp, "ysql_pg_conf_csv", guc, guc_err);
+    if (!ident.empty()) check_flag_error(resp, "ysql_ident_conf_csv", ident, ident_err);
+  };
+
+  RunConfValidationCases(verify);
+
+  // Legacy single-flag path: invalid value should produce an RPC-level failure,
+  // not an entry in the response errors map (backward compatibility with YBA).
+  ASSERT_OK(ValidateFlagLegacyOnTServer(0, "vmodule", "foo=1"));
+  ASSERT_NOK(ValidateFlagLegacyOnTServer(0, "vmodule", "foo="));
 }
 
 TEST_F(PgWrapperTest, GetPgSocketDir) {

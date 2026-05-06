@@ -547,7 +547,7 @@ public class NodeFileCollector {
                 "bash",
                 "-c",
                 String.format(
-                    "cd %s && tar -czhf %s -T %s 2>/dev/null; echo $?",
+                    "cd %s && tar --warning=no-file-changed -czhf %s -T %s 2>/dev/null; echo $?",
                     baseDir, remoteTarPath, remoteFileListPath));
 
         ShellResponse response =

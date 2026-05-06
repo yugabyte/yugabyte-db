@@ -118,13 +118,22 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.universeScope(sourceUniverseUuid), () =>
     api.fetchRuntimeConfigs(sourceUniverseUuid, true)
   );
+  const targetRuntimeConfigQuery = useQuery(
+    runtimeConfigQueryKey.universeScope(committedTargetUniverseUuid ?? ''),
+    () => api.fetchRuntimeConfigs(committedTargetUniverseUuid!, true),
+    { enabled: !!committedTargetUniverseUuid }
+  );
 
   const drConfigMutation = useMutation(
-    ({ formValues, isDbScoped }: { formValues: CreateDrConfigFormValues; isDbScoped: boolean }) => {
-      const retentionPeriodSec =
-        formValues.pitrRetentionPeriodValue *
-        DURATION_UNIT_TO_SECONDS[formValues.pitrRetentionPeriodUnit.value];
-
+    ({
+      formValues,
+      isDbScoped,
+      skipPitr
+    }: {
+      formValues: CreateDrConfigFormValues;
+      isDbScoped: boolean;
+      skipPitr: boolean;
+    }) => {
       const createDrConfigRequest: CreateDrConfigRequest = {
         name: formValues.configName,
         sourceUniverseUUID: sourceUniverseUuid,
@@ -135,11 +144,15 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             storageConfigUUID: formValues.storageConfig.value.uuid
           }
         },
-        pitrParams: {
-          retentionPeriodSec: retentionPeriodSec
-        },
         dbScoped: isDbScoped
       };
+      if (!skipPitr) {
+        createDrConfigRequest.pitrParams = {
+          retentionPeriodSec:
+            formValues.pitrRetentionPeriodValue *
+            DURATION_UNIT_TO_SECONDS[formValues.pitrRetentionPeriodUnit.value]
+        };
+      }
       return api.createDrConfig(createDrConfigRequest);
     },
     {
@@ -292,6 +305,12 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       (config: any) => config.key === RuntimeConfigKey.XCLUSTER_DB_SCOPED_CREATION_FEATURE_FLAG
     )?.value ?? false;
 
+  const targetRuntimeConfigEntries = targetRuntimeConfigQuery.data?.configEntries ?? [];
+  const skipPitrSnapshotSchedules =
+    targetRuntimeConfigEntries.find(
+      (config: any) => config.key === RuntimeConfigKey.SKIP_XCLUSTER_SNAPSHOT_SCHEDULES
+    )?.value === 'true';
+
   const onSubmit: SubmitHandler<CreateDrConfigFormValues> = async (formValues) => {
     // When the user changes target universe, the old table selection is no longer valid.
     const isTableSelectionInvalidated =
@@ -376,7 +395,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY);
         return;
       case FormStep.BOOTSTRAP_SUMMARY:
-        setCurrentFormStep(FormStep.CONFIGURE_PITR);
+        if (skipPitrSnapshotSchedules) {
+          setCurrentFormStep(FormStep.CONFIRM_ALERT);
+        } else {
+          setCurrentFormStep(FormStep.CONFIGURE_PITR);
+        }
         return;
       case FormStep.CONFIGURE_PITR:
         setCurrentFormStep(FormStep.CONFIRM_ALERT);
@@ -384,7 +407,8 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       case FormStep.CONFIRM_ALERT:
         return drConfigMutation.mutateAsync({
           formValues,
-          isDbScoped: isDbScopedEnabled
+          isDbScoped: isDbScopedEnabled,
+          skipPitr: skipPitrSnapshotSchedules
         });
       default:
         return assertUnreachableCase(currentFormStep);
@@ -409,7 +433,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY);
         return;
       case FormStep.CONFIRM_ALERT:
-        setCurrentFormStep(FormStep.CONFIGURE_PITR);
+        if (skipPitrSnapshotSchedules) {
+          setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY);
+        } else {
+          setCurrentFormStep(FormStep.CONFIGURE_PITR);
+        }
         return;
       default:
         assertUnreachableCase(currentFormStep);
@@ -423,7 +451,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       case FormStep.SELECT_TABLES:
         return t('step.selectDatabases.submitButton');
       case FormStep.BOOTSTRAP_SUMMARY:
-        return t('step.bootstrapSummary.submitButton');
+        return skipPitrSnapshotSchedules
+          ? t('step.configurePitr.submitButton')
+          : t('step.bootstrapSummary.submitButton');
       case FormStep.CONFIGURE_PITR:
         return t('step.configurePitr.submitButton');
       case FormStep.CONFIRM_ALERT:
@@ -474,6 +504,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           currentFormStep={currentFormStep}
           isFormDisabled={isFormDisabled}
           sourceUniverse={sourceUniverse}
+          skipPitrSnapshotSchedules={skipPitrSnapshotSchedules}
           tableSelectProps={{
             configAction: XClusterConfigAction.CREATE,
             isDrInterface: true,

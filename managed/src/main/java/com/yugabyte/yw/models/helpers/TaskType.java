@@ -765,6 +765,9 @@ public enum TaskType {
 
   PersistUseClockbound(com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound.class),
 
+  PersistEnableMultiTenancy(
+      com.yugabyte.yw.commissioner.tasks.subtasks.PersistEnableMultiTenancy.class),
+
   UpdateNodeDetails(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails.class),
 
   // Tasks belonging to subtasks classpath
@@ -936,6 +939,10 @@ public enum TaskType {
 
   WaitForReplicationDrain(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDrain.class),
+
+  XClusterFailoverWithOnDemandSnapshot(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterFailoverWithOnDemandSnapshot
+          .class),
 
   ResetXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry.class),
@@ -1162,6 +1169,8 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity.class),
 
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
+
+  CheckCpuCgroup(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCpuCgroup.class),
 
   CheckOpentelemetryOperator(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator.class),

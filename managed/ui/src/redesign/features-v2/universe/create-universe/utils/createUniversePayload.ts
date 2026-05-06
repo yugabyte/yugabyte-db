@@ -92,7 +92,7 @@ const mapCommunicationPorts = (otherSettings: OtherAdvancedProps): Communication
   };
 };
 
-const mapGFlags = (
+export const mapGFlags = (
   gflags: {
     Name: string;
     MASTER?: string | boolean | number;

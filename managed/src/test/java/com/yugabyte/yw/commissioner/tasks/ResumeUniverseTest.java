@@ -235,7 +235,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
                 Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
 
     verifyNodeInteractionsCapacityReservation(
-        12,
+        6,
         NodeManager.NodeCommandType.Resume,
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
@@ -311,7 +311,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
                     Arrays.asList("host-n4-readonly", "host-n5-readonly", "host-n6-readonly")))));
 
     verifyNodeInteractionsCapacityReservation(
-        21,
+        12,
         NodeManager.NodeCommandType.Resume,
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
@@ -347,7 +347,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
 
     verifyNodeInteractionsCapacityReservation(
-        9,
+        3,
         NodeManager.NodeCommandType.Resume,
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(

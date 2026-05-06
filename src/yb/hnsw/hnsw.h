@@ -172,9 +172,6 @@ class YbHnsw {
   void SearchInBaseLayer(
       const std::byte* query_vector, VectorNo best_vector, DistanceType best_dist,
       const vector_index::SearchOptions& options, YbHnswSearchContext& context) const;
-  void SearchExact(
-      const std::byte* query_vector, const vector_index::SearchOptions& options,
-      YbHnswSearchContext& context) const;
   SearchResult MakeResult(size_t max_results, YbHnswSearchContext& context) const;
 
   DistanceType Distance(const std::byte* lhs, size_t vector, SearchCache& cache) const;

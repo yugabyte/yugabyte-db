@@ -49,7 +49,6 @@
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/rpc/messenger.h"
@@ -70,6 +69,7 @@
 #include "yb/server/webserver.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/concurrent_value.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
@@ -285,7 +285,7 @@ const NodeInstancePB& RpcServerBase::instance_pb() const {
 Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   if (FLAGS_num_reactor_threads == -1) {
     // Auto set the number of reactors based on the number of cores.
-    auto count = std::min(16, static_cast<int>(base::NumCPUs()));
+    auto count = std::min(16, static_cast<int>(NumEffectiveCPUs()));
     RETURN_NOT_OK(SET_FLAG_DEFAULT_AND_CURRENT(num_reactor_threads, count));
     LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
   }

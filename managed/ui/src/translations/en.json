@@ -95,6 +95,10 @@
         }
       }
     },
+    "toast": {
+      "dbUpgradeRollbackRequestFailedLabel": "DB upgrade rollback request failed",
+      "dbUpgradeFinalizeRequestFailedLabel": "DB upgrade finalize request failed"
+    },
     "queryError": {
       "failedToFetchUniverseList": "Error fetching universe list.",
       "failedToFetchCustomerRuntimeConfig": "Failed to fetch runtime configurations for the current customer.",
@@ -333,7 +337,8 @@
             "canary": {
               "title": "Canary upgrade",
               "tag": "Advanced",
-              "description": "Includes monitoring pauses and mid-upgrade rollback opportunities."
+              "description": "Includes monitoring pauses and mid-upgrade rollback opportunities.",
+              "unavailableTooltip": "Not available for this universe. Learn more about <dbUpgradeRequirementsLink>canary upgrade requirements</dbUpgradeRequirementsLink>."
             },
             "upgradePace": {
               "title": "Upgrade Pace",
@@ -365,16 +370,22 @@
             "upgrade": "Upgrade"
           },
           "toast": {
-            "dbUpgradeInitiated": "Database upgrade initiated",
-            "dbUpgradeFailed": "Database upgrade request failed"
+            "dbUpgradeFailed": "Database upgrade request failed",
+            "dbUpgradePrecheckFailed": "Database pre-check request failed"
           }
         },
         "rollbackModal": {
           "modalTitle": "Roll Back Upgrade",
           "confirmationMessage": "Are you sure you want to roll back to",
           "rollbackPaceTitle": "ROLLBACK PACE",
-          "rollbackPaceRolling": "Rolling rollback of nodes in upgraded AZs",
-          "rollbackPaceConcurrent": "Concurrent rollback of all upgraded nodes",
+          "rollbackPaceRolling": {
+            "postUpgrade": "Rolling rollback",
+            "upgradeInProgress": "Rolling rollback of nodes in upgraded AZs"
+          },
+          "rollbackPaceConcurrent": {
+            "postUpgrade": "Concurrent rollback of all nodes",
+            "upgradeInProgress": "Concurrent rollback of all upgraded nodes"
+          },
           "concurrentRollbackDowntimeWarning": "<bold>Requires downtime.</bold> The universe will be unavailable while the rollback is in progress.",
           "upgradedAzsLabel": "Upgraded AZs:",
           "submitLabel": "Proceed to Roll Back",
@@ -393,40 +404,136 @@
             "waitBetweenBatchesMin": "Must be 0 or greater."
           }
         },
+        "finalizeModal": {
+          "modalTitle": "One last reminder before we proceed...",
+          "noRollBackAfterFinalize": "After the upgrade is finalized, you won't be able to roll back.",
+          "makeSureToEvaluatePerformance": "Make sure you evaluate the universe performance before finalizing the upgrade.",
+          "evaluationLink": "View recommended evaluation steps",
+          "submitLabel": "Proceed to finalize the upgrade",
+          "toast": {
+            "finalizeUpgradeFailedLabel": "Finalize DB upgrade request failed"
+          }
+        },
         "dbUpgradeManagementSidePanel": {
-          "title": "DB Upgrade Management",
+          "title": "Upgrade Monitor",
           "descriptionTitle": "DESCRIPTION",
           "description": "Upgrade to YugabyteDB {{targetDbVersion}}",
           "ysqlMajorUpgrade": "YSQL Major Upgrade",
           "progressPanel": {
             "title": "Upgrade Progress",
+            "rollBack": "Roll Back",
+            "resumeUpgrade": "Resume Upgrade",
+            "finalizeUpgradeNow": "Finalize Upgrade Now",
+            "temporaryRestrictions": {
+              "tag": "Temporary Restrictions",
+              "ddlAndSomeOperationsBlockedForUpgrade": "DDLs and <dbUpgradeImpactDocLink>some operations</dbUpgradeImpactDocLink> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "someOperationsBlockedForUpgrade": "<dbUpgradeImpactDocLink>Some operations</dbUpgradeImpactDocLink> are blocked and will remain unavailable until the upgrade is completed.",
+              "universeMayHaveSlowerPerformance": "The universe may have slower performance."
+            },
+            "assessPerformance": {
+              "upgrade": {
+                "title": "Before resuming upgrade, assess your universe's performance",
+                "description": "Monitor your universe and application performance. If everything looks normal, resume the upgrade."
+              },
+              "finalize": {
+                "title": "Before finalizing, assess your universe's performance",
+                "description": "Compare the performance of PostgreSQL statements before and after upgrade."
+              }
+            },
+            "operationBanner": {
+              "preCheckInProgressBanner": "Pre-check in progress. This may take a few minutes.",
+              "preCheckSuccessBanner": "Universe is ready for upgrade.",
+              "preCheckFailedBanner": "Pre-check failed. Universe does not meet upgrade requirements. <viewDetailsLink>View error details</viewDetailsLink>",
+              "upgradeInProgressBanner": "Upgrade in progress. DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+              "upgradeSuccessBanner": "Upgrade completed.",
+              "upgradeFailedBanner": "Failed to upgrade. <viewDetailsLink>View error details</viewDetailsLink>"
+            },
             "preCheckStage": {
               "title": "Pre-Check",
               "description": "Checks upgrade readiness and flags anything that needs fixing."
             },
             "upgradeMasterServersStage": {
               "title": "Upgrade Master Servers",
-              "description": "This step upgrades master servers to {{version}}."
+              "description": "This step upgrades master servers to <bold>{{version}}</bold>."
             },
             "upgradeAzStage": {
               "title": "Upgrade AZ : {{azLabel}}",
-              "description": "This step upgrades T-servers in {{azName}} to {{version}}.",
-              "upgradeInProgressInfo": "Upgrade in progress. DDLs and some universe operations are not available at this time.",
-              "learnMore": "Learn more"
+              "description": "This step upgrades T-servers in {{azName}} to <bold>{{version}}</bold>.",
+              "assessPerformanceTitle": "Before resuming upgrade, assess your universe's performance",
+              "assessPerformanceDescription": "Monitor your universe and application performance. If everything looks normal, resume the upgrade."
             },
             "finalizeStage": {
               "title": "Finalize Upgrade",
               "assessPerformanceTitle": "Before finalizing, assess your universe's performance",
-              "assessPerformanceDescription": "Compare the performance of PostgreSQL statements before and after upgrade.",
-              "rollBack": "Roll Back",
-              "finalizeUpgradeNow": "Finalize Upgrade Now"
+              "assessPerformanceDescription": "Compare the performance of PostgreSQL statements before and after upgrade."
             },
-            "temporaryRestrictions": {
-              "tag": "Temporary Restrictions",
-              "duringAzUpgradeItem1": "DDLs and some operations are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
-              "duringAzUpgradeItem2": "The universe may have slower performance.",
-              "beforeFinalize": "DDLs and some operations remain blocked until the upgrade is either finalized or rolled back."
+            "toast": {
+              "resumeUpgradeFailedLabel": "Resume DB upgrade request failed"
             }
+          }
+        },
+        "clusterBanner": {
+          "actions": {
+            "viewDetails": "View Details",
+            "openUpgradeMonitor": "Open Upgrade Monitor",
+            "upgradeDatabase": "Upgrade Database",
+            "retry": "Retry"
+          },
+          "precheckInProgress": {
+            "title": "Upgrade pre-check in progress.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "precheckIssuesFound": {
+            "title": "Upgrade pre-check found issues.",
+            "description": "Universe does not meet DB upgrade requirements.",
+            "descriptionPg15": "Universe does not meet PG15 upgrade requirements."
+          },
+          "precheckPassed": {
+            "title": "Pre-check passed · <dateLabel>{{date}}</dateLabel>.",
+            "descriptionPg15": "Universe is ready for PG15 upgrade.",
+            "description": "Universe is ready for DB upgrade."
+          },
+          "upgradingSoftware": {
+            "title": "Upgrading software.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+            "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "softwareUpgradeFailed": {
+            "title": "Software upgrade failed."
+          },
+          "upgradePausedForMonitoring": {
+            "title": "Upgrade paused for monitoring.",
+            "description": "Review universe health, then resume or roll back."
+          },
+          "finalizeOrRollBack": {
+            "title": "Finalize or Roll Back Upgrade.",
+            "description": "Assess universe performance and finalize or roll back.",
+            "rollBack": "Roll Back",
+            "finalizeUpgradeNow": "Finalize Upgrade Now"
+          },
+          "upgradeAborted": {
+            "title": "Upgrade aborted.",
+            "description": "Upgrade was canceled because universe does not meet upgrade requirements."
+          },
+          "rollingBack": {
+            "title": "Rolling back upgrade.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+            "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "rollbackFailed": {
+            "title": "Failed to roll back."
+          },
+          "finalizing": {
+            "title": "Finalizing upgrade.",
+            "description": "Some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>",
+            "descriptionMajorDbUpgrade": "DDLs and some universe operations are not available at this time. <learnMoreLink>Learn more</learnMoreLink>"
+          },
+          "finalizeFailed": {
+            "title": "Failed to finalize upgrade."
+          },
+          "upgradeCompleted": {
+            "title": "Upgrade completed. Universe is now on {{targetDbVersion}}.",
+            "description": "Assess performance and <rollBackLinkButton>roll back</rollBackLinkButton> if needed."
           }
         }
       },
@@ -682,7 +789,8 @@
         "deleteRRMessage": "Are you sure you want to delete this read replica cluster ?",
         "enterUniverseName": "Enter universe name to confirm delete:",
         "forceDeleteCheckbox": "Ignore Errors and Force Delete",
-        "modalTitle": "Delete Read Replica of {{universeName}}"
+        "modalTitle": "Delete Read Replica of {{universeName}}",
+        "deletionStarted": "Deletion is in progress"
       },
       "gFlags": {
         "loadingGflagGroups": "Loading Gflag groups ...",
@@ -2731,7 +2839,8 @@
         "Success": "Completed",
         "Running": "In Progress",
         "Abort": "Aborting",
-        "Aborted": "Aborted"
+        "Aborted": "Aborted",
+        "Paused": "Paused"
       },
       "progress": {
         "title": "Progress",
@@ -2745,6 +2854,7 @@
       },
       "banner": {
         "viewDetails": "View Details",
+        "retry": "Retry",
         "taskProgress": "{{percent}}%",
         "opNotAvailable": "Some operations are not available while the current operation is in progress",
         "softwareUpgradeFailed": "Software Upgrade Failed",
@@ -3771,7 +3881,7 @@
           "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
           "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps.",
           "expertResilienceUninferable": "<b>Invalid configuration!</b> RF {{rf}} requires either {{rf}} AZs or a minimum of {{rf}} total nodes. The current placement falls below this requirement.",
-          "expertAzBlank":"<b>Invalid configuration!</b> Availability zone cannot be left blank."
+          "expertAzBlank": "<b>Invalid configuration!</b> Availability zone cannot be left blank."
         }
       },
       "instanceSettings": {
@@ -4077,6 +4187,7 @@
         "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
         "clusterPlacement": "Cluster Placement",
         "addReadReplica": "Add Read Replica",
+        "readReplica": "Read Replica",
         "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
         "addGeoPartition": "Add Geo Partition",
         "geoPartitionHelpText": "Optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
@@ -4111,7 +4222,9 @@
         "geoParitionPlacementView": {
           "title": "Geo Partitions",
           "addGeoPartition": "Add Geo Partition"
-        }
+        },
+        "menuEditPlacement": "Edit Placement",
+        "menuDeleteReadReplica": "Delete Read Replica"
       },
       "editResilienceAndRegions": {
         "title": "Edit Placement"
@@ -4188,10 +4301,43 @@
         "advancedFlagSubText": "By default, T-Server flags from the primary cluster are applied to Read Replicas.",
         "advancedFlagNote": "<strong>Note:</strong> Read replicas do not include Master servers.",
         "regionAZHelpText": "Enhance read scalability and availability with geographically distributed replicas. <a>Learn more</a>",
+        "regionsSectionTitle": "Regions",
+        "regionLabel": "Region {{index}}",
+        "availabilityZone": "Availability Zone",
+        "nodes": "Nodes",
+        "replicationFactor": "Replication Factor",
+        "replicationFactorTooltip": "Number of copies of primary cluster data maintained in this availability zone. Determines fault tolerance within the read replica.<br/>",
+        "totalNodesPlacement": "Total Nodes",
+        "addAvailabilityZone": "Add Availability Zone",
+        "removeRegion": "Remove region",
+        "addRegion": "Add Region",
+        "newRegionBadge": "NEW",
+        "undoChange": "Undo Change",
+        "legendPrimaryCluster": "Primary Cluster",
+        "legendReadReplica": "Read Replica",
+        "legendSecondary": "Secondary",
+        "loadingRegions": "Loading regions…",
         "rrInstance": "Read Replica Instance",
         "primaryRRInstanceSame": "Keep read replica instance settings same as primary cluster instance settings.",
         "primaryClusterInstSettings": "Primary Cluster Instance Settings",
         "kmsConfig": "Key Management Service Config",
+        "reviewCostSummary": {
+          "primaryCluster": "Primary Cluster",
+          "readReplicaTitle": "Read Replica"
+        },
+        "reviewSummary": {
+          "daily": "Daily",
+          "monthly": "Monthly",
+          "universeTotal": "Universe total",
+          "totalNodes": "Total nodes",
+          "totalCores": "Total cores",
+          "totalMemory": "Total memory",
+          "totalStorage": "Total storage"
+        },
+        "toast": {
+          "addRRFailed": "Failed to add read replica",
+          "updateRRFailed": "Failed to update read replica"
+        },
         "validation": {
           "invalidArchitecture": "Invalid CPU Architecture",
           "positiveNumber": "{{field}} must be a positive number",
@@ -4200,7 +4346,11 @@
           "invalidStorageClass": "Invalid storage class",
           "invalidMountPoint": "Mount point must be a valid path starting with '/'",
           "invalidStorageType": "Invalid storage type",
-          "required": "{{field}} is required"
+          "required": "{{field}} is required",
+          "regionRequired": "Select a region.",
+          "zoneRequired": "Select an availability zone.",
+          "nodesPositiveInteger": "Nodes must be a positive whole number.",
+          "universeUuidMissing": "Universe identifier is missing."
         }
       }
     }

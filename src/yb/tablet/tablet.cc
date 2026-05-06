@@ -77,6 +77,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 
@@ -226,6 +227,10 @@ DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
 
 DEFINE_test_flag(uint64, backfill_paging_size, 0,
     "If set > 0, returns early after processing this number of rows.");
+
+DEFINE_test_flag(bool, skip_write_stop_check_in_should_apply_write, false,
+    "When true, ShouldApplyWrite() does not check AreWritesStopped(). "
+    "Used to verify that the AreWritesStopped() check is necessary. See #30728.");
 
 DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
     "After modifying the flushed frontier in RocksDB, verify that the restored value "
@@ -485,11 +490,7 @@ std::string MakeTabletLogPrefix(
 // commit_ht - transaction commit hybrid time.
 // So frontiers should cover range of those times.
 void InitFrontiers(
-    OpId op_id,
-    HybridTime log_ht,
-    HybridTime commit_ht,
-    docdb::ConsensusFrontiers& frontiers) {
-  CHECK(!op_id.empty());
+    OpId op_id, HybridTime log_ht, HybridTime commit_ht, docdb::ConsensusFrontiers& frontiers) {
   set_op_id(op_id, &frontiers);
   HybridTime min_ht = log_ht;
   HybridTime max_ht = log_ht;
@@ -1704,7 +1705,7 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
 
   if (abort_ops) {
     abort_pending_op_status_holder_.SetError(
-        STATUS_FORMAT(Aborted, "$0aborted pending operations", LogPrefix()));
+        STATUS_FORMAT(ShutdownInProgress, "$0aborted pending operations", LogPrefix()));
   }
 
   op_pauses.not_blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kFalse);
@@ -1730,13 +1731,14 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
   rocksdb::Options rocksdb_options;
 
   std::vector<std::string> db_paths;
+  // Vector indexes use regular and intents db, so should shutdown them first.
+  vector_indexes_->CompleteShutdown(db_paths);
   for (auto* db_uniq_ptr : {&intents_db_, &regular_db_}) {
     if (*db_uniq_ptr) {
       db_paths.push_back((*db_uniq_ptr)->GetName());
       db_uniq_ptr->reset();
     }
   }
-  vector_indexes_->CompleteShutdown(db_paths);
 
   key_bounds_ = docdb::KeyBounds();
   // Reset rocksdb_shutdown_requested_ to the initial state like RocksDBs were never opened,
@@ -1810,7 +1812,8 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 }
 
 Status Tablet::ApplyRowOperations(
-    WriteOperation* operation, const docdb::StorageSet& apply_to_storages) {
+    WriteOperation* operation, const docdb::StorageSet& apply_to_storages,
+    bool skip_opid_update) {
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_write_batch_ms);
   const auto& write_request =
       operation->consensus_round() && operation->consensus_round()->replicate_msg()
@@ -1826,13 +1829,21 @@ Status Tablet::ApplyRowOperations(
   }
 
   return ApplyOperation(
-      *operation, write_request.batch_idx(), put_batch, apply_to_storages);
+      *operation, write_request.batch_idx(), put_batch, apply_to_storages, skip_opid_update);
+}
+
+Status Tablet::UpdateOpIdForOperation(WriteOperation* operation) {
+  SCHECK(
+      operation->consensus_round() && operation->consensus_round()->replicate_msg(), IllegalState,
+      "Operation is not a consensus round");
+  docdb::ConsensusFrontiers frontiers;
+  set_op_id(operation->op_id(), &frontiers);
+  return intents_db_->UpdateFrontiers(frontiers);
 }
 
 Status Tablet::ApplyOperation(
-    const Operation& operation, int64_t batch_idx,
-    const docdb::LWKeyValueWriteBatchPB& write_batch,
-    const docdb::StorageSet& apply_to_storages) {
+    const Operation& operation, int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& write_batch,
+    const docdb::StorageSet& apply_to_storages, bool skip_opid_update) {
   VLOG_WITH_FUNC(4)
       << "operation: " << AsString(operation) << ", batch_idx: " << batch_idx << ", write_batch: "
       << AsString(write_batch) << ", apply_to_storages: " << AsString(apply_to_storages);
@@ -1846,10 +1857,10 @@ Status Tablet::ApplyOperation(
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
   InitFrontiers(
-      operation.op_id(), batch_hybrid_time, /* commit_ht= */ HybridTime::kInvalid, frontiers);
-  auto ttl = write_batch.has_ttl()
-      ? MonoDelta::FromNanoseconds(write_batch.ttl())
-      : dockv::ValueControlFields::kMaxTtl;
+    skip_opid_update ? OpId() : operation.op_id(), batch_hybrid_time,
+      /* commit_ht= */ HybridTime::kInvalid, frontiers);
+  auto ttl = write_batch.has_ttl() ? MonoDelta::FromNanoseconds(write_batch.ttl())
+                                   : dockv::ValueControlFields::kMaxTtl;
   frontiers.Largest().set_max_value_level_ttl_expiration_time(
       dockv::FileExpirationFromValueTTL(batch_hybrid_time, ttl));
   for (const auto& p : write_batch.table_schema_version()) {
@@ -1864,9 +1875,7 @@ Status Tablet::ApplyOperation(
 }
 
 Status Tablet::WriteTransactionalBatch(
-    int64_t batch_idx,
-    const docdb::LWKeyValueWriteBatchPB& put_batch,
-    HybridTime hybrid_time,
+    int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
     const storage::UserFrontiers& frontiers) {
   auto transaction_id = VERIFY_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
@@ -2197,11 +2206,9 @@ Status Tablet::DoHandlePgsqlReadRequest(
 
   const auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
 
-#ifndef NDEBUG
   if (pgsql_read_request.is_aggregate()) {
-    DEBUG_ONLY_TEST_SYNC_POINT("Tablet::DoHandlePgsqlReadRequest::Aggregate");
+    TEST_SYNC_POINT("Tablet::DoHandlePgsqlReadRequest::Aggregate");
   }
-#endif
 
   Status status;
   if (pgsql_read_request.has_get_tablet_key_ranges_request()) {
@@ -2723,27 +2730,26 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
     HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff, bool initial_retention_barrier,
     HybridTime min_start_ht_cdc_unstreamed_txns) {
   // WAL, History, Intents Retention
-  if (VERIFY_RESULT(metadata_->SetAllCDCRetentionBarriers(cdc_wal_index,
-                                                          cdc_sdk_intents_op_id,
-                                                          cdc_sdk_history_cutoff,
-                                                          require_history_cutoff,
-                                                          initial_retention_barrier))) {
-    // Intents Retention setting on txn_participant
-    // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
-    // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
-    // 3. min_start_ht_cdc_unstreamed_txns - time up to which intents SST files retained for CDC can
-    // be deleted, provided their maximum record time is earlier than this value.
-    auto txn_participant = transaction_participant();
-    if (txn_participant) {
-      VLOG_WITH_PREFIX_AND_FUNC(1)
-          << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
-          << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
-          << min_start_ht_cdc_unstreamed_txns;
-      txn_participant->SetIntentRetainOpIdAndTime(
-          cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
-      if (FLAGS_cdc_immediate_transaction_cleanup) {
-        CleanupIntentFiles();
-      }
+  RETURN_NOT_OK(metadata_->SetAllCDCRetentionBarriers(cdc_wal_index,
+                                                      cdc_sdk_intents_op_id,
+                                                      cdc_sdk_history_cutoff,
+                                                      require_history_cutoff,
+                                                      initial_retention_barrier));
+  // Intents Retention setting on txn_participant
+  // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
+  // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
+  // 3. min_start_ht_cdc_unstreamed_txns - time up to which intents SST files retained for CDC can
+  // be deleted, provided their maximum record time is earlier than this value.
+  auto txn_participant = transaction_participant();
+  if (txn_participant) {
+    VLOG_WITH_PREFIX_AND_FUNC(1)
+        << "Intents opid retention duration = " << cdc_sdk_op_id_expiration
+        << ", Minimum start time for CDC unstreamed txns from available gc log segments = "
+        << min_start_ht_cdc_unstreamed_txns;
+    txn_participant->SetIntentRetainOpIdAndTime(
+        cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
+    if (FLAGS_cdc_immediate_transaction_cleanup) {
+      CleanupIntentFiles();
     }
   }
 
@@ -4292,6 +4298,17 @@ bool Tablet::ShouldDisableLbMove() {
   return metadata_->schema()->has_colocation_id();
 }
 
+void Tablet::SetRocksDbTaskCgroup([[maybe_unused]] Cgroup* cgroup) {
+#ifdef __linux__
+  if (regular_db_) {
+    down_cast<rocksdb::DBImpl*>(regular_db_.get())->SetTaskCgroup(cgroup);
+  }
+  if (intents_db_) {
+    down_cast<rocksdb::DBImpl*>(intents_db_.get())->SetTaskCgroup(cgroup);
+  }
+#endif
+}
+
 Status Tablet::ForceManualRocksDBCompact(docdb::SkipFlush skip_flush) {
   return ForceRocksDBCompact(rocksdb::CompactionReason::kManualCompaction, skip_flush);
 }
@@ -4615,7 +4632,26 @@ bool Tablet::ShouldApplyWrite() {
     return false;
   }
 
-  return !regular_db_->NeedsDelay();
+  if (PREDICT_FALSE(FLAGS_TEST_skip_write_stop_check_in_should_apply_write)) {
+    return !regular_db_->NeedsDelay();
+  }
+
+  if (regular_db_->NeedsDelay() || regular_db_->AreWritesStopped()) {
+    return false;
+  }
+  if (intents_db_ && (intents_db_->NeedsDelay() || intents_db_->AreWritesStopped())) {
+    return false;
+  }
+  return true;
+}
+
+bool Tablet::AreWritesStopped() {
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  if (!scoped_read_operation.ok()) {
+    return true;
+  }
+  return (regular_db_ && regular_db_->AreWritesStopped()) ||
+         (intents_db_ && intents_db_->AreWritesStopped());
 }
 
 Result<IsolationLevel> Tablet::GetIsolationLevel(const TransactionMetadataPB& transaction) {

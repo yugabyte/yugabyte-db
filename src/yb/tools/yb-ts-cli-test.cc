@@ -89,63 +89,42 @@ string YBTsCliTest::GetTsCliToolPath() const {
   return GetToolPath(kTsCliToolName);
 }
 
-// Test setting vmodule
-TEST_F(YBTsCliTest, TestVModuleUpdate) {
+TEST_F(YBTsCliTest, SetFlagTest) {
   std::vector<std::string> ts_flags = {
       "--vmodule=foo=0,bar=1",
   };
   std::vector<std::string> master_flags = {};
-  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
+  ASSERT_NO_FATALS(StartCluster(
+      ts_flags, master_flags, /* num_tablet_servers */ 3, /* num_masters */ 1,
+      /* enable_ysql */ true));
 
   string exe_path = GetTsCliToolPath();
-  vector<string> argv;
-  argv.push_back(exe_path);
-  argv.push_back("--server_address");
-  argv.push_back(yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr()));
-  argv.push_back("set_flag");
-  argv.push_back("vmodule");
+  auto server_addr = yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr());
 
-  {
-    // Should be able to update for specified modules.
-    argv.push_back("foo=1,bar=2");
-    ASSERT_OK(Subprocess::Call(argv));
-    argv.pop_back();
-  }
+  auto run_set_flag = [&](const string& flag, const string& value,
+                          const vector<string>& extra_args = {}) {
+    vector<string> argv = {exe_path, "--server_address", server_addr};
+    for (const auto& arg : extra_args) argv.push_back(arg);
+    argv.push_back("set_flag");
+    argv.push_back(flag);
+    argv.push_back(value);
+    return Subprocess::Call(argv);
+  };
 
-  {
-    // Should be able to update for a subset of the modules specified.
-    argv.push_back("foo=1");
-    ASSERT_OK(Subprocess::Call(argv));
-    argv.pop_back();
-  }
+  // --- vmodule tests ---
+  ASSERT_OK(run_set_flag("vmodule", "foo=1,bar=2"));
+  ASSERT_OK(run_set_flag("vmodule", "foo=1"));
+  ASSERT_OK(run_set_flag("vmodule", ""));
+  ASSERT_OK(run_set_flag("vmodule", "foo=1,baz=2"));
+  ASSERT_NOK(run_set_flag("vmodule", "foo=,baz=2"));
+  ASSERT_NOK(run_set_flag("vmodule", "foo=1,=2"));
 
-  {
-    // Test with an empty string.
-    argv.push_back("");
-    ASSERT_OK(Subprocess::Call(argv));
-    argv.pop_back();
-  }
+  // --- set_flag validation tests ---
+  // Basic gflag validation failure: malformed CSV.
+  ASSERT_NOK(run_set_flag("ysql_pg_conf_csv", "a,b=1"));
 
-  {
-    // Should be able to update for any module unspecified at start-up.
-    argv.push_back("foo=1,baz=2");
-    ASSERT_OK(Subprocess::Call(argv));
-    argv.pop_back();
-  }
-
-  {
-    // Test with an empty string.
-    argv.push_back("foo=,baz=2");
-    ASSERT_NOK(Subprocess::Call(argv));
-    argv.pop_back();
-  }
-
-  {
-    // Test with an empty string.
-    argv.push_back("foo=1,=2");
-    ASSERT_NOK(Subprocess::Call(argv));
-    argv.pop_back();
-  }
+  // Extended PG validation failure: invalid GUC value.
+  ASSERT_NOK(run_set_flag("ysql_pg_conf_csv", "log_min_messages=foo"));
 }
 
 // Test deleting a tablet.

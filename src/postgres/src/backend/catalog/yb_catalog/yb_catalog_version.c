@@ -91,14 +91,6 @@ YbGetMasterCatalogVersionImpl(bool acquire_row_lock)
 uint64_t
 YbGetMasterCatalogVersion()
 {
-	/*
-	 * Fetch the latest catalog invalidation messages to see catalog version increments
-	 * from recently committed DDLs. This avoids reading a stale catalog version.
-	 * XXX: AcceptInvalidationMessages() must not call YbGetMasterCatalogVersion() to avoid recursion.
-	 */
-	if (!YBCIsLegacyModeForCatalogOps())
-		AcceptInvalidationMessages();
-
 	return YbGetMasterCatalogVersionImpl(false /* acquire_row_lock */ );
 }
 

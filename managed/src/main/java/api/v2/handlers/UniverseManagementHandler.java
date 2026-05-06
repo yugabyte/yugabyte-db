@@ -51,6 +51,7 @@ import com.yugabyte.yw.common.FileCollectionDownloader;
 import com.yugabyte.yw.common.LocalhostAccessChecker;
 import com.yugabyte.yw.common.NodeFileCollector;
 import com.yugabyte.yw.common.NodeScriptRunner;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -107,6 +108,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -114,6 +116,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -150,6 +153,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    // When new UI is turned on, initializing single partition if needed.
+    if (isNewUI()) {
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        initPartitions(cluster);
+      }
+    }
     // get v1 Universe
     com.yugabyte.yw.forms.UniverseResp v1Response =
         com.yugabyte.yw.forms.UniverseResp.create(universe, null, confGetter);
@@ -201,7 +210,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       expr = expr.eq("name", nameFilter);
     }
 
-    String order = spec.getDirection().toString();
+    UniversePagedQuerySpec.DirectionEnum sortDirection = spec.getDirection();
+    String order = sortDirection == UniversePagedQuerySpec.DirectionEnum.DESC ? "desc" : "asc";
     // sort: case-insensitive name, then UUID; null names sort like empty.
     String orderBy = String.format("coalesce(lower(name), '') %s, universe_uuid %s", order, order);
     expr = expr.orderBy(orderBy);
@@ -240,6 +250,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // create universe with v1 spec
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     v1Params.currentClusterType = ClusterType.PRIMARY;
+    v1Params.newUI =
+        !CollectionUtils.isEmpty(v1Params.getPrimaryCluster().getPartitions()) && isNewUI();
 
     universeCRUDHandler.configure(customer, v1Params);
 
@@ -275,13 +287,20 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
   public YBATask editUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec) {
+    boolean isNewUI = isNewUI();
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
+    UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // inherit RR cluster properties from primary cluster in given edit spec
     UniverseSpec v2Universe =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseSpec(
             dbUniverse.getUniverseDetails());
+    if (isNewUI) {
+      // For V2 users which are still editing placement instead of partitions
+      // we need to update partitions (otherwise this will be noOp)
+      verifyPartitionsEdit(universeEditSpec, v2Universe, dbUniverse);
+    }
     ClusterSpec primaryV2Cluster =
         v2Universe.getClusters().stream()
             .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
@@ -305,6 +324,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // edit universe with v1 spec
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     v1Params.currentClusterType = ClusterType.PRIMARY;
+    v1Params.newUI =
+        (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI;
+
     universeCRUDHandler.configure(customer, v1Params);
     // Handle ASYNC cluster edit
     if (isRREdited) {
@@ -318,7 +340,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
 
     TaskType taskType = TaskType.EditUniverse;
-    if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(dbUniverse)) {
       taskType = TaskType.EditKubernetesUniverse;
       universeCRUDHandler.notHelm2LegacyOrBadRequest(dbUniverse);
       universeCRUDHandler.checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
@@ -364,6 +386,15 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
+    v1Params.newUI =
+        (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI();
+    if (v1Params.newUI) {
+      if (newReadReplica.getOverallPlacement() == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Placement should be provided");
+      }
+      initPartitions(newReadReplica);
+    }
+
     universeCRUDHandler.configure(customer, v1Params);
     // start the add cluster task
     UUID taskUUID = universeCRUDHandler.createCluster(customer, dbUniverse, v1Params);
@@ -875,6 +906,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     v1Params.currentClusterType = ClusterType.PRIMARY;
+    v1Params.newUI = isNewUI();
+
     universeCRUDHandler.configure(customer, v1Params);
 
     if (v1Params.clusters.stream().anyMatch(cluster -> cluster.clusterType == ClusterType.ASYNC)) {
@@ -1346,5 +1379,83 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         .tserversOnly(nodeSelection.getTserversOnly())
         .maxParallelNodes(maxParallelNodes)
         .build();
+  }
+
+  private boolean isNewUI() {
+    return confGetter.getGlobalConf(GlobalConfKeys.editUniverseV2UiEnabled);
+  }
+
+  private void initPartitions(Cluster cluster) {
+    if (CollectionUtils.isEmpty(cluster.getPartitions())) {
+      // Setting default partition.
+      UniverseDefinitionTaskParams.PartitionInfo partitionInfo =
+          new UniverseDefinitionTaskParams.PartitionInfo();
+      partitionInfo.setDefaultPartition(true);
+      partitionInfo.setPlacement(cluster.getOverallPlacement());
+      partitionInfo.setUuid(UUID.randomUUID());
+      partitionInfo.setReplicationFactor(cluster.userIntent.replicationFactor);
+      partitionInfo.setName("Default");
+      cluster.setPartitions(Collections.singletonList(partitionInfo));
+    }
+  }
+
+  private boolean hasPartitions(UniverseDefinitionTaskParams params) {
+    for (Cluster cluster : params.clusters) {
+      if (!CollectionUtils.isEmpty(cluster.getPartitions())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private void verifyPartitionsEdit(
+      UniverseEditSpec universeEditSpec, UniverseSpec v2Universe, Universe dbUniverse) {
+    for (@Valid ClusterEditSpec clusterEditSpec : universeEditSpec.getClusters()) {
+      ClusterSpec clusterSpec =
+          v2Universe.getClusters().stream()
+              .filter(c -> c.getUuid().equals(clusterEditSpec.getUuid()))
+              .findFirst()
+              .orElseThrow(
+                  () ->
+                      new PlatformServiceException(
+                          BAD_REQUEST, "Unknown clusterEditSpec " + clusterEditSpec.getUuid()));
+      // When user is trying to edit placement for a universe with partitions.
+      // That's probably old API client.
+      // Updating partition accordingly (there should be only single one).
+      if (CollectionUtils.isEmpty(clusterEditSpec.getPartitionsSpec())
+          && clusterEditSpec.getPlacementSpec() != null
+          && !CollectionUtils.isEmpty(clusterSpec.getPartitionsSpec())) {
+        Cluster v1Cluster = ClusterMapper.INSTANCE.toV1Cluster(clusterSpec);
+        UniverseDefinitionTaskParams v1DefnParams =
+            UniverseDefinitionTaskParamsMapper.INSTANCE
+                .toV1UniverseDefinitionTaskParamsFromEditSpec(
+                    universeEditSpec, dbUniverse.getUniverseDetails());
+        Cluster v1NewCluster = v1DefnParams.getClusterByUuid(v1Cluster.uuid);
+        if (v1NewCluster != null) {
+          if (!PlacementInfoUtil.isSamePlacement(
+                  v1Cluster.placementInfo, v1NewCluster.placementInfo)
+              || v1NewCluster.userIntent.replicationFactor
+                  != v1Cluster.userIntent.replicationFactor) {
+            if (v1Cluster.isGeoPartitioned()) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  "Cluster is geo partitioned, please modify partitions instead of the whole"
+                      + " placement");
+            }
+            clusterEditSpec.setPartitionsSpec(clusterSpec.getPartitionsSpec());
+            log.info(
+                "Detected attempt to update placement info for cluster {} with new schema!"
+                    + " Updating partition spec {}",
+                clusterEditSpec,
+                clusterSpec.getPartitionsSpec());
+            clusterEditSpec
+                .getPartitionsSpec()
+                .get(0)
+                .placement(clusterEditSpec.getPlacementSpec())
+                .replicationFactor(v1NewCluster.userIntent.replicationFactor);
+          }
+        }
+      }
+    }
   }
 }

@@ -35,6 +35,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCpuCgroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
@@ -1976,6 +1977,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         });
   }
 
+  /**
+   * Creates a task to verify that the CPU cgroup required for YugabyteDB is configured on the given
+   * on-prem nodes. No-op for non-onprem providers; the subtask itself also guards on provider type.
+   */
+  public SubTaskGroup createCheckCpuCgroupTask(Collection<NodeDetails> nodes) {
+    return doInPrecheckSubTaskGroup(
+        "CheckCpuCgroup",
+        subTaskGroup -> {
+          CheckCpuCgroup task = createTask(CheckCpuCgroup.class);
+          CheckCpuCgroup.Params params = new CheckCpuCgroup.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
+  }
+
   /** Create a task to preform pre-check for software upgrade. */
   public void createCheckUpgradeTask(String ybSoftwareVersion) {
     doInPrecheckSubTaskGroup(
@@ -2197,7 +2215,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
       Universe universe, Collection<NodeDetails> nodes, boolean includeOnPremManual) {
-    NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
     Map<UUID, Boolean> clusterSkip = new HashMap<>();
     return nodes.stream()
         .filter(n -> n.cloudInfo != null)
@@ -2209,9 +2226,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                       Cluster cluster = universe.getCluster(n.placementUuid);
                       Provider provider =
                           Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-                      if (!nodeAgentEnabler.isNodeAgentServerEnabled(provider, universe)) {
-                        return false;
-                      }
                       if (provider.getCloudCode() == CloudType.onprem) {
                         return !provider.getDetails().skipProvisioning || includeOnPremManual;
                       }
@@ -3928,17 +3942,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         .setShouldRunPredicate(predicate);
 
     if (!ybcBackup) {
-      if (cloudType != CloudType.kubernetes) {
-        // Ansible Configure Task for copying xxhsum binaries from
-        // third_party directory to the DB nodes.
-        installThirdPartyPackagesTask(universe)
-            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware)
-            .setShouldRunPredicate(predicate);
-      } else {
+      if (cloudType == CloudType.kubernetes) {
         installThirdPartyPackagesTaskK8s(
                 universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
             .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware)
             .setShouldRunPredicate(predicate);
+      } else {
+        // Skip the backup tools installation as it depends on the removed ansible dependency
+        log.warn(
+            "YB Controller backup is not enabled. Assuming legacy backups tools are already"
+                + " installed");
       }
     }
 
@@ -4087,17 +4100,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .setShouldRunPredicate(predicate);
     }
     if (!isYbc) {
-      if (cloudType != CloudType.kubernetes) {
-        // Ansible Configure Task for copying xxhsum binaries from
-        // third_party directory to the DB nodes.
-        installThirdPartyPackagesTask(universe)
-            .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware)
-            .setShouldRunPredicate(predicate);
-      } else {
+      if (cloudType == CloudType.kubernetes) {
         installThirdPartyPackagesTaskK8s(
                 universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
             .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware)
             .setShouldRunPredicate(predicate);
+      } else {
+        // Skip the backup tools installation as it depends on the removed ansible dependency
+        log.warn(
+            "YB Controller backup is not enabled. Assuming legacy backups tools are already"
+                + " installed");
       }
     }
 
@@ -4834,39 +4846,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  /**
-   * Creates a task to install xxhash on the DB nodes from third-party packages.
-   *
-   * @param universe universe on which xxhash needs to be installed
-   */
-  public SubTaskGroup installThirdPartyPackagesTask(Universe universe) {
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for nodes",
-            SubTaskGroupType.InstallingThirdPartySoftware);
-    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
-    List<NodeDetails> nodes = universe.getServers(ServerType.TSERVER);
-    for (NodeDetails node : nodes) {
-      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
-      UserIntent userIntent =
-          universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
-      AnsibleConfigureServers.Params params =
-          getBaseAnsibleServerTaskParams(
-              userIntent,
-              node,
-              ServerType.TSERVER,
-              UpgradeTaskParams.UpgradeTaskType.ThirdPartyPackages,
-              UpgradeTaskParams.UpgradeTaskSubType.InstallThirdPartyPackages);
-      params.setUniverseUUID(universe.getUniverseUUID());
-      params.installThirdPartyPackages = true;
-      task.initialize(params);
-      task.setUserTaskUUID(getUserTaskUUID());
-      subTaskGroup.addSubTask(task);
-    }
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
   public SubTaskGroup createDnsManipulationTask(
       DnsManager.DnsCommandType eventType, boolean isForceDelete, Universe universe) {
     return createDnsManipulationTask(eventType, isForceDelete, universe, Collections.emptySet());
@@ -5053,10 +5032,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Set<ServerType> processes,
       boolean removeMasterFromQuorum,
       boolean deconfigure,
+      boolean flushTablets,
       SubTaskGroupType subTaskGroupType) {
     if (processes.contains(ServerType.TSERVER)) {
       addLeaderBlackListIfAvailable(nodes, subTaskGroupType);
-
       if (deconfigure) {
         UUID placementUuid = nodes.get(0).placementUuid;
         // Remove node from load balancer.
@@ -5071,7 +5050,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     for (ServerType processType : processes) {
       createServerControlTasks(
-              nodes, processType, "stop", params -> params.deconfigure = deconfigure)
+              nodes,
+              processType,
+              "stop",
+              params -> {
+                params.deconfigure = deconfigure;
+                params.flushTabletsOnStopTserver = flushTablets;
+              })
           .setSubTaskGroupType(subTaskGroupType);
       if (processType == ServerType.MASTER && removeMasterFromQuorum) {
         createWaitForMasterLeaderTask().setSubTaskGroupType(subTaskGroupType);

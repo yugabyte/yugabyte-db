@@ -348,6 +348,7 @@ static SlruCtlData NotifyCtlData;
 
 bool		yb_enable_listen_notify = false;
 bool		yb_test_fatal_after_notifs_queue_write = false;
+int			yb_test_notify_queue_max_pages = 0;
 int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
 int			yb_notifications_poll_sleep_duration_empty_ms = 100;
 
@@ -688,6 +689,7 @@ static void ybNotifsPollerInit(void);
 static void ybNotifsPollerLoop(void);
 static void ybNotifsPollerProcessRecord(const YbcPgRowMessage *record);
 static void ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record);
+static bool ybTerminateSlowestListener(void);
 static void ybNotifsPollerAddPendingEntriesToQueue(void);
 static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid);
 static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
@@ -1692,6 +1694,22 @@ asyncQueueIsFull(void)
 {
 	int			nexthead;
 	int			boundary;
+
+	/*
+	 * YB test hook: treat the queue as full once the head has advanced
+	 * yb_test_notify_queue_max_pages pages beyond the tail.
+	 */
+	if (yb_test_notify_queue_max_pages > 0)
+	{
+		int			headpage = QUEUE_POS_PAGE(QUEUE_HEAD);
+		int			tailpage = QUEUE_POS_PAGE(QUEUE_TAIL);
+		int			used = (headpage >= tailpage)
+			? headpage - tailpage
+			: (QUEUE_MAX_PAGE + 1 - tailpage) + headpage;
+
+		if (used >= yb_test_notify_queue_max_pages)
+			return true;
+	}
 
 	/*
 	 * The queue is full if creating a new head page would create a page that
@@ -3299,13 +3317,65 @@ ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe)
 }
 
 /*
- * Add the pending entries to the queue. If the queue is full, wait for it to
- * become empty.
+ * Find the slowest listener (the one furthest behind in the queue) and
+ * terminate it so the queue tail can advance.
+ *
+ * Only terminate if some other listener has fully caught up (position ==
+ * QUEUE_HEAD). If every listener still has scanning to do, killing the
+ * slowest one would not help the others and would just disrupt a session
+ * unnecessarily. This also naturally prevents termination when there is only a
+ * single listener.
+ *
+ * Returns true if SIGTERM was sent, false otherwise.
+ *
+ * Caller must hold NotifyQueueLock in at least SHARED mode.
+ */
+static bool
+ybTerminateSlowestListener(void)
+{
+	QueuePosition minPos = QUEUE_HEAD;
+	int32		minPid = InvalidPid;
+	bool		hasCaughtUpListener = false;
+
+	for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
+	{
+		Assert(QUEUE_BACKEND_PID(i) != InvalidPid);
+
+		if (QUEUE_POS_EQUAL(QUEUE_BACKEND_POS(i), QUEUE_HEAD))
+		{
+			hasCaughtUpListener = true;
+			continue;
+		}
+
+		/* This listener is behind; track the furthest-behind one. */
+		QueuePosition newMin = QUEUE_POS_MIN(minPos, QUEUE_BACKEND_POS(i));
+
+		if (!QUEUE_POS_EQUAL(newMin, minPos))
+		{
+			minPos = newMin;
+			minPid = QUEUE_BACKEND_PID(i);
+		}
+	}
+
+	if (minPid == InvalidPid || !hasCaughtUpListener)
+		return false;
+
+	elog(WARNING,
+		 "NOTIFY queue is full, terminating slowest listener (PID %d)",
+		 minPid);
+	kill(minPid, SIGTERM);
+	return true;
+}
+
+/*
+ * Add the pending entries to the queue. If the queue is full, terminate the
+ * slowest listener to allow the queue tail to advance.
  */
 static void
 ybNotifsPollerAddPendingEntriesToQueue(void)
 {
 	ListCell   *nextQueueEntry = list_head(ybNotifsPollerPendingEntries);
+	bool		sigtermSent = false;
 
 	while (nextQueueEntry != NULL)
 	{
@@ -3314,12 +3384,29 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
 		LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
 		if (asyncQueueIsFull())
 		{
+			/*
+			 * After sending SIGTERM, suppress further signals until the queue
+			 * drains.
+			 */
+			if (!sigtermSent)
+				sigtermSent = ybTerminateSlowestListener();
 			LWLockRelease(NotifyQueueLock);
+
+			/*
+			 * The queue can become full in the middle of writing notifications
+			 * of a transaction. Signal the backends so the fast listeners, if
+			 * any, can read till the end of the queue and the slowest listener
+			 * can be terminated in the next call to
+			 * ybTerminateSlowestListener().
+			 */
+			if (!sigtermSent)
+				SignalBackends();
 			CHECK_FOR_INTERRUPTS();
-			pg_usleep(10000L);	/* sleep for 10ms */
+			pg_usleep(sigtermSent ? 500000L : 10000L);
 			asyncQueueAdvanceTail();
 			continue;
 		}
+		sigtermSent = false;
 		nextQueueEntry = asyncQueueAddEntries(nextQueueEntry);
 		LWLockRelease(NotifyQueueLock);
 	}

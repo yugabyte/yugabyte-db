@@ -29,6 +29,7 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Region;
@@ -288,6 +289,8 @@ public class UniverseApiControllerTest extends UniverseTestBase {
   public void testCreateUniverseV2Geo() throws ApiException, IOException {
     UniverseApi api = new UniverseApi();
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2Geo();
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
 
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
@@ -304,6 +307,13 @@ public class UniverseApiControllerTest extends UniverseTestBase {
 
     // validate that the Universe create params matches properties specified in the createSpec
     validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
+
+    assertThat(v1CreateParams.getPrimaryCluster().isGeoPartitioned(), is(true));
+
+    com.yugabyte.yba.v2.client.models.Universe universeResp =
+        api.getUniverse(customer.getUuid(), v1CreateParams.getUniverseUUID());
+
+    assertThat(universeResp.getInfo().getClusters().get(0).getGeoPartitioned(), is(true));
   }
 
   @Test

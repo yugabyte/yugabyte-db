@@ -438,6 +438,16 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 			 * reloptions parsing will do the bounds check for us.
 			 */
 		}
+		else if (strncmp(def->defname, "yb_auto_analyze_",
+						 strlen("yb_auto_analyze_")) == 0)
+		{
+			/*
+			 * Acknowledge YB auto analyze reloptions (yb_auto_analyze_enabled,
+			 * yb_auto_analyze_threshold, yb_auto_analyze_scale_factor,
+			 * yb_auto_analyze_cooldown_scale_factor, yb_auto_analyze_min_cooldown,
+			 * yb_auto_analyze_max_cooldown).
+			 */
+		}
 		else if (strcmp(def->defname, "row_type_oid") == 0)
 		{
 			if (!cxt.isSystem)

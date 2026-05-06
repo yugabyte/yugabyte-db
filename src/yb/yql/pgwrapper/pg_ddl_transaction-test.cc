@@ -825,39 +825,4 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
   ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
 }
 
-TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointSlowTableDeletion) {
-  // Skip in case of commit as the test case is redundant.
-  if (GetParam()) {
-    return;
-  }
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
-
-  SyncPoint::GetInstance()->LoadDependency({
-    {
-      "PgDdlSavepointMiniClusterTest::TestRollbackToSavepointSlowTableDeletion:WaitForDeleteTable",
-      "CatalogManager::CheckTableDeleted:BeforeRemoveDdlTransactionState"
-    }
-  });
-  SyncPoint::GetInstance()->ClearTrace();
-  SyncPoint::GetInstance()->EnableProcessing();
-
-  ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName2));
-  ASSERT_OK(conn.Execute("SAVEPOINT a"));
-  ASSERT_OK(conn.Execute("SAVEPOINT b"));
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName));
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX idx ON $0 (a)", kTableName));
-  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
-  // The deletion of the table due to the above rollback to savepoint b will be delayed until the
-  // below sync point is hit. So it simulates the case when another rollback to savepoint arrives
-  // while the table deletion has started but not completed.
-  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
-  TEST_SYNC_POINT(
-      "PgDdlSavepointMiniClusterTest::TestRollbackToSavepointSlowTableDeletion:WaitForDeleteTable");
-  ASSERT_OK(conn.Execute("ROLLBACK"));
-}
-
 } // namespace yb::pgwrapper

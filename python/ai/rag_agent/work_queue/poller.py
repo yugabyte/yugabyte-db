@@ -15,12 +15,20 @@ class Poller:
     def __init__(self):
         self.connection_pool = ConnectionPool()
 
-    def poll(self, worker_id: str, lease_duration_seconds: int = 600) -> Optional[WorkQueueTask]:
+    def poll(
+        self,
+        worker_id: str,
+        document_types: List[str],
+        lease_duration_seconds: int = 600,
+    ) -> Optional[WorkQueueTask]:
         """
         Poll the work queue for new tasks.
 
         Args:
             worker_id: Identifier for the current worker
+            document_types: Non-empty list of MIME types to filter PREPROCESS
+                tasks. CREATE_SOURCE tasks are always eligible regardless of
+                this filter.
             lease_duration_seconds: Duration in seconds for which the task lease is valid
 
         Returns:
@@ -32,7 +40,8 @@ class Poller:
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
 
-            query = """
+            placeholders = ','.join(['%s'] * len(document_types))
+            query = f"""
             UPDATE dist_rag.work_queue
             SET task_status = 'IN_PROGRESS',
                 current_worker = %s,
@@ -43,13 +52,18 @@ class Poller:
             WHERE (id, task_type) = (
                 SELECT id, task_type FROM dist_rag.work_queue
                 WHERE task_status = 'QUEUED'
+                  AND (
+                      task_type = 'CREATE_SOURCE'
+                      OR (task_type = 'PREPROCESS'
+                          AND task_details->>'document_type' IN ({placeholders}))
+                  )
                 ORDER BY created_at ASC LIMIT 1
                 FOR UPDATE SKIP LOCKED
             )
             RETURNING id, task_type, task_details, lease_token, lease_expires_at;
             """
 
-            cursor.execute(query, (worker_id, lease_duration_seconds))
+            cursor.execute(query, (worker_id, lease_duration_seconds, *document_types))
             result = cursor.fetchone()
             connection.commit()
 

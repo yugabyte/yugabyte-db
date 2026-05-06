@@ -6,12 +6,12 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.List;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -53,7 +53,7 @@ public class CheckSshConnection extends NodeTaskBase {
       throw new IllegalStateException(errMsg);
     }
     ShellProcessContext shellContext = defaultShellContext;
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    Provider provider = Util.getProviderForNode(node, universe);
     if (provider.getCloudCode() != CloudType.onprem || !provider.getDetails().skipProvisioning) {
       // Set custom user for CSPs and onprem non-manual, otherwise yugabyte user is the default.
       String sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, node);

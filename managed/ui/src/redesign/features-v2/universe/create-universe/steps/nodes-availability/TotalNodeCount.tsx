@@ -3,9 +3,6 @@ import { useFormContext } from 'react-hook-form';
 import { NodeAvailabilityProps } from './dtos';
 import { getNodeCount } from '../../CreateUniverseUtils';
 import { useTranslation } from 'react-i18next';
-import { useContext } from 'react';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { ResilienceFormMode } from '../resilence-regions/dtos';
 import { REPLICATION_FACTOR } from '../../fields/FieldNames';
 
 const { styled } = mui;
@@ -29,9 +26,6 @@ export const TotalNodeCount = () => {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.guidedMode'
   });
 
-  const [{ resilienceAndRegionsSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
 
   const { watch } = useFormContext<NodeAvailabilityProps>();
   const az = watch('availabilityZones');

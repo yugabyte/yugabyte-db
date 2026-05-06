@@ -120,6 +120,10 @@ class PgApiImpl {
 
   ~PgApiImpl();
 
+  // Must be called before the global pgapi pointer is nulled, so that transaction abort paths
+  // can still access pgapi (e.g., YBCIsLegacyModeForCatalogOps).
+  void Shutdown();
+
   void SetupPgBackendCgroup(YbcPgOid dboid);
 
   const YbcPgCallbacks* pg_callbacks() const { return &pg_callbacks_; }

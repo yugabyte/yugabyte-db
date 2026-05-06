@@ -308,6 +308,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         compaction_reason_(compaction_->compaction_reason()),
         priority_(CalcSizePriority()),
         metrics_(db_impl->priority_thread_pool_metrics_) {
+    SetTaskCgroup(db_impl->task_cgroup());
     db_impl->mutex_.AssertHeld();
     SetTaskInfoAndCountAsPending();
   }
@@ -646,7 +647,9 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
 class DBImpl::FlushTask : public ThreadPoolTask {
  public:
   FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd)
-      : ThreadPoolTask(db_impl), cfd_(cfd) {}
+      : ThreadPoolTask(db_impl), cfd_(cfd) {
+    SetTaskCgroup(db_impl->task_cgroup());
+  }
 
   bool ShouldRemoveWithKey(void* key) override {
     return key == db_impl_ && db_impl_->disable_flush_on_shutdown_;
@@ -2921,6 +2924,13 @@ Status DBImpl::WaitForFlush(ColumnFamilyHandle* column_family) {
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
   // Wait until the flush completes.
   return WaitForFlushMemTable(cfh->cfd());
+}
+
+Status DBImpl::UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) {
+  InstrumentedMutexLock l(&mutex_);
+  SCHECK(column_family_memtables_->Seek(0), NotFound, "Column family not found");
+  column_family_memtables_->GetMemTable()->UpdateFrontiers(frontiers);
+  return Status::OK();
 }
 
 Status DBImpl::SyncWAL() {

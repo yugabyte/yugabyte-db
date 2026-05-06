@@ -665,6 +665,16 @@ SPLIT AT VALUES (
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_idx;
 
+-- test yb_enable_advanced_index_cond_fold flag off
+SET yb_enable_advanced_index_cond_fold = off;
+\set query ':P :Q SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 = 7 AND r2 IN (1, 2, 3, 4) AND r2 IN (0, 2, 4, 6, 8) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > 1 AND r1 IN (0, 2, 4, 6, 8) AND r1 < 7 ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6) AND r1 IN (3, 4, 5, 6, 7) AND r1 IN (5, 6, 7, 8, 9, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+RESET yb_enable_advanced_index_cond_fold;
+
 --
 -- EXPLAIN FORMAT JSON
 --

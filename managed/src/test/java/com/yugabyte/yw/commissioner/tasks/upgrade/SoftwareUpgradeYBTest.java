@@ -26,6 +26,7 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -175,7 +176,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(75)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(45)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
@@ -245,7 +246,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(75)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(45)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
@@ -306,7 +307,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(75)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(45)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
@@ -361,6 +362,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.enableYSQL = enableYSQL;
     userIntent.provider = defaultProvider.getUuid().toString();
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
 
     PlacementInfo pi = new PlacementInfo();
     AvailabilityZone az4 = AvailabilityZone.createOrThrow(region, "az-4", "AZ 4", "subnet-1");
@@ -385,7 +388,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(102)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(63)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(24)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
@@ -442,7 +445,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
-    verify(mockNodeManager, times(51)).nodeCommand(any(), commandParams.capture());
+    verify(mockNodeManager, times(25)).nodeCommand(any(), commandParams.capture());
     verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
@@ -1187,7 +1190,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
 
     UUID taskUUID = commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams);
-    waitForTask(taskUUID, TaskInfo.State.Paused);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertEquals(
@@ -1204,7 +1208,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
 
     UUID resumedUUID = resumeCanaryTask(taskUUID);
-    TaskInfo taskInfo = waitForTask(resumedUUID);
+    taskInfo = waitForTask(resumedUUID);
 
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -1268,7 +1272,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
 
     UUID taskUUID = commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams);
-    waitForTask(taskUUID, TaskInfo.State.Paused);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertEquals(
@@ -1312,7 +1317,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
 
     UUID taskUUID = commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams);
-    waitForTask(taskUUID, TaskInfo.State.Paused);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertEquals(
@@ -1362,7 +1368,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     // First run: should pause after az1 tservers.
     UUID taskUUID = commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams);
-    waitForTask(taskUUID, TaskInfo.State.Paused);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     PrevYBSoftwareConfig prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
@@ -1378,7 +1385,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     // Resume: should pause after az2 tservers.
     UUID resumedUUID = resumeCanaryTask(taskUUID);
-    waitForTask(resumedUUID, TaskInfo.State.Paused);
+    taskInfo = waitForTask(resumedUUID);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
@@ -1447,7 +1455,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     // First run: should pause after masters.
     UUID taskUUID = commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams);
-    waitForTask(taskUUID, TaskInfo.State.Paused);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     PrevYBSoftwareConfig prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
@@ -1465,7 +1474,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     // Resume after masters: should pause after az1 tservers.
     UUID resumedUUID = resumeCanaryTask(taskUUID);
-    waitForTask(resumedUUID, TaskInfo.State.Paused);
+    taskInfo = waitForTask(resumedUUID);
+    assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;

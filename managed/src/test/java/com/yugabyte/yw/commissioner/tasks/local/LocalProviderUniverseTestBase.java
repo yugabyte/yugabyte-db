@@ -183,7 +183,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   public Map<String, String> getYbcGFlags(UniverseDefinitionTaskParams.UserIntent userIntent) {
     Map<String, String> ybcGFlags = new HashMap<>();
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    Provider provider = Util.getSingleProvider(userIntent);
     LocalCloudInfo cloudInfo = CloudInfoInterface.get(provider);
     String baseBinDir = cloudInfo.getYugabyteBinDir();
     File binDirectory = new File(baseBinDir);
@@ -757,7 +757,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
             nodeDetails, universe, YUGABYTE_DB, createCommand, 10, authEnabled);
-    assertTrue(response.isSuccess());
+    assertTrue(response.getMessage(), response.isSuccess());
     response =
         localNodeUniverseManager.runYsqlCommand(
             nodeDetails,
@@ -1432,7 +1432,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   private void verifyDNS(Universe universe) {
     UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        Util.getSingleProviderUUID(universe.getUniverseDetails().getPrimaryCluster());
     Provider curProvider = Provider.getOrBadRequest(providerUUID);
     if (curProvider.getDetails().getCloudInfo().local.getHostedZoneId() != null) {
       Set<String> dns = localDnsManager.ipsList.getOrDefault(providerUUID, Collections.emptySet());

@@ -97,7 +97,7 @@ const useStyles = makeStyles((theme) => ({
     '&:not(:last-child)::after': {
       position: 'absolute',
       bottom: `calc(${theme.spacing(-2)}px - 1px)`,
-      left: theme.spacing(3),
+      left: theme.spacing(4),
       transform: 'translateX(-50%)',
 
       height: theme.spacing(2),

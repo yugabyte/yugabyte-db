@@ -81,7 +81,6 @@ import java.nio.charset.Charset;
 import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.PrivateKey;
-import java.security.Security;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -738,6 +737,20 @@ public class AsyncYBClient implements AutoCloseable {
     Deferred<FlushTableResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
+    return d;
+  }
+
+  public Deferred<FlushTabletsResponse> flushTablets(HostAndPort hp, String permanentUuid,
+      List<String> tabletIds) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    FlushTabletsRequest rpc = new FlushTabletsRequest(this.masterTable, permanentUuid, tabletIds);
+    Deferred<FlushTabletsResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    client.sendRpc(rpc);
     return d;
   }
 
@@ -1814,6 +1827,40 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<GetXClusterSafeTimeResponse> getXClusterSafeTime() {
     checkIsClosed();
     GetXClusterSafeTimeRequest request = new GetXClusterSafeTimeRequest(this.masterTable);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Initiates an asynchronous xCluster failover for the given replication group. The failover
+   * task runs on the DB master and can be polled via {@link #isXClusterFailoverDone}.
+   *
+   * <p>Prerequisites: AsyncYBClient must be created with the target (consumer) universe as context.
+   *
+   * @param replicationGroupId The replication group to fail over
+   * @return A deferred object that yields an {@link XClusterFailoverResponse}
+   */
+  public Deferred<XClusterFailoverResponse> xClusterFailover(String replicationGroupId) {
+    checkIsClosed();
+    XClusterFailoverRequest request =
+        new XClusterFailoverRequest(this.masterTable, replicationGroupId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Polls whether an xCluster failover initiated via {@link #xClusterFailover} has completed.
+   *
+   * <p>Prerequisites: AsyncYBClient must be created with the target (consumer) universe as context.
+   *
+   * @param replicationGroupId The replication group whose failover status to check
+   * @return A deferred object that yields an {@link IsXClusterFailoverDoneResponse}
+   */
+  public Deferred<IsXClusterFailoverDoneResponse> isXClusterFailoverDone(
+      String replicationGroupId) {
+    checkIsClosed();
+    IsXClusterFailoverDoneRequest request =
+        new IsXClusterFailoverDoneRequest(this.masterTable, replicationGroupId);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

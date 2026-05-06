@@ -692,4 +692,38 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
       return Integer.parseInt(line.trim());
     }
   }
+
+  protected static int getOdysseyPidForHost(String host) throws Exception {
+    // Defensive: this value is spliced into a shell command below. Test code
+    // always passes an IPv4 literal or a hostname, but reject anything that
+    // could escape the single-quoted awk string.
+    if (host == null || !host.matches("[a-zA-Z0-9._-]+")) {
+      throw new IllegalArgumentException("Invalid host for odyssey lookup: " + host);
+    }
+
+    // For every odyssey PID pgrep finds, ask `ss` whether that PID owns a
+    // listening TCP socket whose local address starts with "<host>:". First
+    // match wins. The trailing comma in the awk match anchors "pid=<pid>"
+    // against the format `users:(("odyssey",pid=12345,fd=7))` so pid=12 does
+    // not accidentally match pid=1234.
+    String script =
+        "for pid in $(pgrep -f odyssey); do "
+        + "  if ss -H -lntp 2>/dev/null "
+        + "       | awk -v pid=\"$pid\" -v ip='" + host + "' "
+        + "             '$4 ~ (\"^\"ip\":\") && $0 ~ (\"pid=\"pid\",\") {f=1} "
+        + "              END { exit !f }'; "
+        + "  then echo \"$pid\"; exit 0; fi; "
+        + "done; "
+        + "exit 1";
+    Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", script});
+    try (BufferedReader reader =
+             new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+      String line = reader.readLine();
+      if (line == null || line.trim().isEmpty()) {
+        throw new RuntimeException(
+            "Could not find Odyssey process listening on host " + host);
+      }
+      return Integer.parseInt(line.trim());
+    }
+  }
 }

@@ -72,8 +72,13 @@ public class TaskInfo extends Model {
   // This is a key lock for task info by UUID.
   private static final KeyLock<UUID> TASK_INFO_KEY_LOCK = new KeyLock<UUID>();
 
+  // Represents the task states that are considered completed from the task perspective.
   public static final Set<State> COMPLETED_STATES =
       Sets.immutableEnumSet(State.Success, State.Failure, State.Aborted);
+
+  // Represents the task states that are considered terminal from the execution perspective.
+  public static final Set<State> TERMINAL_STATES =
+      Sets.immutableEnumSet(State.Success, State.Failure, State.Aborted, State.Paused);
 
   public static final Set<State> ERROR_STATES = Sets.immutableEnumSet(State.Failure, State.Aborted);
 
@@ -387,6 +392,10 @@ public class TaskInfo extends Model {
 
   public boolean hasCompleted() {
     return COMPLETED_STATES.contains(taskState);
+  }
+
+  public boolean hasTerminated() {
+    return TERMINAL_STATES.contains(taskState);
   }
 
   @JsonIgnore

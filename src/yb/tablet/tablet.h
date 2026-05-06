@@ -88,6 +88,7 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 
 namespace yb {
 
+class Cgroup;
 class FsManager;
 class MetricEntity;
 
@@ -344,12 +345,16 @@ class Tablet : public AbstractTablet,
   // Apply all of the row operations associated with this transaction.
   Status ApplyRowOperations(
       WriteOperation* operation,
-      const docdb::StorageSet& apply_to_storages = {});
+      const docdb::StorageSet& apply_to_storages = {},
+      bool skip_opid_update = false);
+
+  Status UpdateOpIdForOperation(WriteOperation* operation);
 
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
-      const docdb::StorageSet& apply_to_storages = {});
+      const docdb::StorageSet& apply_to_storages = {},
+      bool skip_opid_update = false);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
@@ -637,6 +642,9 @@ class Tablet : public AbstractTablet,
     return intents_db_.get();
   }
 
+  // Set per-task cgroup on both regular and intents RocksDB instances for per-DB compaction mode.
+  void SetRocksDbTaskCgroup(Cgroup* cgroup);
+
   // The only way to make any conclusion that a tablet is a product of a split is to check its key
   // bounds are initialized as it is supposed that these key bounds are setup during tablet split.
   const docdb::KeyBounds& key_bounds() const {
@@ -717,6 +725,10 @@ class Tablet : public AbstractTablet,
   HybridTime Get(HybridTime lower_bound);
 
   bool ShouldApplyWrite();
+
+  // Returns true if any backing RocksDB (regular_db or intents_db) is in a hard write stop.
+  // Lightweight check on atomic counters, safe to call from outside consensus locks.
+  bool AreWritesStopped();
 
   Status TEST_SwitchMemtable();
 

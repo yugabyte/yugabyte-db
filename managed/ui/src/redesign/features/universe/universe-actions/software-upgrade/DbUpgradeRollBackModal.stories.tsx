@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-
-import type { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { DbUpgradeRollBackModal } from './DbUpgradeRollBackModal';
-import { generateUniverseMockResponse } from '@app/mocks/mock-data/universeMocks';
 import { http, HttpResponse } from 'msw';
+
+import { generateUniverseMockResponse } from '@app/mocks/mock-data/universeMocks';
+import type { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+
+import { DbUpgradeRollBackModal } from './DbUpgradeRollBackModal';
 
 const mockUniverse: Universe = generateUniverseMockResponse();
 

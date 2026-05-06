@@ -700,7 +700,6 @@ public class HealthChecker {
     }
     Date startTime = new Date();
     List<NodeInfo> nodeMetadata = new ArrayList<>();
-    String providerCode;
     int masterIndex = 0;
     int tserverIndex = 0;
     CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(params.universe.getUniverseUUID());
@@ -720,18 +719,6 @@ public class HealthChecker {
         confGetter.getConfForScope(params.universe, UniverseConfKeys.cqlshConnectivityTest);
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       UserIntent userIntent = cluster.userIntent;
-      Provider provider = Provider.get(UUID.fromString(userIntent.provider));
-      if (provider == null) {
-        log.warn(
-            "Skipping universe "
-                + params.universe.getName()
-                + " due to invalid provider "
-                + cluster.userIntent.provider);
-        setHealthCheckFailedMetric(params.customer, params.universe);
-
-        return;
-      }
-      providerCode = provider.getCode();
       List<NodeDetails> activeNodes =
           details.getNodesInCluster(cluster.uuid).stream().filter(NodeDetails::isActive).toList();
       for (NodeDetails nd : activeNodes) {
@@ -765,7 +752,19 @@ public class HealthChecker {
       int topKMemThresholdPercent =
           confGetter.getConfForScope(
               params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesMemThreshold);
+      Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(params.universe);
       for (NodeDetails nodeDetails : sortedDetails) {
+        Provider provider = providerGetter.apply(nodeDetails);
+        if (provider == null) {
+          log.warn(
+              "Skipping universe "
+                  + params.universe.getName()
+                  + " due to invalid provider for node "
+                  + nodeDetails.nodeName);
+          setHealthCheckFailedMetric(params.customer, params.universe);
+
+          return;
+        }
         NodeInstance nodeInstance = nodeInstanceMap.get(nodeDetails.getNodeUuid());
         String nodeIdentifier = StringUtils.EMPTY;
         if (nodeInstance != null && nodeInstance.getDetails().instanceName != null) {
@@ -809,7 +808,7 @@ public class HealthChecker {
               .setTserverHttpPort(nodeDetails.tserverHttpPort)
               .setTserverRpcPort(nodeDetails.tserverRpcPort);
         }
-        if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
+        if (provider.getCloudCode() == Common.CloudType.kubernetes) {
           nodeInfo.setK8s(true);
         }
         Map<String, String> tserverGflags =

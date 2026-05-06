@@ -649,6 +649,25 @@ YBRelHasSecondaryIndices(Relation relation)
 }
 
 bool
+YBIsUpsertUnsafeOnRel(Relation relation)
+{
+	/*
+	 * Check if upsert (blind write) is unsafe on the given relation.
+	 * Blind writes skip reading the old row, which means secondary index
+	 * entries are updated incorrectly, triggers fire incorrectly, and
+	 * foreign key cascades are skipped.
+	 *
+	 * Upsert mode only applies to YB relations (DocDB-backed tables). For
+	 * non-YB relations it is a no-op, so treat them as trivially safe.
+	 */
+	if (!IsYBRelation(relation))
+		return false;
+	return YBRelHasSecondaryIndices(relation) ||
+		   relation->rd_rel->relhastriggers ||
+		   relation->rd_rel->relhasrules;
+}
+
+bool
 YBTransactionsEnabled()
 {
 	static int	cached_value = -1;
@@ -2283,7 +2302,7 @@ bool		yb_enable_docdb_vector_type = false;
 bool		yb_enable_invalidation_messages = true;
 bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
-int			yb_max_num_invalidation_messages = 4096;
+int			yb_max_num_invalidation_messages = 8192;
 bool		yb_enable_parallel_scan_colocated = true;
 bool		yb_enable_parallel_scan_hash_sharded = false;
 bool		yb_enable_parallel_scan_range_sharded = false;
@@ -7516,6 +7535,8 @@ bool		yb_ysql_conn_mgr_sticky_locks = false;
  * sharing the same backend. Updated at runtime via GUC (PGC_SIGHUP).
  */
 bool		yb_conn_mgr_selective_deallocate = true;
+
+bool		yb_enable_mage = false;
 
 bool
 YbIsSuperuserConnSticky()

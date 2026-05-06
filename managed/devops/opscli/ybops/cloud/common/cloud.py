@@ -19,7 +19,6 @@ import time
 
 import yaml
 from enum import Enum
-from ybops.cloud.common.ansible import AnsibleProcess
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
                          get_internal_datafile_path)
@@ -45,10 +44,8 @@ class AbstractCloud(AbstractCommandParser):
     """Class that encapsulates the first layer of abstraction of commands, at the cloud level.
 
     This should be responsible for keeping high level data and options, as well as holding
-    instances to cloud-specific structures or APIs. This class is also responsible for providing
-    ways of calling out to Ansible.
+    instances to cloud-specific structures or APIs.
     """
-    VARS_DIR_SUFFIX = "vars/cloud"
     BASE_IMAGE_VERSION_KEY = "base_image_version"
     KEY_SIZE = 2048
     PUBLIC_EXPONENT = 65537
@@ -70,14 +67,6 @@ class AbstractCloud(AbstractCommandParser):
         super(AbstractCloud, self).__init__(name)
 
     def init(self, args=None):
-        devops_home = os.environ.get("yb_devops_home")
-        vars_file = os.path.join(devops_home,
-                                 AbstractCloud.VARS_DIR_SUFFIX,
-                                 "{}.yml".format(self.name))
-        self.ansible_vars = yaml.load(open(vars_file), yaml.SafeLoader)
-        with open(vars_file, 'r') as f:
-            self.ansible_vars = yaml.load(f, yaml.SafeLoader) or {}
-
         # The metadata file name is the same internally and externally.
         metadata_filename = "{}-metadata.yml".format(self.name)
         self.metadata = {}
@@ -138,31 +127,10 @@ class AbstractCloud(AbstractCommandParser):
         """
         pass
 
-    def get_default_base_image_version(self):
-        return self.ansible_vars.get(self.BASE_IMAGE_VERSION_KEY)
-
     def get_image_by_version(self, region, version=None):
         """Override to get image using cloud-specific APIs and clients.
         """
         pass
-
-    def setup_ansible(self, args):
-        """Prepare and return a base AnsibleProcess class as well as setup some initial arguments,
-        such as the cloud_type, for the respective playbooks.
-        Args:
-            args: the parsed command-line arguments, as setup by the relevant ArgParse instance.
-        """
-        ansible = AnsibleProcess()
-        ansible.playbook_args["cloud_type"] = self.name
-        if args.region:
-            ansible.playbook_args["cloud_region"] = args.region
-        if args.zone:
-            ansible.playbook_args["cloud_zone"] = args.zone
-        if hasattr(args, "custom_ssh_port") and args.custom_ssh_port:
-            ansible.playbook_args["custom_ssh_port"] = args.custom_ssh_port
-        if args.ansible_keep_remote_files:
-            ansible.keep_remote_files = True
-        return ansible
 
     def add_extra_args(self):
         """Override to setup cloud-specific command line flags.
@@ -170,10 +138,6 @@ class AbstractCloud(AbstractCommandParser):
         self.parser.add_argument("--region", required=False)
         self.parser.add_argument("--zone", required=False)
         self.parser.add_argument("--network", required=False)
-        self.parser.add_argument("--systemd_debug", action="store_true", default=False,
-                                 required=False)
-        self.parser.add_argument("--ansible_keep_remote_files", action="store_true", default=False,
-                                 required=False)
 
     def add_subcommand(self, command):
         """Subclass override to set a reference to the cloud into the subcommands we add.
@@ -186,7 +150,6 @@ class AbstractCloud(AbstractCommandParser):
             "process": process,
             "command": command,
             "ssh2_enabled": args.ssh2_enabled,
-            "systemd_debug": args.systemd_debug,
         }
         if args.systemd_services:
             updated_vars.update({"systemd_services": args.systemd_services})
@@ -206,7 +169,6 @@ class AbstractCloud(AbstractCommandParser):
                 )
 
         if process == "thirdparty" or process == "platform-services":
-            self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
             return
 
         if os.environ.get("YB_USE_FABRIC", False):
@@ -214,8 +176,6 @@ class AbstractCloud(AbstractCommandParser):
             RemoteShell(updated_vars).check_exec_command(
                 "{} {} {}".format(file_path, process, command)
             )
-        else:
-            self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
 
     def initYSQL(self, master_addresses, connect_options, args):
         # TODO Looks like this is not used.

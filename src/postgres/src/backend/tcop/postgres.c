@@ -1238,11 +1238,11 @@ YbDistTraceSetQueryIdToRootSpan(List *querytree_list)
 static void
 yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_redacted)
 {
-	char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
-	YbcOtelSpanContext span_ctx = NULL;
-
 	if (!YBCIsDistTraceEnabled() || !YBCIsOtelScopeStackEmpty())
 		return;
+
+	char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
+	YbcOtelSpanContext span_ctx = NULL;
 
 	/*
 	 * YB: query_string may be NULL for protocol messages that don't carry a
@@ -1253,7 +1253,6 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 		? query_string : YbRedactPasswordIfExists(query_string, CMDTAG_UNKNOWN);
 
 	/*
-	 * YB: SQL comment traceparent is higher priority over GUC traceparent.
 	 * redacted_query_string may be NULL for protocol messages that don't carry
 	 * a query (e.g. Close, Describe, Flush, Sync).
 	 */
@@ -1261,7 +1260,18 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 		? YbExtractTraceParentFromComment(redacted_query_string, traceparent)
 		: YB_TRACEPARENT_NO_COMMENT;
 
-	if (tp_result == YB_TRACEPARENT_OK)
+	/* YB: GUC comment traceparent is higher priority over SQL comment traceparent. */
+	if (yb_guc_remote_span_ctx)
+	{
+		span_ctx = yb_guc_remote_span_ctx;
+
+		if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
+			tp_result != YB_TRACEPARENT_NO_FIELD)
+			ereport(WARNING,
+					(errmsg("yb_dist_tracecontext GUC takes priority; "
+							"skipping SQL comment traceparent")));
+	}
+	else if (tp_result == YB_TRACEPARENT_OK)
 	{
 		span_ctx = YBCGetValidSpanContext(traceparent);
 
@@ -1272,16 +1282,8 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 	else if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
 			 tp_result != YB_TRACEPARENT_NO_FIELD)
 		ereport(WARNING,
-				(errmsg("traceparent comment parsing failed: %s%s",
-						YbGetTraceparentResultErrmsg(tp_result),
-						yb_guc_remote_span_ctx
-						? "; skipping yb_dist_tracecontext GUC"
-						: "")));
-	else
-	{
-		/* YB: Fall back to GUC-based span context. */
-		span_ctx = yb_guc_remote_span_ctx;
-	}
+				(errmsg("traceparent comment parsing failed: %s",
+						YbGetTraceparentResultErrmsg(tp_result))));
 
 	/*
 	 * YB: Start a root span. The scope is owned by the otel_scope_stack
@@ -4814,7 +4816,17 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	 * a "safe point".
 	 */
 	Assert(!YBCIsSysTablePrefetchingStarted());
-	(void) YBRefreshCacheWrapperImpl(catalog_master_version, is_retry, true);
+
+	yb_refresh_cache_in_progress = true;
+	PG_TRY();
+	{
+		(void) YBRefreshCacheWrapperImpl(catalog_master_version, is_retry, true);
+	}
+	PG_FINALLY();
+	{
+		yb_refresh_cache_in_progress = false;
+	}
+	PG_END_TRY();
 }
 
 static bool
@@ -5530,7 +5542,11 @@ yb_collect_portal_restart_data(const char *portal_name)
 {
 	Portal		portal = GetPortalByName(portal_name);
 
-	Assert(portal);
+	if (!PortalIsValid(portal))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_CURSOR),
+				 errmsg("portal \"%s\" does not exist", portal_name)));
+
 	Assert(!strcmp(portal->name, portal_name));
 
 	YBQueryRetryData *result = palloc(sizeof(YBQueryRetryData));
@@ -7960,39 +7976,84 @@ disable_statement_timeout(void)
 }
 
 /*
- * Extract trace parent from a leading SQL comment in a query.
+ * Extract trace parent from comment in a query.
  *
  * traceparent_out must point to a buffer of at least
  * YB_TRACEPARENT_VALUE_LEN + 1 bytes.
  *
- * The traceparent must appear in a comment at the start of the query:
+ * The traceparent comments may appear at the query start or end.
+ * If both comment blocks are present and contain traceparent, the one at the start is returned.
+ *
+ * Parsed (traceparent extracted):
  * "/\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ SELECT 1;"
+ * "SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/;"
+ *
+ * Not parsed (no traceparent extracted)
+ * "/\* abc *\/ /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ SELECT 1;"
+ *   -- leading comment has no traceparent field
+ * "SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ /\* abc *\/;"
+ *   -- trailing comment has no traceparent field
+ *
+ * Special case -- leading invalid traceparent takes priority over a valid trailing one;
+ * a warning is emitted and the query runs without tracing:
+ * "/\*traceparent='INVALID'*\/ SELECT 1 /\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/;"
  */
 static YbTraceparentResult
 YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
 {
-	const char *pos = query;
+	const char *pos;
+	const char *end;
+	const char *content;
 	const char *comment_end;
+	YbTraceparentResult result;
 
-	/* Skip leading whitespace. */
+	/* Check for a leading block comment. */
+	pos = query;
 	while (isspace((unsigned char) *pos))
 		pos++;
 
-	if (pos[0] != '/' || pos[1] != '*')
-		return YB_TRACEPARENT_NO_COMMENT;
+	if (pos[0] == '/' && pos[1] == '*')
+	{
+		content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+		comment_end = strstr(content, "*/");
+		if (comment_end)
+		{
+			result = YbGetTraceparentFromTraceContext(content, comment_end - content,
+								  traceparent_out);
+			if (result != YB_TRACEPARENT_NO_FIELD)
+				return result;
+		}
+	}
 
-	/* Skip the comment start delimiters "/ *". */
-	pos += YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+	/* Check for a trailing block comment. */
+	end = query + strlen(query);
+	while (end > query && (isspace((unsigned char) end[-1]) || end[-1] == ';'))
+		end--;
 
 	/*
-	 * Find the comment end delimiters "* /".
-	 * This is required as without this we can match a YB_TRACEPARENT_KEY_PREFIX
-	 * after the comment end delimiters.
+	 * Require at least 4 chars (the two-char open and two-char close delimiters)
+	 * and verify the query ends with the star-slash close delimiter.
 	 */
-	comment_end = strstr(pos, "*/");
-	Assert(comment_end);
+	if (end - query < 2 * YB_TRACEPARENT_COMMENT_DELIMITERS_LEN ||
+		end[-2] != '*' || end[-1] != '/')
+		return YB_TRACEPARENT_NO_COMMENT;
 
-	return YbGetTraceparentFromTraceContext(pos, comment_end - pos, traceparent_out);
+	/* Scan backwards to find the slash-star that opens the trailing comment. */
+	pos = end - YB_TRACEPARENT_COMMENT_DELIMITERS_LEN; /* points to '*' of closing delimiter */
+	while (pos > query)
+	{
+		pos--;
+		if (pos[0] == '/' && pos[1] == '*')
+		{
+			content = pos + YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+			result = YbGetTraceparentFromTraceContext(content,
+				(end - YB_TRACEPARENT_COMMENT_DELIMITERS_LEN) - content,
+				traceparent_out);
+			return result != YB_TRACEPARENT_NO_FIELD ? result : YB_TRACEPARENT_NO_COMMENT;
+		}
+	}
+
+	return YB_TRACEPARENT_NO_COMMENT;
 }
 
 /*

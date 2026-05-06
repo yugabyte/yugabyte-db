@@ -85,8 +85,8 @@ public class AccessKey extends Model {
   public static class KeyInfo extends MigratedKeyInfoFields {
     @ApiModelProperty public String publicKey;
     @ApiModelProperty public String privateKey;
-    @ApiModelProperty public String vaultPasswordFile;
-    @ApiModelProperty public String vaultFile;
+    @Deprecated @ApiModelProperty public String vaultPasswordFile;
+    @Deprecated @ApiModelProperty public String vaultFile;
     @ApiModelProperty public boolean deleteRemote = true;
     @ApiModelProperty public String keyPairName;
     @ApiModelProperty public String sshPrivateKeyContent;

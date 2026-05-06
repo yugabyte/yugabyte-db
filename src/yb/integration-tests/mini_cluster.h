@@ -57,6 +57,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -237,6 +238,10 @@ class MiniCluster : public MiniClusterBase {
 
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(size_t idx);
 
+  Result<size_t> GetTabletLeaderIndex(const TabletId& tablet_id);
+
+  Result<std::vector<size_t>> GetTabletFollowerIndexes(const TabletId& tablet_id);
+
   // Return all YBController servers.
   std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
     return yb_controller_servers_;
@@ -280,6 +285,11 @@ class MiniCluster : public MiniClusterBase {
   template <typename T>
   T GetMasterProxy() {
     return T(proxy_cache_.get(), mini_master()->bound_rpc_addr());
+  }
+
+  template <typename T>
+  T GetTServerProxy(size_t i) {
+    return T(&proxy_cache(), HostPort(mini_tablet_server(i)->bound_rpc_addr()));
   }
 
   std::string GetClusterId() { return options_.cluster_id; }
@@ -481,8 +491,6 @@ Result<TableId> FindTableId(MiniCluster* cluster, const std::string& table_name)
 Status WaitForInitDb(MiniCluster* cluster);
 
 size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter = TabletPeerFilter());
-
-tserver::MiniTabletServer* FindTabletLeader(MiniCluster* cluster, const TabletId& tablet_id);
 
 void ShutdownAllTServers(MiniCluster* cluster);
 Status StartAllTServers(MiniCluster* cluster);

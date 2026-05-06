@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <map>
 #include <memory>
 #include <string>
 
@@ -41,6 +42,7 @@
 #include "yb/server/webserver.h"
 
 #include "yb/util/metrics_fwd.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/countdown_latch.h"
 
@@ -110,6 +112,16 @@ class RpcServerBase {
   virtual std::string GetCertificateDetails() { return ""; }
 
   virtual uint32_t GetAutoFlagConfigVersion() const { return 0; }
+
+  // Hook for additional flag validation beyond the standard gflag validator.
+  // Subclasses (e.g. TabletServer) can override to add server-specific checks.
+  // Accepts a map of flag_name -> proposed_value, returns a map of flag_name -> error_message
+  // for any flags that failed validation. An empty return map means all flags are valid.
+  virtual std::map<std::string, std::string> ExtendedFlagValidation(
+      const std::map<std::string, std::string>& flags_to_validate,
+      CoarseTimePoint deadline) {
+    return {};
+  }
 
  protected:
   RpcServerBase(std::string name,

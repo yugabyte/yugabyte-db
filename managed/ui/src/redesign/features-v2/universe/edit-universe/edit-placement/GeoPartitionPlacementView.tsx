@@ -1,15 +1,19 @@
-import { Suspense, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { useEditUniverseContext } from '../EditUniverseUtils';
+import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
 import { mui, YBButton, YBDropdown } from '@yugabyte-ui-library/core';
 import { KeyboardArrowDown } from '@material-ui/icons';
 import { MasterServerNodeAllocationModal } from '../master-server/MasterServerNodeAllocationModal';
-import { ClusterInstanceCard } from './ClusterInstanceCard';
+import { ClusterInstanceCard, ClusterInstanceCardEditMenuItem } from './ClusterInstanceCard';
+import { DeleteReadReplicaModal } from './DeleteReadReplicaModal';
 import { Portal } from '@material-ui/core';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { EditPlacement } from './EditPlacement';
 import AddIcon from '@app/redesign/assets/add.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
+import DeleteOutlineIcon from '@app/redesign/assets/delete2.svg';
+import { getAddReadReplicaRoute } from '../../read-replica/readReplicaUtils';
+import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 const { Box, Typography, MenuItem, Divider, Link } = mui;
 
@@ -18,6 +22,7 @@ interface ModalParams {
   skipResilienceAndRegionsStep: boolean;
   showMasterServerNodeAllocationModal: boolean;
   selectedPartitionId: string | undefined;
+  showDeleteReadReplicaModal: boolean;
 }
 
 export const GeoPartitionPlacementView = () => {
@@ -26,10 +31,43 @@ export const GeoPartitionPlacementView = () => {
     showEditResilienceAndRegionsModal: false,
     skipResilienceAndRegionsStep: false,
     showMasterServerNodeAllocationModal: false,
-    selectedPartitionId: undefined
+    selectedPartitionId: undefined,
+    showDeleteReadReplicaModal: false
   });
 
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
+  const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const readReplicaClusters = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
+
+  const universeUuid = universeData?.info?.universe_uuid ?? '';
+  const spec = universeData?.spec as Record<string, unknown> | undefined;
+  const rawName = String(spec?.name ?? spec?.universeName ?? spec?.universe_name ?? '').trim();
+  const universeDisplayName = rawName || universeUuid;
+
+  const readReplicaEditMenuItems: ClusterInstanceCardEditMenuItem[] | undefined = useMemo(() => {
+    if (!readReplicaClusters?.uuid) return undefined;
+    return [
+      {
+        id: 'edit-placement',
+        label: t('menuEditPlacement'),
+        dataTestId: 'read-replica-edit-placement',
+        onClick: () => {
+          window.location.href = getAddReadReplicaRoute(universeUuid);
+        },
+        startIcon: <EditIcon />
+      },
+      {
+        id: 'delete-read-replica',
+        label: t('menuDeleteReadReplica'),
+        dataTestId: 'read-replica-delete',
+        showDividerBefore: true,
+        destructive: true,
+        onClick: () =>
+          setModalParams((prev) => ({ ...prev, showDeleteReadReplicaModal: true })),
+        startIcon: <DeleteOutlineIcon />
+      }
+    ];
+  }, [readReplicaClusters?.uuid, t, universeUuid]);
 
   return (
     <Box>
@@ -78,7 +116,13 @@ export const GeoPartitionPlacementView = () => {
               {t('editMasterServerNodeAllocation')}
             </MenuItem>
             <Divider />
-            <MenuItem data-test-id="add-read-replica" sx={{ height: 'auto' }}>
+            <MenuItem
+              data-test-id="add-read-replica"
+              sx={{ height: 'auto' }}
+              onClick={() => {
+                window.location.href = getAddReadReplicaRoute(universeData?.info?.universe_uuid);
+              }}
+            >
               <Box
                 sx={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'row', gap: '4px' }}
               >
@@ -104,19 +148,20 @@ export const GeoPartitionPlacementView = () => {
           </YBDropdown>
         </Box>
       </Box>
-      {universeData?.spec?.clusters.map((cluster) =>
-        cluster.partitions_spec?.map((partition) => (
+      {primaryCluster &&
+        primaryCluster.partitions_spec?.map((partition) => (
           <ClusterInstanceCard
             key={partition.name}
             title={partition.name}
-            cluster={cluster}
+            cluster={primaryCluster}
             placement={partition.placement}
             editResilienceAndRegionsClicked={() => {
               setModalParams({
                 showEditResilienceAndRegionsModal: true,
                 skipResilienceAndRegionsStep: false,
                 showMasterServerNodeAllocationModal: false,
-                selectedPartitionId: partition.uuid
+                selectedPartitionId: partition.uuid,
+                showDeleteReadReplicaModal: false
               });
             }}
             editPlacementClicked={() => {
@@ -124,18 +169,41 @@ export const GeoPartitionPlacementView = () => {
                 showEditResilienceAndRegionsModal: true,
                 skipResilienceAndRegionsStep: true,
                 showMasterServerNodeAllocationModal: false,
-                selectedPartitionId: partition.uuid
+                selectedPartitionId: partition.uuid,
+                showDeleteReadReplicaModal: false
               });
             }}
           />
         ))
-      )}
+      }
+      {readReplicaClusters &&
+        readReplicaClusters.partitions_spec?.map((partition) => (
+          <ClusterInstanceCard
+            key={partition.name}
+            title={t('readReplica')}
+            cluster={readReplicaClusters}
+            placement={partition.placement}
+            editMenuItems={readReplicaEditMenuItems}
+          />
+        ))
+      }
       <MasterServerNodeAllocationModal
         visible={modalParams.showMasterServerNodeAllocationModal}
         onClose={() =>
           setModalParams((prev) => ({ ...prev, showMasterServerNodeAllocationModal: false }))
         }
       />
+      {readReplicaClusters?.uuid ? (
+        <DeleteReadReplicaModal
+          open={modalParams.showDeleteReadReplicaModal}
+          onClose={() =>
+            setModalParams((prev) => ({ ...prev, showDeleteReadReplicaModal: false }))
+          }
+          universeUuid={universeUuid}
+          clusterUuid={readReplicaClusters.uuid}
+          universeDisplayName={universeDisplayName}
+        />
+      ) : null}
       <Portal container={document.body}>
         <Suspense fallback={<YBLoadingCircleIcon />}>
           <EditPlacement

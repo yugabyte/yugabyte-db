@@ -110,7 +110,10 @@ TEST_F(SamplingProfilerTest, DisableSampling) {
 
 #if YB_GPERFTOOLS_TCMALLOC
 // Basic test that heap snapshot has data.
-TEST_F(SamplingProfilerTest, HeapSnapshot) {
+// gperftools heap profiling is unreliable on macOS arm64: stack unwinding
+// captures only internal allocator frames (depth=1), and freed allocations
+// persist in heap snapshots returned by ReadStackTraces.
+TEST_F(SamplingProfilerTest, YB_DISABLE_TEST_ON_MACOS(HeapSnapshot)) {
   SetProfileSamplingRate(1);
   const int64_t kAllocSize = 1_MB;
   {

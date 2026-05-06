@@ -14,6 +14,7 @@ import { GeoPartitionPlacementView } from '../edit-placement/GeoPartitionPlaceme
 import { getExistingGeoPartitions } from '../../geo-partition/add/AddGeoPartitionUtils';
 import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
 import { getPlacementRegions } from '../../create-universe/CreateUniverseUtils';
+import { getAddReadReplicaRoute } from '../../read-replica/readReplicaUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import AddIcon from '@app/redesign/assets/add.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
@@ -117,7 +118,13 @@ export const PlacementTab = () => {
             {t('editMasterServerNodeAllocation')}
           </MenuItem>
           <Divider />
-          <MenuItem data-test-id="add-read-replica" sx={{ height: 'auto' }}>
+          <MenuItem 
+          data-test-id="add-read-replica" 
+          sx={{ height: 'auto' }}
+          onClick={() => {
+            window.location.href = getAddReadReplicaRoute(universeData?.info?.universe_uuid);
+          }}
+          >
             <Box
               sx={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'row', gap: '4px' }}
             >

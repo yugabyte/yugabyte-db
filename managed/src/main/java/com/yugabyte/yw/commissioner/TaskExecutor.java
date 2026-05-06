@@ -1105,6 +1105,10 @@ public class TaskExecutor {
       return getTaskInfo().hasCompleted();
     }
 
+    public boolean hasTaskTerminated() {
+      return getTaskInfo().hasTerminated();
+    }
+
     @Override
     public String toString() {
       TaskInfo taskInfo = getTaskInfo();
@@ -1255,6 +1259,7 @@ public class TaskExecutor {
         new AtomicReference<>();
     // Time when the abort is set.
     private final AtomicReference<Supplier<Instant>> abortTimeSupplierRef = new AtomicReference<>();
+    // Set when the task is paused by a subtask group.
     private volatile boolean paused = false;
 
     RunnableTask(ITask task, UUID taskUuid) {

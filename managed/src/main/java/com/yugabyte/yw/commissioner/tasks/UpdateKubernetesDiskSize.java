@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -75,7 +76,7 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
           KubernetesUtil.isNonRestartGflagsUpgradeSupported(
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
       for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+        Provider provider = Util.getSingleProvider(cluster);
         boolean isReadOnlyCluster =
             cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC;
         KubernetesPlacement placement =

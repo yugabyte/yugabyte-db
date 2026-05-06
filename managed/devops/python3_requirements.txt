@@ -18,8 +18,6 @@
 #
 # TODO: see if we can move to using Pundler (https://github.com/Deepwalker/pundler) instead.
 
-ansible==10.7.0
-ansible-vault==2.1.0
 azure-common==1.1.28
 azure-identity==1.25.3
 azure-mgmt-compute==27.1.0
@@ -38,7 +36,6 @@ grpcio==1.76.0
 grpcio-tools==1.76.0
 Jinja2==3.1.6
 MarkupSafe==2.0.1
-mitogen==0.2.9
 msrestazure
 oauth2client<4.0.0  # GCP SDK seems to require version <4 of oauth2client: https://goo.gl/7uC34W
 paramiko==3.4.0

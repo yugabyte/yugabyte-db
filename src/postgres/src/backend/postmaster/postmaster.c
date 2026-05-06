@@ -1499,7 +1499,7 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * Load configuration files for client authentication.
 	 */
-	if (!load_hba())
+	if (!load_hba(NULL /* yb_validate_conf_file */ ))
 	{
 		/*
 		 * It makes no sense to continue if we fail to load the HBA file,
@@ -1508,7 +1508,7 @@ PostmasterMain(int argc, char *argv[])
 		ereport(FATAL,
 				(errmsg("could not load pg_hba.conf")));
 	}
-	if (!load_ident(NULL /* yb_ident_context */ ))
+	if (!load_ident(NULL, NULL /* yb_validate_conf_file */ ))
 	{
 		/*
 		 * We can start up without the IDENT file, although it means that you
@@ -3058,12 +3058,12 @@ SIGHUP_handler(SIGNAL_ARGS)
 			signal_child(SysLoggerPID, SIGHUP);
 
 		/* Reload authentication config files too */
-		if (!load_hba())
+		if (!load_hba(NULL /* yb_validate_conf_file */ ))
 			ereport(LOG,
 			/* translator: %s is a configuration file */
 					(errmsg("%s was not reloaded", "pg_hba.conf")));
 
-		if (!load_ident(NULL /* yb_ident_context */ ))
+		if (!load_ident(NULL, NULL /* yb_validate_conf_file */ ))
 			ereport(LOG,
 					(errmsg("%s was not reloaded", "pg_ident.conf")));
 

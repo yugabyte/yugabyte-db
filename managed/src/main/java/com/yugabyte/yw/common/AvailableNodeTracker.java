@@ -94,7 +94,7 @@ public class AvailableNodeTracker {
       return Integer.MAX_VALUE;
     }
     String instanceType = getUserIntent().getInstanceType(serverType, zoneId);
-    Pair<String, UUID> key = new Pair(instanceType, zoneId);
+    Pair<String, UUID> key = new Pair<>(instanceType, zoneId);
     Integer dbCount = getFreeInDB(zoneId, serverType);
     int res = dbCount - temporaryCounts.getOrDefault(key, 0);
     if (res <= 0) {
