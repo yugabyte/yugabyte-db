@@ -2716,10 +2716,6 @@ class PgClientSession::Impl {
       CoarseTimePoint deadline) {
     boost::container::small_vector<TableId, 4> table_ids;
     PreparePgTablesQuery(data->req, table_ids);
-    if (PREDICT_FALSE(FLAGS_TEST_request_unknown_tables_during_perform)) {
-      table_ids.insert(
-          table_ids.end(), { GetPgsqlTableId(0, 0), GetPgsqlTableId(0, 1), GetPgsqlTableId(0, 2) });
-    }
     auto tables_future = GetTablesAsync(table_cache(), table_ids);
     RETURN_NOT_OK(Wait(tables_future, ToSteady(deadline)));
     RETURN_NOT_OK(precondition_waiter(data->req.serial_no(), deadline));
@@ -4491,6 +4487,10 @@ void PreparePgTablesQuery(
     const LWPgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids) {
   for (const auto& op : req.ops()) {
     AddIfMissing(table_ids, op.has_read() ? op.read().table_id() : op.write().table_id());
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_request_unknown_tables_during_perform)) {
+    table_ids.insert(
+        table_ids.end(), { GetPgsqlTableId(0, 0), GetPgsqlTableId(0, 1), GetPgsqlTableId(0, 2) });
   }
 }
 
