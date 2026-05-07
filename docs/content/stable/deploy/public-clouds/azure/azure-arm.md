@@ -6,6 +6,7 @@ description: Deploy YugabyteDB on Microsoft Azure using Azure Resource Manager (
 aliases:
   - /deploy/public-clouds/azure/
   - /stable/deploy/public-clouds/azure
+  - /stable/deploy/public-clouds/azure/terraform/
 menu:
   stable:
     identifier: deploy-on-azure-1-azure-arm
@@ -25,12 +26,6 @@ type: docs
     <a href="../aks/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Azure Kubernetes Service (AKS)
-    </a>
-  </li>
-  <li>
-    <a href="../terraform/" class="nav-link">
-      <i class="icon-shell"></i>
-      Terraform
     </a>
   </li>
 </ul>
