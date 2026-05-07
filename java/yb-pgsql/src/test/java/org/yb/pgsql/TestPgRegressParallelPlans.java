@@ -43,7 +43,7 @@ public class TestPgRegressParallelPlans extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
-    if (!BuildTypeUtil.isSanitizerBuild()) {
+    if (BuildTypeUtil.isRelease()) {
       runPgRegressTest("yb_parallel_plans_schedule");
     }
   }

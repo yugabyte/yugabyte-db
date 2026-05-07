@@ -91,6 +91,9 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_bool(ysql_enable_concurrent_ddl);
 
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
+
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_user_ddls_preempt_auto_analyze, true,
@@ -1929,6 +1932,11 @@ double YBCGetTransactionPriority() {
 
 YbcTxnPriorityRequirement YBCGetTransactionPriorityType() {
   return pgapi->GetTransactionPriorityType();
+}
+
+uint64_t YBCGetMaxRpcResponseSize() {
+  return static_cast<uint64_t>(
+      FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio);
 }
 
 YbcStatus YBCPgEnsureReadPoint() {
