@@ -308,6 +308,48 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p1 SET v = v + 1 WHERE ck = 
 -- 4e. Partition key update to a value that stays in the same partition (distributed transaction).
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p1 SET ptk = 6 WHERE ck = 8;
 
+-- 4f. Updates inside an explicit transaction block (single-shard downgraded to distributed transaction).
+BEGIN;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p1 SET v = v + 1 WHERE ck = 1;
+SELECT * FROM ck_ne_ptk_p1 WHERE ck = 1;
+ROLLBACK;
+
+-- Cross-partition update inside a transaction block should still fail the partition constraint.
+BEGIN;
+UPDATE ck_ne_ptk_p1 SET ptk = 16 WHERE ck = 2;
+ROLLBACK;
+
+-- 4g. Updates inside a function (single-shard downgraded to distributed transaction).
+CREATE FUNCTION ck_ne_ptk_update_ok() RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE ck_ne_ptk_p1 SET v = v + 1 WHERE ck = 4;
+END $$;
+SELECT ck_ne_ptk_update_ok();
+DROP FUNCTION ck_ne_ptk_update_ok();
+
+-- Cross-partition update inside a function (should fail the partition constraint).
+CREATE FUNCTION ck_ne_ptk_update_fail() RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE ck_ne_ptk_p1 SET ptk = 16 WHERE ck = 5;
+END $$;
+SELECT ck_ne_ptk_update_fail();
+DROP FUNCTION ck_ne_ptk_update_fail();
+
+-- 4h. Updates inside a DO block (single-shard downgraded to distributed transaction).
+DO $$
+BEGIN
+    UPDATE ck_ne_ptk_p1 SET v = v + 1 WHERE ck = 1;
+END $$;
+
+-- 4i. INSERT ... ON CONFLICT ... DO UPDATE.
+INSERT INTO ck_ne_ptk_p1 VALUES (9, 5, 9), (11, 5, 11);
+
+-- Same-partition partition key update via upsert. Should succeed.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_p1 VALUES (9, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 6, v = EXCLUDED.v;
+
+-- Cross-partition partition key update via upsert. Should fail the partition constraint.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_p1 VALUES (11, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 16, v = EXCLUDED.v;
+
 SELECT * FROM ck_ne_ptk_base ORDER BY ck;
 DROP TABLE ck_ne_ptk_base CASCADE;
 
@@ -427,3 +469,39 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE expr_mixed_p1 SET v = v + 1 WHERE ck =
 
 SELECT * FROM expr_mixed_base ORDER BY ck;
 DROP TABLE expr_mixed_base CASCADE;
+
+-- Case 11: Temp table with non-overlapping clustering and partition keys.
+CREATE TEMP TABLE ck_ne_ptk_tmp_base (ck INT, ptk INT, v INT) PARTITION BY RANGE (ptk);
+CREATE TEMP TABLE ck_ne_ptk_tmp_p1 PARTITION OF ck_ne_ptk_tmp_base (ck PRIMARY KEY) FOR VALUES FROM (1) TO (11);
+CREATE TEMP TABLE ck_ne_ptk_tmp_p2 PARTITION OF ck_ne_ptk_tmp_base (ck PRIMARY KEY) FOR VALUES FROM (11) TO (21);
+INSERT INTO ck_ne_ptk_tmp_base VALUES (1, 5, 1), (2, 5, 2), (3, 15, 3), (4, 5, 4), (5, 5, 5), (6, 15, 6), (7, 5, 7), (8, 5, 8);
+
+-- 11a. Cross-partition update via leaf with clustering key in WHERE. Should fail.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 16 WHERE ck = 1;
+SELECT * FROM ck_ne_ptk_tmp_p1 ORDER BY ck;
+SELECT * FROM ck_ne_ptk_tmp_p2 ORDER BY ck;
+
+-- 11b. Cross-partition update via leaf without clustering key in WHERE. Should fail.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 17 WHERE ptk = 5;
+SELECT * FROM ck_ne_ptk_tmp_base ORDER BY ck;
+
+-- 11c. Same-partition clustering key update via leaf.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p2 SET ck = 10 WHERE ck = 3;
+
+-- 11d. Non-partition column update via leaf.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET v = v + 1 WHERE ck = 7;
+
+-- 11e. Partition key update to a value that stays in the same partition.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 6 WHERE ck = 8;
+
+-- 11f. INSERT ... ON CONFLICT ... DO UPDATE.
+INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 9), (11, 5, 11);
+
+-- Same-partition partition key update via upsert. Should succeed.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 6, v = EXCLUDED.v;
+
+-- Cross-partition partition key update via upsert. Should fail.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (11, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 16, v = EXCLUDED.v;
+
+SELECT * FROM ck_ne_ptk_tmp_base ORDER BY ck;
+DROP TABLE ck_ne_ptk_tmp_base CASCADE;
