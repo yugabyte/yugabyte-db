@@ -23,6 +23,16 @@ ADD_YB_LIBRARY(ysql_conn_mgr_wrapper
                SRCS ${YSQL_CONN_MGR_WRAPPER_SRCS}
                DEPS ${YSQL_CONN_MGR_WRAPPER_LIBS})
 
+# Allow undefined symbols for gflags (FLAGS_ysql_conn_mgr_*) to avoid circular dependency
+# These flags are defined in tserver, which depends on ysql_conn_mgr_wrapper
+# The symbols will be resolved when both libraries are linked into executables
+if(NOT APPLE)
+  target_link_options(ysql_conn_mgr_wrapper PRIVATE
+    "LINKER:--allow-shlib-undefined"
+    "LINKER:--unresolved-symbols=ignore-all"
+  )
+endif()
+
 add_custom_target(update_ysql_conn_mgr_template ALL
     COMMAND ${CMAKE_COMMAND} -E copy
             ${CMAKE_CURRENT_SOURCE_DIR}/ysql_conn_mgr.template.conf
@@ -31,3 +41,4 @@ add_custom_target(update_ysql_conn_mgr_template ALL
     COMMENT "Copying the template file for the Ysql Connection Manager config."
     COMMAND_ERROR_IS_FATAL  # Treat command errors as fatal
 )
+

@@ -284,6 +284,12 @@ void CPU::Initialize() {
 #elif defined(__aarch64__)
   cpu_brand_.assign("ARM64");
   has_broken_neon_ = false;
+#elif defined(ARCH_POWERPC64) || defined(__powerpc64__) || defined(__ppc64__)
+  // PowerPC64 CPU detection
+  cpu_brand_.assign("PowerPC64");
+  // PowerPC doesn't have the same feature flags as x86, so we set defaults
+  has_broken_neon_ = false;
+  has_non_stop_time_stamp_counter_ = true;  // PowerPC has timebase register
 #else
   #error unknown architecture
 #endif
@@ -302,3 +308,4 @@ CPU::IntelMicroArchitecture CPU::GetIntelMicroArchitecture() const {
 }
 
 }  // namespace base
+

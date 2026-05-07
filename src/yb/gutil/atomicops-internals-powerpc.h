@@ -44,9 +44,11 @@
 
 #pragma once
 
+// Define Atomic32 and Atomic64 in global namespace for deprecated wrapper functions
 typedef int32_t Atomic32;
-#define BASE_HAS_ATOMIC64 1  // Use only in tests and base/atomic*
+typedef int64_t Atomic64;
 
+#define BASE_HAS_ATOMIC64 1  // Use only in tests and base/atomic*
 
 #define ATOMICOPS_COMPILER_BARRIER() __asm__ __volatile__("" : : : "memory")
 
@@ -58,6 +60,8 @@ typedef int32_t Atomic32;
 namespace base {
 namespace subtle {
 
+// Also define in base::subtle namespace for consistency with other code
+typedef int32_t Atomic32;
 typedef int64_t Atomic64;
 
 // sync vs. lwsync:
@@ -69,6 +73,15 @@ typedef int64_t Atomic64;
 
 inline void MemoryBarrier() {
   __asm__ __volatile__("sync" : : : "memory");
+}
+
+// PauseCPU() - hint to the CPU that we're in a spin loop
+// PowerPC uses 'or 27,27,27' (a special form of 'or' that acts as a hint)
+// or 'yield' on newer processors
+inline void PauseCPU() {
+  // Use 'or 27,27,27' which is a low-priority thread hint on PowerPC
+  // This is equivalent to x86's 'pause' or ARM's 'yield'
+  __asm__ __volatile__("or 27,27,27" : : : "memory");
 }
 
 // 32-bit low-level operations.
@@ -313,3 +326,4 @@ inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr,
 }  // namespace base
 
 #undef ATOMICOPS_COMPILER_BARRIER
+

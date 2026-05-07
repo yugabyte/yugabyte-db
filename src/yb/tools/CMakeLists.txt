@@ -180,6 +180,17 @@ target_link_libraries(admin-test-base cql_test_util integration-tests yb_test_ut
 
 add_library(tools_test_utils tools_test_utils.cc)
 target_link_libraries(tools_test_utils yb_util yb_test_util yb_common_proto)
+# Allow undefined symbols - they will be resolved when linked into integration-tests
+# The global build sets --no-undefined and --no-allow-shlib-undefined
+# We need to override these for this specific library since it has circular deps with integration-tests
+if(NOT APPLE)
+  # Add flags that will come after the global flags and override them
+  # Note: In GNU ld, the last flag wins for conflicting options
+  target_link_options(tools_test_utils PRIVATE
+    "LINKER:--allow-shlib-undefined"
+    "LINKER:--unresolved-symbols=ignore-all"
+  )
+endif()
 
 add_library(test_admin_client test_admin_client.cc)
 target_link_libraries(test_admin_client master_proto integration-tests)
@@ -273,3 +284,4 @@ endmacro()
 
 yb_add_script(flamegraph.pl)
 yb_add_script(stackcollapse-perf.pl)
+

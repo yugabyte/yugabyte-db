@@ -3904,7 +3904,7 @@ struct kernel_statfs {
   #if defined(__i386__) ||                                                    \
       defined(__ARM_ARCH_3__) || defined(__ARM_EABI__) ||                     \
      (defined(__mips__) && _MIPS_SIM == _MIPS_SIM_ABI32) ||                   \
-      defined(__PPC__) ||                                                     \
+      (defined(__PPC__) && !defined(__powerpc64__)) ||                        \
      (defined(__s390__) && !defined(__s390x__))
     #define __NR__sigaction   __NR_sigaction
     #define __NR__sigpending  __NR_sigpending
@@ -4036,7 +4036,7 @@ struct kernel_statfs {
   #if defined(__i386__) ||                                                    \
       defined(__ARM_ARCH_3__) || defined(__ARM_EABI__) ||                     \
      (defined(__mips__) && _MIPS_SIM == _MIPS_SIM_ABI32) ||                   \
-      defined(__PPC__) ||                                                     \
+      (defined(__PPC__) && !defined(__powerpc64__)) ||                        \
      (defined(__s390__) && !defined(__s390x__))
     /* On these architectures, implement mmap() with mmap2(). */
     LSS_INLINE void* LSS_NAME(mmap)(void *s, size_t l, int p, int f, int d,
@@ -4534,3 +4534,4 @@ struct kernel_statfs {
 
 #endif
 #endif
+
