@@ -220,7 +220,7 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Deferrable constraints | {{<issue 1709>}}|
 | Constraint Triggers|{{<issue 4700>}}|
 | GiST indexes | {{<issue 1337>}}|
-| Events (Listen/Notify) | {{<issue 1872>}}|
+| Events (Listen/Notify) ({{<tags/feature/ea idea="1901">}}supported in v2025.2.3.0 and later) | {{<issue 1872>}}|
 | XML Functions | {{<issue 1043>}}|
 | XA syntax | {{<issue 11084>}}|
 | Some ALTER TYPE variants | {{<issue 1893>}}|
@@ -232,7 +232,6 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Some ALTER TABLE variants| {{<issue 1124>}}|
 | UNLOGGED table | {{<issue 1129>}} |
 | Indexes on complex datatypes such as INET, CITEXT, JSONB, ARRAYs, and so on.| {{<issue 9698>}}, {{<issue 23829>}}, {{<issue 17017>}} |
-| %TYPE syntax in Functions/Procedures/Triggers|{{<issue 23619>}}|
 | REFERENCING clause for triggers | {{<issue 1668>}}|
 
 ### Features that do no apply to YugabyteDB
