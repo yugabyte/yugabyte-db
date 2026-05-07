@@ -833,9 +833,9 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Namespace</th><th>Table name</th><th>Table UUID</th><th>Tablet ID</th>"
              "<th>Partition</th>"
-             "<th>State</th><th>Hidden</th><th>Num SST Files</th><th>On-disk "
-             "size</th><th>RaftConfig</th>"
-             "<th>Last status</th></tr>\n";
+             "<th>State</th><th>Hidden</th><th>RaftConfig</th>"
+             "<th>Last status</th><th>Num SST Files</th><th>On-disk "
+             "size</th></tr>\n";
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
@@ -866,7 +866,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     (*output) << Format(
         // Namespace, Table name, UUID of table, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
-        // State, Hidden, num SST files, on-disk size, consensus configuration, last status
+        // State, Hidden, consensus configuration, last status, num SST files, on-disk size
         "<td>$5</td><td>$6</td><td>$7</td><td>$8</td><td>$9</td><td>$10</td></tr>\n",
         EscapeForHtmlToString(namespace_name),              // $0
         EscapeForHtmlToString(table_name),                  // $1
@@ -875,12 +875,12 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         EscapeForHtmlToString(partition),                   // $4
         EscapeForHtmlToString(peer->HumanReadableState()),  // $5
         status.is_hidden(),                                 // $6
-        num_sst_files,                                      // $7
-        tablets_disk_size_html,                             // $8
         consensus_result ? ConsensusStatePBToHtml(
                                consensus_result.get()->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                         : "",                         // $9
-        EscapeForHtmlToString(status.last_status()));  // $10
+                         : "",                              // $7
+        EscapeForHtmlToString(status.last_status()),        // $8
+        num_sst_files,                                      // $9
+        tablets_disk_size_html);                            // $10
   }
   *output << "</table>\n";
 }

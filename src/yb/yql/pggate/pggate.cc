@@ -798,8 +798,8 @@ void PgApiImpl::SetupPgBackendCgroup(YbcPgOid dboid) {
   if (tserver::TServerCgroupManagementEnabled()) {
     auto status = tserver::TServerCgroupManager::MovePgBackendToCgroup(dboid);
     if (!status.ok()) {
-      LOG(DFATAL) << "Failed to move postgres backend to cgroup for " << dboid
-                  << ": " << status;
+      LOG(FATAL) << "Failed to move postgres backend to cgroup for " << dboid
+                 << ": " << status;
     }
   }
 #endif

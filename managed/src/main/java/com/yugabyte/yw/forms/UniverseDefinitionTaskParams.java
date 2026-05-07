@@ -374,6 +374,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   @Data
+  public static class GcpZoneReservation {
+    private UUID providerUUID;
+    private String zone;
+    private String region;
+    private String reservationName;
+    private Map<String, PerInstanceTypeReservation> reservationsByType = new HashMap<>();
+  }
+
+  @Data
   public static class AzureRegionReservation {
     private UUID providerUUID;
     private String groupName;
@@ -395,15 +404,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   @Data
+  public static class GcpReservationInfo implements ReservationInfo {
+    private Map<String, GcpZoneReservation> reservationsByZoneMap = new HashMap<>();
+  }
+
+  @Data
   public static class CapacityReservationState {
     private Map<UUID, AzureReservationInfo> azureReservationInfos = new HashMap<>();
     private Map<UUID, AwsReservationInfo> awsReservationInfos = new HashMap<>();
+    private Map<UUID, GcpReservationInfo> gcpReservationInfos = new HashMap<>();
 
     // other reservation types
 
     @JsonIgnore
     public boolean isEmpty() {
-      return azureReservationInfos.isEmpty() && awsReservationInfos.isEmpty();
+      return azureReservationInfos.isEmpty()
+          && awsReservationInfos.isEmpty()
+          && gcpReservationInfos.isEmpty();
     }
   }
 

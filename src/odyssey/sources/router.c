@@ -1250,6 +1250,16 @@ attach:
 	server->idle_time = 0;
 	server->key_client = client_for_router->key;
 
+	/*
+	 * YB: Enable/disable parse queue tracking based on the runtime
+	 * gflag `ysql_conn_mgr_enable_parse_queue_tracking`.
+	 */
+	if (route->rule->pool->reserve_prepared_statement) {
+		yb_od_parse_queue_enable(
+			&server->parse_queue,
+			instance->config.yb_enable_parse_queue_tracking);
+	}
+
 	if (route->id.logical_rep) {
 		/*
 		 * Replication connections are never detached after txn is committed
@@ -1347,6 +1357,7 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	(void)router;
 	od_route_t *route = client->route;
 	od_instance_t *instance = router->global->instance;
+	bool is_parse_queue_empty = true;
 	assert(route != NULL);
 
 	/* detach from current machine event loop */
@@ -1364,6 +1375,35 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 
 	client->server = NULL;
 	server->client = NULL;
+	if (route->rule->pool->reserve_prepared_statement) {
+		if (!yb_od_parse_queue_empty(&server->parse_queue)) {
+			int pq_count = yb_od_parse_queue_count(&server->parse_queue);
+			/*
+			 * Invariant: by the time the client detaches from this
+			 * server, every Parse/Bind/Describe issued in the
+			 * extended-query protocol should have been paired with
+			 * a Sync that drained the queue.  If we still have
+			 * entries here, yb_drain_parse_queue_till_sync failed to
+			 * clear them, which means the server's prepared-statement
+			 * state is now out of sync.  Don't return this server to
+			 * the pool; close it so the next attach starts from a
+			 * clean backend.
+			 */
+			od_error(&instance->logger, "router-detach", client,
+				 server,
+				 "parse queue not empty on detach: %d pending "
+				 "entries; closing server connection to discard "
+				 "partial extended-query state",
+				 pq_count);
+			is_parse_queue_empty = false;
+		}
+		/*
+		 * Empty the parse queue irrespective queue being empty or not.
+		 * This is to ensure no memory is held on to by the parse queue.
+		 */
+		yb_od_parse_queue_free(&server->parse_queue);
+	}
+
 	/*
 	 * When the server detaches after completing a transaction,
 	 * some queries are issued during the reset phase, which causes the
@@ -1394,9 +1434,10 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	 *     (but NOT a control connection).
 	 *  d. It took too long to reset state on the server.
 	 *  e. The current time exceeded server's expiry time
+	 *  f. The parse queue is not empty on detach.
 	 */
 	if (od_likely(!server->offline) && !server->yb_sticky_connection &&
-	    !server->reset_timeout && !server_expired) {
+	    !server->reset_timeout && !server_expired && is_parse_queue_empty) {
 		od_instance_t *instance = server->global->instance;
 		if ((route->id.physical_rep || route->id.logical_rep) &&
 		    (route->rule->pool->routing != OD_RULE_POOL_INTERVAL)) {

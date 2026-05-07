@@ -153,7 +153,7 @@ A column combination like (col2,col4) cannot be used to search or query a table.
 
 {{% explore-setup-single %}}
 
-This example uses the `employees` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
+This example uses the `employees` table from the [Northwind sample database](/stable/develop/sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `employees` table:
 

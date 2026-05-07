@@ -4,10 +4,12 @@ headerTitle: PgExercises
 linkTitle: PgExercises
 description: Use the PgExercises sample database on YugabyteDB to learn SQL or test your knowledge.
 menu:
-  stable:
+  stable_develop:
     identifier: pgexercises
     parent: sample-data
     weight: 300
+aliases:
+  - /stable/sample-data/pgexercises/
 type: docs
 ---
 
@@ -18,7 +20,7 @@ You can install and use the PgExercises database using:
 - A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](/stable/quick-start/macos/).
 - Using cloud shell or a client shell to connect to a cluster in YugabyteDB Aeon. Refer to [Connect to clusters in YugabyteDB Aeon](/stable/yugabyte-cloud/cloud-connect/). To get started with YugabyteDB Aeon, refer to [Quick Start](/stable/yugabyte-cloud/cloud-quickstart/).
 
-In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../api/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
+In either case, you use the YugabyteDB SQL shell ([ysqlsh](/stable/api/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](/stable/api/ysql/).
 
 ## About the PgExercises sample database
 
@@ -116,4 +118,4 @@ You are now ready to start working through the [PostgreSQL Exercises](https://pg
 - [String Operations](https://pgexercises.com/questions/string/)
 - [Recursive Queries](https://pgexercises.com/questions/recursive/)
 
-YugabyteDB returns the same results as expected based on the solutions on the PostgreSQL Exercises website, with one exception. In the ["Find telephone numbers with parentheses"](https://pgexercises.com/questions/string/reg.html) exercise, YugabyteDB returns results with a sort order of strings different than in PostgreSQL due to [hash sharding in YugabyteDB](../../architecture/docdb-sharding/).
+YugabyteDB returns the same results as expected based on the solutions on the PostgreSQL Exercises website, with one exception. In the ["Find telephone numbers with parentheses"](https://pgexercises.com/questions/string/reg.html) exercise, YugabyteDB returns results with a sort order of strings different than in PostgreSQL due to [hash sharding in YugabyteDB](/stable/architecture/docdb-sharding/).

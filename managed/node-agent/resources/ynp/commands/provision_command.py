@@ -434,6 +434,27 @@ class ProvisionCommand(Command):
                 )
                 sys.exit(1)
 
+            expected_version_str = context.get('expected_ynp_version')
+            if expected_version_str:
+                try:
+                    expected_version = self._parse_version(expected_version_str)
+                except ValueError as e:
+                    logger.error(f"Error parsing expected_ynp_version: {e}")
+                    sys.exit(1)
+                if expected_version[0] != stored_ynp_version[0]:
+                    logger.error(
+                        f"YNP version mismatch. Expected major version: "
+                        f"{expected_version[0]} (from {expected_version_str}), "
+                        f"found: {stored_ynp_version[0]} (from {ynp_version_file}). "
+                        f"Please re-provision the node with the current YNP version."
+                    )
+                    sys.exit(1)
+                logger.info(
+                    f"YNP expected version check passed. "
+                    f"Expected: {expected_version_str}, "
+                    f"Stored: {'.'.join(str(p) for p in stored_ynp_version)}"
+                )
+
     def _parse_version(self, version):
         """
         Parse a version string into a tuple of integers (major, minor, patch).

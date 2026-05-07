@@ -5593,4 +5593,65 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     colConn.close();
     replConn.close();
   }
+
+  @Test
+  public void testRestartTimeMovementWithNoWorkload() throws Exception {
+    String slotName = "test_restart_time_movement";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_table");
+      stmt.execute("CREATE TABLE test_table (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tServer, "cdcsdk_update_restart_time_interval_secs", "0");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'hello')");
+    }
+
+    // Ack the txn, so that nothing more is left to stream.
+    receiveMessage(stream, 4);
+    stream.setFlushedLSN(stream.getLastReceiveLSN());
+    stream.forceUpdateStatus();
+    waitForRestartLSN(connection, slotName, 4L);
+
+    long restartCommitHtBefore = getRestartCommitHt(connection, slotName);
+
+    // Sleep with no workload. GetConsistentChanges should move the restart time forward.
+    int sleepDurationSec = 10 * kMultiplier;
+    Thread.sleep(sleepDurationSec * 1000);
+
+    long restartCommitHtAfter = getRestartCommitHt(connection, slotName);
+    assertTrue(restartCommitHtAfter > restartCommitHtBefore);
+    LOG.info("Restart time before movement: {} after movement: {}",
+        restartCommitHtBefore, restartCommitHtAfter);
+
+    stream.close();
+    conn.close();
+  }
+
+  private long getRestartCommitHt(Connection connection, String slotName) throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res = stmt.executeQuery(String.format(
+          "select yb_restart_commit_ht from pg_replication_slots where slot_name = '%s'",
+          slotName));
+      assertTrue(res.next());
+      return res.getLong("yb_restart_commit_ht");
+    }
+  }
 }

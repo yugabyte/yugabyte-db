@@ -582,8 +582,9 @@ restore_backup() {
     if [[ "$single_transaction" = true ]]; then
       restore_args+=( --single_transaction )
     fi
+    cmd=("$backup_script" restore "${restore_args[@]}")
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${restore_args[@]}"
+        "$(printf '%q ' "${cmd[@]}")"
 
     # Delete backup archive from container.
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \

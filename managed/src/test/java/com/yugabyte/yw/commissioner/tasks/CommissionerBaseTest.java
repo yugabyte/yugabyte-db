@@ -33,6 +33,8 @@ import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.cloud.azu.AZUClientFactory;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -252,6 +254,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AZUClientFactory azuClientFactory = mock(AZUClientFactory.class);
   protected AZUResourceGroupApiClient azuResourceGroupApiClient =
       mock(AZUResourceGroupApiClient.class);
+  protected GCPProjectApiClientFactory gcpClientFactory = mock(GCPProjectApiClientFactory.class);
+  protected GCPProjectApiClient gcpProjectApiClient = mock(GCPProjectApiClient.class);
+
   protected CloudAPI cloudAPI = mock(CloudAPI.class);
 
   protected int failsOnCapacityReservation = 0;
@@ -304,6 +309,30 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     imageBundleUtil = app.injector().instanceOf(ImageBundleUtil.class);
     lenient().when(azuClientFactory.getClient(any())).thenReturn(azuResourceGroupApiClient);
     lenient().when(mockCloudAPIFactory.get(any())).thenReturn(cloudAPI);
+    lenient().when(gcpClientFactory.getClient(any())).thenReturn(gcpProjectApiClient);
+
+    // GCP createCapacityReservation: echo back the reservation name (arg 0),
+    // matching the AWS/Azure stub style.
+    Map<String, Integer> gcpFailsPerReservation = new HashMap<>();
+    try {
+      lenient()
+          .doAnswer(
+              invocation -> {
+                String reservationName = invocation.getArgument(0);
+                if (failsOnCapacityReservation > 0) {
+                  int n = gcpFailsPerReservation.merge(reservationName, 1, Integer::sum);
+                  if (n <= failsOnCapacityReservation) {
+                    throw new RuntimeException("Failing");
+                  }
+                }
+                return reservationName;
+              })
+          .when(gcpProjectApiClient)
+          .createCapacityReservation(
+              anyString(), anyString(), anyString(), any(Integer.class), any(Map.class));
+    } catch (java.io.IOException e) {
+      throw new RuntimeException(e);
+    }
 
     PrometheusRegistry collectorRegistry = new PrometheusRegistry();
     capacityReservationGauge = CapacityReservationMetrics.initReservationGauge(collectorRegistry);
@@ -535,6 +564,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(
                     bind(KubernetesManagerFactory.class).toInstance(mockKubernetesManagerFactory)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(bind(GCPProjectApiClientFactory.class).toInstance(gcpClientFactory))
         .overrides(bind(CapacityReservationMetrics.class).toInstance(reservationMetrics))
         .overrides(
             bind(OperatorStatusUpdaterFactory.class).toInstance(mockOperatorStatusUpdaterFactory))
@@ -1313,6 +1343,108 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
 
     validateMetrics(Common.CloudType.aws, nodesCounts, 0);
+  }
+
+  @SafeVarargs
+  protected final void verifyCapacityReservationGcp(
+      UUID universeUUID, Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray)
+      throws java.io.IOException {
+    verifyCapacityReservationGcp(universeUUID, gcpProvider, instanceTypeToZonesAndNodesArray);
+  }
+
+  @SafeVarargs
+  protected final void verifyCapacityReservationGcp(
+      UUID universeUUID,
+      Provider provider,
+      Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray)
+      throws java.io.IOException {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    ClusterType clusterType = CommonUtils.getClusterType(provider, universe);
+
+    // Capture all create calls so we can map (instanceType, zone) -> reservationName
+    // without relying on persisted CapacityReservationState (which may be cleared
+    // by later subtasks in the CreateUniverse pipeline).
+    ArgumentCaptor<String> nameCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> zoneCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> typeCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Integer> countCaptor = ArgumentCaptor.forClass(Integer.class);
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    ArgumentCaptor<Map<String, String>> tagsCaptor =
+        (ArgumentCaptor<Map<String, String>>) (ArgumentCaptor) ArgumentCaptor.forClass(Map.class);
+
+    verify(gcpProjectApiClient, Mockito.atLeast(0))
+        .createCapacityReservation(
+            nameCaptor.capture(),
+            zoneCaptor.capture(),
+            typeCaptor.capture(),
+            countCaptor.capture(),
+            tagsCaptor.capture());
+
+    // Build (instanceType, zoneCode) -> reservationName index from captured calls.
+    Map<String, Map<String, String>> capturedNames = new HashMap<>();
+    List<String> capturedNameVals = nameCaptor.getAllValues();
+    List<String> capturedZoneVals = zoneCaptor.getAllValues();
+    List<String> capturedTypeVals = typeCaptor.getAllValues();
+    for (int i = 0; i < capturedNameVals.size(); i++) {
+      capturedNames
+          .computeIfAbsent(capturedTypeVals.get(i), x -> new HashMap<>())
+          .put(capturedZoneVals.get(i), capturedNameVals.get(i));
+    }
+
+    List<Double> nodesCounts = new ArrayList<>();
+    for (Map<String, Map<String, ZoneData>> instanceTypeToZonesAndNodes :
+        instanceTypeToZonesAndNodesArray) {
+      for (Map.Entry<String, Map<String, ZoneData>> typeEntry :
+          instanceTypeToZonesAndNodes.entrySet()) {
+        String instanceType = typeEntry.getKey();
+        for (Map.Entry<String, ZoneData> zoneEntry : typeEntry.getValue().entrySet()) {
+          String zone = zoneEntry.getKey();
+          ZoneData zoneData = zoneEntry.getValue();
+          String fullZone = "az-" + zone;
+
+          String reservationName =
+              capturedNames.getOrDefault(instanceType, Collections.emptyMap()).get(fullZone);
+          assertNotNull(
+              "Expected captured GCP reservation for "
+                  + instanceType
+                  + "/"
+                  + fullZone
+                  + ". All captured: "
+                  + capturedNames,
+              reservationName);
+          assertTrue(
+              "GCP reservation name must start with r-: " + reservationName,
+              reservationName.startsWith("r-"));
+
+          Map<String, String> expectedTags =
+              Map.of(
+                  "universe-name",
+                  "universe-test",
+                  "universe-uuid",
+                  universeUUID.toString(),
+                  "cluster-type",
+                  clusterType.name(),
+                  "zone",
+                  fullZone,
+                  "instance-type",
+                  instanceType);
+
+          verify(gcpProjectApiClient)
+              .createCapacityReservation(
+                  Mockito.eq(reservationName),
+                  Mockito.eq(fullZone),
+                  Mockito.eq(instanceType),
+                  Mockito.eq(Integer.valueOf(zoneData.nodes.size())),
+                  Mockito.eq(expectedTags));
+          nodesCounts.add((double) zoneData.nodes.size());
+          verify(gcpProjectApiClient)
+              .deleteCapacityReservation(
+                  Mockito.eq(reservationName), Mockito.eq(fullZone), Mockito.eq(true));
+        }
+      }
+    }
+
+    // validateMetrics(Common.CloudType.gcp, nodesCounts, 0);
   }
 
   protected void verifyNodeInteractionsCapacityReservation(

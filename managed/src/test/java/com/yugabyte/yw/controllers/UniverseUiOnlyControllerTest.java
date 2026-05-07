@@ -707,6 +707,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
           for (int idx = 0; idx < 3; idx++) {
             NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+            node.cloudInfo.instance_type = i.getInstanceTypeCode();
             node.placementUuid = cluster.uuid;
             nodeDetailsJsonArray.add(Json.toJson(node));
             if (idx == 1) {
@@ -890,6 +891,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
           for (int idx = 0; idx < 3; idx++) {
             NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+            node.cloudInfo.instance_type = i.getInstanceTypeCode();
             node.placementUuid = cluster.uuid;
             if (idx > 0) {
               // Exclude the first node in the payload.
@@ -952,6 +954,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
               cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
               for (int idx = 0; idx < 3; idx++) {
                 NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+                node.cloudInfo.instance_type = i.getInstanceTypeCode();
                 node.placementUuid = cluster.uuid;
                 nodeDetailsJsonArray.add(Json.toJson(node));
                 if (idx > 0) {
@@ -1072,6 +1075,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
               cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
               for (int idx = 0; idx < 3; idx++) {
                 NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+                node.cloudInfo.instance_type = i.getInstanceTypeCode();
                 node.placementUuid = cluster.uuid;
                 nodeDetailsJsonArray.add(Json.toJson(node));
                 universeDetails.nodeDetailsSet.add(node);

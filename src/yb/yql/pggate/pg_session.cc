@@ -75,11 +75,11 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_invalidation_message_expiration_secs, 10,
                        "yb_increment_all_db_catalog_versions_with_inval_messages will delete "
                        "invalidation messages older than this time");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 8192,
-    "If a DDL statement generates more than this number of invalidation "
-    "messages we do not associate the messages with the new catalog version "
-    "caused by this DDL statement. This effetively turns off incremental "
-    "catalog cache refresh for this new catalog version.");
+DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
+                       "If a DDL statement generates more than this number of invalidation "
+                       "messages we do not associate the messages with the new catalog version "
+                       "caused by this DDL statement. This effetively turns off incremental "
+                       "catalog cache refresh for this new catalog version.");
 
 DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
                       "Maximum number of invalidation messages we keep for a given database.");

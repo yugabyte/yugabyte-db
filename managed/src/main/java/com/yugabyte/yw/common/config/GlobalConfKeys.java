@@ -1935,6 +1935,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "List of operations that use capacity reservation in aws",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<List> capacityReservationOperationsGcp =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation_supported_operations_gcp",
+          ScopeType.GLOBAL,
+          "Capacity reservations operations for gcp",
+          "List of operations that use capacity reservation in gcp",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> verifyGFlagsOnNodeDuringUpgrade =
       new ConfKeyInfo<>(
           "yb.task.verify_gflags_on_node",
@@ -2119,6 +2127,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable preflight check in YNP node agent provision",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableYnpVersionCheck =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_ynp_version_check",
+          ScopeType.GLOBAL,
+          "Enable YNP Version Check",
+          "Enable YNP version check when adding nodes to a universe."
+              + " When enabled, the node's YNP major version must match the expected version.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> bgRedactAuditBatchSize =
       new ConfKeyInfo<>(
           "yb.audit.bg_redact_audit_batch_size",
@@ -2175,5 +2192,29 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Edit Universe V2 UI",
           "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> gcpCapacityReservationGcEnabled =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_gc_enabled",
+          ScopeType.GLOBAL,
+          "Whether to enable GCP capacity reservation garbage collection",
+          "Whether to enable GCP capacity reservation garbage collection",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpCapacityReservationGcInterval =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_gc_interval",
+          ScopeType.GLOBAL,
+          "Interval for GCP capacity reservation garbage collection",
+          "Interval for GCP capacity reservation garbage collection",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpCapacityReservationTtl =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.gcp_ttl",
+          ScopeType.GLOBAL,
+          "Time to live for GCP capacity reservation",
+          "Time to live for GCP capacity reservation",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

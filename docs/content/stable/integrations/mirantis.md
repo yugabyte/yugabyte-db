@@ -216,7 +216,7 @@ Connect to your cluster using [ysqlsh](../../api/ysqlsh/), and interact with it 
     yugabyte=#
     ```
 
-1. To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../sample-data/retail-analytics/).
+1. To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/stable/develop/sample-data/retail-analytics/).
 
 ## Access the MKE web UI
 

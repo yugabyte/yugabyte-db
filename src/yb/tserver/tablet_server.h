@@ -492,6 +492,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   friend class TabletServerTestBase;
 
   Status DisplayRpcIcons(std::stringstream* output) override;
+  void DisplayGeneralInfoIcons(std::stringstream* output) override;
 
   Status ValidateMasterAddressResolution() const;
 

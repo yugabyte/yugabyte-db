@@ -24,12 +24,13 @@ int yb_od_server_cleanup_resources(od_server_t *server)
 			break;
 		od_hashmap_list_item_t *item = od_container_of(
 			it, od_hashmap_list_item_t, yb_lru_link);
-		od_hash_t keyhash = od_murmur_hash(item->key.data, item->key.len);
-		char buf[OD_HASH_LEN];
-		od_snprintf(buf, OD_HASH_LEN, "%08x", keyhash);
+		yb_od_hash_64_t keyhash =
+			yb_od_murmur_hash_64(item->key.data, item->key.len);
+		char buf[YB_OD_HASH_64_LEN];
+		od_snprintf(buf, YB_OD_HASH_64_LEN, "%016" PRIx64, keyhash);
 
 		machine_msg_t *msg = kiwi_fe_write_close(
-			NULL, YB_KIWI_FE_CLOSE_FORCE, buf, OD_HASH_LEN);
+			NULL, YB_KIWI_FE_CLOSE_FORCE, buf, YB_OD_HASH_64_LEN);
 		if (msg == NULL) {
 			od_error(&instance->logger, "lru cleanup", NULL,
 				 server, "failed to create close packet");

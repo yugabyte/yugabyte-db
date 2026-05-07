@@ -90,7 +90,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           null,
           false);
     }
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)
+    if (isFirstTry()
+        && confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)
         && instanceExists(taskParams())) {
       createCheckNodeCommandExecutionTasks(Collections.singletonList(currentNode))
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);

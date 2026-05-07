@@ -222,6 +222,54 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testRollingSoftwareUpgradeSkipsComprehensivePrechecksOnRetry() {
+    updateDefaultUniverseTo5Nodes(true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "true");
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+
+    // Precheck-only runs: universe stays on the old DB version so rolling-upgrade prechecks still
+    // apply. Second run sets previousTaskUUID so isFirstTry() is false.
+    SoftwareUpgradeParams taskParams1 = new SoftwareUpgradeParams();
+    taskParams1.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams1.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    taskParams1.setRunOnlyPrechecks(true);
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams1.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    TaskInfo taskInfo1 = submitTask(taskParams1, defaultUniverse.getVersion());
+    assertEquals(Success, taskInfo1.getTaskState());
+    assertTrue(
+        taskInfo1.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckServiceLiveness));
+    assertTrue(
+        taskInfo1.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
+
+    SoftwareUpgradeParams taskParams2 = new SoftwareUpgradeParams();
+    taskParams2.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams2.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    taskParams2.setRunOnlyPrechecks(true);
+    taskParams2.setPreviousTaskUUID(taskInfo1.getUuid());
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams2.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+    TaskInfo taskInfo2 = submitTask(taskParams2, defaultUniverse.getVersion());
+    assertEquals(Success, taskInfo2.getTaskState());
+    assertFalse(
+        taskInfo2.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckServiceLiveness));
+    assertFalse(
+        taskInfo2.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
+  }
+
+  @Test
   public void testSoftwareUpgradeWithAutoFinalize() {
     updateDefaultUniverseTo5Nodes(true);
 

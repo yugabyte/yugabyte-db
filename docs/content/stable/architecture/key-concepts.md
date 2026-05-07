@@ -11,7 +11,7 @@ aliases:
 menu:
   stable:
     identifier: architecture-concepts-universe
-    parent: reference
+    parent: architecture
     weight: 10
 type: docs
 ---

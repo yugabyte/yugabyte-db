@@ -2758,6 +2758,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.debug("Skipping DB node port connectivity check: no source nodes");
       return;
     }
+    if (!isFirstTry()) {
+      log.debug("Skipping DB node port connectivity check on retry");
+      return;
+    }
     if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
       log.debug("Skipping DB node port connectivity check: comprehensive prechecks are disabled");
       return;
@@ -4286,9 +4290,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void createDeleteCapacityReservationTask() {
+    createDeleteCapacityReservationTask(true /* deleteOnlyIfFullyUtilized */);
+  }
+
+  protected void createDeleteCapacityReservationTask(boolean deleteOnlyIfFullyUtilized) {
     TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ReleaseCapacityReservation");
     DeleteCapacityReservation.Params params = new DeleteCapacityReservation.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.deleteOnlyIfFullyUtilized = deleteOnlyIfFullyUtilized;
     // Create the task.
     DeleteCapacityReservation task = createTask(DeleteCapacityReservation.class);
     task.initialize(params);
@@ -4374,7 +4383,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (universe.getUniverseDetails().getCapacityReservationState() != null
         && !universe.getUniverseDetails().getCapacityReservationState().isEmpty()) {
       try {
-        setTaskQueueAndRun(() -> createDeleteCapacityReservationTask());
+        setTaskQueueAndRun(
+            () -> createDeleteCapacityReservationTask(false /* deleteOnlyIfFullyUtilized */));
       } catch (Exception ignored) {
         // Not throwing exception that will overwrite the current one.
         log.error("Failed to delete capacity reservations", ignored);

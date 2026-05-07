@@ -177,7 +177,8 @@ REGISTER_CALLBACK(qos_capped_pool_cpu_weight, "qos cpu limit update", ApplyQosCp
 REGISTER_CALLBACK(qos_system_med_cpu_max_percent, "qos cpu limit update", ApplyQosCpuLimits);
 
 Result<Cgroup&> GetOrCreateDbCgroup(PgOid db_oid) {
-  auto* root = DCHECK_NOTNULL(RootCgroup());
+  auto* root = RootCgroup();
+  SCHECK(root, IllegalState, "Cgroup management not initialized");
   auto& capped_pool = VERIFY_RESULT_REF(root->CreateOrLoadChild("@capped-pool"));
   auto& normal = VERIFY_RESULT_REF(capped_pool.CreateOrLoadChild("@normal"));
   return VERIFY_RESULT_REF(normal.CreateOrLoadChild(Format("db_$0", db_oid)));

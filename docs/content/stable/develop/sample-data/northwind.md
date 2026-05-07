@@ -4,10 +4,12 @@ headerTitle: Northwind sample database
 linkTitle: Northwind
 description: Use the Northwind sample database to explore and learn YugabyteDB.
 menu:
-  v2024.2:
+  stable_develop:
     identifier: northwind
     parent: sample-data
     weight: 200
+aliases:
+  - /stable/sample-data/northwind/
 type: docs
 ---
 
@@ -18,7 +20,7 @@ You can install and use the Northwind sample database using:
 - A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](/stable/quick-start/macos/).
 - Using cloud shell or a client shell to connect to a cluster in YugabyteDB Aeon. Refer to [Connect to clusters in YugabyteDB Aeon](/stable/yugabyte-cloud/cloud-connect/). To get started with YugabyteDB Aeon, refer to [Quick Start](/stable/yugabyte-cloud/cloud-quickstart/).
 
-In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../api/ysqlsh)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
+In either case, you use the YugabyteDB SQL shell ([ysqlsh](/stable/api/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](/stable/api/ysql/).
 
 ## About the Northwind sample database
 
@@ -48,7 +50,7 @@ Follow the steps here to install the Northwind sample database.
 
 ### Open the YSQL shell
 
-If you are using a local installation of YugabyteDB, run the `ysqlsh` command from the `yugabyte` root directory.
+If you are using a local installation of YugabyteDB, run the ysqlsh command from the `yugabyte` root directory.
 
 ```sh
 $ ./bin/ysqlsh

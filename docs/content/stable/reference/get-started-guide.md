@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: get-started-guide
     parent: reference
-    weight: 2600
+    weight: 1100
 type: docs
 unversioned: true
 ---

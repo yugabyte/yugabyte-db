@@ -4267,7 +4267,9 @@
         "editYSQLSettings": "Edit YSQL Settings",
         "editYCQLSettings": "Edit YCQL Settings",
         "editConnectionPooling": "Edit Connection Pooling Settings",
-        "editPostgresCompatibility": "Edit Postgres Compatibility Settings"
+        "editPostgresCompatibility": "Edit Postgres Compatibility Settings",
+        "noGflagsAdded": "You have not added any database configuration flags yet",
+        "addFlag": "Add Configuration Flag"
       },
       "advanced": {
         "proxyConfiguration": "Proxy Configuration",

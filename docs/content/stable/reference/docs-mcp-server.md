@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: docs-mcp-server
     parent: reference
-    weight: 2590
+    weight: 1000
 type: docs
 unversioned: true
 ---

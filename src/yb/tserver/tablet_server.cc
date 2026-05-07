@@ -1085,6 +1085,13 @@ Status GetDynamicUrlTile(
   return Status::OK();
 }
 
+void TabletServer::DisplayGeneralInfoIcons(std::stringstream* output) {
+  DbServerBase::DisplayGeneralInfoIcons(output);
+  if (TServerCgroupManagementEnabled()) {
+    DisplayIconTile(output, "fa-sitemap", "Cgroups", "/cgroups");
+  }
+}
+
 Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
   ServerRegistrationPB reg;
   RETURN_NOT_OK(GetRegistration(&reg));

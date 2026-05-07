@@ -590,6 +590,14 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Use system-level systemd instead of user-level systemd for service management",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCapacityReservationGcp =
+      new ConfKeyInfo<>(
+          "yb.task.enable_capacity_reservation_gcp",
+          ScopeType.PROVIDER,
+          "Enable capacity reservations for GCP",
+          "Enable capacity reservations for GCP for tasks that need new nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybUserHomeOverride =
       new ConfKeyInfo<>(
           "yb.internal.yb_user_home_override",
