@@ -594,13 +594,15 @@ TEST_P(PgMiniTestTracing, Tracing) {
     std::atomic<size_t> last_logged_bytes_{0};
   };
 
-  TraceLogSink trace_log_sink;
 
+  TraceLogSink trace_log_sink;
   google::AddLogSink(&trace_log_sink);
   size_t last_logged_trace_size;
 
-  auto conn = ASSERT_RESULT(Connect());
+  // Wait for all tablet servers to be registered at the master.
+  ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers()));
 
+  auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT, value2 TEXT)"));
 
   LOG(INFO) << "Doing Insert";
