@@ -149,7 +149,7 @@ CREATE FUNCTION mag_catalog.load_edges_from_file(graph_name name,
 
 -- YB: Set the hard coded oid.
 SET yb_binary_restore TO true;
-SELECT binary_upgrade_set_next_pg_type_oid(8113);
+SELECT binary_upgrade_set_next_pg_type_oid(8116);
 CREATE TYPE graphid;
 SET yb_binary_restore TO false;
 
