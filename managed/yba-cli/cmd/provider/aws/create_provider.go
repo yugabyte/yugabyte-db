@@ -138,16 +138,6 @@ var createAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		allAccessKeys := make([]ybaclient.AccessKey, 0)
-		accessKey := ybaclient.AccessKey{
-			KeyInfo: ybaclient.KeyInfo{
-				KeyPairName:              util.GetStringPointer(keyPairName),
-				SshPrivateKeyContent:     util.GetStringPointer(sshFileContent),
-				SkipKeyValidateAndUpload: util.GetBoolPointer(skipKeyValidateAndUpload),
-			},
-		}
-		allAccessKeys = append(allAccessKeys, accessKey)
-
 		regions, err := cmd.Flags().GetStringArray("region")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -171,7 +161,7 @@ var createAWSProviderCmd = &cobra.Command{
 		}
 
 		awsImageBundles := buildAWSImageBundles(imageBundles, regionOverrides, len(awsRegions))
-
+		allAccessKeys := make([]ybaclient.AccessKey, 0)
 		requestBody := ybaclient.Provider{
 			Code:          util.GetStringPointer(providerCode),
 			AllAccessKeys: &allAccessKeys,
@@ -185,6 +175,18 @@ var createAWSProviderCmd = &cobra.Command{
 					Aws: &awsCloudInfo,
 				},
 			},
+		}
+
+		if !util.IsEmptyString(keyPairName) && !util.IsEmptyString(sshFileContent) {
+			accessKey := ybaclient.AccessKey{
+				KeyInfo: ybaclient.KeyInfo{
+					KeyPairName:              util.GetStringPointer(keyPairName),
+					SshPrivateKeyContent:     util.GetStringPointer(sshFileContent),
+					SkipKeyValidateAndUpload: util.GetBoolPointer(skipKeyValidateAndUpload),
+				},
+			}
+			allAccessKeys = append(allAccessKeys, accessKey)
+			requestBody.AllAccessKeys = &allAccessKeys
 		}
 
 		rTask, response, err := authAPI.CreateProvider().
