@@ -736,7 +736,8 @@ public class GFlagsUtil {
     } else {
       gflags.put(START_REDIS_PROXY, "false");
     }
-    if (taskParam.cgroupSize > 0) {
+    if (taskParam.cgroupSize > 0
+        && !universe.getUniverseDetails().getPrimaryCluster().userIntent.isQosEnabled()) {
       gflags.put(POSTMASTER_CGROUP, YSQL_CGROUP_PATH);
     }
     // Add timestamp_history_retention_sec gflag if required.

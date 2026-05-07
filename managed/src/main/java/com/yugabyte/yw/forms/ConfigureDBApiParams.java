@@ -173,6 +173,15 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
             BAD_REQUEST, "Cannot set password while YCQL auth is disabled.");
       } else if (communicationPorts.yqlServerHttpPort == communicationPorts.yqlServerRpcPort) {
         throw new PlatformServiceException(BAD_REQUEST, "All YCQL ports must be different.");
+      } else if (!runtimeConfGetter.getConfForScope(
+              universe, UniverseConfKeys.multitenancySkipYcqlPrecheck)
+          && enableYCQL
+          && userIntent.isQosEnabled()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Universe %s cannot enable YCQL endpoint as multi-tenancy is enabled.",
+                universe.getName()));
       } else if (!enableYCQL) {
         if (!runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.allowDisableDBApis)) {
           throw new PlatformServiceException(
@@ -310,6 +319,12 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
               "CPU cgroup must be configured on the universe before enabling QoS. "
                   + "Ensure cgroup provisioning is completed first.");
         }
+      }
+      if (multiTenancy.getQosMaxDbCpuPercent() != null
+          && (multiTenancy.getQosMaxDbCpuPercent() <= 0.0
+              || multiTenancy.getQosMaxDbCpuPercent() > 100.0)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "QoS max db cpu percent should be between 0 and 100( inclusive ).");
       }
     }
   }

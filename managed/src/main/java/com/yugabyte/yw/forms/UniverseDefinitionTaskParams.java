@@ -947,6 +947,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     @JsonIgnore
+    public void unsetCgroupSize() {
+      Consumer<AZOverrides> azOverridesConsumer = azO -> azO.setCgroupSize(null);
+      if (MapUtils.isNotEmpty(azOverrides)) {
+        Set<UUID> azUUIDs = new HashSet<UUID>(azOverrides.keySet());
+        azUUIDs.stream().forEach(azUUID -> updateAZOverride(azUUID, azOverridesConsumer));
+      }
+    }
+
+    @JsonIgnore
     public void removeNonRequiredAZs(Set<UUID> usedAZs) {
       if (MapUtils.isEmpty(azOverrides)) {
         return;

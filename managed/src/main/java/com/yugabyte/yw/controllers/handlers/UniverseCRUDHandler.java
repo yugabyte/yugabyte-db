@@ -1048,11 +1048,9 @@ public class UniverseCRUDHandler {
             confGetter
                 .getCustomerConf(customer)
                 .getBoolean(UniverseConfKeys.multitenancySkipYcqlPrecheck.getKey());
-        if (skipYcqlPrecheck) {
-          if (!userIntent.enableYSQL) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "YSQL API should be enabled to enable multi-tenancy");
-          }
+        if (skipYcqlPrecheck && !userIntent.enableYSQL) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "YSQL API should be enabled to enable multi-tenancy");
         } else if (!(userIntent.enableYSQL && !userIntent.enableYCQL)) {
           throw new PlatformServiceException(
               BAD_REQUEST,
@@ -1085,6 +1083,12 @@ public class UniverseCRUDHandler {
                     + provider.getName()
                     + "' before it can be enabled on the universe.");
           }
+        }
+        if (mtConfig.getQosMaxDbCpuPercent() != null
+            && (mtConfig.getQosMaxDbCpuPercent() <= 0.0
+                || mtConfig.getQosMaxDbCpuPercent() > 100.0)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "QoS max db cpu percent should be between 0 and 100( inclusive ).");
         }
       }
     }
