@@ -90,19 +90,26 @@ static bool yb_props_contain_meko_key(agtype *props)
 /*
  * YB: Re-inject the meko_* tenant keys from `original` into `altered`. Used
  * after a full-replacement SET (n = {...}) so the JSON map stays in sync
- * with the carried-over tenant columns. Existing meko_* keys in `altered`
+ * with the copied-over tenant columns. Existing meko_* keys in `altered`
  * are overwritten with the values from `original`; missing ones are added.
  */
 static agtype_value *yb_inject_meko_keys(agtype_value *altered,
-                                         agtype_value *original)
+                                         agtype *original)
 {
-    if (original == NULL || altered == NULL)
+    if (original == NULL || altered == NULL ||
+        !AGT_ROOT_IS_OBJECT(original))
         return altered;
 
     for (size_t i = 0; i < lengthof(yb_meko_property_keys); i++)
     {
-        agtype_value *orig_val = GET_AGTYPE_VALUE_OBJECT_VALUE(
-            original, (char *) yb_meko_property_keys[i]);
+        agtype_value search_key;
+        agtype_value *orig_val;
+
+        search_key.type = AGTV_STRING;
+        search_key.val.string.val = (char *) yb_meko_property_keys[i];
+        search_key.val.string.len = strlen(yb_meko_property_keys[i]);
+        orig_val = find_agtype_value_from_container(&original->root,
+                                                    AGT_FOBJECT, &search_key);
 
         if (orig_val == NULL || orig_val->type == AGTV_NULL)
             continue;
@@ -121,7 +128,15 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
                                      TupleTableSlot *elemTupleSlot,
                                      EState *estate, HeapTuple old_tuple);
 
-static const YbMekoDp EmptyYbMekoDp = {0};
+/*
+ * YB: Sentinel passed by callers (e.g. SET) that mean to leave the meko_*
+ * columns untouched in the slot. conversation_id_isnull is initialised to
+ * true so the value at least represents a coherent "no tenant info" state
+ * — the actual tenant values are filled in before insert by either
+ * yb_extract_meko_columns_from_properties() or
+ * yb_copy_meko_columns_from_tuple().
+ */
+static const YbMekoDp EmptyYbMekoDp = {.conversation_id_isnull = true};
 
 const CustomExecMethods cypher_set_exec_methods = {SET_SCAN_STATE_NAME,
                                                       begin_cypher_set,
@@ -697,12 +712,13 @@ static void process_update_list(CustomScanState *node)
              * YB: A full-replacement SET (n = {...}) drops every key that
              * isn't in the new map, so re-inject the meko_* keys from the
              * original properties to keep the JSON map in sync with the
-             * carried-over tenant columns. The merge variant (n += {...})
+             * copied-over tenant columns. The merge variant (n += {...})
              * already preserves them.
              */
             if (IsYugaByteEnabled() && !update_item->is_add)
                 altered_properties =
-                    yb_inject_meko_keys(altered_properties, original_properties);
+                    yb_inject_meko_keys(altered_properties,
+                                        agtype_value_to_agtype(original_properties));
         }
 
         resultRelInfo = create_entity_result_rel_info(
@@ -805,7 +821,7 @@ static void process_update_list(CustomScanState *node)
                 if (IsYugaByteEnabled() &&
                     (original_entity_value->type == AGTV_VERTEX ||
                      original_entity_value->type == AGTV_EDGE))
-                    yb_carry_meko_columns_from_tuple(
+                    yb_copy_meko_columns_from_tuple(
                         slot, heap_tuple,
                         RelationGetDescr(resultRelInfo->ri_RelationDesc),
                         original_entity_value->type == AGTV_EDGE);

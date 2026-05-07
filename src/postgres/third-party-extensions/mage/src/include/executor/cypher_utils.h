@@ -143,10 +143,10 @@ void yb_populate_edge_meko_columns(TupleTableSlot *slot, YbMekoDp meko);
  * preserve the row's tenant identity. Caller is expected to gate the call
  * with IsYugaByteEnabled().
  */
-void yb_carry_meko_columns_from_tuple(TupleTableSlot *slot,
-                                      HeapTuple heap_tuple,
-                                      TupleDesc tupdesc,
-                                      bool is_edge);
+void yb_copy_meko_columns_from_tuple(TupleTableSlot *slot,
+                                     HeapTuple heap_tuple,
+                                     TupleDesc tupdesc,
+                                     bool is_edge);
 
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
     agtype_value *id, agtype_value *properties, YbMekoDp meko); /* YB: tenant cols */

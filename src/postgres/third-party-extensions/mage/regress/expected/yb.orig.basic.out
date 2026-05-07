@@ -76,7 +76,7 @@ SELECT * FROM cypher('basic', $$ MATCH (n:person {meko_user_id:
     '00000000-0000-0000-0000-000000000002'}) RETURN count(n) $$) AS (cnt agtype);
  cnt 
 -----
- 1
+ 2
 (1 row)
 
 -- create_complete_graph and age_create_barbell_graph reach

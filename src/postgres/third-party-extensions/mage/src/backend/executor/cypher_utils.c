@@ -122,15 +122,19 @@ void yb_populate_edge_meko_columns(TupleTableSlot *slot, YbMekoDp meko)
 
 /*
  * YB: Helper for the SET path: copy the four meko_* columns from an
- * on-disk tuple into the corresponding offsets on a slot. The first three
- * columns are NOT NULL on the table so non-null is asserted; conversation
- * is nullable and its flag is propagated.
+ * on-disk tuple into a fresh YbMekoDp and hand it off to the existing
+ * yb_populate_*_meko_columns() so the slot-population logic stays in
+ * one place. The first three columns are NOT NULL on the table so
+ * non-null is asserted; conversation is nullable and its flag is
+ * propagated.
  */
-void yb_carry_meko_columns_from_tuple(TupleTableSlot *slot,
-                                      HeapTuple heap_tuple,
-                                      TupleDesc tupdesc,
-                                      bool is_edge)
+void yb_copy_meko_columns_from_tuple(TupleTableSlot *slot,
+                                     HeapTuple heap_tuple,
+                                     TupleDesc tupdesc,
+                                     bool is_edge)
 {
+    YbMekoDp meko;
+    bool isnull;
     int dp_anum   = is_edge ? Anum_ag_label_edge_table_meko_datapack_id
                             : Anum_ag_label_vertex_table_meko_datapack_id;
     int user_anum = is_edge ? Anum_ag_label_edge_table_meko_user_id
@@ -139,34 +143,21 @@ void yb_carry_meko_columns_from_tuple(TupleTableSlot *slot,
                             : Anum_ag_label_vertex_table_meko_agent_id;
     int conv_anum = is_edge ? Anum_ag_label_edge_table_meko_conversation_id
                             : Anum_ag_label_vertex_table_meko_conversation_id;
-    int dp_off    = is_edge ? edge_tuple_meko_datapack_id
-                            : vertex_tuple_meko_datapack_id;
-    int user_off  = is_edge ? edge_tuple_meko_user_id
-                            : vertex_tuple_meko_user_id;
-    int ag_off    = is_edge ? edge_tuple_meko_agent_id
-                            : vertex_tuple_meko_agent_id;
-    int conv_off  = is_edge ? edge_tuple_meko_conversation_id
-                            : vertex_tuple_meko_conversation_id;
-    bool isnull;
 
-    slot->tts_values[dp_off] =
-        heap_getattr(heap_tuple, dp_anum, tupdesc, &isnull);
+    meko.datapack_id = heap_getattr(heap_tuple, dp_anum, tupdesc, &isnull);
     Assert(!isnull);
-    slot->tts_isnull[dp_off] = false;
-
-    slot->tts_values[user_off] =
-        heap_getattr(heap_tuple, user_anum, tupdesc, &isnull);
+    meko.user_id = heap_getattr(heap_tuple, user_anum, tupdesc, &isnull);
     Assert(!isnull);
-    slot->tts_isnull[user_off] = false;
-
-    slot->tts_values[ag_off] =
-        heap_getattr(heap_tuple, ag_anum, tupdesc, &isnull);
+    meko.agent_id = heap_getattr(heap_tuple, ag_anum, tupdesc, &isnull);
     Assert(!isnull);
-    slot->tts_isnull[ag_off] = false;
-
-    slot->tts_values[conv_off] =
+    meko.conversation_id =
         heap_getattr(heap_tuple, conv_anum, tupdesc, &isnull);
-    slot->tts_isnull[conv_off] = isnull;
+    meko.conversation_id_isnull = isnull;
+
+    if (is_edge)
+        yb_populate_edge_meko_columns(slot, meko);
+    else
+        yb_populate_vertex_meko_columns(slot, meko);
 }
 
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
@@ -373,13 +364,12 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
 }
 
 /*
- * YB: Look up `key` in the agtype object `props` and, if present and a
- * string, palloc a NUL-terminated copy of the value via pnstrdup() and
- * return it through *out_str. Returns true if the lookup succeeded; the
- * caller owns the returned cstring and is responsible for pfreeing it.
+ * YB: Require `key` to be present in `props` as a string and palloc a
+ * NUL-terminated copy. Distinguishes "missing" (ERRCODE_NOT_NULL_VIOLATION)
+ * from "present but not a string" (ERRCODE_INVALID_TEXT_REPRESENTATION).
+ * Caller pfrees the returned cstring.
  */
-static bool yb_lookup_meko_string(agtype *props, const char *key,
-                                  char **out_str)
+static char *yb_require_meko_string(agtype *props, const char *key)
 {
     agtype_value search_key;
     agtype_value *val;
@@ -389,26 +379,15 @@ static bool yb_lookup_meko_string(agtype *props, const char *key,
     search_key.val.string.len = strlen(key);
     val = find_agtype_value_from_container(&props->root, AGT_FOBJECT,
                                            &search_key);
-    if (val == NULL || val->type != AGTV_STRING)
-        return false;
-    *out_str = pnstrdup(val->val.string.val, val->val.string.len);
-    return true;
-}
-
-/*
- * YB: Require `key` to be present in `props` as a string and palloc a
- * NUL-terminated copy. Raises ERRCODE_NOT_NULL_VIOLATION if the key is
- * missing or a non-string type. Caller pfrees the returned cstring.
- */
-static char *yb_require_meko_string(agtype *props, const char *key)
-{
-    char *str;
-
-    if (!yb_lookup_meko_string(props, key, &str))
+    if (val == NULL || val->type == AGTV_NULL)
         ereport(ERROR,
                 (errcode(ERRCODE_NOT_NULL_VIOLATION),
                  errmsg("missing required tenant property \"%s\"", key)));
-    return str;
+    if (val->type != AGTV_STRING)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+                 errmsg("tenant property \"%s\" must be a string", key)));
+    return pnstrdup(val->val.string.val, val->val.string.len);
 }
 
 /*
@@ -436,6 +415,37 @@ static bool yb_optional_meko_string(agtype *props, const char *key,
                  errmsg("tenant property \"%s\" must be a string", key)));
     *out_str = pnstrdup(val->val.string.val, val->val.string.len);
     return true;
+}
+
+/*
+ * YB: Run an input function on `str`, but on failure rewrite the error to
+ * name the meko_* property that produced it. Without this, uuid_in /
+ * textin failures bubble up with no hint about which tenant column was
+ * malformed.
+ */
+static Datum yb_call_meko_input(PGFunction input_func, const char *str,
+                                const char *key)
+{
+    Datum result;
+
+    PG_TRY();
+    {
+        result = DirectFunctionCall1(input_func, CStringGetDatum(str));
+    }
+    PG_CATCH();
+    {
+        ErrorData *edata;
+
+        MemoryContextSwitchTo(ErrorContext);
+        edata = CopyErrorData();
+        FlushErrorState();
+        ereport(ERROR,
+                (errcode(edata->sqlerrcode),
+                 errmsg("invalid value for tenant property \"%s\"", key),
+                 errdetail("%s", edata->message)));
+    }
+    PG_END_TRY();
+    return result;
 }
 
 /*
@@ -472,21 +482,24 @@ YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
     props_agtype = DATUM_GET_AGTYPE_P(props_datum);
     if (!AGT_ROOT_IS_OBJECT(props_agtype))
         ereport(ERROR,
-                (errcode(ERRCODE_NOT_NULL_VIOLATION),
-                 errmsg("missing required tenant properties on vertex/edge")));
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("vertex/edge tenant properties must be an object")));
 
     /*
      * The three NOT NULL keys must be present and string-typed; the helper
-     * raises ERRCODE_NOT_NULL_VIOLATION otherwise. Caller pfrees the
-     * returned cstring after passing it through the appropriate input
-     * function.
+     * raises an appropriate error otherwise. yb_call_meko_input wraps the
+     * input function so a malformed value (for example a non-UUID string)
+     * fails with the meko_* property name in the message instead of a
+     * bare uuid_in() error.
      */
     str = yb_require_meko_string(props_agtype, AG_COLNAME_MEKO_DATAPACK_ID);
-    result.datapack_id = DirectFunctionCall1(uuid_in, CStringGetDatum(str));
+    result.datapack_id = yb_call_meko_input(uuid_in, str,
+                                            AG_COLNAME_MEKO_DATAPACK_ID);
     pfree(str);
 
     str = yb_require_meko_string(props_agtype, AG_COLNAME_MEKO_USER_ID);
-    result.user_id = DirectFunctionCall1(uuid_in, CStringGetDatum(str));
+    result.user_id = yb_call_meko_input(uuid_in, str,
+                                        AG_COLNAME_MEKO_USER_ID);
     pfree(str);
 
     str = yb_require_meko_string(props_agtype, AG_COLNAME_MEKO_AGENT_ID);
@@ -502,7 +515,8 @@ YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
                                 AG_COLNAME_MEKO_CONVERSATION_ID, &str))
     {
         result.conversation_id =
-            DirectFunctionCall1(uuid_in, CStringGetDatum(str));
+            yb_call_meko_input(uuid_in, str,
+                               AG_COLNAME_MEKO_CONVERSATION_ID);
         result.conversation_id_isnull = false;
         pfree(str);
     }
