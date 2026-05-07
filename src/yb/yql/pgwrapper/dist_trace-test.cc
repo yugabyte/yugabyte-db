@@ -658,6 +658,32 @@ TEST_F(DistTraceTest, TestTraceparentGuc) {
   }
 }
 
+TEST_F(DistTraceTest, TestGucPriorityOverComment) {
+  const auto& warnings = CaptureWarnings();
+
+  auto guc_tp = GenerateTraceparent();
+  auto comment_tp = GenerateTraceparent();
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", guc_tp.full));
+
+  auto query = Format("/*traceparent='$0'*/ SELECT 1;", comment_tp.full);
+  ASSERT_OK(conn_->Fetch(query));
+
+  ASSERT_OK(collector_.VerifyAgainstCollectorTraces({
+      MakeExpectedTrace(query, guc_tp.trace_id,
+          {{SpanType::kRoot, 1},
+           {SpanType::kParse, 1},
+           {SpanType::kRewrite, 1},
+           {SpanType::kPlan, 1},
+           {SpanType::kExecute, 1},
+           {SpanType::kCommit, 1}})}));
+
+  ASSERT_EQ(warnings.size(), 1);
+  ASSERT_STR_CONTAINS(warnings.back(),
+      "yb_dist_tracecontext GUC takes priority");
+}
+
 TEST_F(DistTraceTest, TestTraceparentGucSetLocal) {
   Trace expected_query_trace;
 

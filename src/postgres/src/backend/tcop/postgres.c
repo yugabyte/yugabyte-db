@@ -1238,11 +1238,11 @@ YbDistTraceSetQueryIdToRootSpan(List *querytree_list)
 static void
 yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_redacted)
 {
-	char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
-	YbcOtelSpanContext span_ctx = NULL;
-
 	if (!YBCIsDistTraceEnabled() || !YBCIsOtelScopeStackEmpty())
 		return;
+
+	char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
+	YbcOtelSpanContext span_ctx = NULL;
 
 	/*
 	 * YB: query_string may be NULL for protocol messages that don't carry a
@@ -1253,7 +1253,6 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 		? query_string : YbRedactPasswordIfExists(query_string, CMDTAG_UNKNOWN);
 
 	/*
-	 * YB: SQL comment traceparent is higher priority over GUC traceparent.
 	 * redacted_query_string may be NULL for protocol messages that don't carry
 	 * a query (e.g. Close, Describe, Flush, Sync).
 	 */
@@ -1261,7 +1260,18 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 		? YbExtractTraceParentFromComment(redacted_query_string, traceparent)
 		: YB_TRACEPARENT_NO_COMMENT;
 
-	if (tp_result == YB_TRACEPARENT_OK)
+	/* YB: GUC comment traceparent is higher priority over SQL comment traceparent. */
+	if (yb_guc_remote_span_ctx)
+	{
+		span_ctx = yb_guc_remote_span_ctx;
+
+		if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
+			tp_result != YB_TRACEPARENT_NO_FIELD)
+			ereport(WARNING,
+					(errmsg("yb_dist_tracecontext GUC takes priority; "
+							"skipping SQL comment traceparent")));
+	}
+	else if (tp_result == YB_TRACEPARENT_OK)
 	{
 		span_ctx = YBCGetValidSpanContext(traceparent);
 
@@ -1272,16 +1282,8 @@ yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_re
 	else if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
 			 tp_result != YB_TRACEPARENT_NO_FIELD)
 		ereport(WARNING,
-				(errmsg("traceparent comment parsing failed: %s%s",
-						YbGetTraceparentResultErrmsg(tp_result),
-						yb_guc_remote_span_ctx
-						? "; skipping yb_dist_tracecontext GUC"
-						: "")));
-	else
-	{
-		/* YB: Fall back to GUC-based span context. */
-		span_ctx = yb_guc_remote_span_ctx;
-	}
+				(errmsg("traceparent comment parsing failed: %s",
+						YbGetTraceparentResultErrmsg(tp_result))));
 
 	/*
 	 * YB: Start a root span. The scope is owned by the otel_scope_stack
