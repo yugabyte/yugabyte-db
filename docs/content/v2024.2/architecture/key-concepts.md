@@ -7,7 +7,7 @@ headcontent: Glossary of key concepts
 menu:
   v2024.2:
     identifier: architecture-concepts-universe
-    parent: reference
+    parent: architecture
     weight: 10
 type: docs
 ---
