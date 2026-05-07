@@ -1,8 +1,10 @@
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -25,6 +27,8 @@ public class PlatformUniverseNodeConfig implements UniverseNodeConfigInterface {
 
   @JsonProperty ShellProcessContext shellProcessContext;
 
+  @JsonIgnore RuntimeConfGetter confGetter;
+
   @Override
   public String getNodePrivateIp() {
     return nodeDetails.cloudInfo.private_ip;
@@ -40,6 +44,6 @@ public class PlatformUniverseNodeConfig implements UniverseNodeConfigInterface {
 
   @Override
   public String getTempDir() {
-    return GFlagsUtil.getCustomTmpDirectory(nodeDetails, universe);
+    return GFlagsUtil.getCustomTmpDirectory(confGetter, nodeDetails, universe);
   }
 }

@@ -1716,13 +1716,14 @@ public class NodeManager extends DevopsBase {
       }
       commandArgs.add(
           GFlagsUtil.getCustomTmpDirectory(
+              confGetter,
               universe,
               cluster,
               nodeTaskParam.azUuid,
               nodeTaskParam.isMaster,
               nodeTaskParam.isTserver));
     } else {
-      commandArgs.add(GFlagsUtil.getCustomTmpDirectory(node, universe));
+      commandArgs.add(GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe));
     }
   }
 
