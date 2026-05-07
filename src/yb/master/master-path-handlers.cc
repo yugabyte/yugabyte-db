@@ -98,6 +98,7 @@
 #include "yb/util/hash_util.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
+#include "yb/util/object_provider.h"
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
@@ -1813,7 +1814,9 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   }
 
   Schema schema;
+  ObjectProvider<Schema> partition_keys_schema;
   dockv::PartitionSchema partition_schema;
+  TableId indexed_table_id;
   NamespaceName keyspace_name;
   TableName table_name;
   TabletInfos tablets;
@@ -1910,19 +1913,61 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     }
 
     Status s = SchemaFromPB(l->pb.schema(), &schema);
-    if (s.ok()) {
-      s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
+    if (!s.ok()) {
+      *output << "Unable to decode table schema: " << EscapeForHtmlToString(s.ToString());
+      return;
     }
+    partition_keys_schema.reset(&schema);
+
+    s = dockv::PartitionSchema::FromPB(
+        l->pb.partition_schema(), *partition_keys_schema, &partition_schema);
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << EscapeForHtmlToString(s.ToString());
       return;
     }
+
     Result<TabletInfos> tablets_result = table->GetTabletsIncludeInactive();
     if (!tablets_result) {
       *output << "Unable to fetch tablets for table: " << EscapeForHtmlToString(s.ToString());
       return;
     }
     tablets = *tablets_result;
+
+    // If current table is a vector index, it is required to fetch the indexed table's schema and
+    // partition schema in order to display the partition keys correctly. But this should be done
+    // outside the current lock to avoid current table and indexed table lock contention.
+    if (l->is_vector_index()) {
+      indexed_table_id = l->indexed_table_id();
+    }
+  }
+
+  // Vector indexes are colocated on the indexed table's tablets, so their partition keys
+  // are encoded using the indexed table's schema, not the vector index's own schema.
+  if (!indexed_table_id.empty()) {
+    auto indexed_table = master_->catalog_manager()->GetTableInfo(indexed_table_id);
+    if (!indexed_table) {
+      *output << "Indexed table not found: " << indexed_table_id;
+      return;
+    }
+
+    auto indexed_lock = indexed_table->LockForRead();
+    partition_keys_schema.reset();
+    Status s = SchemaFromPB(indexed_lock->pb.schema(), partition_keys_schema.get());
+    if (!s.ok()) {
+      *output << "Unable to decode indexed table schema: "
+              << EscapeForHtmlToString(s.ToString());
+      return;
+    }
+
+    dockv::PartitionSchema indexed_partition_schema;
+    s = dockv::PartitionSchema::FromPB(
+        indexed_lock->pb.partition_schema(), *partition_keys_schema, &indexed_partition_schema);
+    if (!s.ok()) {
+      *output << "Unable to decode indexed table partition schema: "
+              << EscapeForHtmlToString(s.ToString());
+      return;
+    }
+    partition_schema = std::move(indexed_partition_schema);
   }
 
   server::HtmlOutputSchemaTable(schema, output);
@@ -1976,7 +2021,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     *output << Format(
         "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td><td>$6</td></tr>\n",
         tablet->tablet_id(),
-        EscapeForHtmlToString(partition_schema.PartitionDebugString(partition, schema)),
+        EscapeForHtmlToString(
+            partition_schema.PartitionDebugString(partition, *partition_keys_schema)),
         l->pb.split_depth(),
         ReplicaInfoToHtml(sorted_locations, tablet->tablet_id()),
         state,
@@ -2134,7 +2180,9 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
   }
 
   Schema schema;
+  ObjectProvider<Schema> partition_keys_schema;
   dockv::PartitionSchema partition_schema;
+  TableId indexed_table_id;
   TabletInfos tablets;
   {
     auto keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
@@ -2220,9 +2268,15 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
     }
 
     Status s = SchemaFromPB(l->pb.schema(), &schema);
-    if (s.ok()) {
-      s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
+    if (!s.ok()) {
+      jw.String("error");
+      jw.String("Unable to decode schema: " + s.ToString());
+      jw.EndObject();
+      return;
     }
+    partition_keys_schema.reset(&schema);
+
+    s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
     if (!s.ok()) {
       jw.String("error");
       jw.String("Unable to decode partition schema: " + s.ToString());
@@ -2237,6 +2291,46 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
       return;
     }
     tablets = *tablets_result;
+
+    // If current table is a vector index, it is required to fetch the indexed table's schema and
+    // partition schema in order to display the partition keys correctly. But this should be done
+    // outside the current lock to avoid current table and indexed table lock contention.
+    if (l->is_vector_index()) {
+      indexed_table_id = l->indexed_table_id();
+    }
+  }
+
+  // Vector indexes are colocated on the indexed table's tablets, so their partition keys
+  // are encoded using the indexed table's schema, not the vector index's own schema.
+  if (!indexed_table_id.empty()) {
+    auto indexed_table = master_->catalog_manager()->GetTableInfo(indexed_table_id);
+    if (!indexed_table) {
+      jw.String("error");
+      jw.String("Indexed table not found: " + indexed_table_id);
+      jw.EndObject();
+      return;
+    }
+
+    auto indexed_lock = indexed_table->LockForRead();
+    partition_keys_schema.reset();
+    Status s = SchemaFromPB(indexed_lock->pb.schema(), partition_keys_schema.get());
+    if (!s.ok()) {
+      jw.String("error");
+      jw.String("Unable to decode indexed table schema: " + s.ToString());
+      jw.EndObject();
+      return;
+    }
+
+    dockv::PartitionSchema indexed_partition_schema;
+    s = dockv::PartitionSchema::FromPB(
+        indexed_lock->pb.partition_schema(), *partition_keys_schema, &indexed_partition_schema);
+    if (!s.ok()) {
+      jw.String("error");
+      jw.String("Unable to decode indexed table partition schema: " + s.ToString());
+      jw.EndObject();
+      return;
+    }
+    partition_schema = std::move(indexed_partition_schema);
   }
 
   JsonOutputSchemaTable(schema, &jw);
@@ -2257,7 +2351,7 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
     jw.String("tablet_id");
     jw.String(tablet->tablet_id());
     jw.String("partition");
-    jw.String(partition_schema.PartitionDebugString(partition, schema));
+    jw.String(partition_schema.PartitionDebugString(partition, *partition_keys_schema));
     jw.String("split_depth");
     jw.Uint64(l->pb.split_depth());
     jw.String("state");

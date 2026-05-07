@@ -17,16 +17,37 @@
 
 namespace yb {
 
-template<class T>
+template <typename T>
 class ObjectProvider {
  public:
-  explicit ObjectProvider(T* value) :
-      value_(value) {
-    if (!value_) {
+  // Creates an empty ObjectProvider in an empty state (with no value).
+  ObjectProvider() = default;
+
+  explicit ObjectProvider(T* value) {
+    reset(value);
+  }
+
+  // Resets the ObjectProvider to a owned state if value is nullptr.
+  // Otherwise, resets to a borrowed state if the value is not equal to the current value.
+  void reset(T* value = nullptr) {
+    // Owned state, re-initializing the holder.
+    if (!value) {
       holder_.emplace();
       value_ = &*holder_;
+      return;
     }
+
+    // No need to do anything if the same value is being borrowed or owned. This check should
+    // be done after the owned state check to be able to move from the empty state.
+    if (value_ == value) {
+      return;
+    }
+
+    // Borrowed state.
+    holder_.reset();
+    value_ = value;
   }
+
 
   T* operator->() const { return get(); }
 
@@ -34,10 +55,12 @@ class ObjectProvider {
 
   T* get() const { return value_; }
 
+  bool has_value() const { return value_ != nullptr; }
+
   bool is_owner() const { return holder_.has_value(); }
 
  private:
-  T* value_;
+  T* value_ = nullptr;
   std::optional<T> holder_;
 };
 
