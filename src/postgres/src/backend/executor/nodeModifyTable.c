@@ -2330,9 +2330,17 @@ lreplace:
 	 *    partition and primary keys do not overlap, a single-shard update may
 	 *    not have enough information about the partition key, as it skips
 	 *    reading the row from storage.
+	 * The presence of a scan node in the plan is used as a proxy for whether
+	 * the partition constraint check should be performed. The check is skipped
+	 * in two situations:
+	 *  - Single shard updates
+	 *  - Single row updates in distributed transactions where the planner
+	 *    determines that it is unnecessary to read the row from storage as
+	 *    (a) the update does not modify the partition or primary key columns
+	 *    (b) the WHERE clause of the query uniquely identifies the row
 	 */
 	partition_constraint_failed =
-		!estate->yb_es_is_single_row_modify_txn &&
+		context->mtstate->yb_fetch_target_tuple && /* YB */
 		resultRelationDesc->rd_rel->relispartition &&
 		!ExecPartitionCheck(resultRelInfo, slot, estate, false);
 

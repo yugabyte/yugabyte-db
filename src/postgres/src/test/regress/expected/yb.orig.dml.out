@@ -607,18 +607,104 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p1 SET ptk = 6 WHERE ck = 8;
  Storage Flush Requests: 1
 (12 rows)
 
-SELECT * FROM ck_ne_ptk_base ORDER BY ck;
+-- 4f. Updates inside an explicit transaction block (single-shard downgraded to distributed transaction).
+BEGIN;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_p1 SET v = v + 1 WHERE ck = 1;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Update on ck_ne_ptk_p1 (actual rows=0 loops=1)
+   ->  Result ck_ne_ptk_p1 (actual rows=1 loops=1)
+         Storage Table Write Requests: 1
+         Storage Flush Requests: 1
+ Storage Read Requests: 0
+ Storage Read Ops: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(9 rows)
+
+SELECT * FROM ck_ne_ptk_p1 WHERE ck = 1;
  ck | ptk | v 
 ----+-----+---
-  1 |   5 | 1
-  2 |   5 | 2
-  4 |   5 | 4
-  5 |   5 | 5
-  6 |  15 | 6
-  7 |   5 | 8
-  8 |   6 | 8
- 10 |  15 | 3
-(8 rows)
+  1 |   5 | 2
+(1 row)
+
+ROLLBACK;
+-- Cross-partition update inside a transaction block should still fail the partition constraint.
+BEGIN;
+UPDATE ck_ne_ptk_p1 SET ptk = 16 WHERE ck = 2;
+ERROR:  new row for relation "ck_ne_ptk_p1" violates partition constraint
+DETAIL:  Failing row contains (2, 16, 2).
+ROLLBACK;
+-- 4g. Updates inside a function (single-shard downgraded to distributed transaction).
+CREATE FUNCTION ck_ne_ptk_update_ok() RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE ck_ne_ptk_p1 SET v = v + 1 WHERE ck = 4;
+END $$;
+SELECT ck_ne_ptk_update_ok();
+ ck_ne_ptk_update_ok 
+---------------------
+ 
+(1 row)
+
+DROP FUNCTION ck_ne_ptk_update_ok();
+-- Cross-partition update inside a function (should fail the partition constraint).
+CREATE FUNCTION ck_ne_ptk_update_fail() RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE ck_ne_ptk_p1 SET ptk = 16 WHERE ck = 5;
+END $$;
+SELECT ck_ne_ptk_update_fail();
+ERROR:  new row for relation "ck_ne_ptk_p1" violates partition constraint
+DETAIL:  Failing row contains (5, 16, 5).
+CONTEXT:  SQL statement "UPDATE ck_ne_ptk_p1 SET ptk = 16 WHERE ck = 5"
+PL/pgSQL function ck_ne_ptk_update_fail() line 3 at SQL statement
+DROP FUNCTION ck_ne_ptk_update_fail();
+-- 4h. Updates inside a DO block (single-shard downgraded to distributed transaction).
+DO $$
+BEGIN
+    UPDATE ck_ne_ptk_p1 SET v = v + 1 WHERE ck = 1;
+END $$;
+-- 4i. INSERT ... ON CONFLICT ... DO UPDATE.
+INSERT INTO ck_ne_ptk_p1 VALUES (9, 5, 9), (11, 5, 11);
+-- Same-partition partition key update via upsert. Should succeed.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_p1 VALUES (9, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 6, v = EXCLUDED.v;
+                   QUERY PLAN                   
+------------------------------------------------
+ Insert on ck_ne_ptk_p1 (actual rows=0 loops=1)
+   Conflict Resolution: UPDATE
+   Conflict Arbiter Indexes: ck_ne_ptk_p1_pkey
+   Tuples Inserted: 0
+   Conflicting Tuples: 1
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 1
+   Storage Table Write Requests: 1
+   ->  Result *RESULT* (actual rows=1 loops=1)
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(15 rows)
+
+-- Cross-partition partition key update via upsert. Should fail the partition constraint.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_p1 VALUES (11, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 16, v = EXCLUDED.v;
+ERROR:  invalid ON UPDATE specification
+DETAIL:  The result tuple would appear in a different partition than the original tuple.
+SELECT * FROM ck_ne_ptk_base ORDER BY ck;
+ ck | ptk | v  
+----+-----+----
+  1 |   5 |  2
+  2 |   5 |  2
+  4 |   5 |  5
+  5 |   5 |  5
+  6 |  15 |  6
+  7 |   5 |  8
+  8 |   6 |  8
+  9 |   6 | 99
+ 10 |  15 |  3
+ 11 |   5 | 11
+(10 rows)
 
 DROP TABLE ck_ne_ptk_base CASCADE;
 -- Case 5: Multi-column partition key with a separate leaf clustering key.
@@ -1049,3 +1135,128 @@ SELECT * FROM expr_mixed_base ORDER BY ck;
 (1 row)
 
 DROP TABLE expr_mixed_base CASCADE;
+-- Case 11: Temp table with non-overlapping clustering and partition keys.
+CREATE TEMP TABLE ck_ne_ptk_tmp_base (ck INT, ptk INT, v INT) PARTITION BY RANGE (ptk);
+CREATE TEMP TABLE ck_ne_ptk_tmp_p1 PARTITION OF ck_ne_ptk_tmp_base (ck PRIMARY KEY) FOR VALUES FROM (1) TO (11);
+CREATE TEMP TABLE ck_ne_ptk_tmp_p2 PARTITION OF ck_ne_ptk_tmp_base (ck PRIMARY KEY) FOR VALUES FROM (11) TO (21);
+INSERT INTO ck_ne_ptk_tmp_base VALUES (1, 5, 1), (2, 5, 2), (3, 15, 3), (4, 5, 4), (5, 5, 5), (6, 15, 6), (7, 5, 7), (8, 5, 8);
+-- 11a. Cross-partition update via leaf with clustering key in WHERE. Should fail.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 16 WHERE ck = 1;
+ERROR:  new row for relation "ck_ne_ptk_tmp_p1" violates partition constraint
+DETAIL:  Failing row contains (1, 16, 1).
+SELECT * FROM ck_ne_ptk_tmp_p1 ORDER BY ck;
+ ck | ptk | v 
+----+-----+---
+  1 |   5 | 1
+  2 |   5 | 2
+  4 |   5 | 4
+  5 |   5 | 5
+  7 |   5 | 7
+  8 |   5 | 8
+(6 rows)
+
+SELECT * FROM ck_ne_ptk_tmp_p2 ORDER BY ck;
+ ck | ptk | v 
+----+-----+---
+  3 |  15 | 3
+  6 |  15 | 6
+(2 rows)
+
+-- 11b. Cross-partition update via leaf without clustering key in WHERE. Should fail.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 17 WHERE ptk = 5;
+ERROR:  new row for relation "ck_ne_ptk_tmp_p1" violates partition constraint
+DETAIL:  Failing row contains (1, 17, 1).
+SELECT * FROM ck_ne_ptk_tmp_base ORDER BY ck;
+ ck | ptk | v 
+----+-----+---
+  1 |   5 | 1
+  2 |   5 | 2
+  3 |  15 | 3
+  4 |   5 | 4
+  5 |   5 | 5
+  6 |  15 | 6
+  7 |   5 | 7
+  8 |   5 | 8
+(8 rows)
+
+-- 11c. Same-partition clustering key update via leaf.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p2 SET ck = 10 WHERE ck = 3;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Update on ck_ne_ptk_tmp_p2 (actual rows=0 loops=1)
+   ->  Index Scan using ck_ne_ptk_tmp_p2_pkey on ck_ne_ptk_tmp_p2 (actual rows=1 loops=1)
+         Index Cond: (ck = 3)
+ Storage Read Requests: 0
+ Storage Read Ops: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(8 rows)
+
+-- 11d. Non-partition column update via leaf.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET v = v + 1 WHERE ck = 7;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Update on ck_ne_ptk_tmp_p1 (actual rows=0 loops=1)
+   ->  Index Scan using ck_ne_ptk_tmp_p1_pkey on ck_ne_ptk_tmp_p1 (actual rows=1 loops=1)
+         Index Cond: (ck = 7)
+ Storage Read Requests: 0
+ Storage Read Ops: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(8 rows)
+
+-- 11e. Partition key update to a value that stays in the same partition.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 6 WHERE ck = 8;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Update on ck_ne_ptk_tmp_p1 (actual rows=0 loops=1)
+   ->  Index Scan using ck_ne_ptk_tmp_p1_pkey on ck_ne_ptk_tmp_p1 (actual rows=1 loops=1)
+         Index Cond: (ck = 8)
+ Storage Read Requests: 0
+ Storage Read Ops: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(8 rows)
+
+-- 11f. INSERT ... ON CONFLICT ... DO UPDATE.
+INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 9), (11, 5, 11);
+-- Same-partition partition key update via upsert. Should succeed.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 6, v = EXCLUDED.v;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Insert on ck_ne_ptk_tmp_p1 (actual rows=0 loops=1)
+   Conflict Resolution: UPDATE
+   Conflict Arbiter Indexes: ck_ne_ptk_tmp_p1_pkey
+   Tuples Inserted: 0
+   Conflicting Tuples: 1
+   ->  Result *RESULT* (actual rows=1 loops=1)
+ Storage Read Requests: 0
+ Storage Read Ops: 0
+ Storage Rows Scanned: 0
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(11 rows)
+
+-- Cross-partition partition key update via upsert. Should fail.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (11, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 16, v = EXCLUDED.v;
+ERROR:  invalid ON UPDATE specification
+DETAIL:  The result tuple would appear in a different partition than the original tuple.
+SELECT * FROM ck_ne_ptk_tmp_base ORDER BY ck;
+ ck | ptk | v  
+----+-----+----
+  1 |   5 |  1
+  2 |   5 |  2
+  4 |   5 |  4
+  5 |   5 |  5
+  6 |  15 |  6
+  7 |   5 |  8
+  8 |   6 |  8
+  9 |   6 | 99
+ 10 |  15 |  3
+ 11 |   5 | 11
+(10 rows)
+
+DROP TABLE ck_ne_ptk_tmp_base CASCADE;
