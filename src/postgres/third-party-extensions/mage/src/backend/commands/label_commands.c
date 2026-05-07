@@ -103,7 +103,7 @@ static void create_index_on_column(char *schema_name,
 /* YB: composite tenant-scoped PK index helper (vertex and edge use the same shape) */
 static void yb_create_label_pk_index(char *schema_name, char *rel_name);
 /* YB: append meko_* tenant ColumnDefs to a vertex/edge column list */
-static List *yb_append_meko_column_defs(List *cols, bool is_edge);
+static List *yb_append_meko_column_defs(List *cols);
 
 PG_FUNCTION_INFO_V1(age_is_valid_label_name);
 
@@ -630,13 +630,10 @@ static void yb_create_label_pk_index(char *schema_name, char *rel_name)
  *   "meko_agent_id"        TEXT NOT NULL,
  *   "meko_conversation_id" UUID
  *
- * Vertex and edge label tables use identical column names for these (only
- * the AG_VERTEX_COLNAME_* / AG_EDGE_COLNAME_* macro names differ), so the
- * same helper produces both. `is_edge` selects the macro family for
- * symmetry with the rest of the file but the resulting column names are
- * the same string either way.
+ * Vertex and edge label tables use the same set of meko_* column names so
+ * the same helper produces both.
  */
-static List *yb_append_meko_column_defs(List *cols, bool is_edge)
+static List *yb_append_meko_column_defs(List *cols)
 {
     ColumnDef *meko_datapack_id;
     ColumnDef *meko_user_id;
@@ -644,28 +641,23 @@ static List *yb_append_meko_column_defs(List *cols, bool is_edge)
     ColumnDef *meko_conversation_id;
 
     /* "meko_datapack_id" UUID NOT NULL */
-    meko_datapack_id = makeColumnDef(is_edge ? AG_COLNAME_MEKO_DATAPACK_ID
-                                             : AG_COLNAME_MEKO_DATAPACK_ID,
+    meko_datapack_id = makeColumnDef(AG_COLNAME_MEKO_DATAPACK_ID,
                                      UUIDOID, -1, InvalidOid);
     meko_datapack_id->constraints = list_make1(build_not_null_constraint());
 
     /* "meko_user_id" UUID NOT NULL */
-    meko_user_id = makeColumnDef(is_edge ? AG_COLNAME_MEKO_USER_ID
-                                         : AG_COLNAME_MEKO_USER_ID,
+    meko_user_id = makeColumnDef(AG_COLNAME_MEKO_USER_ID,
                                  UUIDOID, -1, InvalidOid);
     meko_user_id->constraints = list_make1(build_not_null_constraint());
 
     /* "meko_agent_id" TEXT NOT NULL */
-    meko_agent_id = makeColumnDef(is_edge ? AG_COLNAME_MEKO_AGENT_ID
-                                          : AG_COLNAME_MEKO_AGENT_ID,
+    meko_agent_id = makeColumnDef(AG_COLNAME_MEKO_AGENT_ID,
                                   TEXTOID, -1, InvalidOid);
     meko_agent_id->constraints = list_make1(build_not_null_constraint());
 
     /* "meko_conversation_id" UUID (nullable) */
-    meko_conversation_id =
-        makeColumnDef(is_edge ? AG_COLNAME_MEKO_CONVERSATION_ID
-                              : AG_COLNAME_MEKO_CONVERSATION_ID,
-                      UUIDOID, -1, InvalidOid);
+    meko_conversation_id = makeColumnDef(AG_COLNAME_MEKO_CONVERSATION_ID,
+                                         UUIDOID, -1, InvalidOid);
 
     cols = lappend(cols, meko_datapack_id);
     cols = lappend(cols, meko_user_id);
@@ -747,7 +739,7 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
 
     /* YB: tenant columns are only added on YugabyteDB-hosted edge tables. */
     if (IsYugaByteEnabled())
-        yb_cols = yb_append_meko_column_defs(yb_cols, true /* is_edge */);
+        yb_cols = yb_append_meko_column_defs(yb_cols);
 
     return yb_cols;
 }
@@ -797,7 +789,7 @@ static List *create_vertex_table_elements(char *graph_name, char *label_name,
 
     /* YB: tenant columns are only added on YugabyteDB-hosted vertex tables. */
     if (IsYugaByteEnabled())
-        yb_cols = yb_append_meko_column_defs(yb_cols, false /* is_edge */);
+        yb_cols = yb_append_meko_column_defs(yb_cols);
 
     return yb_cols;
 }
