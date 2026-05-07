@@ -12,6 +12,8 @@ menu:
 type: indexpage
 ---
 
+For information on deploying on Kubernetes on cloud providers, see [Deploy on Kubernetes](../kubernetes/).
+
 {{<index/block>}}
 
   {{<index/item
@@ -22,13 +24,13 @@ type: indexpage
 
   {{<index/item
     title="Google Cloud Platform (GCP)"
-    body="Automated deployment using Google Kubernetes Engine (GKE) and Google Deployment Manager."
+    body="Automated deployment using Google Deployment Manager."
     href="gcp/gcp-deployment-manager/"
     icon="fa-brands fa-google">}}
 
   {{<index/item
     title="Microsoft Azure"
-    body="Automated deployment using Azure Container Service (AKS) and Azure ARM Template."
+    body="Automated deployment using Azure Resource Manager."
     href="azure/azure-arm/"
     icon="fa-brands fa-microsoft">}}
 
