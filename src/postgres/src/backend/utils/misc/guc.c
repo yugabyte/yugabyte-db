@@ -3820,7 +3820,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&yb_enable_parallel_scan_hash_sharded,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -3831,7 +3831,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&yb_enable_parallel_scan_range_sharded,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
