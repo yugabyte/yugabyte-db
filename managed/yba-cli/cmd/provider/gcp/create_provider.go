@@ -173,14 +173,6 @@ var createGCPProviderCmd = &cobra.Command{
 			}
 			sshFileContent = string(sshFileContentByte)
 		}
-		allAccessKeys := make([]ybaclient.AccessKey, 0)
-		accessKey := ybaclient.AccessKey{
-			KeyInfo: ybaclient.KeyInfo{
-				KeyPairName:          util.GetStringPointer(keyPairName),
-				SshPrivateKeyContent: util.GetStringPointer(sshFileContent),
-			},
-		}
-		allAccessKeys = append(allAccessKeys, accessKey)
 
 		regions, err := cmd.Flags().GetStringArray("region")
 		if err != nil {
@@ -192,6 +184,7 @@ var createGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		allAccessKeys := make([]ybaclient.AccessKey, 0)
 		requestBody := ybaclient.Provider{
 			Code:          util.GetStringPointer(providerCode),
 			Name:          util.GetStringPointer(providerName),
@@ -206,6 +199,18 @@ var createGCPProviderCmd = &cobra.Command{
 			},
 			Regions: buildGCPRegions(regions, allowed, version),
 		}
+
+		if !util.IsEmptyString(keyPairName) && !util.IsEmptyString(sshFileContent) {
+			accessKey := ybaclient.AccessKey{
+				KeyInfo: ybaclient.KeyInfo{
+					KeyPairName:          util.GetStringPointer(keyPairName),
+					SshPrivateKeyContent: util.GetStringPointer(sshFileContent),
+				},
+			}
+			allAccessKeys = append(allAccessKeys, accessKey)
+			requestBody.AllAccessKeys = &allAccessKeys
+		}
+
 		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
