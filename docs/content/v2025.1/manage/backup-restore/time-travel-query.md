@@ -188,3 +188,7 @@ The following example shows how you can use time travel queries to recover accid
     ```
 
 In cases where the deletion affected many tables in the database, you can use time travel queries to read the deleted rows for every table. Alternatively, you can use [instant database cloning](../instant-db-cloning/) to create a zero-copy, independent writable clone of your database as of a timestamp in the past.
+
+## Limitations
+
+- Time travel queries currently do not support [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing). {{<issue 20829>}}
