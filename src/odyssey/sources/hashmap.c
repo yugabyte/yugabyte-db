@@ -167,7 +167,7 @@ static inline int od_hashmap_elt_copy(od_hashmap_elt_t *dst,
 	return 0;
 }
 
-int od_hashmap_insert(od_hashmap_t *hm, od_hash_t keyhash,
+int od_hashmap_insert(od_hashmap_t *hm, yb_od_hash_64_t keyhash,
 		      od_hashmap_elt_t *key, od_hashmap_elt_t **value)
 {
 	size_t bucket_index = keyhash % hm->size;
@@ -214,8 +214,10 @@ int od_hashmap_insert(od_hashmap_t *hm, od_hash_t keyhash,
  * the caller to log them.
  */
 
-bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash,
-					char ***matched_keys, int *matched_count)
+bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm,
+				       yb_od_hash_64_t keyhash,
+				       od_hashmap_elt_t **matched_keys,
+				       int *matched_count)
 {
 	*matched_keys = NULL;
 	*matched_count = 0;
@@ -235,7 +237,8 @@ bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash,
 	{
 		od_hashmap_list_item_t *item;
 		item = od_container_of(i, od_hashmap_list_item_t, link);
-		od_hash_t hash = od_murmur_hash(item->key.data, item->key.len);
+		yb_od_hash_64_t hash =
+			yb_od_murmur_hash_64(item->key.data, item->key.len);
 		if (hash == keyhash)
 		{
 			matched_item = item;
@@ -255,14 +258,15 @@ bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash,
 		return true;
 	}
 
-	char **keys = malloc(count * sizeof(char *));
+	/* YB: Return od_hashmap_elt_t array so callers get both data and length. */
+	od_hashmap_elt_t *keys = malloc(count * sizeof(od_hashmap_elt_t));
 	if (keys == NULL) {
 		pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
 		return false;
 	}
 
 	/*
-	 * Second pass: copy key strings into the array and remove the
+	 * Second pass: copy key data into the array and remove the
 	 * matching items from the bucket.
 	 */
 	int idx = 0;
@@ -271,18 +275,20 @@ bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash,
 	{
 		od_hashmap_list_item_t *item;
 		item = od_container_of(i, od_hashmap_list_item_t, link);
-		od_hash_t hash = od_murmur_hash(item->key.data, item->key.len);
+		yb_od_hash_64_t hash =
+			yb_od_murmur_hash_64(item->key.data, item->key.len);
 		if (hash == keyhash) {
-			keys[idx] = malloc(item->key.len + 1);
-			if (keys[idx] == NULL) {
+			keys[idx].data = malloc(item->key.len + 1);
+			if (keys[idx].data == NULL) {
 				for (int j = 0; j < idx; j++)
-					free(keys[j]);
+					free(keys[j].data);
 				free(keys);
 				pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
 				return false;
 			}
-			memcpy(keys[idx], item->key.data, item->key.len);
-			keys[idx][item->key.len] = '\0';
+			keys[idx].len = item->key.len;
+			memcpy(keys[idx].data, item->key.data, item->key.len);
+			((char *)keys[idx].data)[item->key.len] = '\0';
 			idx++;
 			od_hashmap_list_item_free(item);
 		}
@@ -299,8 +305,9 @@ bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash,
  * YB: This function searches for item in the hashmap by key.
  * It returns the item if found, otherwise NULL.
  */
-od_hashmap_list_item_t *yb_od_hashmap_find_item(od_hashmap_t *hm, od_hash_t keyhash,
-	od_hashmap_elt_t *key)
+od_hashmap_list_item_t *yb_od_hashmap_find_item(od_hashmap_t *hm,
+						yb_od_hash_64_t keyhash,
+						od_hashmap_elt_t *key)
 {
 	size_t bucket_index = keyhash % hm->size;
 	pthread_mutex_lock(&hm->buckets[bucket_index]->mu);
@@ -310,7 +317,7 @@ od_hashmap_list_item_t *yb_od_hashmap_find_item(od_hashmap_t *hm, od_hash_t keyh
 	return item;
 }
 
-od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, od_hash_t keyhash,
+od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, yb_od_hash_64_t keyhash,
 				  od_hashmap_elt_t *key)
 {
 	size_t bucket_index = keyhash % hm->size;

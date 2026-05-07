@@ -93,6 +93,24 @@ public final class PgWireProtocol {
     return msg;
   }
 
+  public static byte[] buildParse(String stmtName, String query, int[] paramOids)
+      throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte('P');
+    d.writeInt(0); // placeholder
+    writeString(d, stmtName);
+    writeString(d, query);
+    d.writeShort(paramOids.length);
+    for (int oid : paramOids) {
+      d.writeInt(oid);
+    }
+    d.flush();
+    byte[] msg = buf.toByteArray();
+    ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
+    return msg;
+  }
+
   public static byte[] buildBind() throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
@@ -102,6 +120,27 @@ public final class PgWireProtocol {
     d.writeByte(0); // unnamed statement
     d.writeShort(0); // num format codes
     d.writeShort(0); // num parameters
+    d.writeShort(0); // num result format codes
+    d.flush();
+    byte[] msg = buf.toByteArray();
+    ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
+    return msg;
+  }
+
+  public static byte[] buildBind(String stmtName, String[] textParams) throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte('B');
+    d.writeInt(0); // placeholder
+    d.writeByte(0); // unnamed portal
+    writeString(d, stmtName);
+    d.writeShort(0); // num format codes (all text)
+    d.writeShort(textParams.length);
+    for (String param : textParams) {
+      byte[] paramBytes = param.getBytes(StandardCharsets.UTF_8);
+      d.writeInt(paramBytes.length);
+      d.write(paramBytes);
+    }
     d.writeShort(0); // num result format codes
     d.flush();
     byte[] msg = buf.toByteArray();

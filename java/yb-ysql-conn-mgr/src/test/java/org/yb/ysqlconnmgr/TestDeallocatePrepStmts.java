@@ -219,7 +219,7 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
         String hash = rs.getString("name");
         assertFalse(rs.next());
         // SEND DEALLOCATE STATEMENT
-        stmt.execute(String.format("DEALLOCATE %s", hash));
+        stmt.execute(String.format("DEALLOCATE \"%s\"", hash));
         rs = stmt.executeQuery(queryPgPreparedStatements);
         rs.next();
         assertEquals(1, rs.getRow());

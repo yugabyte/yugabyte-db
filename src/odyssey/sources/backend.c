@@ -67,6 +67,35 @@ cleanup:
 	}
 }
 
+/* YB: Max bytes of key data to hex-dump per log line (300 * 3 chars = 900, fits in OD_LOGLINE_MAXLEN). */
+#define YB_OD_HEX_BYTES_PER_LINE 300
+
+/* YB: Log a binary key as both text (up to first NUL) and full hex dump (split across lines). */
+static void yb_od_log_key_hexdump(od_logger_t *logger, char *context,
+				   od_server_t *server, int index,
+				   const char *key, size_t key_len)
+{
+	od_error(logger, context, NULL, server,
+		 "  [%d] text: %s", index, key);
+
+	size_t offset = 0;
+	while (offset < key_len) {
+		char hexbuf[OD_LOGLINE_MAXLEN];
+		size_t pos = 0;
+		size_t line_end = offset + YB_OD_HEX_BYTES_PER_LINE;
+		if (line_end > key_len)
+			line_end = key_len;
+		for (size_t j = offset; j < line_end; j++) {
+			pos += snprintf(hexbuf + pos, sizeof(hexbuf) - pos,
+					"%02x ", (unsigned char)key[j]);
+		}
+		od_error(logger, context, NULL, server,
+			 "  [%d] hex (%zu bytes, offset %zu): %s",
+			 index, key_len, offset, hexbuf);
+		offset = line_end;
+	}
+}
+
 void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *data, 
 		uint32_t size)
 {
@@ -81,25 +110,29 @@ void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *d
 			"failed to parse error message from server");
 		return;
 	}
-	od_hash_t keyhash = strtoul(keyhash_str, NULL, 16);
-	char **matched_keys = NULL;
+	yb_od_hash_64_t keyhash = strtoull(keyhash_str, NULL, 16);
+	od_hashmap_elt_t *matched_keys = NULL;
 	int matched_count = 0;
 	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash,
 					      &matched_keys, &matched_count)) {
 		server->yb_prep_stmt_count -= matched_count;
 		if (matched_count > 1) {
 			od_error(&instance->logger, context, NULL, server,
-				 "Got a hashmap collision for %08x. Evicted %d entries:",
+				 "Got a hashmap collision for %016" PRIx64
+				 ". Evicted %d entries:",
 				 keyhash, matched_count);
 			for (int i = 0; i < matched_count; i++) {
-				od_error(&instance->logger, context, NULL, server,
-					 "  [%d] %s", i, matched_keys[i]);
-				free(matched_keys[i]);
+				yb_od_log_key_hexdump(&instance->logger,
+						      context, server, i,
+						      (const char *)matched_keys[i].data,
+						      matched_keys[i].len);
+				free(matched_keys[i].data);
 			}
 			free(matched_keys);
 		} else {
 			od_debug(&instance->logger, context, NULL, server,
-				 "Evicted %08x hashmap entry from server", keyhash);
+				 "Evicted %016" PRIx64 " hashmap entry from server",
+				 keyhash);
 		}
 	}
 }
