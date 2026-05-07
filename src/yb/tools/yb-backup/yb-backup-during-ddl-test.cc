@@ -933,6 +933,9 @@ TEST_P(YBBackupDuringAlterTable, RenameColumn) {
 class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
  public:
   void SetUp() override {
+  #ifndef __linux__
+    GTEST_SKIP() << "YB Controller is only built/supported on Linux";
+  #endif
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_anonymizer) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_yb_controller) = true;
     YBBackupDuringDdl::SetUp();
