@@ -21,7 +21,7 @@ type: indexpage
         <div class="title">Amazon Web Services (AWS)</div>
       </div>
       <div class="body">
-        Automated deployment using Terraform as well as manual deployment and CloudFormation template for automated deployment.
+        Manual deployment and CloudFormation template for automated deployment.
       </div>
     </a>
   </div>
@@ -35,7 +35,7 @@ type: indexpage
         <div class="title">Google Cloud Platform (GCP)</div>
       </div>
       <div class="body">
-        Automated deployment using Google Kubernetes Engine (GKE), Terraform and Google Deployment Manager.
+        Automated deployment using Google Kubernetes Engine (GKE) and Google Deployment Manager.
       </div>
     </a>
   </div>
@@ -49,7 +49,7 @@ type: indexpage
         <div class="title">Microsoft Azure</div>
       </div>
       <div class="body">
-        Automated deployment using Azure Container Service (AKS), Terraform and Azure ARM Template.
+        Automated deployment using Azure Container Service (AKS) and Azure ARM Template.
       </div>
     </a>
   </div>
