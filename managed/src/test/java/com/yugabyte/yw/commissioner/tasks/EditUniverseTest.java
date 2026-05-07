@@ -278,6 +278,53 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testComprehensivePrechecksSkippedOnRetryForEditUniverse() {
+    Universe universe = defaultUniverse;
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            univ -> {
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
+                  ImmutableMap.of("q", "v", "q1", "v1", "q3", "v3");
+            });
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "true");
+    UniverseDefinitionTaskParams taskParams1 = universe.getUniverseDetails();
+    taskParams1.setUniverseUUID(universe.getUniverseUUID());
+    taskParams1.getPrimaryCluster().userIntent.instanceTags =
+        ImmutableMap.of("q", "vq", "q2", "v2");
+    taskParams1.setRunOnlyPrechecks(true);
+
+    TaskInfo taskInfo1 = submitTask(taskParams1);
+    assertEquals(Success, taskInfo1.getTaskState());
+    assertTrue(
+        taskInfo1.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckSshConnection));
+    assertTrue(
+        taskInfo1.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckServiceLiveness));
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams taskParams2 = universe.getUniverseDetails();
+    taskParams2.setUniverseUUID(universe.getUniverseUUID());
+    taskParams2.getPrimaryCluster().userIntent.instanceTags =
+        ImmutableMap.of("q", "vq2", "q2", "v2b");
+    taskParams2.setRunOnlyPrechecks(true);
+    taskParams2.setPreviousTaskUUID(taskInfo1.getUuid());
+
+    TaskInfo taskInfo2 = submitTask(taskParams2);
+    assertEquals(Success, taskInfo2.getTaskState());
+    assertFalse(
+        taskInfo2.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckSshConnection));
+    assertFalse(
+        taskInfo2.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckServiceLiveness));
+  }
+
+  @Test
   public void testEditTags() throws JsonProcessingException {
     Universe universe = defaultUniverse;
     universe =

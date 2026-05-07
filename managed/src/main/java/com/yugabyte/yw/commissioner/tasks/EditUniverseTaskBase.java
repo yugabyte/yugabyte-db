@@ -133,15 +133,15 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
   }
 
   protected void createComprehensivePrecheckTasks(Universe universe) {
+    if (!isFirstTry()) {
+      log.debug("Comprehensive prechecks are skipped on retry.");
+      return;
+    }
     if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
       log.debug("Comprehensive prechecks are disabled, skipping.");
       return;
     }
-    // On the first try, we only want to check the nodes that are being added.
-    // On retry, some nodes might have transitioned into some other state.
-    Collection<NodeDetails> nodesToCheck =
-        isFirstTry() ? taskParams().nodeDetailsSet : universe.getNodes();
-    createCheckDuplicateInstances(universe, nodesToCheck);
+    createCheckDuplicateInstances(universe, taskParams().nodeDetailsSet);
     Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(taskParams().nodeDetailsSet);
     if (liveNodes.isEmpty()) {
       log.debug("No live nodes found, skipping comprehensive prechecks.");
