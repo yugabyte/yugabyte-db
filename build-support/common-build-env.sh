@@ -251,6 +251,8 @@ readonly -a VALID_ARCHITECTURES=(
   x86_64
   aarch64
   arm64
+  ppc64le
+  ppc64
 )
 make_regex_from_list VALID_ARCHITECTURES "${VALID_ARCHITECTURES[@]}"
 
@@ -2823,3 +2825,4 @@ if [[ ${YB_COMMON_BUILD_ENV_DEBUG:-0} == "1" ]]; then
     "Turning debugging on in common-build-env.sh because YB_COMMON_BUILD_ENV_DEBUG is set to 1"
   set -x
 fi
+

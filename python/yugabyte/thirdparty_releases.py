@@ -46,7 +46,7 @@ def get_arch_regex(index: int) -> str:
     There are two places where the architecture could appear in the third-party archive release tag.
     We make them available under "architecture1" and "architecture2" capture group names.
     """
-    arch_regex_str = '|'.join(['x86_64', 'aarch64', 'arm64'])
+    arch_regex_str = '|'.join(['x86_64', 'aarch64', 'arm64', 'ppc64le', 'ppc64'])
     return r'(?:-(?P<architecture%d>%s))?' % (index, arch_regex_str)
 
 
@@ -288,3 +288,4 @@ class ReleaseGroup:
 
     def get_min_creation_timestamp(self) -> datetime:
         return min(self.creation_timestamps)
+

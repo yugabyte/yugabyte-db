@@ -119,6 +119,17 @@ ADD_YB_LIBRARY(
     DEPS protobuf cdc_service_proto cdc_util master_proto consensus_proto log_proto log consensus
          yrpc server_common server_process tablet yb_util ql_util gutil yb_client)
 
+# Allow undefined symbols for gflags (FLAGS_ysql_*) to avoid circular dependencies
+# These flags are defined in components that may depend on cdc
+# The symbols will be resolved when linked into executables
+if(NOT APPLE)
+  target_link_options(cdc PRIVATE
+    "LINKER:--allow-shlib-undefined"
+    "LINKER:--unresolved-symbols=ignore-all"
+  )
+endif()
+
 # Tests
 set(YB_TEST_LINK_LIBS integration-tests ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(xcluster_producer-test)
+

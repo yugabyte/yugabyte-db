@@ -141,6 +141,7 @@ add_dependencies(consensus gen_src_yb_tserver_tserver_service_proto)
 
 target_link_libraries(consensus
   consensus_proto
+  cdc_service_proto
   yb_common
   log
   protobuf)
