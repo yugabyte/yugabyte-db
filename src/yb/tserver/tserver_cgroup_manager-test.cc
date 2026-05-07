@@ -45,6 +45,17 @@ METRIC_DECLARE_gauge_int64(cgroup_throttled_time_ns);
 
 namespace yb::tserver {
 
+// Must run before TServerCgroupManagerTest which initializes the global cgroup manager singleton.
+class MovePgBackendWithoutCgroupInitTest : public YBTest {};
+
+TEST_F(MovePgBackendWithoutCgroupInitTest, ReturnsErrorWhenCgroupsNotInitialized) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
+  ASSERT_FALSE(CgroupManagementEnabled());
+  auto status = TServerCgroupManager::MovePgBackendToCgroup(12345);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Cgroup management not initialized");
+}
+
 class TServerCgroupManagerTest : public TabletServerTestBase {
  protected:
   void SetUp() override {

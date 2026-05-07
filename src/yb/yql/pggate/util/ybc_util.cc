@@ -925,7 +925,7 @@ void YBCSetupCgroups() {
   if (cgroup_management && atoi(cgroup_management)) {
     auto status = SetupCgroupManagement(ClearChildCgroups::kFalse);
     if (!status.ok()) {
-      LOG(DFATAL) << "Failed to setup cgroups: " << status;
+      LOG(FATAL) << "Failed to setup cgroups: " << status;
     }
   }
 #endif
