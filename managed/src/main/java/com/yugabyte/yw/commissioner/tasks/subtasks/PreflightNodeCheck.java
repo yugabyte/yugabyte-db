@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -83,6 +84,14 @@ public class PreflightNodeCheck extends NodeTaskBase {
             .universe(universe)
             .build();
     ObjectNode rootNode = ynpConfigGenerator.generateConfig(configParams);
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck)) {
+      Object ynpVersion =
+          configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
+      if (ynpVersion != null) {
+        ((ObjectNode) rootNode.get("extra"))
+            .put("expected_ynp_version", ynpVersion.toString().trim());
+      }
+    }
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     YnpPreflightCheckInput checkParams =
