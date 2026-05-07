@@ -285,6 +285,6 @@ public class LocalNodeUniverseManager {
     if (gflags.containsKey(GFlagsUtil.TMP_DIRECTORY)) {
       return localNodeManager.getTmpDir(gflags, node.getNodeName(), cluster.userIntent);
     }
-    return GFlagsUtil.getCustomTmpDirectory(node, universe);
+    return "/tmp";
   }
 }

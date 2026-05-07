@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
@@ -41,6 +42,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
@@ -70,6 +72,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import javax.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
@@ -556,7 +559,7 @@ public class GFlagsUtil {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
     // Append the custom_tmp gflag to the YBC gflag.
-    String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     // PLAT-10007 use ybc-data instead of /tmp
     if (ybcTempDir.equals("/tmp")) {
       ybcTempDir = getDataDirectoryPath(universe, node, config) + "/ybc-data";
@@ -756,30 +759,19 @@ public class GFlagsUtil {
     return gflags;
   }
 
-  public static String getCustomTmpDirectory(NodeDetails node, Universe universe) {
-    Map<String, String> res = new HashMap<>();
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    if (node.isMaster) {
-      res.putAll(
-          getGFlagsForNode(
-              node,
-              UniverseTaskBase.ServerType.MASTER,
-              cluster,
-              universe.getUniverseDetails().clusters));
-    }
-    if (node.isTserver) {
-      res.putAll(
-          getGFlagsForNode(
-              node,
-              UniverseTaskBase.ServerType.TSERVER,
-              cluster,
-              universe.getUniverseDetails().clusters));
-    }
-
-    return res.getOrDefault(TMP_DIRECTORY, "/tmp");
+  public static String getCustomTmpDirectory(
+      RuntimeConfGetter confGetter, @NotNull NodeDetails node, Universe universe) {
+    return getCustomTmpDirectory(
+        confGetter,
+        universe,
+        universe.getCluster(node.placementUuid),
+        node.azUuid,
+        node.isMaster,
+        node.isTserver);
   }
 
   public static String getCustomTmpDirectory(
+      RuntimeConfGetter confGetter,
       Universe universe,
       Cluster cluster,
       @Nullable UUID azUuid,
@@ -802,7 +794,18 @@ public class GFlagsUtil {
               cluster,
               universe.getUniverseDetails().clusters));
     }
-    return res.getOrDefault(TMP_DIRECTORY, "/tmp");
+    String result = res.get(TMP_DIRECTORY);
+    if (result == null) {
+      Provider provider;
+      if (azUuid == null) {
+        UUID providerUUID = Util.getSingleProviderUUID(cluster);
+        provider = Provider.getOrBadRequest(providerUUID);
+      } else {
+        provider = AvailabilityZone.getOrBadRequest(azUuid).getProvider();
+      }
+      result = confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+    }
+    return result;
   }
 
   private static Map<String, String> getYSQLGFlags(

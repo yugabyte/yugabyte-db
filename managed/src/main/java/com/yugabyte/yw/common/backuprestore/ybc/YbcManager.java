@@ -854,7 +854,7 @@ public class YbcManager {
    */
   public String getYbcPackageTmpLocation(Universe universe, NodeDetails node, String ybcVersion) {
     Pair<String, String> ybcPackageDetails = getYbcPackageDetailsForNode(universe, node);
-    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     return String.format(
         "%s/ybc-%s-%s-%s.tar.gz",
         customTmpDirectory,

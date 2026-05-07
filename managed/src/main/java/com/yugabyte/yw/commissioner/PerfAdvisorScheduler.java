@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
@@ -75,16 +76,20 @@ public class PerfAdvisorScheduler {
 
   private final SettableRuntimeConfigFactory configFactory;
 
+  private final RuntimeConfGetter confGetter;
+
   @Inject
   public PerfAdvisorScheduler(
       SettableRuntimeConfigFactory settableRuntimeConfigFactory,
       PlatformScheduler platformScheduler,
       PlatformPerfAdvisor platformPerfAdvisor,
-      QueryHelper queryHelper) {
+      QueryHelper queryHelper,
+      RuntimeConfGetter confGetter) {
     this.configFactory = settableRuntimeConfigFactory;
     this.platformPerfAdvisor = platformPerfAdvisor;
     this.platformScheduler = platformScheduler;
     this.queryHelper = queryHelper;
+    this.confGetter = confGetter;
     this.threadPool = Executors.newCachedThreadPool();
   }
 
@@ -183,7 +188,8 @@ public class PerfAdvisorScheduler {
       }
       if (details.state.equals(NodeDetails.NodeState.Live)) {
         PlatformUniverseNodeConfig nodeConfig =
-            new PlatformUniverseNodeConfig(details, universe, ShellProcessContext.DEFAULT);
+            new PlatformUniverseNodeConfig(
+                details, universe, ShellProcessContext.DEFAULT, confGetter);
         universeNodeConfigList.add(nodeConfig);
       }
     }
