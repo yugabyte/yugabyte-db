@@ -34,7 +34,7 @@ jobs:
 
       - name: Check Backport title
         run: |
-          BACKPORT_RE='^(\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\])'
+          BACKPORT_RE='^\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\]'
           if [[ "${{ github.base_ref }}" == "master" ]]; then
             if [[ "${{ github.event.pull_request.title }}" =~ $BACKPORT_RE ]]; then
               echo "::error ::PR title should not specify target branch if targeting master."
