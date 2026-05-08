@@ -182,7 +182,7 @@ TEST_F_EX(PgCgroupsTest, TestQosRead, PgQosCgroupsTest) {
   ScopeExit join([&t] { t.join(); });
 
   ASSERT_OK(WaitFor([&] {
-    return CheckThreadIdsForThreadName(cgroup, "TabletServer_po").ok();
+    return CheckThreadIdsForThreadName(cgroup, "TabletServer_pool_").ok();
   }, 5s, "Wait for RPC servicer thread in database cgroup"));
 }
 
@@ -198,7 +198,7 @@ TEST_F_EX(PgCgroupsTest, TestQosWrite, PgQosCgroupsTest) {
   ScopeExit join([&t] { t.join(); });
 
   ASSERT_OK(WaitFor([&] {
-    return CheckThreadIdsForThreadName(cgroup, "TabletServer_po").ok();
+    return CheckThreadIdsForThreadName(cgroup, "TabletServer_pool_").ok();
   }, 5s, "Wait for RPC servicer thread in database cgroup"));
 }
 

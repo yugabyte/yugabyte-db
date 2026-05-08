@@ -17,6 +17,7 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/os-util.h"
 
 DEFINE_NON_RUNTIME_bool(use_cgroups_cpu, false,
     "Use the cgroup CPU quota to determine the effective number of CPUs instead of the host CPU "
@@ -75,27 +76,6 @@ Status WriteConfigToPath(const std::string& path, std::string_view value) {
   return WriteConfigToDescriptor(fd, value);
 }
 
-Result<std::string> ReadConfigFromPath(const std::string& path, size_t max_length) {
-  VLOG(3) << "Read config path: " << path;
-  int fd = VERIFY_ERRNO_FN_CALL(open, path.c_str(), O_RDONLY);
-  ScopeExit s([fd] { close(fd); });
-
-  std::string out(max_length + 1, '\0');
-  ssize_t bytes_read = VERIFY_ERRNO_FN_CALL(read, fd, out.data(), max_length + 1);
-  if (static_cast<size_t>(bytes_read) > max_length) {
-    return STATUS_FORMAT(
-        IllegalState, "cgroup config $0 too long, first $1 bytes: $2", path, max_length + 1, out);
-  }
-
-  if (bytes_read == 0) {
-    return STATUS_FORMAT(IllegalState, "config file $0 is empty", path);
-  }
-
-  // Last byte is a newline, drop it.
-  out.resize(static_cast<size_t>(bytes_read - 1));
-  return out;
-}
-
 Result<CgroupVersion> GetCgroupVersion() {
   static const auto version = ([] -> Result<CgroupVersion> {
     struct statfs s;
@@ -129,7 +109,7 @@ Result<std::string> ReadCpuGroup(
     bool check_controllers = true) {
   // Arbitrary length that is definitely long enough.
   constexpr auto kMaxConfigLength = 65535uz;
-  std::string cgroups = VERIFY_RESULT(ReadConfigFromPath(
+  std::string cgroups = VERIFY_RESULT(ReadUnixConfigFromPath(
       Format("/proc/$0/cgroup", process_or_thread_id), kMaxConfigLength));
   if (!version) {
     version.emplace(VERIFY_RESULT(GetCgroupVersion()));
@@ -154,7 +134,7 @@ Result<std::string> ReadCpuGroup(
     if (check_controllers) {
       // Since Cgroups v2 has a unified hierarchy for all controllers, we also need to check
       // if CPU controller is available.
-      auto controllers = StringSplit(VERIFY_RESULT(ReadConfigFromPath(
+      auto controllers = StringSplit(VERIFY_RESULT(ReadUnixConfigFromPath(
           Format("$0$1/cgroup.controllers", VERIFY_RESULT(CpuRootPath()), cgroup),
           kMaxConfigLength)), ' ');
       if (std::ranges::find(controllers, "cpu") == controllers.end()) {
@@ -281,7 +261,7 @@ Status Cgroup::WriteConfig(std::string_view config, std::string_view value) cons
 
 Result<std::string> Cgroup::ReadConfig(std::string_view config, size_t max_length) const {
   VLOG_WITH_PREFIX(1) << "Read config: " << config;
-  auto out = ReadConfigFromPath(CgroupConfigPath(name_, config), max_length);
+  auto out = ReadUnixConfigFromPath(CgroupConfigPath(name_, config), max_length);
   VLOG_WITH_PREFIX(1) << "Config: " << config << " = " << out;
   return out;
 }
@@ -493,11 +473,10 @@ Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
 Result<std::vector<std::string>> Cgroup::ReadThreadNames() {
   std::vector<std::string> names;
   for (int64_t thread_id : VERIFY_RESULT(ReadThreadIds())) {
-    auto result = ReadConfigFromPath(
-        Format("/proc/$0/comm", thread_id), Thread::kMaxThreadNameInPerf + 1);
+    auto result = Thread::ThreadName(thread_id);
     if (!result.ok()) {
       // This is possible if thread has exited since ReadThreadIds().
-      LOG(WARNING) << "Failed to read /proc/" << thread_id << "/comm: " << result.status();
+      LOG(WARNING) << "Failed to read thread name: " << result.status();
       continue;
     }
     names.emplace_back(*result);
@@ -631,9 +610,9 @@ Result<int> GetCgroupCpuQuota() {
   int64_t quota_us = 0;
   int64_t period_us = 0;
   if (version == CgroupVersion::kVersion1) {
-    auto quota_str = VERIFY_RESULT(ReadConfigFromPath(
+    auto quota_str = VERIFY_RESULT(ReadUnixConfigFromPath(
         cgroup_path + "/cpu.cfs_quota_us", kMaxConfigLength));
-    auto period_str = VERIFY_RESULT(ReadConfigFromPath(
+    auto period_str = VERIFY_RESULT(ReadUnixConfigFromPath(
         cgroup_path + "/cpu.cfs_period_us", kMaxConfigLength));
     quota_us = VERIFY_RESULT(CheckedStol<int64_t>(Slice(quota_str)));
     period_us = VERIFY_RESULT(CheckedStol<int64_t>(Slice(period_str)));
@@ -642,7 +621,7 @@ Result<int> GetCgroupCpuQuota() {
       return -1;
     }
   } else {
-    auto max_config = VERIFY_RESULT(ReadConfigFromPath(
+    auto max_config = VERIFY_RESULT(ReadUnixConfigFromPath(
         cgroup_path + "/cpu.max", kMaxConfigLength));
     auto separator = max_config.find(' ');
     if (separator == max_config.npos) {

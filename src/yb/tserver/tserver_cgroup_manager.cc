@@ -25,6 +25,7 @@
 #include "yb/util/flag_validators.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/metrics.h"
+#include "yb/util/os-util.h"
 #include "yb/util/thread.h"
 #include "yb/util/url-coding.h"
 
@@ -197,6 +198,39 @@ Result<Cgroup&> SetupCgroupForDb(PgOid db_oid, double per_db_cpu_fraction) {
 
 std::string FormatNanoseconds(int64_t ns) {
   return StringPrintf("%.3f", static_cast<double>(ns) / 1e9);
+}
+
+void CgroupThreadsToHtml(Cgroup& cgroup, HtmlPrintHelper& helper, std::ostream& out) {
+  auto thread_ids = cgroup.ReadThreadIds();
+  if (!thread_ids.ok()) {
+    EscapeForHtml(AsString(thread_ids.status()), &out);
+  } else {
+    auto printer = helper.CreateTablePrinter(
+        // Table name doesn't really matter, but needs to be a valid HTML ID.
+        /*table_name=*/Format("cgroup-$0", static_cast<void*>(&cgroup)),
+        {"Thread ID", "Name", "User CPU (s)", "System CPU (s)", "IO Wait (s)"},
+        {HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Left, HtmlTableCellAlignment::Right,
+         HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Right});
+
+    for (int64_t thread_id : *thread_ids) {
+      auto& row = printer.AddRow();
+      row.AddColumn(AsString(thread_id));
+      row.AddColumn(AsString(Thread::ThreadName(thread_id)));
+
+      ThreadStats stats;
+      auto status = GetThreadStats(thread_id, &stats);
+      if (!status.ok()) {
+        for (size_t i = 0; i < 3; ++i) {
+          row.AddColumn(AsString(status));
+        }
+      } else {
+        row.AddColumn(FormatNanoseconds(stats.user_ns));
+        row.AddColumn(FormatNanoseconds(stats.kernel_ns));
+        row.AddColumn(FormatNanoseconds(stats.iowait_ns));
+      }
+    }
+    printer.Print();
+  }
 }
 
 } // namespace
@@ -535,7 +569,8 @@ void TServerCgroupManager::DumpCgroupsToHtml(std::ostream& out, uint64_t sample_
 
   std::this_thread::sleep_for(sample_interval_ms * 1ms);
 
-  root_cgroup->VisitTree([&out, &initial_stats, num_cpus](Cgroup& cgroup, size_t depth) {
+  HtmlPrintHelper helper(out);
+  root_cgroup->VisitTree([&out, &helper, &initial_stats, num_cpus](Cgroup& cgroup, size_t depth) {
     auto current_stats = cgroup.ReadCpuStats();
 
     std::string throttle_status;
@@ -623,15 +658,7 @@ void TServerCgroupManager::DumpCgroupsToHtml(std::ostream& out, uint64_t sample_
             <td colspan="8">
           )#", depth + 1);
 
-      auto thread_ids = cgroup.ReadThreadIds();
-      if (!thread_ids.ok()) {
-        EscapeForHtml(AsString(thread_ids.status()), &out);
-      } else {
-        out << Format(R"#(
-              <p>$0 threads</p>
-              <p>$1</p>
-            )#", thread_ids->size(), AsString(*thread_ids));
-      }
+      CgroupThreadsToHtml(cgroup, helper, out);
 
       out << R"#(
           </tr>
