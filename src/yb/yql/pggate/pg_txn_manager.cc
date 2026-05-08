@@ -448,12 +448,18 @@ Status PgTxnManager::CalculateIsolation(
   //    they use the latest timestamp for reading.
   // (2) Fast-path txns don't face read restart errors because
   //    they pick a read time after conflict resolution.
-  // We already skip (2) because CalculateIsolation is not called for fast-path
-  //    (i.e., NON_TRANSACTIONAL).
-  need_defer_read_point_ =
-      ((read_only_ && deferrable_)
-        || yb_read_after_commit_visibility == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY)
-      && docdb_isolation != IsolationLevel::SERIALIZABLE_ISOLATION;
+  //
+  // Skip recomputing need_defer_read_point_ when called from local-fastpath object lock
+  // acquisition. That path runs prior to a fast-path DML (ROW_EXCLUSIVE or below), and the
+  // unconditional yb_read_after_commit_visibility-based update below would otherwise leave
+  // need_defer_read_point_=true and leak into the subsequent fast-path write Perform — making
+  // PG client pick a deferred read time instead of letting docdb pick at the storage layer.
+  if (!is_local_object_lock_op) {
+    need_defer_read_point_ =
+        ((read_only_ && deferrable_)
+          || yb_read_after_commit_visibility == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY)
+        && docdb_isolation != IsolationLevel::SERIALIZABLE_ISOLATION;
+  }
 
   VLOG_TXN_STATE(2) << "DocDB isolation level: " << IsolationLevel_Name(docdb_isolation);
 
@@ -737,7 +743,8 @@ std::string PgTxnManager::TxnStateDebugStr() const {
 
 Status PgTxnManager::SetupPerformOptions(
     SetupPerformOptionsAccessorTag, tserver::PgPerformOptionsPB* options,
-    std::optional<ReadTimeAction> read_time_action) {
+    std::optional<ReadTimeAction> read_time_action,
+    IsLocalObjectLockOp is_local_object_lock_op) {
   if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
     IncTxnSerialNo();
   }
@@ -775,7 +782,14 @@ Status PgTxnManager::SetupPerformOptions(
 
   // Do not clamp or defer read point when the read time is being reset
   // because RESET => read time needs to be empty.
-  if (!(read_time_action && *read_time_action == ReadTimeAction::RESET)) {
+  //
+  // Skip the clamp/defer setup entirely for local-fastpath object lock RPCs. These RPCs
+  // perform no reads or writes; if they carried clamp/defer, the tserver would pick a
+  // (clamped/deferred) read time during lock acquisition and that read time would leak into
+  // the next fast-path Perform — making PG client provide a read time instead of letting
+  // docdb pick at the storage layer.
+  if (!is_local_object_lock_op
+      && !(read_time_action && *read_time_action == ReadTimeAction::RESET)) {
     // Do not clamp in the serializable case (or fast path write) since
     // - SERIALIZABLE (and fast path) reads do not pick read time until they reach storage layer.
     // - SERIALIZABLE (and fast path) reads do not observe read restarts anyways.
@@ -1045,12 +1059,15 @@ Status PgTxnManager::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
     bool is_session_lock,
     std::optional<PgTablespaceOid> tablespace_oid) {
+  const auto is_local_object_lock_op =
+      IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK);
   RETURN_NOT_OK(CalculateIsolation(
       false /* read_only, doesn't matter */,
       GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
-      IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
+      is_local_object_lock_op));
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
+  RETURN_NOT_OK(SetupPerformOptions(
+      tag, &options, /*read_time_action=*/{}, is_local_object_lock_op));
   RETURN_NOT_OK(client_->AcquireObjectLock(
       &options, lock_id, mode, is_session_lock, tablespace_oid));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());

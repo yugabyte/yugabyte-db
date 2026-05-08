@@ -118,7 +118,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
   Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
-      tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {});
+      tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {},
+      IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
