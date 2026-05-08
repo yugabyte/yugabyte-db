@@ -187,6 +187,20 @@ yb-ts-cli [ --server_address=<host>:<port> ] flush_tablet <tablet-id>
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 * *tablet-id*: The identifier of the tablet to flush.
 
+### flush_vector_index
+
+Trigger a flush of [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) on a specific tablet. Use this for tablet-level vector index flush when you need to flush only vector indexes on a given tablet (for example, after bulk loads or for maintenance).
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] flush_vector_index <tablet-id> [<vector-index-id1> <vector-index-id2> ...]
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *tablet-id*: The identifier of the tablet that contains the vector index(es).
+* *vector-index-id1*, *vector-index-id2*, ...: Optional. Table IDs of specific vector indexes to flush. If omitted, all vector indexes on the tablet are flushed.
+
 ### list_tablets
 
 Lists the tablets on the specified tablet server, displaying the following properties: column name, tablet ID, state, table name, shard, and schema.
