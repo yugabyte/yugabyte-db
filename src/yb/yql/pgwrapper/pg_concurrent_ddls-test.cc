@@ -127,20 +127,29 @@ TEST_F(PgConcurrentDDLsTest, ConcurrentCreateIndex) {
 class PgConcurrentCreateIndexWithSlowOtherDDLTest : public PgConcurrentDDLsTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back(
-        "--ysql_yb_wait_for_backends_catalog_version_timeout=20000");
-    options->extra_master_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=10000");
-    options->extra_master_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=5000");
-    options->extra_master_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=3000");
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_wait_for_backends_catalog_version_timeout=20000");
-    options->extra_tserver_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=10000");
-    options->extra_tserver_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=3000");
+    // Scale RPC/operation budgets by kTimeMultiplier so that under sanitizers, where a freshly
+    // forked PG backend can take several seconds to reach ReadyForQuery, the master->tserver
+    // probes do not time out and trigger an avalanche of retried local PG connections (and
+    // therefore an avalanche of newly forked backends).
+    options->extra_master_flags.push_back(Format(
+        "--ysql_yb_wait_for_backends_catalog_version_timeout=$0", 20000 * kTimeMultiplier));
+    options->extra_master_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=$0",
+        10000 * kTimeMultiplier));
+    options->extra_master_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=$0",
+        5000 * kTimeMultiplier));
+    options->extra_master_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=$0",
+        3000 * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_yb_wait_for_backends_catalog_version_timeout=$0", 20000 * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=$0",
+        10000 * kTimeMultiplier));
+    options->extra_tserver_flags.push_back(Format(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms=$0",
+        3000 * kTimeMultiplier));
 
     PgConcurrentDDLsTest::UpdateMiniClusterOptions(options);
   }
