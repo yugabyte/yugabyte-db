@@ -234,10 +234,8 @@ void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
                         graphid start_id, graphid end_id,
                         agtype *edge_properties)
 {
-
-    /* YB: 4 extra slots hold meko_* tenant columns (all NULL by default) */
-    Datum values[8];
-    bool nulls[8] = {false, false, false, false, true, true, true, true};
+    Datum values[4];
+    bool nulls[4] = {false, false, false, false};
     Relation label_relation;
     HeapTuple tuple;
 
@@ -252,22 +250,17 @@ void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
     label_relation = table_open(get_label_relation(label_name, graph_oid),
                                 RowExclusiveLock);
 
-    /* Form the tuple */
-    values[0] = GRAPHID_GET_DATUM(edge_id);
-    values[1] = GRAPHID_GET_DATUM(start_id);
-    values[2] = GRAPHID_GET_DATUM(end_id);
-    values[3] = AGTYPE_P_GET_DATUM((edge_properties));
-    /* YB: TODO(#31338) caller does not yet supply meko_* tenant values. */
-    values[4] = (Datum) 0;
-    values[5] = (Datum) 0;
-    values[6] = (Datum) 0;
-    values[7] = (Datum) 0;
-
     if (IsYBRelation(label_relation))
         ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                  errmsg("simple edge insert is not supported on "
                         "YugabyteDB yet (#31338)")));
+
+    /* Form the tuple */
+    values[0] = GRAPHID_GET_DATUM(edge_id);
+    values[1] = GRAPHID_GET_DATUM(start_id);
+    values[2] = GRAPHID_GET_DATUM(end_id);
+    values[3] = AGTYPE_P_GET_DATUM((edge_properties));
 
     tuple = heap_form_tuple(RelationGetDescr(label_relation),
                             values, nulls);

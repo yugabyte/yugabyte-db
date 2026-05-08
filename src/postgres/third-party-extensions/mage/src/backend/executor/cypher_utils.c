@@ -92,41 +92,38 @@ void destroy_entity_result_rel_info(ResultRelInfo *result_rel_info)
 
 /*
  * YB: Copy meko_* tenant column values from `meko` into the four
- * corresponding slot offsets on a vertex tuple. Caller is expected to gate
- * the call with IsYugaByteEnabled().
+ * corresponding slot offsets on a vertex/edge tuple. is_edge selects the
+ * vertex or edge column layout. Caller is expected to gate the call with
+ * IsYugaByteEnabled().
  */
-void yb_populate_vertex_meko_columns(TupleTableSlot *slot, YbMekoDp meko)
+void yb_populate_meko_columns(TupleTableSlot *slot, YbMekoDp meko,
+                              bool is_edge)
 {
-    slot->tts_values[vertex_tuple_meko_datapack_id]     = meko.datapack_id;
-    slot->tts_isnull[vertex_tuple_meko_datapack_id]     = false;
-    slot->tts_values[vertex_tuple_meko_user_id]         = meko.user_id;
-    slot->tts_isnull[vertex_tuple_meko_user_id]         = false;
-    slot->tts_values[vertex_tuple_meko_agent_id]        = meko.agent_id;
-    slot->tts_isnull[vertex_tuple_meko_agent_id]        = false;
-    slot->tts_values[vertex_tuple_meko_conversation_id] = meko.conversation_id;
-    slot->tts_isnull[vertex_tuple_meko_conversation_id] = meko.conversation_id_isnull;
-}
+    int dp_off    = is_edge ? edge_tuple_meko_datapack_id
+                            : vertex_tuple_meko_datapack_id;
+    int user_off  = is_edge ? edge_tuple_meko_user_id
+                            : vertex_tuple_meko_user_id;
+    int ag_off    = is_edge ? edge_tuple_meko_agent_id
+                            : vertex_tuple_meko_agent_id;
+    int conv_off  = is_edge ? edge_tuple_meko_conversation_id
+                            : vertex_tuple_meko_conversation_id;
 
-/* YB: edge counterpart of yb_populate_vertex_meko_columns. */
-void yb_populate_edge_meko_columns(TupleTableSlot *slot, YbMekoDp meko)
-{
-    slot->tts_values[edge_tuple_meko_datapack_id]     = meko.datapack_id;
-    slot->tts_isnull[edge_tuple_meko_datapack_id]     = false;
-    slot->tts_values[edge_tuple_meko_user_id]         = meko.user_id;
-    slot->tts_isnull[edge_tuple_meko_user_id]         = false;
-    slot->tts_values[edge_tuple_meko_agent_id]        = meko.agent_id;
-    slot->tts_isnull[edge_tuple_meko_agent_id]        = false;
-    slot->tts_values[edge_tuple_meko_conversation_id] = meko.conversation_id;
-    slot->tts_isnull[edge_tuple_meko_conversation_id] = meko.conversation_id_isnull;
+    slot->tts_values[dp_off]   = meko.datapack_id;
+    slot->tts_isnull[dp_off]   = false;
+    slot->tts_values[user_off] = meko.user_id;
+    slot->tts_isnull[user_off] = false;
+    slot->tts_values[ag_off]   = meko.agent_id;
+    slot->tts_isnull[ag_off]   = false;
+    slot->tts_values[conv_off] = meko.conversation_id;
+    slot->tts_isnull[conv_off] = meko.conversation_id_isnull;
 }
 
 /*
  * YB: Helper for the SET path: copy the four meko_* columns from an
- * on-disk tuple into a fresh YbMekoDp and hand it off to the existing
- * yb_populate_*_meko_columns() so the slot-population logic stays in
- * one place. The first three columns are NOT NULL on the table so
- * non-null is asserted; conversation is nullable and its flag is
- * propagated.
+ * on-disk tuple into a fresh YbMekoDp and hand it off to
+ * yb_populate_meko_columns() so the slot-population logic stays in one
+ * place. The first three columns are NOT NULL on the table so non-null
+ * is asserted; conversation is nullable and its flag is propagated.
  */
 void yb_copy_meko_columns_from_tuple(TupleTableSlot *slot,
                                      HeapTuple heap_tuple,
@@ -154,10 +151,7 @@ void yb_copy_meko_columns_from_tuple(TupleTableSlot *slot,
         heap_getattr(heap_tuple, conv_anum, tupdesc, &isnull);
     meko.conversation_id_isnull = isnull;
 
-    if (is_edge)
-        yb_populate_edge_meko_columns(slot, meko);
-    else
-        yb_populate_vertex_meko_columns(slot, meko);
+    yb_populate_meko_columns(slot, meko, is_edge);
 }
 
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
@@ -183,7 +177,7 @@ TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
     elemTupleSlot->tts_isnull[vertex_tuple_properties] = properties_isnull;
 
     if (IsYugaByteEnabled())
-        yb_populate_vertex_meko_columns(elemTupleSlot, meko);
+        yb_populate_meko_columns(elemTupleSlot, meko, false /* is_edge */);
 
     return elemTupleSlot;
 }
@@ -230,7 +224,7 @@ TupleTableSlot *populate_edge_tts(
     elemTupleSlot->tts_isnull[edge_tuple_properties] = properties_isnull;
 
     if (IsYugaByteEnabled())
-        yb_populate_edge_meko_columns(elemTupleSlot, meko);
+        yb_populate_meko_columns(elemTupleSlot, meko, true /* is_edge */);
 
     return elemTupleSlot;
 }

@@ -1068,8 +1068,7 @@ static Datum merge_vertex(cypher_merge_custom_scan_state *css,
         elemTupleSlot->tts_isnull[vertex_tuple_properties] = isNull;
 
         if (IsYugaByteEnabled())
-            yb_populate_vertex_meko_columns(elemTupleSlot,
-                yb_extract_meko_columns_from_properties(prop, isNull));
+            yb_populate_meko_columns(elemTupleSlot, yb_extract_meko_columns_from_properties(prop, isNull), false /* is_edge */);
 
         /*
          * Insert the new vertex.
@@ -1414,8 +1413,7 @@ static void merge_edge(cypher_merge_custom_scan_state *css,
     elemTupleSlot->tts_isnull[edge_tuple_properties] = isNull;
 
     if (IsYugaByteEnabled())
-        yb_populate_edge_meko_columns(elemTupleSlot,
-            yb_extract_meko_columns_from_properties(prop, isNull));
+        yb_populate_meko_columns(elemTupleSlot, yb_extract_meko_columns_from_properties(prop, isNull), true /* is_edge */);
 
     /*
      * Insert the new edge.

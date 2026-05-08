@@ -133,8 +133,8 @@ YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
  * with IsYugaByteEnabled() since the meko_* columns only exist on YB-hosted
  * tables.
  */
-void yb_populate_vertex_meko_columns(TupleTableSlot *slot, YbMekoDp meko);
-void yb_populate_edge_meko_columns(TupleTableSlot *slot, YbMekoDp meko);
+void yb_populate_meko_columns(TupleTableSlot *slot, YbMekoDp meko,
+                              bool is_edge);
 
 /*
  * YB: Copy meko_* tenant column values from an existing on-disk tuple into
