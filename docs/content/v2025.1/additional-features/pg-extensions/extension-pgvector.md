@@ -221,7 +221,7 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
     CREATE INDEX CONCURRENLTY on <table> USING ybhnsq (vec vector_l2_ops);
     ```
 
-    The index backfill will take an exclusive lock (ACCESS_EXCLUSIVE) on the table, and writes to the table are blocked while index backfill is in progress. {{<issue 26402>}}
+    Unlike concurrent index creation on non-vector data types, the index backfill will take an exclusive lock (ACCESS_EXCLUSIVE) on the table, and writes to the table are blocked while index backfill is in progress. {{<issue 26402>}}
 
 - Partial indexes on vector columns are not supported yet.
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
