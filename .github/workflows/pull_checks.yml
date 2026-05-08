@@ -42,7 +42,7 @@ jobs:
             fi
           else
             if [[ "${{ github.event.pull_request.title }}" =~ $BACKPORT_RE ]]; then
-              BACKPORT_BRANCH="${BASH_REMATCH[1]}"
+              BACKPORT_BRANCH="${BASH_REMATCH[2]}"
               if [[ "${BACKPORT_BRANCH}" != "${{ github.base_ref }}" ]]; then
                 echo "::error ::Backport branch in title (${BACKPORT_BRANCH}) does not match"
                 echo "::error :: PR base ref (${{ github.base_ref }})."
