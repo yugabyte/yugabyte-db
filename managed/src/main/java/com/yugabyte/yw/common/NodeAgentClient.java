@@ -13,6 +13,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Descriptors.FieldDescriptor;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -680,6 +681,20 @@ public class NodeAgentClient {
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * Returns true if the cloudType supports node agent.
+   *
+   * @param cloudType the given cloud type.
+   * @return true if the cloudType supports node agent.
+   */
+  public static boolean isCloudTypeSupported(CloudType cloudType) {
+    if (cloudType == CloudType.kubernetes || cloudType == CloudType.local) {
+      log.trace("Node agent is not supported for kubernetes provider");
+      return false;
+    }
+    return true;
   }
 
   /* Passing universe allows more specific check for the universe. */

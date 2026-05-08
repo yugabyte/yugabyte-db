@@ -9,6 +9,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -238,6 +239,10 @@ public class NodeAgentEnabler {
     Universe.doIfUnlocked(
         universeUuid,
         universe -> {
+          Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+          if (!NodeAgentClient.isCloudTypeSupported(primaryCluster.userIntent.providerType)) {
+            return;
+          }
           Set<String> nodeIps =
               universe.getNodes().stream()
                   .filter(n -> n.state == NodeState.Live)
