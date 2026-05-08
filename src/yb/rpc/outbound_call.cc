@@ -39,6 +39,9 @@
 
 #include <boost/functional/hash.hpp>
 #include <boost/range/adaptor/transformed.hpp>
+#include <google/protobuf/descriptor.h>
+
+#include "opentelemetry/trace/span.h"
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
@@ -55,6 +58,8 @@
 #include "yb/rpc/wait_state_if.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/dist_trace.h"
+#include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -144,6 +149,26 @@ bool FinishedState(RpcCallState state) {
   }
   LOG(FATAL) << "Unknown call state: " << state;
   return false;
+}
+
+void SetSpanStatus(opentelemetry::trace::Span& span, RpcCallState state) {
+  switch (state) {
+    case TIMED_OUT:
+      span.SetStatus(opentelemetry::trace::StatusCode::kError, "Call TimedOut");
+      return;
+    case FINISHED_ERROR:
+      span.SetStatus(opentelemetry::trace::StatusCode::kError, "Call ErroredOut");
+      return;
+    case FINISHED_SUCCESS:
+      span.SetStatus(opentelemetry::trace::StatusCode::kOk);
+      return;
+    case READY:
+    case ON_OUTBOUND_QUEUE:
+    case SENT:
+      DCHECK(false);
+      break;
+  }
+  FATAL_INVALID_ENUM_VALUE(RpcCallState, state);
 }
 
 bool ValidStateTransition(RpcCallState old_state, RpcCallState new_state) {
@@ -253,6 +278,12 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
 
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
+
+  // TODO(#31324): Add spans for shared memory communication too
+  if (dist_trace::HasActiveContext()) {
+    otel_span_ = dist_trace::StartSpan(
+        Format("rpc $0", remote_method_.ToString()), dist_trace::GetPendingRpcAttrPairs());
+  }
 }
 
 OutboundCall::~OutboundCall() {
@@ -456,6 +487,10 @@ bool OutboundCall::SetState(State new_state) {
       return false;
     }
     if (state_.compare_exchange_weak(old_state, new_state, std::memory_order_acq_rel)) {
+      if (otel_span_ && FinishedState(new_state)) {
+        SetSpanStatus(*otel_span_, new_state);
+        otel_span_->End();
+      }
       return true;
     }
   }

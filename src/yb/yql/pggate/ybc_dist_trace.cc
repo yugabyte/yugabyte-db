@@ -140,10 +140,7 @@ void YBCDistTraceStartRootSpan(
 }
 
 void YBCDistTraceStartSpan(const char* op_name) {
-  trace::StartSpanOptions options;
-  options.kind = trace::SpanKind::kInternal;
-
-  auto span = dist_trace::GetDistTracer()->StartSpan(op_name, options);
+  auto span = dist_trace::StartSpan(op_name);
 
   OtelScopeStack().emplace(trace::Scope(span), std::move(span));
 }
@@ -160,6 +157,7 @@ void YBCDistTraceSetCurrSpanAttrStr(const char* key, const char* value) {
 
 void YBCDistTraceEndSpan() {
   DCHECK(!YBCIsOtelScopeStackEmpty());
+  OtelScopeStack().top().second->SetStatus(trace::StatusCode::kOk);
   OtelScopeStack().pop();
 }
 

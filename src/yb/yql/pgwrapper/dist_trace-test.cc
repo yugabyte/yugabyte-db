@@ -17,27 +17,44 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include <google/protobuf/empty.pb.h>
 #include <gtest/gtest.h>
 
+#include "opentelemetry/trace/scope.h"
+#include "opentelemetry/trace/tracer.h"
 #include "opentelemetry/proto/collector/trace/v1/trace_service.pb.h"
 
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/remote_method.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/server/webserver.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+
+DECLARE_string(otel_collector_traces_endpoint);
+DECLARE_uint32(otel_batch_max_queue_size);
+DECLARE_uint32(otel_batch_schedule_delay_ms);
+DECLARE_uint32(otel_batch_max_export_batch_size);
 
 namespace yb::pgwrapper {
 
@@ -83,6 +100,9 @@ struct Span {
   std::string span_id;
   int64_t db_id = 0;
   int64_t user_id = 0;
+  std::string status_message;
+  std::unordered_map<std::string, std::string> str_attrs;
+  std::unordered_map<std::string, int64_t> int_attrs;
 
   bool operator<(const Span& other) const {
     return std::tie(op_name, service_name, query_text, trace_id, db_id, user_id) <
@@ -191,13 +211,16 @@ class OtlpHttpCollector {
   }
 
   Status VerifySpansMatch(const Trace& actual, const Trace& expected) const {
-    // Filter out per-tuple executor node spans before comparison. These have
-    // variable counts depending on row cardinality and are verified separately
-    // by HasSpanWithName in the executor node tests.
+    // Filter out spans covered by dedicated tests before comparison. Executor node
+    // span counts vary with row cardinality, and RPC spans vary with the DocDB
+    // requests needed to execute a statement.
     std::vector<Span> filtered_actual;
     std::copy_if(actual.spans.begin(), actual.spans.end(),
                  std::back_inserter(filtered_actual),
-                 [](const Span& s) { return !kExecutorNodeSpanNames.contains(s.op_name); });
+                 [](const Span& s) {
+                   return !kExecutorNodeSpanNames.contains(s.op_name) &&
+                          !s.op_name.starts_with("rpc ");
+                 });
 
     SCHECK_EQ(filtered_actual.size(), expected.spans.size(), IllegalState,
         Format("Span count mismatch for query '$0': expected $1, got $2",
@@ -234,7 +257,10 @@ class OtlpHttpCollector {
             if (it == traces_.end()) return false;
             auto non_exec_count = std::count_if(
                 it->second.spans.begin(), it->second.spans.end(),
-                [](const Span& s) { return !kExecutorNodeSpanNames.contains(s.op_name); });
+                [](const Span& s) {
+                  return !kExecutorNodeSpanNames.contains(s.op_name) &&
+                         !s.op_name.starts_with("rpc ");
+                });
             if (non_exec_count < static_cast<int64_t>(expected.spans.size())) {
               return false;
             }
@@ -302,6 +328,91 @@ class OtlpHttpCollector {
     return false;
   }
 
+  bool HasSpanWithNamePrefix(const std::string& trace_id, std::string_view prefix) const
+      EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return false;
+    for (const auto& span : it->second.spans) {
+      if (span.op_name.starts_with(prefix)) return true;
+    }
+    return false;
+  }
+
+  bool HasSpanWithNamePrefixAndStatusMessage(
+      std::string_view prefix, std::string_view status_message) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    for (const auto& [_, trace] : traces_) {
+      for (const auto& span : trace.spans) {
+        if (span.op_name.starts_with(prefix) && span.status_message == status_message) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Find the first span whose name starts with span_name_prefix and return a copy.
+  // Returns std::nullopt if no such span exists.
+  std::optional<Span> FindSpanByNamePrefix(
+      const std::string& trace_id, std::string_view span_name_prefix) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return std::nullopt;
+    for (const auto& span : it->second.spans) {
+      if (span.op_name.starts_with(span_name_prefix)) {
+        return span;
+      }
+    }
+    return std::nullopt;
+  }
+
+  // Collect all spans whose name starts with span_name_prefix.
+  std::vector<Span> FindSpansByNamePrefix(
+      const std::string& trace_id, std::string_view span_name_prefix) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    std::vector<Span> result;
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return result;
+    for (const auto& span : it->second.spans) {
+      if (span.op_name.starts_with(span_name_prefix)) {
+        result.push_back(span);
+      }
+    }
+    return result;
+  }
+
+  std::optional<Span> FindRpcSpanWithTableName(
+      const std::string& trace_id, std::string_view table_name) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return std::nullopt;
+    for (const auto& span : it->second.spans) {
+      if (!span.op_name.starts_with("rpc ")) {
+        continue;
+      }
+      auto table_names_it = span.str_attrs.find("rpc.table_names");
+      if (table_names_it != span.str_attrs.end() &&
+          table_names_it->second.find(table_name) != std::string::npos) {
+        return span;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<Span> FindSpanBySpanId(
+      const std::string& trace_id, const std::string& span_id) const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    if (it == traces_.end()) return std::nullopt;
+    for (const auto& span : it->second.spans) {
+      if (span.span_id == span_id) {
+        return span;
+      }
+    }
+    return std::nullopt;
+  }
+
   Status VerifyQueryNotTraced(std::string_view query) const EXCLUDES(mutex_) {
     SleepFor(kOtelBatchScheduleDelayMs * kTimeMultiplier * 2ms);
     std::lock_guard lock(mutex_);
@@ -349,7 +460,7 @@ class OtlpHttpCollector {
           if (trace.query_text.empty() && span.name() == "query") {
             trace.query_text = FindStringAttribute(span.attributes(), "query.text");
           }
-          trace.spans.push_back(Span{
+          Span new_span{
               .service_name = service_name,
               .op_name = span.name(),
               .query_text = FindStringAttribute(span.attributes(), "query.text"),
@@ -358,7 +469,18 @@ class OtlpHttpCollector {
               .span_id = b2a_hex(span.span_id()),
               .db_id = FindIntAttribute(span.attributes(), "db.id"),
               .user_id = FindIntAttribute(span.attributes(), "user.id"),
-          });
+              .status_message = span.status().message(),
+              .str_attrs = {},
+              .int_attrs = {},
+          };
+          for (const auto& attr : span.attributes()) {
+            if (attr.value().has_string_value()) {
+              new_span.str_attrs[attr.key()] = attr.value().string_value();
+            } else if (attr.value().has_int_value()) {
+              new_span.int_attrs[attr.key()] = attr.value().int_value();
+            }
+          }
+          trace.spans.push_back(std::move(new_span));
         }
       }
     }
@@ -388,11 +510,19 @@ class DistTraceTest : public LibPqTestBase {
   }
 
  protected:
-  void ConfigureClusterOptions(ExternalMiniClusterOptions* options) {
-    options->replication_factor = 1;
+  virtual bool UsePgClientSharedMemory() const {
+    return true;
   }
 
-  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) {
+  void ConfigureClusterOptions(ExternalMiniClusterOptions* options) {
+    options->replication_factor = 1;
+    options->extra_tserver_flags.push_back(
+        Format("--enable_object_lock_fastpath=$0", UsePgClientSharedMemory()));
+    options->extra_tserver_flags.push_back(
+        Format("--pg_client_use_shared_memory=$0", UsePgClientSharedMemory()));
+  }
+
+  virtual void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) {
     AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags,
         "otel_collector_traces_endpoint");
     options->extra_tserver_flags.push_back(
@@ -497,6 +627,9 @@ class DistTraceTest : public LibPqTestBase {
         .span_id = {},
         .db_id = db_id,
         .user_id = user_id,
+        .status_message = {},
+        .str_attrs = {},
+        .int_attrs = {},
     };
   }
 
@@ -615,6 +748,13 @@ class DistTraceTest : public LibPqTestBase {
   std::vector<std::string> warnings_;
 };
 
+class DistTraceRpcTest : public DistTraceTest {
+ protected:
+  bool UsePgClientSharedMemory() const override {
+    return false;
+  }
+};
+
 class DistTraceDisabledTest : public DistTraceTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -627,6 +767,15 @@ class DistTraceDisabledTest : public DistTraceTest {
 
   int GetNumTabletServers() const override {
     return 1;
+  }
+};
+
+class DistTraceRpcTimeoutTest : public DistTraceRpcTest {
+ protected:
+  void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
+    DistTraceRpcTest::ConfigureDistTraceOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_client_read_write_timeout_ms=100");
+    options->extra_tserver_flags.push_back("--pg_client_extra_timeout_ms=0");
   }
 };
 
@@ -1208,6 +1357,157 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolGuc) {
            {SpanType::kExtSync, 1},
            {SpanType::kCommit, 1}}),
   }));
+}
+
+TEST_F(DistTraceRpcTest, TestRpcSpans) {
+  ASSERT_OK(CreateTable("rpc_test", 5));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rpc_test"));
+
+  // An RPC span (e.g. "rpc yb.tserver.PgClientService.Perform") should appear
+  // as a child of one of the query execution spans.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.HasSpanWithNamePrefix(tp.trace_id, "rpc ");
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span to appear in trace"));
+}
+
+TEST_F(DistTraceRpcTest, TestErroredRpcSpanStatus) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_batch_schedule_delay_ms) = kOtelBatchScheduleDelayMs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_batch_max_export_batch_size) =
+      kOtelBatchMaxExportBatchSize;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_batch_max_queue_size) = kOtelBatchMaxQueueSize;
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-rpc-error-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  auto root_span = dist_trace::GetDistTracer()->StartSpan("rpc-error-test");
+  {
+    opentelemetry::trace::Scope scope(root_span);
+    auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("DistTraceRpcErrorTest").Build());
+    auto shutdown_messenger = ScopeExit([&messenger] {
+      messenger->Shutdown();
+    });
+
+    rpc::Proxy proxy(messenger.get(), cluster_->tablet_server(0)->bound_rpc_addr());
+    static const rpc::RemoteMethod method("WrongServiceName", "ThisMethodDoesNotExist");
+    google::protobuf::Empty req;
+    google::protobuf::Empty resp;
+    rpc::RpcController controller;
+    const auto status = proxy.SyncRequest(&method, nullptr, req, &resp, &controller);
+    ASSERT_TRUE(status.IsRemoteError()) << status;
+  }
+  root_span->End();
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.HasSpanWithNamePrefixAndStatusMessage(
+            "rpc WrongServiceName.ThisMethodDoesNotExist", "Call ErroredOut");
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "Errored RPC span to appear in trace"));
+}
+
+TEST_F(DistTraceRpcTimeoutTest, TestTimedOutRpcSpanStatus) {
+  ASSERT_OK(CreateTable("rpc_timeout_test", 1));
+  auto lock_conn = ASSERT_RESULT(Connect(true /* simple_query_protocol */));
+  ASSERT_OK(lock_conn.Execute("BEGIN"));
+  ASSERT_OK(lock_conn.Execute("UPDATE rpc_timeout_test SET val = 'locked' WHERE id = 1"));
+  ASSERT_OK(conn_->Execute("SET yb_enable_pg_locks = true"));
+  ASSERT_OK(conn_->Execute("SET yb_locks_min_txn_age = '0ms'"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_delay_before_get_locks_status_ms", std::to_string(1000 * kTimeMultiplier)));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_NOK(conn_->Fetch(
+      "SELECT * FROM pg_locks WHERE relation = 'rpc_timeout_test'::regclass"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto rpc_spans = collector_.FindSpansByNamePrefix(tp.trace_id, "rpc ");
+        return std::any_of(rpc_spans.begin(), rpc_spans.end(), [](const Span& span) {
+          return span.op_name.starts_with("rpc yb.tserver.PgClientService.GetLockStatus") &&
+                 span.status_message == "Call TimedOut";
+        });
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "Timed-out PgClientService.GetLockStatus RPC span to appear in trace"));
+}
+
+// Verifies every attribute on an RPC client span for a PgClientService.Perform call.
+// Tests both a read (SELECT) and write (INSERT) path to ensure each attribute is populated.
+TEST_F(DistTraceRpcTest, TestRpcSpanAttributes) {
+  ASSERT_OK(CreateTable("rpc_attr_test", 5));
+
+  // --- Read path: SELECT triggers PgClientService.Perform ---
+  auto tp_read = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_read.full));
+
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rpc_attr_test"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp_read.trace_id, "rpc_attr_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for SELECT"));
+
+  {
+    auto span = collector_.FindRpcSpanWithTableName(tp_read.trace_id, "rpc_attr_test");
+    ASSERT_TRUE(span) << "Expected at least one RPC span for SELECT";
+
+    // --- rpc.table_names is stashed by PgSession via a thread-local and consumed by the
+    //     OutboundCall constructor, so it lands on the RPC span (not on its parent pggate span).
+    auto table_names_it = span->str_attrs.find("rpc.table_names");
+    ASSERT_NE(table_names_it, span->str_attrs.end())
+        << "rpc.table_names attribute missing on RPC span";
+    ASSERT_FALSE(table_names_it->second.empty()) << "rpc.table_names should not be empty";
+    ASSERT_STR_CONTAINS(table_names_it->second, "rpc_attr_test");
+  }
+
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+
+  // --- Write path: INSERT triggers PgClientService.Perform ---
+  auto tp_write = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_write.full));
+
+  ASSERT_OK(conn_->Execute("INSERT INTO rpc_attr_test VALUES (100, 'traced_insert')"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp_write.trace_id, "rpc_attr_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for INSERT"));
+
+  {
+    auto span = collector_.FindRpcSpanWithTableName(tp_write.trace_id, "rpc_attr_test");
+    ASSERT_TRUE(span) << "Expected at least one RPC span for INSERT";
+
+    // --- rpc.table_names lands on the RPC span itself (see the equivalent check in the
+    //     SELECT branch above for the rationale).
+    auto table_names_it = span->str_attrs.find("rpc.table_names");
+    ASSERT_NE(table_names_it, span->str_attrs.end())
+        << "rpc.table_names attribute missing on RPC span";
+    ASSERT_FALSE(table_names_it->second.empty()) << "rpc.table_names should not be empty";
+    ASSERT_STR_CONTAINS(table_names_it->second, "rpc_attr_test");
+  }
 }
 
 }  // namespace yb::pgwrapper

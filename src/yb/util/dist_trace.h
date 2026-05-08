@@ -14,16 +14,44 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "opentelemetry/common/attribute_value.h"
+#include "opentelemetry/trace/span_metadata.h"
+#include "opentelemetry/trace/span_startoptions.h"
 
 #include "yb/util/dist_trace_fwd.h"
 
 namespace yb::dist_trace {
 
+namespace nostd = opentelemetry::nostd;
+namespace trace = opentelemetry::trace;
+
 void InitDistTrace(int64_t process_pid, opentelemetry::nostd::string_view node_uuid);
 void CleanupDistTrace();
-opentelemetry::nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer();
+nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer();
 bool IsDistTraceEnabled();
-opentelemetry::trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
-bool IsSpanContextValidAndRemote(const opentelemetry::trace::SpanContext& span_context);
+trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
+bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context);
+
+// Returns true if distributed tracing is enabled and there is an active span in the OTEL context.
+bool HasActiveContext();
+nostd::shared_ptr<trace::Span> StartSpan(
+    const std::string& op_name,
+    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs,
+    trace::StartSpanOptions options);
+nostd::shared_ptr<trace::Span> StartSpan(
+    const std::string& op_name,
+    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs);
+nostd::shared_ptr<trace::Span> StartSpan(const std::string& op_name);
+
+// Thread-local attribute buffer for the next RPC span. Producers (e.g. PgSession) add
+// attributes here; the OutboundCall constructor consumes them when starting a span.
+void AddPendingRpcStringAttr(std::string key, std::string value);
+const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>&
+    GetPendingRpcAttrPairs();
+void ClearPendingRpcAttrs();
 
 }  // namespace yb::dist_trace
