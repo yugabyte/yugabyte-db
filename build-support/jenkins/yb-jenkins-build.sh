@@ -39,9 +39,6 @@ EOT
 
 echo "Jenkins Build script ${BASH_SOURCE[0]} is running"
 
-echo "Intentional build failure"
-exit 1
-
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
