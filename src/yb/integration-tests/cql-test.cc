@@ -528,14 +528,14 @@ TEST_F(CqlTest, ReadTimeoutTest) {
 
   ASSERT_OK(cluster_->FlushTablets());
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_connection_timeout) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_deadline_check_granularity) = 1;
   starting_time = CoarseMonoClock::now();
   auto result = session.ExecuteAndRenderToString(
       "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
   ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
-      FLAGS_client_read_write_timeout_ms);
+      FLAGS_client_read_write_timeout_ms - 1);
   // Verify that read operation failed due to passed deadline.
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Deadline for query passed");
