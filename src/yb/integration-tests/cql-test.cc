@@ -534,6 +534,7 @@ TEST_F(CqlTest, ReadTimeoutTest) {
   starting_time = CoarseMonoClock::now();
   auto result = session.ExecuteAndRenderToString(
       "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
+  // Use a slightly lower bound to account for clock granularity and propagation latency on macOS.
   ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
       FLAGS_client_read_write_timeout_ms - 1);
   // Verify that read operation failed due to passed deadline.
