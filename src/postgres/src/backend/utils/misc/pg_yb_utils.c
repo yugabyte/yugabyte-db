@@ -1548,7 +1548,12 @@ YBCAbortTransaction()
 	 *   tserver connection may already be tearing down.  Escalating to FATAL
 	 *   would trigger a second proc_exit before AbortTransaction finishes
 	 *   resetting PG transaction state, causing downstream assertions.  Log a
-	 *   warning instead so that AbortTransaction can complete normally.
+	 *   message instead so that AbortTransaction can complete normally.
+	 *   Important: use LOG not WARNING.
+	 *   WARNING-level messages (elog.c) travel through shm_mq and confuse
+	 *   the pg_cron's ProcessBgwTaskFeedback into overwriting a prior
+	 *   'failed' job status. Some of the pg-cron tests rely on the 'failed'
+	 *   status to verify that a job failure is correctly reported.
 	 *
 	 * - Otherwise, FATAL to close the backend immediately.  This avoids a
 	 *   recursive loop where PostgresMain()'s error handler calls
@@ -1560,7 +1565,7 @@ YBCAbortTransaction()
 			elog(FATAL, "Failed to abort DDL transaction: %s",
 				 YBCMessageAsCString(status));
 		/* Only reached when proc_exit_inprogress: elog(FATAL) does not return. */
-		ereport(WARNING,
+		ereport(LOG,
 				(errmsg("failed to abort DDL transaction during shutdown: %s",
 						YBCMessageAsCString(status))));
 		YBCFreeStatus(status);
@@ -1573,7 +1578,7 @@ YBCAbortTransaction()
 			elog(FATAL, "Failed to abort DML transaction: %s",
 				 YBCMessageAsCString(status));
 		/* Only reached when proc_exit_inprogress: elog(FATAL) does not return. */
-		ereport(WARNING,
+		ereport(LOG,
 				(errmsg("failed to abort DML transaction during shutdown: %s",
 						YBCMessageAsCString(status))));
 		YBCFreeStatus(status);
