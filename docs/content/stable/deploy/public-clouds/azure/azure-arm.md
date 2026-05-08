@@ -3,7 +3,7 @@ title: Deploy on Microsoft Azure using Azure Resource Manager (ARM)
 headerTitle: Microsoft Azure
 linkTitle: Microsoft Azure
 description: Deploy YugabyteDB on Microsoft Azure using Azure Resource Manager (ARM).
-headContent: Deploy using Azure Resource Manager
+headcontent: Deploy using Azure Resource Manager
 aliases:
   - /deploy/public-clouds/azure/
   - /stable/deploy/public-clouds/azure
@@ -16,7 +16,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB maintains an Azure Resource Manager template for deploying YugabyteDB on Azure cloud. This automated deployment deploys a multi-region YugabyteDB universe to three nodes residing in three separate public subnets. The template is in the [Azure Resource Manager Template](https://github.com/yugabyte/azure-resource-manager.git) repository.
+YugabyteDB maintains an Azure Resource Manager template for deploying YugabyteDB on Azure cloud. This automated deployment deploys a multi-zone YugabyteDB universe to three nodes residing in three separate public subnets. The template is in the [Azure Resource Manager Template](https://github.com/yugabyte/azure-resource-manager) repository.
 
 <a href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fyugabyte%2Fazure-resource-manager%2Fmaster%2Fyugabyte_deployment.json" target="_blank">
     <img src="https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.png"/>
@@ -86,7 +86,7 @@ The key's randomart image is:
 
 1. Launch [Azure Cloud Shell](https://shell.azure.com).
 
-1. Clone the [Azure Resource Manager Template](https://github.com/yugabyte/azure-resource-manager.git) repository.
+1. Clone the [Azure Resource Manager Template](https://github.com/yugabyte/azure-resource-manager) repository.
 
     ```sh
     $ git clone https://github.com/yugabyte/azure-resource-manager.git

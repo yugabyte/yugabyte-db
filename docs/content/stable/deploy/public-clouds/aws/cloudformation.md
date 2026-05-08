@@ -3,6 +3,7 @@ title: Deploy on Amazon Web Services using AWS CloudFormation
 headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Deploy a YugabyteDB cluster on Amazon Web Services using AWS CloudFormation
+headcontent: Deploy using AWS CloudFormation
 aliases:
   - /stable/deploy/public-clouds/aws/
   - /stable/deploy/public-clouds/aws/terraform/
