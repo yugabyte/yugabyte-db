@@ -75,21 +75,19 @@ METRIC_DEFINE_gauge_uint32(server, pg_response_cache_entries,
                       yb::MetricUnit::kEntries,
                       "Number of entries in PgClientService response cache");
 
-DEFINE_NON_RUNTIME_uint64(
-    pg_response_cache_capacity, 1024, "PgClientService response cache capacity.");
+DEFINE_NON_RUNTIME_uint64(pg_response_cache_capacity, 1024,
+    "PgClientService response cache capacity.");
 
 DEFINE_NON_RUNTIME_uint64(pg_response_cache_size_bytes, 0,
                           "Size in bytes of the PgClientService response cache. "
                           "0 value (default) means that cache size is not limited by this flag.");
 
-DEFINE_NON_RUNTIME_uint32(
-    pg_response_cache_size_percentage, 5,
+DEFINE_NON_RUNTIME_uint32(pg_response_cache_size_percentage, 5,
     "Percentage of process' hard memory limit to use by the PgClientService response cache. "
     "Default value is 5, max is 100, min is 0 means that cache size is not limited by this flag.");
 
 
-DEFINE_NON_RUNTIME_uint32(
-    pg_response_cache_num_key_group_bucket, 512,
+DEFINE_NON_RUNTIME_uint32(pg_response_cache_num_key_group_bucket, 512,
     "Number of buckets for key group values which are used as part of response cache key. "
     "Response cache can be disabled for particular key group, but actually it will be disabled for "
     "all key groups in same bucket");

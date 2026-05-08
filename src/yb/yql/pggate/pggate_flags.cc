@@ -122,8 +122,8 @@ DEFINE_UNKNOWN_bool(ysql_beta_feature_tablegroup, false,
 
 TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
 
-DEFINE_UNKNOWN_bool(
-    ysql_colocate_database_by_default, false, "Enable colocation by default on each database.");
+DEFINE_UNKNOWN_bool(ysql_colocate_database_by_default, false,
+    "Enable colocation by default on each database.");
 
 DEFINE_UNKNOWN_bool(ysql_beta_feature_tablespace_alteration, false,
             "Whether to enable the incomplete 'tablespace_alteration' beta feature");
@@ -153,8 +153,7 @@ DEPRECATE_FLAG(int32, ysql_max_write_restart_attempts, "12_2023");
 // left redundant, so D37419 removed it. See commit summary for details.
 DEPRECATE_FLAG(bool, ysql_disable_portal_run_context, "08_2024");
 
-DEFINE_NON_RUNTIME_uint32(
-    yb_max_recursion_depth, 2000,
+DEFINE_NON_RUNTIME_uint32(yb_max_recursion_depth, 2000,
     "Maximum recursion depth for YSQL functions. Currently, this affects only expression pushdown "
     "for regex functions. ");
 
@@ -163,8 +162,7 @@ constexpr bool kEnableReadCommitted = true;
 #else
 constexpr bool kEnableReadCommitted = false;
 #endif
-DEFINE_NON_RUNTIME_bool(
-    yb_enable_read_committed_isolation, kEnableReadCommitted,
+DEFINE_NON_RUNTIME_bool(yb_enable_read_committed_isolation, kEnableReadCommitted,
     "Defines how READ COMMITTED (which is our default SQL-layer isolation) and READ UNCOMMITTED "
     "are mapped internally. If false (default), both map to the stricter REPEATABLE READ "
     "implementation. If true, both use the new READ COMMITTED implementation instead.");

@@ -36,8 +36,8 @@
 DEFINE_test_flag(bool, refresh_partitions_after_fetched_sample_blocks, false,
     "Force table partitions refresh after sample blocks are fetched.");
 
-DEFINE_RUNTIME_int32(
-    ysql_docdb_blocks_sampling_method, yb::DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3,
+DEFINE_RUNTIME_int32(ysql_docdb_blocks_sampling_method,
+    yb::DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3,
     "Controls how we define blocks for 1st phase of block-based sampling.");
 TAG_FLAG(ysql_docdb_blocks_sampling_method, hidden);
 

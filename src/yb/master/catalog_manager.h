@@ -152,8 +152,7 @@ using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 
 using TableToTabletInfos = std::unordered_map<TableId, std::vector<TabletInfoPtr>>;
 
-YB_DEFINE_ENUM(
-    CDCSDKStreamCreationState,
+YB_DEFINE_ENUM(CDCSDKStreamCreationState,
     // Stream has been initialized but no in-memory data structures or sys-catalog have been
     // modified.
     (kInitialized)
@@ -188,8 +187,7 @@ YB_DEFINE_ENUM(YsqlDdlSubTransactionRollbackState,
     (kDdlSubTxnRollbackInProgress)
     (kDdlSubTxnRollbackPostProcessingFailed));
 
-YB_DEFINE_ENUM(
-    DeleteYsqlDBTablesType,
+YB_DEFINE_ENUM(DeleteYsqlDBTablesType,
     (kNormal)                // Reglar DB drop. Can we used during both normal operations and major
                              // upgrade.
     (kMajorUpgradeRollback)  // Delete all rows and tables of the current catalog in order to

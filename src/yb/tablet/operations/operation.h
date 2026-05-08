@@ -59,8 +59,7 @@ namespace tablet {
 
 using OperationCompletionCallback = std::function<void(const Status&)>;
 
-YB_DEFINE_ENUM(
-    OperationType,
+YB_DEFINE_ENUM(OperationType,
     ((kWrite, consensus::WRITE_OP))
     ((kChangeMetadata, consensus::CHANGE_METADATA_OP))
     ((kUpdateTransaction, consensus::UPDATE_TRANSACTION_OP))

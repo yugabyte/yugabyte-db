@@ -70,8 +70,7 @@ struct LeaderElectionData;
 // The elected Leader (this peer) can be in not-ready state because it's not yet synced.
 // The state reflects the real leader status: not-leader, leader-not-ready, leader-ready.
 // Not-ready status means that the leader is not ready to serve up-to-date read requests.
-YB_DEFINE_ENUM(
-    LeaderStatus,
+YB_DEFINE_ENUM(LeaderStatus,
     (NOT_LEADER)
     (LEADER_BUT_NO_OP_NOT_COMMITTED)
     (LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE)

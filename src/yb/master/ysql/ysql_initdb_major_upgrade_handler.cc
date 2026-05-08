@@ -51,8 +51,7 @@ DECLARE_int32(master_ts_rpc_timeout_ms);
 DEFINE_RUNTIME_uint32(ysql_upgrade_postgres_port, 5434,
   "Port used to start the postgres process for ysql upgrade");
 
-DEFINE_test_flag(
-    string, fail_ysql_catalog_upgrade_state_transition_from, "",
+DEFINE_test_flag(string, fail_ysql_catalog_upgrade_state_transition_from, "",
     "When set fail the transition to the provided state");
 
 DEFINE_RUNTIME_string(ysql_major_upgrade_user, "yugabyte_upgrade",

@@ -125,8 +125,7 @@ class TxnBatcherIf {
 
 // Batcher state changes sequentially in the order listed below, with the exception that kAborted
 // could be reached from any state.
-YB_DEFINE_ENUM(
-    BatcherState,
+YB_DEFINE_ENUM(BatcherState,
     (kGatheringOps)       // Initial state, while we adding operations to the batcher.
     (kResolvingTablets)   // Flush was invoked on batcher, waiting until tablets for all operations
                           // are resolved and move to the next state.

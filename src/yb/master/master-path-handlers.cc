@@ -107,8 +107,7 @@
 #include "yb/util/url-coding.h"
 #include "yb/common/version_info.h"
 
-DEFINE_RUNTIME_int32(
-    hide_dead_node_threshold_mins, 60 * 24,
+DEFINE_RUNTIME_int32(hide_dead_node_threshold_mins, 60 * 24,
     "After this many minutes of no heartbeat from a node, hide it from the UI "
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
     "never hidden from the UI");

@@ -117,8 +117,7 @@ DEFINE_RUNTIME_bool(xcluster_target_manual_override, false,
     "YugabyteDB support before using.");
 TAG_FLAG(xcluster_target_manual_override, hidden);
 
-DEFINE_test_flag(
-    bool, request_unknown_tables_during_perform, false,
+DEFINE_test_flag(bool, request_unknown_tables_during_perform, false,
     "Add several unknown tables while processing perfrom request. "
     "It is expected that opening of such tables will fail");
 

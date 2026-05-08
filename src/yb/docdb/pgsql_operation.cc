@@ -119,8 +119,7 @@ DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kExternal,
 DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, true,
                     "Whether to enable packed row for colocated tables.");
 
-DEFINE_UNKNOWN_uint64(
-    ysql_packed_row_size_limit, 0,
+DEFINE_UNKNOWN_uint64(ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,

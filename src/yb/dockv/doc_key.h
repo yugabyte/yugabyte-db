@@ -60,8 +60,7 @@ namespace yb::dockv {
 //     1. Each range component consists of a type byte (ValueType) followed by the encoded
 //        representation of the respective type (see PrimitiveValue's key encoding).
 //     2. ValueType::kGroupEnd terminates the sequence.
-YB_DEFINE_ENUM(
-    DocKeyPart,
+YB_DEFINE_ENUM(DocKeyPart,
     (kUpToHashCode)
     (kUpToHash)
     (kUpToId)

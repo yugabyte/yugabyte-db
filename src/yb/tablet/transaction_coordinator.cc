@@ -91,8 +91,7 @@ DEFINE_UNKNOWN_uint64(transaction_deadlock_detection_interval_usec, 60000000,
               "Deadlock detection interval in usec.");
 TAG_FLAG(transaction_deadlock_detection_interval_usec, advanced);
 
-DEFINE_RUNTIME_int32(
-    clear_deadlocked_txns_info_older_than_heartbeats, 10,
+DEFINE_RUNTIME_int32(clear_deadlocked_txns_info_older_than_heartbeats, 10,
     "Minimum number of transaction heartbeat periods for which a deadlocked transaction's info is "
     "retained, after it has been reported to be aborted. This ensures the memory used to track "
     "info of deadlocked transactions does not grow unbounded.");

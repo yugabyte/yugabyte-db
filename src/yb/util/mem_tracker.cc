@@ -111,8 +111,7 @@ DEFINE_NON_RUNTIME_int64(mem_tracker_update_consumption_interval_us, 2 * 1000 * 
     "Interval that is used to update memory consumption from external source. "
     "For instance from tcmalloc statistics.");
 
-DEFINE_RUNTIME_double(
-    mem_tracker_external_consumption_accuracy_percentage, 1.0,
+DEFINE_RUNTIME_double(mem_tracker_external_consumption_accuracy_percentage, 1.0,
     "If mem tracker consumption changed by more than specified percentage of the soft memory limit "
     "since the last update from external source, update it explicitly from that external source to "
     "avoid too much bias.");

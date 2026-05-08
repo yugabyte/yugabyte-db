@@ -112,8 +112,7 @@ DEPRECATE_FLAG(bool, enable_transaction_snapshots, "08_2024");
 
 DEPRECATE_FLAG(bool, allow_consecutive_restore, "10_2022");
 
-DEFINE_RUNTIME_bool(
-    enable_namespace_snapshot_workflow, true,
+DEFINE_RUNTIME_bool(enable_namespace_snapshot_workflow, true,
     "Enable namespace-based snapshot creation based on namespace_id. Can be disabled to fallback "
     "to the old snapshot creation workflow where client provides the set of tables to collect as "
     "part of snapshot");
@@ -138,14 +137,12 @@ DEFINE_RUNTIME_uint32(default_snapshot_retention_hours, 24,
     "Number of hours for which to keep the snapshot around. Only used if no value was provided "
     "by the client when creating the snapshot.");
 
-DEFINE_RUNTIME_bool(
-    import_snapshot_using_table_name, false,
+DEFINE_RUNTIME_bool(import_snapshot_using_table_name, false,
     "Use the old workflow of import snapshot where table names in backup/restore sides are used to "
     "build the mappings between tables in backup and restore side. This flag can be enabled as a "
     "safety button in case restore using relfilenode fails.");
 
-DEFINE_RUNTIME_AUTO_bool(
-    enable_export_snapshot_using_relfilenode, kExternal, false, true,
+DEFINE_RUNTIME_AUTO_bool(enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
 
 DECLARE_bool(enable_ysql);

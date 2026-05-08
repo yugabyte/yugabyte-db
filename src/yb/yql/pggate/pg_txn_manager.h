@@ -44,8 +44,7 @@ namespace yb::pggate {
 
 // These should match XACT_READ_UNCOMMITED, XACT_READ_COMMITED, XACT_REPEATABLE_READ,
 // XACT_SERIALIZABLE from xact.h. Please do not change this enum.
-YB_DEFINE_ENUM(
-  PgIsolationLevel,
+YB_DEFINE_ENUM(PgIsolationLevel,
   ((READ_UNCOMMITED, 0))
   ((READ_COMMITTED, 1))
   ((REPEATABLE_READ, 2))

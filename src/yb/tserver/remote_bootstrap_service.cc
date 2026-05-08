@@ -84,8 +84,7 @@ using namespace std::literals;
     } \
   } while (false)
 
-DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(
-    remote_bootstrap_idle_timeout_ms, kLocalVolatile,
+DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(remote_bootstrap_idle_timeout_ms, kLocalVolatile,
     static_cast<uint64_t>(2 * yb::MonoTime::kMillisecondsPerHour),
     static_cast<uint64_t>(3 * yb::MonoTime::kMillisecondsPerMinute),
     "Amount of time without activity before a remote bootstrap session which hasn't yet fetched "
@@ -115,8 +114,7 @@ DEFINE_test_flag(uint64, delay_end_rbs_session_ms, 0,
 DEFINE_test_flag(uint64, inject_latency_before_fetch_data_secs, 0,
                  "Number of seconds to sleep before we call FetchData.");
 
-DEFINE_test_flag(
-    double, fault_crash_on_rbs_anchor_register, 0.0,
+DEFINE_test_flag(double, fault_crash_on_rbs_anchor_register, 0.0,
     "Fraction of the time when the peer will crash while "
     "servicing a RemoteBootstrapServiceImpl::RegisterLogAnchor() RPC call.");
 

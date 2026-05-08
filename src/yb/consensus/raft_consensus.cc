@@ -261,13 +261,11 @@ DEFINE_UNKNOWN_bool(quick_leader_election_on_create, false,
 TAG_FLAG(quick_leader_election_on_create, advanced);
 TAG_FLAG(quick_leader_election_on_create, hidden);
 
-DEFINE_UNKNOWN_bool(
-    stepdown_disable_graceful_transition, false,
+DEFINE_UNKNOWN_bool(stepdown_disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
 
-DEFINE_UNKNOWN_bool(
-    raft_disallow_concurrent_outstanding_report_failure_tasks, true,
+DEFINE_UNKNOWN_bool(raft_disallow_concurrent_outstanding_report_failure_tasks, true,
     "If true, only submit a new report failure task if there is not one outstanding.");
 TAG_FLAG(raft_disallow_concurrent_outstanding_report_failure_tasks, advanced);
 TAG_FLAG(raft_disallow_concurrent_outstanding_report_failure_tasks, hidden);

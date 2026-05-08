@@ -34,8 +34,7 @@
 
 using std::string;
 
-DEFINE_UNKNOWN_int32(
-    max_num_tablets_for_table, 5000,
+DEFINE_UNKNOWN_int32(max_num_tablets_for_table, 5000,
     "Max number of tablets that can be specified in a CREATE TABLE statement");
 
 namespace yb::client {

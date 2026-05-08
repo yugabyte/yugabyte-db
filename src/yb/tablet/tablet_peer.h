@@ -130,8 +130,7 @@ struct TabletOnDiskSizeInfo {
   }
 };
 
-YB_DEFINE_ENUM(
-    TabletObjectState,
+YB_DEFINE_ENUM(TabletObjectState,
     (kUninitialized)
     (kAvailable)
     (kDestroyed));
