@@ -14,6 +14,19 @@ on:
       - '.gitignore'
       - '.github/vale-styles/**'
 
+  pull_request:
+    branches:
+      - master
+    # Duplicated list because github does not support YAML anchors.
+    # https://github.com/actions/runner/issues/1182
+    paths-ignore:
+      - README.md
+      - 'docs/**'
+      - 'architecture/**'
+      - 'managed/**'
+      - '.gitignore'
+      - '.github/vale-styles/**'
+
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
