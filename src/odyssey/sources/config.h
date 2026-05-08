@@ -101,6 +101,7 @@ struct od_config {
 	int yb_alter_guc_stale_backend_ttl_ms;
 	_Atomic int yb_max_prepared_statements;
 	_Atomic int yb_tcmalloc_gc_interval;
+	_Atomic int yb_enable_parse_queue_tracking;
 };
 
 void od_config_init(od_config_t *);

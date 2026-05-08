@@ -44,6 +44,9 @@ public final class PgWireProtocol {
   public static final char BE_DATA_ROW = 'D';
   public static final char BE_COMMAND_COMPLETE = 'C';
   public static final char BE_ERROR_RESPONSE = 'E';
+  public static final char BE_COPY_IN_RESPONSE = 'G';
+  public static final char BE_NOTICE_RESPONSE = 'N';
+  public static final char BE_ROW_DESCRIPTION = 'T';
 
   // ---- Tiny record for a backend message ------------------------------------
   public static class PgMessage {
@@ -170,6 +173,57 @@ public final class PgWireProtocol {
     return buf.toByteArray();
   }
 
+  public static byte[] buildCopyData(String data) throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte('d');
+    d.writeInt(0); // placeholder
+    d.write(data.getBytes(StandardCharsets.UTF_8));
+    d.flush();
+    byte[] msg = buf.toByteArray();
+    ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
+    return msg;
+  }
+
+  public static byte[] buildCopyFail(String errorMessage) throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte('f');
+    d.writeInt(0); // placeholder
+    writeString(d, errorMessage);
+    d.flush();
+    byte[] msg = buf.toByteArray();
+    ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
+    return msg;
+  }
+
+  public static byte[] buildQuery(String query) throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte('Q');
+    d.writeInt(0); // placeholder
+    writeString(d, query);
+    d.flush();
+    byte[] msg = buf.toByteArray();
+    ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
+    return msg;
+  }
+
+  public static byte[] buildFunctionCall(int functionOid) throws IOException {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    DataOutputStream d = new DataOutputStream(buf);
+    d.writeByte('F');
+    d.writeInt(0); // placeholder
+    d.writeInt(functionOid);
+    d.writeShort(0); // no argument format codes
+    d.writeShort(0); // no arguments
+    d.writeShort(0); // result format code (text)
+    d.flush();
+    byte[] msg = buf.toByteArray();
+    ByteBuffer.wrap(msg).putInt(1, msg.length - 1);
+    return msg;
+  }
+
   public static byte[] buildTerminate() throws IOException {
     ByteArrayOutputStream buf = new ByteArrayOutputStream();
     DataOutputStream d = new DataOutputStream(buf);
@@ -192,6 +246,20 @@ public final class PgWireProtocol {
     byte[] body = new byte[len - 4];
     in.readFully(body);
     return new PgMessage(type, body);
+  }
+
+  /**
+   * Reads the next backend message, silently skipping any NoticeResponse
+   * messages. NoticeResponse is an asynchronous informational message that
+   * can appear at any point in the stream.
+   */
+  public static PgMessage readMessageSkipNotice(DataInputStream in) throws IOException {
+    for (;;) {
+      PgMessage msg = readMessage(in);
+      if (msg.type != BE_NOTICE_RESPONSE)
+        return msg;
+      LOG.info("Skipping NoticeResponse: " + msg);
+    }
   }
 
   /**

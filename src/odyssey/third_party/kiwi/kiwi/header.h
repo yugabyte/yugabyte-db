@@ -87,6 +87,7 @@ typedef enum {
 	YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME = '5',
 	YB_BE_NO_PARSE_PARSE_COMPLETE = '6',
 	YB_BE_PARSE_NO_PARSE_COMPLETE = '7',
+	YB_BE_SYNC_ACK = 'Y',
 } kiwi_be_type_t;
 
 struct kiwi_header {
@@ -199,6 +200,8 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "YBNoParseParseComplete";
 	case YB_BE_PARSE_NO_PARSE_COMPLETE:
 		return "YBParseNoParseComplete";
+	case YB_BE_SYNC_ACK:
+		return "YBSyncAck";
 	}
 	return "Unknown";
 }

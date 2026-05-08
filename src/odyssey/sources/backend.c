@@ -96,25 +96,13 @@ static void yb_od_log_key_hexdump(od_logger_t *logger, char *context,
 	}
 }
 
-void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *data, 
-		uint32_t size)
+void yb_evict_prep_stmt_by_keyhash(od_server_t *server, char *context, yb_od_hash_64_t keyhash)
 {
 	od_instance_t *instance = server->global->instance;
-	od_debug(&instance->logger, context, NULL, server, "evicting hashmap entry from server");
-
-	char *keyhash_str;
-	uint32_t keyhash_str_len;
-	int rc = kiwi_fe_read_yb_server_keyhash(data, size, &keyhash_str, &keyhash_str_len);
-	if (rc == -1) {
-		od_error(&instance->logger, context, NULL, server, 
-			"failed to parse error message from server");
-		return;
-	}
-	yb_od_hash_64_t keyhash = strtoull(keyhash_str, NULL, 16);
 	od_hashmap_elt_t *matched_keys = NULL;
 	int matched_count = 0;
 	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash,
-					      &matched_keys, &matched_count)) {
+						&matched_keys, &matched_count)) {
 		server->yb_prep_stmt_count -= matched_count;
 		if (matched_count > 1) {
 			od_error(&instance->logger, context, NULL, server,
@@ -135,6 +123,24 @@ void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *d
 				 keyhash);
 		}
 	}
+}
+
+void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *data, 
+		uint32_t size)
+{
+	od_instance_t *instance = server->global->instance;
+	od_debug(&instance->logger, context, NULL, server, "evicting hashmap entry from server");
+
+	char *keyhash_str;
+	uint32_t keyhash_str_len;
+	int rc = kiwi_fe_read_yb_server_keyhash(data, size, &keyhash_str, &keyhash_str_len);
+	if (rc == -1) {
+		od_error(&instance->logger, context, NULL, server, 
+			"failed to parse error message from server");
+		return;
+	}
+	yb_od_hash_64_t keyhash = strtoull(keyhash_str, NULL, 16);
+	yb_evict_prep_stmt_by_keyhash(server, context, keyhash);
 }
 
 void od_backend_error(od_server_t *server, char *context, char *data,
@@ -1233,6 +1239,16 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				machine_msg_data(msg), machine_msg_size(msg));
 			machine_msg_free(msg);
 			continue;
+		} else if (type == YB_BE_PARSE_NO_PARSE_COMPLETE ||
+				   type == KIWI_BE_PARSE_COMPLETE) {
+			int res = yb_od_parse_queue_dequeue(&server->parse_queue);
+			machine_msg_free(msg);
+			if (res != 0) {
+				od_error(&instance->logger, context, server->client, server,
+					 "failed to dequeue parse queue");
+				return -1;
+			}
+			continue;
 		} else if (type == KIWI_BE_READY_FOR_QUERY) {
 			od_backend_ready(server, machine_msg_data(msg),
 					 machine_msg_size(msg));
@@ -1242,10 +1258,20 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				return 0;
 			}
 		}
+		else if (type == YB_BE_SYNC_ACK) {
+			/*
+			 * If SYNC present at head of parse queue means all parses in this
+			 * SYNC boundary were acknowledged (success path). Otherwise, some
+			 * parses were silently dropped after an error -- evict stale entries.
+			 */
+			yb_drain_parse_queue_till_sync(server, server->client);
+			machine_msg_free(msg);
+			continue;
+		}
 		/*
-		 * YB: No handling required for YB_BE_NO_PARSE_PARSE_COMPLETE and
-		 * YB_BE_PARSE_NO_PARSE_COMPLETE here as od_backend_ready_wait's job is
-		 * to just consume all the packets from the backend.
+		 * YB: No handling required for YB_BE_NO_PARSE_PARSE_COMPLETE here as
+		 * od_backend_ready_wait's job is to just consume all the packets from the backend. And
+		 * it's parse packets are never enqueued in parse_queue.
 		 */
 		machine_msg_free(msg);
 	}

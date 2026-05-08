@@ -60,6 +60,9 @@ struct od_server {
 	od_list_t yb_prep_stmt_lru;
 	int yb_prep_stmt_count;
 
+	/* YB: Outstanding parse queue for tracking unacknowledged parse operations */
+	yb_od_parse_queue_t parse_queue;
+
 	od_global_t *global;
 	int offline;
 	uint64_t init_time_us;
@@ -163,6 +166,8 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	od_list_init(&server->yb_prep_stmt_lru);
 	server->yb_prep_stmt_count = 0;
 
+	yb_od_parse_queue_init(&server->parse_queue);
+
 	if (reserve_prep_stmts) {
 		server->prep_stmts =
 			od_hashmap_create(OD_SERVER_DEFAULT_HASHMAP_SZ);
@@ -186,6 +191,7 @@ static inline void od_server_free(od_server_t *server)
 	if (server->is_allocated) {
 		od_relay_free(&server->relay);
 		od_io_free(&server->io);
+		yb_od_parse_queue_free(&server->parse_queue);
 		if (server->prep_stmts) {
 			od_hashmap_free(server->prep_stmts);
 		}
