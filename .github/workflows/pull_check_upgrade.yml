@@ -1,4 +1,4 @@
-name: "Check PR Required Upgrade Info"
+name: "yb-gh"
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
       - 'src/**/*.proto'
 
 jobs:
-  gh-upgrade:
+  pr-upgrade:
     runs-on: ubuntu-latest
     steps:
       - name: Check PR upgrade info
