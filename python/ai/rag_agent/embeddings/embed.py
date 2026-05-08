@@ -2,6 +2,7 @@ from db.active_pipeline_tracking import PipelineTracking
 from langchain_openai import OpenAIEmbeddings
 from pdf_processing import PDFProcessor
 from html_processing import HTMLProcessor
+from langfuse import observe
 import logging
 import psycopg
 import os
@@ -118,6 +119,7 @@ class EmbeddingsGenerator:
             f"empty/whitespace chunks, {yielded_count} embeddings yielded"
         )
 
+    @observe(name="Generate Embeddings for PDF Files / EmbeddingsGenerator", as_type="embedding")
     def _generate_embeddings_for_pdf_files(
         self,
         pipeline_id: int,
@@ -167,6 +169,7 @@ class EmbeddingsGenerator:
             f"{chunk_count} total chunks, {yielded_count} embeddings yielded"
         )
 
+    @observe(name="Generate Embeddings for HTML Files / EmbeddingsGenerator", as_type="embedding")
     def _generate_embeddings_for_html_file(
         self,
         pipeline_id: int,
@@ -218,10 +221,12 @@ class EmbeddingsGenerator:
             f"{chunk_count} total chunks, {yielded_count} embeddings yielded"
         )
 
+    @observe(name="Generate Embeddings for Video Files / EmbeddingsGenerator", as_type="embedding")
     def _generate_embeddings_for_video_files(self, file_location: str, chunk_args=None):
         """Generate embeddings for video files."""
         pass
 
+    @observe(name="Generate Embeddings / EmbeddingsGenerator", as_type="chain")
     def generate_embeddings(self, pipeline_id: int, file_location: str, chunk_args=None):
         """
         Generator that yields (chunk_text, embedding_vector) tuples.
@@ -275,6 +280,7 @@ class EmbeddingsGenerator:
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
 
+    @observe(name="Generate User Prompt Embeddings / EmbeddingsGenerator", as_type="embedding")
     def generate_user_prompt_embeddings(self, user_prompt: str) -> list[float]:
         """Generate embeddings for user prompt."""
 

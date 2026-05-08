@@ -1,6 +1,7 @@
 from embeddings import EmbeddingsGenerator
 from db import YugabyteDBVectorStore, PipelineTracking, PipelineStatus
 from source_location_crawlers import S3BucketCrawler
+from langfuse import observe
 import logging
 
 
@@ -27,6 +28,7 @@ class RagPipelineHandler:
         self.vector_store = YugabyteDBVectorStore()
         self.pipeline_tracking = PipelineTracking()
 
+    @observe(name="Ingest Document / RagPipelineHandler", as_type="chain", capture_input=False)
     def _ingest_document(
         self,
         pipeline_id,
@@ -105,6 +107,7 @@ class RagPipelineHandler:
         )
         return True
 
+    @observe(name="Start Processing / RagPipelineHandler", as_type="agent", capture_input=False)
     def start_processing(
         self,
         source_id,

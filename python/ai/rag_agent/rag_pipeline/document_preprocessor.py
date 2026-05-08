@@ -5,8 +5,9 @@ from models.work_queue_task import WorkQueueTask
 from rag_pipeline.rag_handler import RagPipelineHandler
 from db.source_document_tracking import SourceDocumentTracking
 from uuid import UUID
-from typing import Dict, Any, Optional, Tuple
-
+from typing import Dict, Any,Optional, Tuple
+from langfuse import Langfuse, observe
+from langfuse._client.get_client import _set_current_public_key
 
 class DocumentPreprocessor(TaskProcessor):
     """
@@ -37,7 +38,7 @@ class DocumentPreprocessor(TaskProcessor):
                 return False
 
         return True
-
+    @observe(name="Retrieve Embedding Parameters / DocumentPreprocessor", as_type="retriever")
     def _retrieve_embedding_parameters(self, index_id: UUID) -> Dict[str, Any]:
         """
         Retrieve the embedding parameters for the source.
@@ -73,6 +74,7 @@ class DocumentPreprocessor(TaskProcessor):
                 self.connection_pool.return_connection(connection)
         return None
 
+    @observe(name="Retrieve Chunking Parameters / DocumentPreprocessor", as_type="retriever")
     def _retrieve_chunking_parameters(self, index_id: UUID, source_id: UUID) -> Dict[str, Any]:
         """
         Retrieve the chunking parameters for the source.
@@ -110,6 +112,7 @@ class DocumentPreprocessor(TaskProcessor):
                 self.connection_pool.return_connection(connection)
         return None
 
+    @observe(name="Retrieve Source Metadata / DocumentPreprocessor", as_type="retriever")
     def _retrieve_source_metadata(self, source_id: UUID) -> Dict[str, Any]:
         """
         Retrieve the source metadata.
@@ -138,6 +141,7 @@ class DocumentPreprocessor(TaskProcessor):
                 self.connection_pool.return_connection(connection)
         return None
 
+    @observe(name="Retrieve RAG Index Name / DocumentPreprocessor", as_type="retriever")
     def _retrieve_rag_index_name(
         self, index_id: UUID
     ) -> Tuple[Optional[str], Optional[str]]:
@@ -169,149 +173,229 @@ class DocumentPreprocessor(TaskProcessor):
                 self.connection_pool.return_connection(connection)
         return None, None
 
+    def _resolve_langfuse_client(self, document_uri: str) -> Tuple[str, str]:
+        """
+        Parse the datapack_id from document_uri and return a Langfuse client
+        initialised with the matching project keys, or None if unavailable.
+        document_uri format: {userID}/{datapackID}/{filename}
+        """
+        # s3://<bucket>/<user_id>/<datapack_id>/
+        # split('/') → ['s3:', '', '<bucket>', '<user_id>', '<datapack_id>', '']
+        self.logger.info(f"document_uri={document_uri}")
+        uri_parts = document_uri.split('/')
+        datapack_id = uri_parts[4] if len(uri_parts) >= 5 else None
+        self.logger.info(f"Parsed datapack_id={datapack_id} from document_uri={document_uri}")
+
+        if not datapack_id:
+            return None
+
+        try:
+            connection = self.connection_pool.get_connection()
+            cursor = connection.cursor()
+            try:
+                cursor.execute(
+                    "SELECT langfuse_public_key, langfuse_secret_key "
+                    "FROM meko_system.langfuse_project_mapping WHERE datapack_id = %s::uuid",
+                    (datapack_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    public_key=row[0]
+                    secret_key=row[1]
+                    return public_key, secret_key
+                else:
+                    self.logger.warning(f"No Langfuse keys found for datapack_id={datapack_id}")
+            finally:
+                cursor.close()
+                self.connection_pool.return_connection(connection)
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to resolve Langfuse keys for datapack_id={datapack_id}: {str(e)}"
+            )
+
+        return None
     def process(self, task: WorkQueueTask) -> Dict[str, Any]:
         """
         Process the task.
         """
-
         self.logger.info(f"Processing task: {task.id}")
+        document_uri = task.task_details.get('document_uri')
+        self.logger.debug(f"document_uri: {document_uri}")
+        LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY = self._resolve_langfuse_client(document_uri)
+        langfuse_client = Langfuse(
+            public_key=LANGFUSE_PUBLIC_KEY,
+            secret_key=LANGFUSE_SECRET_KEY
+        )
+        with _set_current_public_key(LANGFUSE_PUBLIC_KEY):
+            with langfuse_client.start_as_current_observation(
+                as_type="agent",
+                name="Process Task / DocumentPreprocessor"
+            ) as transform_span:
+                document_id = None
+                span_output = {"status": "error", "task_id": str(task.id)}
 
-        try:
-            # Extract task details
-            task_details = task.task_details
-            if not task_details:
-                raise ValueError("Task details are missing or empty")
-
-            index_id = task_details.get('index_id')
-            source_id = task_details.get('source_id')
-            document_id = task_details.get('document_id')
-            document_uri = task_details.get('document_uri')
-            # tenant_id is optional in task_details for backward compatibility
-            # with tasks queued before the tenant_id column was added.
-            tenant_id = task_details.get('tenant_id')
-
-            # Validate extracted parameters
-            if not all([index_id, source_id, document_id, document_uri]):
-                raise ValueError(
-                    f"Missing required parameters - index_id: {index_id}, "
-                    f"source_id: {source_id}, document_id: {document_id}, "
-                    f"document_uri: {document_uri}"
-                )
-
-            # Retrieve required parameters
-            try:
-                embedding_model_params = self._retrieve_embedding_parameters(
-                    index_id=index_id
-                )
-                if not embedding_model_params:
-                    raise ValueError(
-                        f"Failed to retrieve embedding parameters for index_id: {index_id}"
-                    )
-            except Exception as e:
-                self.logger.error(f"Error retrieving embedding parameters: {str(e)}")
-                raise
-
-            try:
-                chunking_params = self._retrieve_chunking_parameters(
-                    index_id=index_id, source_id=source_id
-                )
-                if not chunking_params:
-                    raise ValueError(
-                        f"Failed to retrieve chunking parameters for index_id: {index_id}, "
-                        f"source_id: {source_id}"
-                    )
-            except Exception as e:
-                self.logger.error(f"Error retrieving chunking parameters: {str(e)}")
-                raise
-
-            try:
-                source_metadata = self._retrieve_source_metadata(source_id=source_id)
-                if source_metadata is None:
-                    self.logger.warning(
-                        f"Source metadata is None for source_id: {source_id}, "
-                        f"using empty dict"
-                    )
-                    source_metadata = {}
-            except Exception as e:
-                self.logger.error(f"Error retrieving source metadata: {str(e)}")
-                raise
-
-            # Fall back to looking up tenant_id on the source if it wasn't
-            # included in the task payload (e.g. older queued tasks).
-            if not tenant_id:
                 try:
-                    source_details = (
-                        self.source_document_tracking.get_source_details(
+                    # Extract task details
+                    task_details = task.task_details
+                    if not task_details:
+                        raise ValueError("Task details are missing or empty")
+
+                    index_id = task_details.get('index_id')
+                    source_id = task_details.get('source_id')
+                    document_id = task_details.get('document_id')
+                    document_uri = task_details.get('document_uri')
+                    # tenant_id is optional in task_details for backward compatibility
+                    # with tasks queued before the tenant_id column was added.
+                    tenant_id = task_details.get('tenant_id')
+
+                    # Validate extracted parameters
+                    if not all([index_id, source_id, document_id, document_uri]):
+                        raise ValueError(
+                            f"Missing required parameters - index_id: {index_id}, "
+                            f"source_id: {source_id}, document_id: {document_id}, "
+                            f"document_uri: {document_uri}"
+                        )
+
+                    # Retrieve embedding parameters
+                    try:
+                        embedding_model_params = self._retrieve_embedding_parameters(
+                            index_id=index_id
+                        )
+                        if not embedding_model_params:
+                            raise ValueError(
+                                f"Failed to retrieve embedding parameters for index_id: {index_id}"
+                            )
+                    except Exception as e:
+                        self.logger.error(f"Error retrieving embedding parameters: {str(e)}")
+                        raise
+
+                    # Retrieve chunking parameters
+                    try:
+                        chunking_params = self._retrieve_chunking_parameters(
+                            index_id=index_id,
                             source_id=source_id
                         )
+                        if not chunking_params:
+                            raise ValueError(
+                                f"Failed to retrieve chunking parameters for index_id: {index_id}, "
+                                f"source_id: {source_id}"
+                            )
+                    except Exception as e:
+                        self.logger.error(f"Error retrieving chunking parameters: {str(e)}")
+                        raise
+
+                    # Retrieve source metadata
+                    try:
+                        source_metadata = self._retrieve_source_metadata(source_id=source_id)
+                        if source_metadata is None:
+                            self.logger.warning(
+                                f"Source metadata is None for source_id: {source_id}, "
+                                f"using empty dict"
+                            )
+                            source_metadata = {}
+                    except Exception as e:
+                        self.logger.error(f"Error retrieving source metadata: {str(e)}")
+                        raise
+
+                    # Fall back to looking up tenant_id on the source if it wasn't
+                    # included in the task payload (e.g. older queued tasks).
+                    if not tenant_id:
+                        try:
+                            source_details = (
+                                self.source_document_tracking.get_source_details(
+                                    source_id=source_id
+                                )
+                            )
+                            if source_details:
+                                tenant_id = source_details.get('tenant_id')
+                        except Exception as e:
+                            self.logger.warning(
+                                f"Failed to resolve tenant_id from sources table "
+                                f"for source_id {source_id}: {str(e)}"
+                            )
+
+                    # Retrieve RAG index name and schema
+                    try:
+                        rag_index_name, rag_schema_name = self._retrieve_rag_index_name(index_id=index_id)
+                        if not rag_index_name:
+                            raise ValueError(f"Failed to retrieve RAG index name for index_id: {index_id}")
+                    except Exception as e:
+                        self.logger.error(f"Error retrieving RAG index name: {str(e)}")
+                        raise
+
+                    self.source_document_tracking.update_document_status(
+                        document_id=document_id, status="PROCESSING"
                     )
-                    if source_details:
-                        tenant_id = source_details.get('tenant_id')
+
+                    # Start processing
+                    try:
+                        self.rag_handler.start_processing(
+                            source_id=source_id,
+                            document_id=document_id,
+                            document_uri=document_uri,
+                            table_name=rag_index_name,
+                            schema_name=rag_schema_name,
+                            metadata=source_metadata,
+                            chunk_kwargs=chunking_params,
+                            embedding_model_params=embedding_model_params,
+                            tenant_id=tenant_id
+                        )
+                        self.logger.info(f"Task {task.id} processed successfully")
+                        self.source_document_tracking.update_document_status(
+                            document_id=document_id, status="COMPLETED"
+                        )
+                        span_output = {
+                            "status": "success",
+                            "task_id": str(task.id),
+                            "document_id": str(document_id)
+                        }
+                        return {
+                            "status": "success",
+                            "task_id": task.id,
+                            "document_id": document_id
+                        }
+                    except Exception as e:
+                        self.logger.error(f"Error during RAG pipeline processing: {str(e)}")
+                        raise
+
+                except ValueError as e:
+                    self.logger.error(f"Validation error while processing task {task.id}: {str(e)}")
+                    if document_id:
+                        self.source_document_tracking.update_document_status(
+                            document_id=document_id, status="FAILED"
+                        )
+                    span_output = {
+                        "status": "error",
+                        "task_id": str(task.id),
+                        "error_type": "ValidationError",
+                        "error_message": str(e)
+                    }
+                    return {
+                        "status": "error",
+                        "task_id": task.id,
+                        "error_type": "ValidationError",
+                        "error_message": str(e)
+                    }
                 except Exception as e:
-                    self.logger.warning(
-                        f"Failed to resolve tenant_id from sources table "
-                        f"for source_id {source_id}: {str(e)}"
+                    self.logger.error(
+                        f"Unexpected error while processing task {task.id}: {str(e)}",
+                        exc_info=True
                     )
-
-            try:
-                rag_index_name, rag_schema_name = self._retrieve_rag_index_name(index_id=index_id)
-                if not rag_index_name:
-                    raise ValueError(f"Failed to retrieve RAG index name for index_id: {index_id}")
-            except Exception as e:
-                self.logger.error(f"Error retrieving RAG index name: {str(e)}")
-                raise
-
-            self.source_document_tracking.update_document_status(
-                document_id=document_id, status="PROCESSING"
-            )
-            # Start processing
-            try:
-                self.rag_handler.start_processing(
-                    source_id=source_id,
-                    document_id=document_id,
-                    document_uri=document_uri,
-                    table_name=rag_index_name,
-                    schema_name=rag_schema_name,
-                    metadata=source_metadata,
-                    chunk_kwargs=chunking_params,
-                    embedding_model_params=embedding_model_params,
-                    tenant_id=tenant_id
-                )
-                self.logger.info(f"Task {task.id} processed successfully")
-                self.source_document_tracking.update_document_status(
-                    document_id=document_id, status="COMPLETED"
-                )
-                return {
-                    "status": "success",
-                    "task_id": task.id,
-                    "document_id": document_id
-                }
-            except Exception as e:
-                self.logger.error(f"Error during RAG pipeline processing: {str(e)}")
-                raise
-
-        except ValueError as e:
-            self.logger.error(f"Validation error while processing task {task.id}: {str(e)}")
-            self.source_document_tracking.update_document_status(
-                document_id=document_id, status="FAILED"
-            )
-            return {
-                "status": "error",
-                "task_id": task.id,
-                "error_type": "ValidationError",
-                "error_message": str(e)
-            }
-        except Exception as e:
-            self.logger.error(
-                f"Unexpected error while processing task {task.id}: {str(e)}",
-                exc_info=True
-            )
-            self.source_document_tracking.update_document_status(
-                document_id=document_id, status="FAILED"
-            )
-            return {
-                "status": "error",
-                "task_id": task.id,
-                "error_type": type(e).__name__,
-                "error_message": str(e)
-            }
+                    if document_id:
+                        self.source_document_tracking.update_document_status(
+                            document_id=document_id, status="FAILED"
+                        )
+                    span_output = {
+                        "status": "error",
+                        "task_id": str(task.id),
+                        "error_type": type(e).__name__,
+                        "error_message": str(e)
+                    }
+                    return {
+                        "status": "error",
+                        "task_id": task.id,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e)
+                    }
+                finally:
+                    transform_span.update(output=span_output)
