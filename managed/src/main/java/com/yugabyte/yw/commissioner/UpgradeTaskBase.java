@@ -187,7 +187,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               .filter(n -> n.state != NodeState.Live)
               .findFirst();
       if (nonLive.isEmpty()) {
-        if (confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
+        if (isFirstTry()
+            && confGetter.getConfForScope(
+                universe, UniverseConfKeys.enableComprehensivePrechecks)) {
           createComprehensivePrecheckTasks(nodesToBeRestarted);
         }
 

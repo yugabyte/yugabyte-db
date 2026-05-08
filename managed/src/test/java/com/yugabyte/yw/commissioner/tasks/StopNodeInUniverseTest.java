@@ -562,6 +562,35 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testStopNodeSkipsCheckNodeCommandExecutionOnRetryWhenComprehensivePrechecksEnabled() {
+    NodeTaskParams taskParams1 =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
+    taskParams1.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo1 = submitTask(taskParams1, "host-n4");
+    assertEquals(Success, taskInfo1.getTaskState());
+    assertFalse(
+        taskInfo1.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
+
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "true");
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    NodeTaskParams taskParams2 =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
+    taskParams2.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams2.setPreviousTaskUUID(taskInfo1.getUuid());
+    taskParams2.setRunOnlyPrechecks(true);
+    TaskInfo taskInfo2 = submitTask(taskParams2, "host-n3");
+    assertEquals(Success, taskInfo2.getTaskState());
+    assertFalse(
+        taskInfo2.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckNodeCommandExecution));
+  }
+
+  @Test
   public void testStopNodeRunsCheckNodeCommandExecutionWhenComprehensivePrechecksEnabled() {
     factory
         .forUniverse(defaultUniverse)
