@@ -1,6 +1,6 @@
 # YugabyteDB Code Review Style Guide
 
-This document configures Gemini Code Assist's automated review for PRs in this repository. It scopes what to flag, what to skip, and how to handle a few PR types (especially backports) where the default review behavior produces noise.
+This document configures AI code-review agents' automated review for PRs in this repository. It scopes what to flag, what to skip, and how to handle a few PR types (especially backports) where the default review behavior produces noise.
 
 ## General review guidance
 
@@ -20,7 +20,7 @@ Specifically, **do not** flag:
 - Use of unsafe APIs, SQL/format-string injection vectors, missing input validation at trust boundaries.
 - Public API or wire-format changes (`*.proto`, public headers under `src/yb/yql/`, gflags users will see, gRPC service definitions). These need extra scrutiny — call them out even if they look correct.
 - Performance regressions on hot paths (DocDB write/read path, query layer plan execution, RPC dispatch).
-- **Upgrade/rollback safety**: any change to `*.proto`, on-disk format, catalog schema, gflag default that changes observable behavior, or RPC versioning. The PR description should have a `## Upgrade/Rollback safety` section explaining forward/backward behavior on a mixed-version cluster and rollback. Flag the absence of that section, not just the change.
+- **Upgrade/rollback safety**: YugabyteDB supports **online upgrade and rollback across major, minor, and major-postgres versions** — every change must preserve that. Any on-disk or wire-format change (proto fields, catalog schema, RPC versioning, persistent file layout) **must land behind an `AutoFlag` or a `gFlag` that's turned off during development** so the new behavior can't reach a mixed-version cluster until the flag is promoted. Flag any commit that changes one of these surfaces without gating it: `*.proto` field add/remove/renumber, on-disk format bumps, catalog migrations, gflag default flips that alter observable behavior, RPC service signatures, persisted enum reordering. The PR description must include a `## Upgrade/Rollback safety` section explaining forward/backward behavior on a mixed-version cluster and what rollback looks like — flag the absence of that section, not just the change.
 - Anything that contradicts a comment, docstring, or commit message in the same diff.
 
 Default comment severity threshold: **MEDIUM**. Suppress LOW-severity nits unless they reveal an underlying correctness issue.
@@ -70,6 +70,5 @@ Regardless of PR type, give these areas extra attention:
 
 ## What to ignore entirely
 
-- Markdown / config files under `.claude/`, `.gemini/`, plus `AGENTS.md`, `src/AGENTS.md`, and `CLAUDE.md` — these are agent / review-bot configuration. Don't review them as code; their effects are operational (they change how *agents* and *bots* behave, not what the database does). **Shell / Python scripts in those folders (e.g. `.claude/commands/*.sh`, anything else with executable bits) are real code and should be reviewed normally** — apply the regular focus areas above (correctness, memory safety, security, etc.).
 - Narrative prose under `architecture/` and `docs/` — content review is welcome but skip code-style suggestions for the prose. Code samples embedded in docs should be reviewed.
 - Generated files (anything under a `gen/` directory or matching `*.pb.{cc,h}`).
