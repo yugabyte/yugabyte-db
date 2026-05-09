@@ -87,13 +87,44 @@ def _git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=REPO_ROOT, text=True).strip()
 
 
+_CANONICAL_REPO_HINT = "yugabyte/yugabyte-db"
+
+# 2.x preview/stable (e.g. 2.13, 2.20, 2.30) and YYYY.N stable releases.
+_RELEASE_BRANCH_RE = re.compile(r"^(2\.[0-9]+|[0-9]{4}\.[0-9]+)$")
+
+
+def _looks_like_release_branch(name: str) -> bool:
+    return bool(_RELEASE_BRANCH_RE.match(name))
+
+
+def _find_canonical_remote() -> str | None:
+    """Return the name of the remote whose URL points at the canonical repo, or None."""
+    try:
+        for remote in _git("remote").splitlines():
+            if not remote:
+                continue
+            try:
+                url = _git("remote", "get-url", remote)
+            except subprocess.CalledProcessError:
+                continue
+            if _CANONICAL_REPO_HINT in url:
+                return remote
+    except subprocess.CalledProcessError:
+        return None
+    return None
+
+
 def _changed_files(base: str | None = None) -> list[str]:
     """Files modified in the working copy plus files changed on this branch vs its base.
 
-    If ``base`` is provided, it is used directly as the diff base. Otherwise ``@{upstream}`` is
-    used. If the current branch has no ``@{upstream}`` configured, the caller must pass
-    ``--rev`` explicitly -- we do not fall back to ``origin/master`` because on stable release
-    branches that would include a huge unrelated fileset.
+    If ``base`` is provided, it is used directly. Otherwise ``@{upstream}`` is used. If
+    ``@{upstream}`` isn't set (e.g. a fresh branch that hasn't been pushed yet), fall back
+    to ``<canonical-remote>/master`` -- where ``<canonical-remote>`` is the git remote whose
+    URL points at the canonical ``yugabyte/yugabyte-db`` repo (commonly named ``upstream``
+    in fork-based contributor setups, or ``origin`` in non-fork-based checkouts). We do not
+    fall back to *any* remote's master indiscriminately: on a stable release branch
+    (e.g. 2024.2) with no ``@{upstream}``, that would include a huge unrelated fileset;
+    pass ``--rev <remote>/<release-branch>`` explicitly in that case.
     """
     if base is not None:
         try:
@@ -105,8 +136,47 @@ def _changed_files(base: str | None = None) -> list[str]:
             _git("rev-parse", "--verify", "--quiet", "@{upstream}")
             base = "@{upstream}"
         except subprocess.CalledProcessError:
-            sys.exit("[lint] no @{upstream} configured for current branch; "
-                     "pass --rev <base> explicitly")
+            canonical = _find_canonical_remote()
+            fallback = None
+            if canonical:
+                # Try <canonical>/<current-branch> first. If the user is on a
+                # release branch (2024.2, 2.20, etc.), this resolves to the
+                # release branch's upstream tip and the diff stays scoped.
+                # Falling back blindly to master here would surface a huge
+                # unrelated fileset on release branches.
+                try:
+                    current_branch = _git("symbolic-ref", "--short", "HEAD")
+                except subprocess.CalledProcessError:
+                    current_branch = ""
+                candidates: list[str] = []
+                if current_branch:
+                    candidates.append(f"{canonical}/{current_branch}")
+                candidates.append(f"{canonical}/master")
+                # Dedup so we don't probe <canonical>/master twice when
+                # we're on the master branch.
+                for candidate in dict.fromkeys(candidates):
+                    try:
+                        _git("rev-parse", "--verify", "--quiet", candidate)
+                        fallback = candidate
+                        print(f"[lint] @{{upstream}} not set; using '{fallback}' as base "
+                              "(pass --rev to override)", file=sys.stderr)
+                        break
+                    except subprocess.CalledProcessError:
+                        continue
+                # Refuse a master fallback when the current branch *name*
+                # looks like a release branch but no matching upstream ref
+                # exists -- comparing such a branch against master would be
+                # the "huge unrelated fileset" foot-gun the docstring warns
+                # about.
+                if (fallback == f"{canonical}/master"
+                        and current_branch
+                        and _looks_like_release_branch(current_branch)):
+                    sys.exit(f"[lint] on release branch '{current_branch}' but no "
+                             f"matching '{canonical}/{current_branch}' ref; pass "
+                             f"--rev {canonical}/{current_branch} explicitly")
+            if not fallback:
+                sys.exit("[lint] no @{upstream} configured for current branch and no remote "
+                         f"pointing at {_CANONICAL_REPO_HINT}; pass --rev <base> explicitly")
     resolved = _git("rev-parse", "--symbolic-full-name", base)
     print(f"[lint] comparing against {base} ({resolved})", file=sys.stderr)
     committed = set(_git("diff", "--name-only", "--diff-filter=d", base).splitlines())
