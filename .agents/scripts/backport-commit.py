@@ -555,7 +555,13 @@ def detect_stable_branches(upstream_remote: str, stable_limit: Optional[str]) ->
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     gh_repo = os.environ.get("YB_GH_REPO", "yugabyte/yugabyte-db")
-    workspace = Path(os.environ.get("YB_BACKPORT", str(Path.home() / "code/backport-ybdb")))
+    # `.resolve()` makes a relative `YB_BACKPORT` absolute. Without this,
+    # `git -C SCRIPT_REPO_ROOT worktree add <relative>` would create the
+    # worktree under SCRIPT_REPO_ROOT while `os.chdir(workspace)` would
+    # try to enter `<relative>` from this process's cwd -- two different
+    # locations if cwd != SCRIPT_REPO_ROOT.
+    workspace = Path(os.environ.get(
+        "YB_BACKPORT", str(Path.home() / "code/backport-ybdb"))).resolve()
     if args.local:
         workspace = Path.cwd()
 
