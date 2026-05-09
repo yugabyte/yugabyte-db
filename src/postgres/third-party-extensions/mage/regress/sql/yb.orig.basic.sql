@@ -35,8 +35,14 @@ SELECT * FROM cypher('basic', $$ MATCH (n:person {meko_user_id:
 -- create_complete_graph and age_create_barbell_graph reach
 -- yb_insert_*_simple, which lacks tenant column support yet (#31338).
 -- Confirm they raise feature_not_supported rather than violating the
--- meko_* NOT NULL constraints.
+-- meko_* NOT NULL constraints. The labels are pre-created so the test
+-- is independent of whether DDL inside a function rolls back on the
+-- ereport (release vs debug builds differ on this).
+SELECT create_vlabel('basic', 'gen_vertex');
+SELECT create_elabel('basic', 'gen_edge');
 SELECT create_complete_graph('basic', 3, 'gen_edge', 'gen_vertex');
+SELECT create_vlabel('basic', 'bb_vertex');
+SELECT create_elabel('basic', 'bb_edge');
 SELECT age_create_barbell_graph('basic', 3, 0, 'bb_vertex', NULL, 'bb_edge', NULL);
 RESET search_path;
 -- DROP EXTENSION must trigger ag_ProcessUtility_hook -> drop_age_extension,

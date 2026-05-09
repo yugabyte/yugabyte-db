@@ -82,27 +82,57 @@ SELECT * FROM cypher('basic', $$ MATCH (n:person {meko_user_id:
 -- create_complete_graph and age_create_barbell_graph reach
 -- yb_insert_*_simple, which lacks tenant column support yet (#31338).
 -- Confirm they raise feature_not_supported rather than violating the
--- meko_* NOT NULL constraints.
-SELECT create_complete_graph('basic', 3, 'gen_edge', 'gen_vertex');
+-- meko_* NOT NULL constraints. The labels are pre-created so the test
+-- is independent of whether DDL inside a function rolls back on the
+-- ereport (release vs debug builds differ on this).
+SELECT create_vlabel('basic', 'gen_vertex');
 NOTICE:  VLabel "gen_vertex" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('basic', 'gen_edge');
 NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 NOTICE:  ELabel "gen_edge" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT create_complete_graph('basic', 3, 'gen_edge', 'gen_vertex');
 ERROR:  simple vertex insert is not supported on YugabyteDB yet (#31338)
-SELECT age_create_barbell_graph('basic', 3, 0, 'bb_vertex', NULL, 'bb_edge', NULL);
+SELECT create_vlabel('basic', 'bb_vertex');
 NOTICE:  VLabel "bb_vertex" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('basic', 'bb_edge');
 NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 NOTICE:  ELabel "bb_edge" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT age_create_barbell_graph('basic', 3, 0, 'bb_vertex', NULL, 'bb_edge', NULL);
 ERROR:  simple vertex insert is not supported on YugabyteDB yet (#31338)
 RESET search_path;
 -- DROP EXTENSION must trigger ag_ProcessUtility_hook -> drop_age_extension,
 -- which cleans up the per-graph schema. The two count(*) queries below catch
 -- regressions in is_age_drop()'s extension-name match.
 DROP EXTENSION mage;
-NOTICE:  drop cascades to 3 other objects
+NOTICE:  drop cascades to 7 other objects
 DETAIL:  drop cascades to table basic._ag_label_edge
 drop cascades to table basic._ag_label_vertex
+drop cascades to table basic.bb_edge
+drop cascades to table basic.bb_vertex
+drop cascades to table basic.gen_edge
+drop cascades to table basic.gen_vertex
 drop cascades to table basic.person
 NOTICE:  graph "basic" has been dropped
 SELECT count(*) FROM pg_extension WHERE extname = 'mage';
