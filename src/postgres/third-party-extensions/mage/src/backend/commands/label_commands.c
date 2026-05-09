@@ -593,7 +593,7 @@ static void yb_create_label_pk_index(char *schema_name, char *rel_name)
         yb_make_meko_hash_elem(AG_COLNAME_MEKO_DATAPACK_ID),
         yb_make_meko_hash_elem(AG_COLNAME_MEKO_USER_ID),
         yb_make_meko_asc_elem(AG_COLNAME_MEKO_AGENT_ID, NULL),
-        yb_make_meko_asc_elem(AG_VERTEX_COLNAME_ID, "graphid_ops"));
+        yb_make_meko_asc_elem("id", "graphid_ops"));
     index_stmt->options = NIL;
     index_stmt->whereClause = NULL;
     index_stmt->excludeOpNames = NIL;

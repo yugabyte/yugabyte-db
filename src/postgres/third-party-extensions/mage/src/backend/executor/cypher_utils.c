@@ -429,14 +429,19 @@ static Datum yb_call_meko_input(PGFunction input_func, const char *str,
     PG_CATCH();
     {
         ErrorData *edata;
+        int sqlerrcode;
+        char *original_message;
 
         MemoryContextSwitchTo(ErrorContext);
         edata = CopyErrorData();
         FlushErrorState();
+        sqlerrcode = edata->sqlerrcode;
+        original_message = pstrdup(edata->message);
+        FreeErrorData(edata);
         ereport(ERROR,
-                (errcode(edata->sqlerrcode),
+                (errcode(sqlerrcode),
                  errmsg("invalid value for tenant property \"%s\"", key),
-                 errdetail("%s", edata->message)));
+                 errdetail("%s", original_message)));
     }
     PG_END_TRY();
     return result;
