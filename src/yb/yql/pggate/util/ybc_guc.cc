@@ -152,8 +152,6 @@ bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
 
 bool enable_object_locking_infra = true;
 
-bool yb_enable_concurrent_ddl = false;
-
 bool yb_enable_ddl_savepoint_infra = true;
 
 bool yb_use_cluster_config_for_geolocation_costing = false;

@@ -3346,10 +3346,11 @@ Result<string> PgLibPqTest::GetPostmasterPidViaShell(PGConn* conn) {
 class PgLibPqConcurrentDdlDml : public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(Format("--enable_object_locking_for_table_locks=true"));
-    options->extra_tserver_flags.push_back(Format("--ysql_yb_ddl_transaction_block_enabled=true"));
-    options->extra_tserver_flags.push_back(
-        Format("--ysql_pg_conf_csv=yb_enable_concurrent_ddl=true"));
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };

@@ -37,8 +37,9 @@ class PgConcurrentDDLsTest : public LibPqTestBase {
         "--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_tserver_flags.emplace_back(
         "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
-    opts->extra_tserver_flags.emplace_back(
-        yb::Format("--ysql_pg_conf_csv=$0", "yb_enable_concurrent_ddl=true"));
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     opts->extra_master_flags.emplace_back(
         "--master_ysql_operation_lease_ttl_ms=10000");
   }

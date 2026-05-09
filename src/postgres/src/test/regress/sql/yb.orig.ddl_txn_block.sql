@@ -356,43 +356,6 @@ ALTER TABLE int4_table ALTER c1 TYPE int8;
 INSERT INTO int4_table(c1) VALUES (2 ^ 40);
 ALTER TABLE int4_table ALTER c1 TYPE int4; -- should fail.
 
--- #30109: duplicate key value violates unique constraint
-\c
--- The bug only exists when yb_enable_concurrent_ddl = true
--- We also test yb_enable_concurrent_ddl = false to ensure
--- correctness in both cases.
-SET yb_enable_concurrent_ddl = true;
-
-CREATE TABLE test_table1();
-CREATE OR REPLACE PROCEDURE test_alter1()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-END;
-$$;
-CALL test_alter1();
-\c
-SET yb_enable_concurrent_ddl = false;
-
-CREATE TABLE test_table2();
-CREATE OR REPLACE PROCEDURE test_alter2()
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
-  COMMIT;
-END;
-$$;
-CALL test_alter2();
-\c
--- end of test of #30109
-
 -- Test rollback of in-place index pg_attribute update during ALTER TYPE.
 CREATE TABLE test_idx_rollback (val varchar(10));
 CREATE INDEX idx_rollback ON test_idx_rollback(val);

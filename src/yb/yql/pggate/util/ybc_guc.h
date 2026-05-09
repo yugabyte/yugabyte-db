@@ -183,11 +183,6 @@ extern bool yb_enable_ddl_savepoint_infra;
 extern bool yb_skip_ensure_read_time_in_parallel_execution;
 
 /*
- * Refer YBCIsLegacyModeForCatalogOps() for details.
- */
-extern bool yb_enable_concurrent_ddl;
-
-/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
