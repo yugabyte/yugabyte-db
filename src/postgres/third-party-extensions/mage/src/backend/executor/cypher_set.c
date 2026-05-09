@@ -111,7 +111,13 @@ static agtype_value *yb_inject_meko_keys(agtype_value *altered,
         orig_val = find_agtype_value_from_container(&original->root,
                                                     AGT_FOBJECT, &search_key);
 
-        if (orig_val == NULL || orig_val->type == AGTV_NULL)
+        /*
+         * Skip absent keys but re-inject explicit JSON nulls so the map
+         * matches what the user had before the SET. This only matters for
+         * meko_conversation_id (the others are NOT NULL on the table); a
+         * present-but-null value is still a deliberate part of the map.
+         */
+        if (orig_val == NULL)
             continue;
 
         altered = alter_property_value(altered,
