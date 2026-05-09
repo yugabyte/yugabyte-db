@@ -157,9 +157,13 @@ done
 }
 issue="$normalized_issue"
 
-# If the user accidentally included an issue prefix in the title, strip it --
-# we add the canonical "[<issue>] " prefix below.
-title="${title#\[*\] }"
+# If the user accidentally included an issue prefix in the title, strip it
+# along with any whitespace that follows. We add the canonical
+# "[<issue>] " prefix below; without the trim, an input like
+# "[#123]  Component: Title" (with two spaces) would leave a leading
+# space and trip the validation regex.
+title="${title#\[*\]}"
+title="${title#"${title%%[![:space:]]*}"}"
 
 # Validate the title body is "<Component>: <Title>". Component must start with
 # a letter and contain at least one alphanumeric char; followed by ": " and

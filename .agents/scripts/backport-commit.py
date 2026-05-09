@@ -678,8 +678,19 @@ def main(argv: list[str]) -> int:
             # from a different fork), fall back to chaining from the
             # original commit so subsequent branches still apply something
             # sensible -- they may need conflict resolution again.
-            info(f"Force-fetching {task} from fork to ensure chain source is current")
-            proc = run(["git", "fetch", push_url, f"+{task}:{task}"], check=False)
+            # Guard against silently rewinding the user's working tree
+            # if they happen to be on the task branch right now (e.g.
+            # mid-conflict-resolution after a prior script run died).
+            # Force-fetching `+task:task` would advance the ref under
+            # their feet without touching the working tree, leaving them
+            # confused. In that case, trust the local state instead.
+            current_head = git("symbolic-ref", "--short", "HEAD", check=False)
+            if current_head == task:
+                info(f"Currently on {task}; using local state (no fetch)")
+                proc = type("Proc", (), {"returncode": 0})()  # fake success
+            else:
+                info(f"Force-fetching {task} from fork to ensure chain source is current")
+                proc = run(["git", "fetch", push_url, f"+{task}:{task}"], check=False)
             if proc.returncode != 0:
                 # If the local ref already exists, fall through and use
                 # whatever's there; otherwise we can't chain at all.
