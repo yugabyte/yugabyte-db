@@ -161,29 +161,6 @@ if ! git rebase "${UPSTREAM_REMOTE}/${base_branch}"; then
   exit 2
 fi
 
-# Auto-squash when commits pile up. Past ~20 follow-up commits the
-# per-commit history stops being a useful review aid -- it just makes
-# the PR scroll forever and turns merge conflicts into a per-commit
-# replay nightmare. Collapse everything since the merge-base into a
-# single commit. The squash subject keeps the original first-commit
-# subject so the PR's title intent is preserved; the body lists every
-# squashed subject so the history isn't lost.
-SQUASH_THRESHOLD=20
-commit_count=$(git rev-list --count "${UPSTREAM_REMOTE}/${base_branch}..HEAD")
-if (( commit_count > SQUASH_THRESHOLD )); then
-  echo ">>> branch has ${commit_count} commits since ${UPSTREAM_REMOTE}/${base_branch};" \
-       "squashing into one (>${SQUASH_THRESHOLD} threshold)"
-  first_subject=$(git log --format=%s --reverse \
-                    "${UPSTREAM_REMOTE}/${base_branch}..HEAD" | head -1)
-  squash_body=$(git log --format='- %s' --reverse \
-                  "${UPSTREAM_REMOTE}/${base_branch}..HEAD")
-  git reset --soft "${UPSTREAM_REMOTE}/${base_branch}"
-  git commit -m "$first_subject" \
-             -m "Squashed ${commit_count} commits:" \
-             -m "$squash_body"
-  echo ">>> squashed to a single commit: $(git rev-parse --short HEAD)"
-fi
-
 # Ensure the linter is happy. Never push if lint isn't clean.
 # Resolve the repo root so `build-support/lint.sh` works regardless of
 # the caller's cwd (a subdirectory invocation otherwise hits "no such file").
