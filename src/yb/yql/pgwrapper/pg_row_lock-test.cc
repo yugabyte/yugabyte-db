@@ -31,6 +31,8 @@ DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_skip_row_lock_for_update);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(skip_prefix_locks);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_string(ysql_pg_conf_csv);
@@ -1256,8 +1258,9 @@ class PgRowLockWithConcurrentDdlTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_enable_concurrent_ddl=true";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
     PgMiniTestBase::SetUp();
   }
 };
@@ -1265,7 +1268,7 @@ class PgRowLockWithConcurrentDdlTest : public PgMiniTestBase {
 // Test for issue #30414:
 //
 // This test is used to reproduce the "Some of the requested ybctids are missing" error when
-// yb_enable_concurrent_ddl=true.
+// ysql_enable_concurrent_ddl=true.
 //
 // The error occurs due to the following scenario:
 //   1. A table is created with a composite primary key.
