@@ -100,6 +100,10 @@ static void create_index_on_column(char *schema_name,
                                    char *rel_name,
                                    char *colname,
                                    bool unique);
+/* YB: composite tenant-scoped PK index helper (vertex and edge use the same shape) */
+static void yb_create_label_pk_index(char *schema_name, char *rel_name);
+/* YB: append meko_* tenant ColumnDefs to a vertex/edge column list */
+static List *yb_append_meko_column_defs(List *cols);
 
 PG_FUNCTION_INFO_V1(age_is_valid_label_name);
 
@@ -444,13 +448,29 @@ static void create_table_for_label(char *graph_name, char *label_name,
                    PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
                    NULL);
     
-    /* Create index on id columns */
+    /*
+     * Create index on id columns.
+     *
+     * YB: Upstream Apache AGE creates a single-column unique index on "id" for
+     * vertex tables (and no PK index for edge tables). On YugabyteDB we instead
+     * build a composite tenant-scoped primary key over (meko_datapack_id,
+     * meko_user_id, meko_agent_id, id) so that rows for different tenants are
+     * colocated/sharded by tenant and queries can prune to a single tenant.
+     * Edge tables get the same composite PK in YB mode (upstream has none),
+     * while the start_id/end_id secondary indexes are created unconditionally
+     * to match upstream behavior.
+     */
     if (label_type == LABEL_TYPE_VERTEX)
     {
-        create_index_on_column(schema_name, rel_name, "id", true);
+        if (IsYugaByteEnabled())
+            yb_create_label_pk_index(schema_name, rel_name); /* YB: tenant-scoped PK */
+        else
+            create_index_on_column(schema_name, rel_name, "id", true);
     }
     else if (label_type == LABEL_TYPE_EDGE)
     {
+        if (IsYugaByteEnabled())
+            yb_create_label_pk_index(schema_name, rel_name); /* YB: tenant-scoped PK */
         create_index_on_column(schema_name, rel_name, "start_id", false);
         create_index_on_column(schema_name, rel_name, "end_id", false);
     }
@@ -508,13 +528,166 @@ static void create_index_on_column(char *schema_name,
                    NULL);
 }
 
-/* 
- * CREATE TABLE `schema_name`.`rel_name` (
- * "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...),
- * "start_id" graphid NOT NULL
- * "end_id" graphid NOT NULL
- * "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
- * )
+/*
+ * YB: Build a SORTBY_HASH IndexElem for `colname` (no opclass).
+ */
+static IndexElem *yb_make_meko_hash_elem(const char *colname)
+{
+    IndexElem *elem = makeNode(IndexElem);
+
+    elem->name = (char *) colname;
+    elem->expr = NULL;
+    elem->indexcolname = NULL;
+    elem->collation = NIL;
+    elem->opclass = NIL;
+    elem->opclassopts = NIL;
+    elem->ordering = SORTBY_HASH;
+    elem->nulls_ordering = SORTBY_NULLS_DEFAULT;
+    return elem;
+}
+
+/*
+ * YB: Build a SORTBY_ASC IndexElem for `colname`. If `opclass` is non-NULL,
+ * it is used as a single-element opclass list (needed for graphid_ops).
+ */
+static IndexElem *yb_make_meko_asc_elem(const char *colname, const char *opclass)
+{
+    IndexElem *elem = makeNode(IndexElem);
+
+    elem->name = (char *) colname;
+    elem->expr = NULL;
+    elem->indexcolname = NULL;
+    elem->collation = NIL;
+    elem->opclass = (opclass ? list_make1(makeString((char *) opclass)) : NIL);
+    elem->opclassopts = NIL;
+    elem->ordering = SORTBY_ASC;
+    elem->nulls_ordering = SORTBY_NULLS_DEFAULT;
+    return elem;
+}
+
+/*
+ * YB: Create the composite primary key index for both vertex and edge label
+ * tables:
+ *   PRIMARY KEY ((meko_datapack_id, meko_user_id) HASH,
+ *                meko_agent_id ASC, id ASC)
+ *
+ * Vertex and edge tables share the same column names for the tenant
+ * key, so a single helper covers both.
+ *
+ * Only meko_datapack_id and meko_user_id are part of the hash key — that is
+ * the granularity at which we want to spread rows across tablets. meko_agent_id
+ * is left as a range key (ASC) so that rows for all agents owned by the same
+ * (datapack, user) tenant land on the same tablet and can be range-scanned
+ * together; hashing on agent_id would scatter them, defeating tenant locality.
+ */
+static void yb_create_label_pk_index(char *schema_name, char *rel_name)
+{
+    IndexStmt *index_stmt;
+    PlannedStmt *index_wrapper;
+
+    index_stmt = makeNode(IndexStmt);
+    index_stmt->relation = makeRangeVar(schema_name, rel_name, -1);
+    index_stmt->accessMethod = "lsm";
+    index_stmt->tableSpace = NULL;
+    index_stmt->indexParams = list_make4(
+        yb_make_meko_hash_elem(AG_COLNAME_MEKO_DATAPACK_ID),
+        yb_make_meko_hash_elem(AG_COLNAME_MEKO_USER_ID),
+        yb_make_meko_asc_elem(AG_COLNAME_MEKO_AGENT_ID, NULL),
+        yb_make_meko_asc_elem("id", "graphid_ops"));
+    index_stmt->options = NIL;
+    index_stmt->whereClause = NULL;
+    index_stmt->excludeOpNames = NIL;
+    index_stmt->idxcomment = NULL;
+    index_stmt->indexOid = InvalidOid;
+    index_stmt->unique = true;
+    index_stmt->nulls_not_distinct = false;
+    index_stmt->primary = true;
+    index_stmt->isconstraint = true;
+    index_stmt->deferrable = false;
+    index_stmt->initdeferred = false;
+    index_stmt->transformed = false;
+    index_stmt->concurrent = false;
+    index_stmt->if_not_exists = false;
+    index_stmt->reset_default_tblspc = false;
+
+    index_wrapper = makeNode(PlannedStmt);
+    index_wrapper->commandType = CMD_UTILITY;
+    index_wrapper->canSetTag = false;
+    index_wrapper->utilityStmt = (Node *) index_stmt;
+    index_wrapper->stmt_location = -1;
+    index_wrapper->stmt_len = 0;
+
+    ProcessUtility(index_wrapper,
+                   "(generated CREATE INDEX command for label PK)", false,
+                   PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
+                   NULL);
+}
+
+/*
+ * YB: Append the four meko_* tenant ColumnDefs to a vertex/edge column list:
+ *   "meko_datapack_id"     UUID NOT NULL,
+ *   "meko_user_id"         UUID NOT NULL,
+ *   "meko_agent_id"        TEXT NOT NULL,
+ *   "meko_conversation_id" UUID
+ *
+ * Vertex and edge label tables use the same set of meko_* column names so
+ * the same helper produces both.
+ */
+static List *yb_append_meko_column_defs(List *cols)
+{
+    ColumnDef *meko_datapack_id;
+    ColumnDef *meko_user_id;
+    ColumnDef *meko_agent_id;
+    ColumnDef *meko_conversation_id;
+
+    /* "meko_datapack_id" UUID NOT NULL */
+    meko_datapack_id = makeColumnDef(AG_COLNAME_MEKO_DATAPACK_ID,
+                                     UUIDOID, -1, InvalidOid);
+    meko_datapack_id->constraints = list_make1(build_not_null_constraint());
+
+    /* "meko_user_id" UUID NOT NULL */
+    meko_user_id = makeColumnDef(AG_COLNAME_MEKO_USER_ID,
+                                 UUIDOID, -1, InvalidOid);
+    meko_user_id->constraints = list_make1(build_not_null_constraint());
+
+    /* "meko_agent_id" TEXT NOT NULL */
+    meko_agent_id = makeColumnDef(AG_COLNAME_MEKO_AGENT_ID,
+                                  TEXTOID, -1, InvalidOid);
+    meko_agent_id->constraints = list_make1(build_not_null_constraint());
+
+    /* "meko_conversation_id" UUID (nullable) */
+    meko_conversation_id = makeColumnDef(AG_COLNAME_MEKO_CONVERSATION_ID,
+                                         UUIDOID, -1, InvalidOid);
+
+    cols = lappend(cols, meko_datapack_id);
+    cols = lappend(cols, meko_user_id);
+    cols = lappend(cols, meko_agent_id);
+    cols = lappend(cols, meko_conversation_id);
+    return cols;
+}
+
+/*
+ * Upstream Apache AGE layout:
+ *   CREATE TABLE `schema_name`.`rel_name` (
+ *     "id"         graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...),
+ *     "start_id"   graphid NOT NULL,
+ *     "end_id"     graphid NOT NULL,
+ *     "properties" agtype  NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
+ *   )
+ *
+ * YB: Diverges from upstream Apache AGE in two ways (only when
+ * IsYugaByteEnabled() is true; vanilla PG builds preserve the upstream
+ * 4-column layout):
+ *   1. The "id" column is no longer declared PRIMARY KEY inline; the PK is
+ *      created later as a composite tenant-scoped index over
+ *      (meko_datapack_id, meko_user_id, meko_agent_id, id) via
+ *      yb_create_label_pk_index().
+ *   2. Four meko_* tenant columns are appended so that all rows in an edge
+ *      label can be partitioned/sharded by tenant:
+ *        "meko_datapack_id"     UUID NOT NULL,
+ *        "meko_user_id"         UUID NOT NULL,
+ *        "meko_agent_id"        TEXT NOT NULL,
+ *        "meko_conversation_id" UUID
  */
 static List *create_edge_table_elements(char *graph_name, char *label_name,
                                         char *schema_name, char *rel_name,
@@ -524,12 +697,28 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
     ColumnDef *start_id;
     ColumnDef *end_id;
     ColumnDef *props;
+    List *yb_cols; /* YB: declared up front so we can lappend meko_* on YB */
 
     /* "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...) */
     id = makeColumnDef(AG_EDGE_COLNAME_ID, GRAPHIDOID, -1, InvalidOid);
-    id->constraints = list_make2(build_pk_constraint(),
-                                 build_id_default(graph_name, label_name,
-                                                  schema_name, seq_name));
+    if (IsYugaByteEnabled())
+    {
+        /*
+         * YB: "id" is only NOT NULL here; the PRIMARY KEY is added later
+         * as a composite tenant-scoped index over
+         * (meko_datapack_id, meko_user_id, meko_agent_id, id) by
+         * yb_create_label_pk_index().
+         */
+        id->constraints = list_make2(build_not_null_constraint(),
+                                     build_id_default(graph_name, label_name,
+                                                      schema_name, seq_name));
+    }
+    else
+    {
+        id->constraints = list_make2(build_pk_constraint(),
+                                     build_id_default(graph_name, label_name,
+                                                      schema_name, seq_name));
+    }
 
     /* "start_id" graphid NOT NULL */
     start_id = makeColumnDef(AG_EDGE_COLNAME_START_ID, GRAPHIDOID, -1,
@@ -546,14 +735,35 @@ static List *create_edge_table_elements(char *graph_name, char *label_name,
     props->constraints = list_make2(build_not_null_constraint(),
                                     build_properties_default());
 
-    return list_make4(id, start_id, end_id, props);
+    yb_cols = list_make4(id, start_id, end_id, props);
+
+    /* YB: tenant columns are only added on YugabyteDB-hosted edge tables. */
+    if (IsYugaByteEnabled())
+        yb_cols = yb_append_meko_column_defs(yb_cols);
+
+    return yb_cols;
 }
 
-/* 
- * CREATE TABLE `schema_name`.`rel_name` (
- * "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...),
- * "properties" agtype NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
- * )
+/*
+ * Upstream Apache AGE layout:
+ *   CREATE TABLE `schema_name`.`rel_name` (
+ *     "id"         graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...),
+ *     "properties" agtype  NOT NULL DEFAULT "ag_catalog"."agtype_build_map"()
+ *   )
+ *
+ * YB: Diverges from upstream Apache AGE in two ways (only when
+ * IsYugaByteEnabled() is true; vanilla PG builds preserve the upstream
+ * 2-column layout):
+ *   1. The "id" column is no longer declared PRIMARY KEY inline; the PK is
+ *      created later as a composite tenant-scoped index over
+ *      (meko_datapack_id, meko_user_id, meko_agent_id, id) via
+ *      yb_create_label_pk_index().
+ *   2. Four meko_* tenant columns are appended so that all rows in a vertex
+ *      label can be partitioned/sharded by tenant:
+ *        "meko_datapack_id"     UUID NOT NULL,
+ *        "meko_user_id"         UUID NOT NULL,
+ *        "meko_agent_id"        TEXT NOT NULL,
+ *        "meko_conversation_id" UUID
  */
 static List *create_vertex_table_elements(char *graph_name, char *label_name,
                                           char *schema_name, char *rel_name,
@@ -561,6 +771,7 @@ static List *create_vertex_table_elements(char *graph_name, char *label_name,
 {
     ColumnDef *id;
     ColumnDef *props;
+    List *yb_cols; /* YB: declared up front so we can lappend meko_* on YB */
 
     /* "id" graphid PRIMARY KEY DEFAULT "ag_catalog"."_graphid"(...) */
     id = makeColumnDef(AG_VERTEX_COLNAME_ID, GRAPHIDOID, -1, InvalidOid);
@@ -574,7 +785,13 @@ static List *create_vertex_table_elements(char *graph_name, char *label_name,
     props->constraints = list_make2(build_not_null_constraint(),
                                     build_properties_default());
 
-    return list_make2(id, props);
+    yb_cols = list_make2(id, props);
+
+    /* YB: tenant columns are only added on YugabyteDB-hosted vertex tables. */
+    if (IsYugaByteEnabled())
+        yb_cols = yb_append_meko_column_defs(yb_cols);
+
+    return yb_cols;
 }
 
 /* CREATE SEQUENCE `seq_range_var` MAXVALUE `LOCAL_ID_MAX` */
