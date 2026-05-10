@@ -37,7 +37,7 @@ If the branch already has at least one commit ahead of the base and the working 
 
 ### Step 2: Base branch
 
-The PR targets `master`. Do **not** prompt the user for a base branch; use `master` (omit `-b` when invoking `create-pr.sh` in Step 5). Backports are not opened with this skill — use `/backport-commit` instead.
+The PR targets `master`. Do **not** prompt the user for a base branch — `create-pr.sh` always rebases and pushes against `master`. Backports are not opened with this skill — use `/backport-commit` instead.
 
 ### Step 3: Gather PR metadata
 
@@ -92,7 +92,7 @@ If the user supplies a title that already includes `[<issue>] ` or doesn't match
 
 ### Step 5: Run `create-pr.sh` to rebase, lint, push, and open the PR
 
-Once you have the issue (Step 3.1) and title (Step 4), write the description and test plan to **separate** temp files and hand everything to the script:
+Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script:
 
 ```
 .agents/scripts/create-pr.sh \
@@ -101,10 +101,10 @@ Once you have the issue (Step 3.1) and title (Step 4), write the description and
   -d /tmp/claude/pr-desc-<issue>.md \
   -T /tmp/claude/pr-testplan-<issue>.md \
   [-U /tmp/claude/pr-upgrade-<issue>.md] \
-  [-b <base-branch>]
+  -r <reviewers>
 ```
 
-The script rebases on `<upstream>/<base>`, runs `lint.sh --rev <upstream>/<base>` and refuses to push if it isn't clean, pushes to your fork, assembles the PR body as `## Summary` (from `-d`) followed by `## Test plan` (from `-T`), and runs `gh pr create`. It auto-detects the upstream and fork remotes.
+The script rebases on `<upstream>/master`, runs `lint.sh --rev <upstream>/master` and refuses to push if it isn't clean, pushes to your fork, assembles the PR body as `## Summary` (from `-d`) followed by `## Test plan` (from `-T`), runs `gh pr create`, and adds reviewers via the REST `requested_reviewers` endpoint (which correctly routes user logins to `reviewers[]` and team slugs to `team_reviewers[]`). It auto-detects the upstream and fork remotes.
 
 Inputs:
 - **`-i`**: bare GH number (`31151`), `#`-prefixed (`#31151`), or a JIRA key (`PLAT-20518`). Pass a **comma-separated list** to track multiple issues in one PR (e.g. `31151, #31152, PLAT-333`); the script normalizes whitespace, prepends `#` to bare digits, and joins with `, ` so the title renders as `[#31151, #31152, PLAT-333] <Component>: <Title>`.
@@ -112,7 +112,7 @@ Inputs:
 - **`-d` (required)**: path to a markdown file with the PR description (the "what / why" prose derived from branch commits). The script makes this the `## Summary` section.
 - **`-U` (optional, sometimes required)**: path to a markdown file with upgrade/rollback notes. The script makes this the `## Upgrade/Rollback safety` section, inserted **between Summary and Test plan**. **Pass this whenever the branch makes an upgrade-relevant decision.** The script enforces it **mechanically when any `.proto` file changes** (`exit 1` if `-U` is missing and a `*.proto` diff exists) — wire-format changes have to spell out forward and backward behavior on a mixed-version cluster and what rollback looks like. **Also include for** (script can't detect, but the src/AGENTS.md rule expects it): gflag default flips that change observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. When unsure, pass `-U` with a brief note rather than skipping.
 - **`-T` (required)**: path to a markdown file with the test plan (typically a checkbox list). **Always supply this** — the script errors out if `-T` is missing or the file is empty. If the change is trivial enough that you think no test plan applies, write an explicit one-line checkbox saying so (e.g., `No runtime behavior change; visually inspected diff`) and confirm with the user before proceeding.
-- **`-b`**: base branch — omit for `master`; pass `2024.2` etc. for backport-target PRs.
+- **`-r`**: comma-separated handles and/or team slugs (`alice,bob,yugabyte/db-approvers`). Optional.
 
 Exit codes:
 - `0` — PR created. Last stdout line is the PR URL.
