@@ -92,7 +92,7 @@ If the user supplies a title that already includes `[<issue>] ` or doesn't match
 
 ### Step 5: Run `create-pr.sh` to rebase, lint, push, and open the PR
 
-Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script:
+Once you have the issue (Step 3.1) and title (Step 4), write the description and test plan to **separate** temp files and hand everything to the script:
 
 ```
 .agents/scripts/create-pr.sh \
@@ -101,19 +101,17 @@ Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if use
   -d /tmp/claude/pr-desc-<issue>.md \
   -T /tmp/claude/pr-testplan-<issue>.md \
   [-U /tmp/claude/pr-upgrade-<issue>.md] \
-  -r <reviewers> \
   [-b <base-branch>]
 ```
 
-The script rebases on `<upstream>/<base>`, runs `lint.sh --rev <upstream>/<base>` and refuses to push if it isn't clean, pushes to your fork, assembles the PR body as `## Summary` (from `-d`) followed by `## Test plan` (from `-T`), runs `gh pr create`, and adds reviewers via the REST `requested_reviewers` endpoint (which correctly routes user logins to `reviewers[]` and team slugs to `team_reviewers[]`). It auto-detects the upstream and fork remotes.
+The script rebases on `<upstream>/<base>`, runs `lint.sh --rev <upstream>/<base>` and refuses to push if it isn't clean, pushes to your fork, assembles the PR body as `## Summary` (from `-d`) followed by `## Test plan` (from `-T`), and runs `gh pr create`. It auto-detects the upstream and fork remotes.
 
 Inputs:
 - **`-i`**: bare GH number (`31151`), `#`-prefixed (`#31151`), or a JIRA key (`PLAT-20518`). Pass a **comma-separated list** to track multiple issues in one PR (e.g. `31151, #31152, PLAT-333`); the script normalizes whitespace, prepends `#` to bare digits, and joins with `, ` so the title renders as `[#31151, #31152, PLAT-333] <Component>: <Title>`.
 - **`-t`**: title body **without** the `[<issue>] ` prefix but **with** the `Component: ` prefix (e.g. `DocDB: Fix flake`).
-- **`-d` (required)**: path to a markdown file with the PR description (the "what / why" prose derived from branch commits). The script makes this the `## Summary` section. If the GH issue body fetched in Step 3 contains a Jira link (DB-21182, PLAT-20518, etc.), or the user supplied a Jira key, append a `Jira: [<KEY>](<URL>)` line at the bottom of this file before invoking the script.
-- **`-U` (optional, sometimes required)**: path to a markdown file with upgrade/rollback notes. The script makes this the `## Upgrade/Rollback safety` section, inserted **between Summary and Test plan**. **Pass this whenever the branch makes an upgrade-relevant decision.** The script enforces it **mechanically when any `.proto` file changes** (`exit 1` if `-U` is missing and a `*.proto` diff exists) — wire-format changes have to spell out forward/backward behavior on a mixed-version cluster and what rollback looks like. **Also include for** (script can't detect, but the src/AGENTS.md rule expects it): gflag default flips that change observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. When unsure, pass `-U` with a brief note rather than skipping.
-- **`-T` (required)**: path to a markdown file with the test plan (typically a checkbox list). **Always supply this** — the script errors out if `-T` is missing or the file is empty. If the change is trivial enough that you think no test plan applies, write an explicit one-line checkbox saying so (e.g., `- [x] No runtime behavior change; visually inspected diff`) and confirm with the user before proceeding.
-- **`-r`**: comma-separated handles and/or team slugs (`alice,bob,yugabyte/db-approvers`). Optional.
+- **`-d` (required)**: path to a markdown file with the PR description (the "what / why" prose derived from branch commits). The script makes this the `## Summary` section.
+- **`-U` (optional, sometimes required)**: path to a markdown file with upgrade/rollback notes. The script makes this the `## Upgrade/Rollback safety` section, inserted **between Summary and Test plan**. **Pass this whenever the branch makes an upgrade-relevant decision.** The script enforces it **mechanically when any `.proto` file changes** (`exit 1` if `-U` is missing and a `*.proto` diff exists) — wire-format changes have to spell out forward and backward behavior on a mixed-version cluster and what rollback looks like. **Also include for** (script can't detect, but the src/AGENTS.md rule expects it): gflag default flips that change observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. When unsure, pass `-U` with a brief note rather than skipping.
+- **`-T` (required)**: path to a markdown file with the test plan (typically a checkbox list). **Always supply this** — the script errors out if `-T` is missing or the file is empty. If the change is trivial enough that you think no test plan applies, write an explicit one-line checkbox saying so (e.g., `No runtime behavior change; visually inspected diff`) and confirm with the user before proceeding.
 - **`-b`**: base branch — omit for `master`; pass `2024.2` etc. for backport-target PRs.
 
 Exit codes:
@@ -123,6 +121,15 @@ Exit codes:
 - `1` — pre-flight failure (dirty tree, missing remote, etc.).
 
 Confirm the title and body with the user before invoking the script.
+
+### Step 5b (optional): Auto-recover from trivial rebase conflicts and lint errors
+
+If Step 5 exits `2` (rebase conflict) or `3` (lint), inspect the failure and try once to fix automatically before going back to the user:
+
+- **Rebase conflicts** — only auto-resolve **trivial** conflicts (whitespace-only differences, adjacent-but-non-overlapping hunks, conflicts where both sides are byte-identical after whitespace normalization). For each such file, accept the resolution that preserves the branch's intent, `git add` it, and `git rebase --continue`. Anything involving renamed identifiers, signature changes, or refactors must be escalated to the user — do not guess.
+- **Lint errors** — if the linter reports auto-fixable issues (e.g. trailing whitespace, missing newlines), apply the fix as a **new commit** (`Fix lint`), not an amend. If the errors require judgment (logic changes, unused-variable removal that might be load-bearing), escalate.
+
+After the auto-fix, re-run Step 5 once. If it fails again, stop and surface the conflict/lint output to the user.
 
 ### Step 6: Report back to the user
 
@@ -136,7 +143,7 @@ Then clean up any temp files created during this run (e.g., `/tmp/claude/commit-
 
 ## Notes
 
-- **Never push to `yugabyte/yugabyte-db`.** Contributors do not have write access — always push to a personal fork and open the PR cross-repo.
+- **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script.
 - The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
 - Never force-push without explicit user permission; when authorized, prefer `--force-with-lease`.
 - CI runs automatically on GitHub PRs, so there is no `trigger jenkins` step (unlike the Phorge `create-review` skill).
@@ -144,4 +151,3 @@ Then clean up any temp files created during this run (e.g., `/tmp/claude/commit-
 - **`gh pr edit` is broken on this repo** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)`. This affects `--body-file`, `--add-reviewer`, `--add-label`, and other post-creation edit flags. For any post-creation update to PR body / reviewers / labels, use the REST API directly:
   - **Body update:** `jq -Rs '{body: .}' < new-body.md | gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/<num> --input -`
   - **Add reviewers:** `gh api -X POST /repos/yugabyte/yugabyte-db/pulls/<num>/requested_reviewers -f 'reviewers[]=user1' -f 'reviewers[]=user2'` (and `-f 'team_reviewers[]=team-slug'` for org/team reviewers — strip the `org/` prefix; team_reviewers takes the slug only).
-  - **`gh pr create --reviewer` itself works fine** — only post-creation `gh pr edit` is affected.
