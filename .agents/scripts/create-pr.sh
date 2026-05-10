@@ -237,11 +237,21 @@ current_branch=$(git symbolic-ref --short HEAD 2>/dev/null) || {
 echo ">>> upstream=${UPSTREAM_REMOTE}, fork=${FORK_REMOTE}," \
      "base=${base_branch}, branch=${current_branch}"
 
+# Lint, validate destination, and push via the shared helper. git-push.sh
+# does its own remote detection but we pass UPSTREAM_REMOTE/FORK_REMOTE
+# explicitly via env to keep the two scripts agreeing on which remotes to
+# use, and to skip the second auto-detect.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UPSTREAM_REMOTE="$UPSTREAM_REMOTE" FORK_REMOTE="$FORK_REMOTE" GH_REPO="$GH_REPO" \
+  "${script_dir}/git-push.sh" -b "$base_branch"
+
 # Wire-format / on-disk-format compatibility: any change to a .proto file
 # can break upgrade-rollback safety on a mixed-version cluster, so require
 # -U with explicit forward/backward/rollback notes. Soft cases (gflag
 # default flips, catalog schema bumps) should also pass -U, but we can't
-# detect those mechanically -- the proto-file rule is the hard gate.
+# detect those mechanically -- the proto-file rule is the hard gate. Run
+# this *after* git-push.sh so the upstream tracking ref is current; the
+# diff above the rebase + push relied on a possibly-stale base.
 if [[ -z "$upgrade_file" ]]; then
   proto_changed=$(git diff --name-only \
                     "${UPSTREAM_REMOTE}/${base_branch}" HEAD -- '*.proto' \
@@ -258,14 +268,6 @@ if [[ -z "$upgrade_file" ]]; then
     exit 1
   fi
 fi
-
-# Lint, validate destination, and push via the shared helper. git-push.sh
-# does its own remote detection but we pass UPSTREAM_REMOTE/FORK_REMOTE
-# explicitly via env to keep the two scripts agreeing on which remotes to
-# use, and to skip the second auto-detect.
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UPSTREAM_REMOTE="$UPSTREAM_REMOTE" FORK_REMOTE="$FORK_REMOTE" GH_REPO="$GH_REPO" \
-  "${script_dir}/git-push.sh" -b "$base_branch"
 
 # Fork owner for the gh pr create -H field is the authenticated gh
 # user -- the FORK_REMOTE detection above already required the URL to

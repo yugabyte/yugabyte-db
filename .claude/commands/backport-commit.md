@@ -2,6 +2,7 @@
 description: Backport a commit to one or more YugabyteDB release branches
 argument-hint: <commit-sha> [<branch> ...]
 allowed-tools: Bash(.agents/scripts/backport-commit.sh *), Bash(gh pr comment *), Bash(gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/*)
+model: sonnet
 ---
 
 Backport a merged commit to one or more YugabyteDB release branches using the bundled `backport-commit.sh` at `.agents/scripts/backport-commit.sh`. The script handles cherry-picking, message rewriting, fork detection, push, and PR creation. Wrap it with conflict-resolution logic: trivial whitespace conflicts are fixed automatically; anything more complex is escalated to the user.

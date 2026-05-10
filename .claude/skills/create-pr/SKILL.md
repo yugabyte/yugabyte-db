@@ -4,6 +4,7 @@ description: >-
   Create a Pull Request for the current branch's changes.
   Use when the user wants to publish a branch for review as a GitHub PR.
 allowed-tools: Bash(.agents/scripts/create-pr.sh *)
+model: sonnet
 ---
 
 # Create PR
@@ -55,7 +56,7 @@ Infer as much as you can from context first, then **batch-confirm with the user 
      - For JIRA: ask the user which project (e.g., `PLAT`) and use the Atlassian MCP tool `createJiraIssue` to create it. Confirm the summary/description with the user before creating.
    - Capture the resulting issue number or JIRA key.
 
-   **One issue per commit.** Each issue tracks exactly one master PR (and one backport per release branch). Don't reuse an issue across multiple in-flight master PRs — auto-create a fresh issue (per the flow above) when starting unrelated work, even if a related closed/merged PR used a similar issue.
+   - Don't reuse an issue across multiple in-flight master PRs — auto-create a fresh issue (per the flow above) when starting unrelated work, even if a related closed/merged PR used a similar issue.
 
 2. **Component** — the component tag that will appear in the title (e.g., `DocDB`, `YSQL`, `YBA`, `CDC`, `xCluster`). Infer from the files changed (`git diff --name-only <upstream>/master..HEAD`):
    - `src/yb/` → `DocDB`
