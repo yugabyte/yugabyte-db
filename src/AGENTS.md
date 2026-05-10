@@ -43,7 +43,7 @@ The point is to make agent-authored output legible to humans skimming the PR or 
 
 ## Reviewing commits
 
-When reviewing a PR, a backport diff, or any commit on this repo, follow the guidance in `.agents/codereview-guide.md`. It scopes which issues are worth flagging (correctness, memory safety, security, concurrency, performance, breaking-change risk) versus which to skip (lint-owned style, naming nits, repeat-flags across rounds), spells out the **backport-mode** rules for cherry-pick PRs (compare against the originating commit; don't re-flag byte-identical hunks), and lists the areas (`src/yb/master/`, `src/yb/tablet/`, `src/yb/cdc/`, `src/postgres/`, `managed/`) that warrant deeper attention. Read it before forming review comments.
+When reviewing a PR, a backport diff, or any commit on this repo, follow the guidance in `.gemini/styleguide.md`. It scopes which issues are worth flagging (correctness, memory safety, security, concurrency, performance, breaking-change risk) versus which to skip (lint-owned style, naming nits, repeat-flags across rounds), spells out the **backport-mode** rules for cherry-pick PRs (compare against the originating commit; don't re-flag byte-identical hunks), and lists the areas (`src/yb/master/`, `src/yb/tablet/`, `src/yb/cdc/`, `src/postgres/`, `managed/`) that warrant deeper attention. Read it before forming review comments.
 
 ## Replying to PR review comments
 
