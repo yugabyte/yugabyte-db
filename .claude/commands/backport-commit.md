@@ -1,7 +1,7 @@
 ---
 description: Backport a commit to one or more YugabyteDB release branches
 argument-hint: <commit-sha> [<branch> ...]
-allowed-tools: Bash(.agents/scripts/backport-commit.sh *), Bash(gh pr comment *), Bash(gh api -X PATCH /repos/yugabyte/yugabyte-db/pulls/*)
+allowed-tools: Bash(.agents/scripts/backport-commit.sh *)
 model: sonnet
 ---
 

@@ -617,7 +617,7 @@ def main(argv: list[str]) -> int:
         fail("no destination branches given and auto-discovery returned none.")
 
     # Clean up any leftover cherry-pick state from a prior run.
-    cherry_head = Path(git("rev-parse", "--git-path", "CHERRY_PICK_HEAD"))
+    cherry_head = Path(git("rev-parse", "--git-path", "CHERRY_PICK_HEAD")).resolve()
     if cherry_head.is_file():
         # If there are pending tracked changes, refuse -- might be the user's
         # in-progress conflict resolution.
