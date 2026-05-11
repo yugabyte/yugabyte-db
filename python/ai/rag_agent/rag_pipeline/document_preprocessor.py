@@ -172,23 +172,14 @@ class DocumentPreprocessor(TaskProcessor):
                 cursor.close()
             if connection:
                 self.connection_pool.return_connection(connection)
-        return None, None
 
-    def _resolve_langfuse_client(self, document_uri: str) -> Tuple[str, str]:
+    def _resolve_langfuse_client(self, datapack_id: str) -> Tuple[str, str]:
         """
         Parse the datapack_id from document_uri and return a Langfuse client
         initialised with the matching project keys, or None if unavailable.
-        document_uri format: {userID}/{datapackID}/{filename}
         """
-        # s3://<bucket>/<user_id>/<datapack_id>/
-        # split('/') → ['s3:', '', '<bucket>', '<user_id>', '<datapack_id>', '']
-        self.logger.info(f"document_uri={document_uri}")
-        uri_parts = document_uri.split('/')
-        datapack_id = uri_parts[4] if len(uri_parts) >= 5 else None
-        self.logger.info(f"Parsed datapack_id={datapack_id} from document_uri={document_uri}")
 
-        if not datapack_id:
-            return None
+        self.logger.debug(f"Resolving Langfuse client for datapack_id={datapack_id}")
 
         try:
             connection = self.connection_pool.get_connection()
@@ -220,14 +211,14 @@ class DocumentPreprocessor(TaskProcessor):
         Process the task.
         """
         self.logger.info(f"Processing task: {task.id}")
-        document_uri = task.task_details.get('document_uri')
-        self.logger.debug(f"document_uri: {document_uri}")
+        datapack_id = task.task_details.get('tenant_id')
+        self.logger.info(f"Datapack ID: {datapack_id}")
         transform_span = None
         langfuse_public_key = None
         tracing_context = nullcontext()
         observation_context = nullcontext()
-        resolved_keys = self._resolve_langfuse_client(document_uri)
-        if resolved_keys:
+        resolved_keys = self._resolve_langfuse_client(datapack_id)
+        if resolved_keys and datapack_id:
             try:
                 langfuse_public_key, langfuse_secret_key = resolved_keys
                 langfuse_client = Langfuse(
