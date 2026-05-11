@@ -24,19 +24,39 @@
 
 #define Anum_ag_label_vertex_table_id 1
 #define Anum_ag_label_vertex_table_properties 2
+/* YB: meko_* tenant columns on vertex label tables */
+#define Anum_ag_label_vertex_table_meko_datapack_id 3
+#define Anum_ag_label_vertex_table_meko_user_id 4
+#define Anum_ag_label_vertex_table_meko_agent_id 5
+#define Anum_ag_label_vertex_table_meko_conversation_id 6
 
 #define Anum_ag_label_edge_table_id 1
 #define Anum_ag_label_edge_table_start_id 2
 #define Anum_ag_label_edge_table_end_id 3
 #define Anum_ag_label_edge_table_properties 4
+/* YB: meko_* tenant columns on edge label tables */
+#define Anum_ag_label_edge_table_meko_datapack_id 5
+#define Anum_ag_label_edge_table_meko_user_id 6
+#define Anum_ag_label_edge_table_meko_agent_id 7
+#define Anum_ag_label_edge_table_meko_conversation_id 8
 
 #define vertex_tuple_id Anum_ag_label_vertex_table_id - 1
 #define vertex_tuple_properties Anum_ag_label_vertex_table_properties - 1
+/* YB: tuple-offset aliases for meko_* tenant columns on vertex label tables */
+#define vertex_tuple_meko_datapack_id (Anum_ag_label_vertex_table_meko_datapack_id - 1)
+#define vertex_tuple_meko_user_id (Anum_ag_label_vertex_table_meko_user_id - 1)
+#define vertex_tuple_meko_agent_id (Anum_ag_label_vertex_table_meko_agent_id - 1)
+#define vertex_tuple_meko_conversation_id (Anum_ag_label_vertex_table_meko_conversation_id - 1)
 
 #define edge_tuple_id Anum_ag_label_edge_table_id - 1
 #define edge_tuple_start_id Anum_ag_label_edge_table_start_id - 1
 #define edge_tuple_end_id Anum_ag_label_edge_table_end_id - 1
 #define edge_tuple_properties Anum_ag_label_edge_table_properties - 1
+/* YB: tuple-offset aliases for meko_* tenant columns on edge label tables */
+#define edge_tuple_meko_datapack_id (Anum_ag_label_edge_table_meko_datapack_id - 1)
+#define edge_tuple_meko_user_id (Anum_ag_label_edge_table_meko_user_id - 1)
+#define edge_tuple_meko_agent_id (Anum_ag_label_edge_table_meko_agent_id - 1)
+#define edge_tuple_meko_conversation_id (Anum_ag_label_edge_table_meko_conversation_id - 1)
 
 
 

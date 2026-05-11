@@ -109,11 +109,50 @@ typedef struct cypher_merge_custom_scan_state
     struct created_path *created_paths_list;
 } cypher_merge_custom_scan_state;
 
+/*
+ * YB: Bundle of meko_* tenant column values extracted from a vertex/edge
+ * properties map by yb_extract_meko_columns_from_properties(). The first
+ * three columns are NOT NULL on the underlying tables, so only
+ * meko_conversation_id carries an explicit isnull flag.
+ */
+typedef struct YbMekoDp
+{
+    Datum datapack_id;
+    Datum user_id;
+    Datum agent_id;
+    bool  conversation_id_isnull;
+    Datum conversation_id;
+} YbMekoDp;
+
+YbMekoDp yb_extract_meko_columns_from_properties(Datum props_datum,
+                                                 bool props_isnull);
+
+/*
+ * YB: Copy meko_* tenant column values from `meko` into the four corresponding
+ * slot offsets on a vertex/edge tuple. Caller is expected to gate the call
+ * with IsYugaByteEnabled() since the meko_* columns only exist on YB-hosted
+ * tables.
+ */
+void yb_populate_meko_columns(TupleTableSlot *slot, YbMekoDp meko,
+                              bool is_edge);
+
+/*
+ * YB: Copy meko_* tenant column values from an existing on-disk tuple into
+ * the corresponding slot offsets on a vertex/edge tuple. is_edge selects
+ * the vertex or edge column layout. Used by the SET path so that updates
+ * preserve the row's tenant identity. Caller is expected to gate the call
+ * with IsYugaByteEnabled().
+ */
+void yb_copy_meko_columns_from_tuple(TupleTableSlot *slot,
+                                     HeapTuple heap_tuple,
+                                     TupleDesc tupdesc,
+                                     bool is_edge);
+
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
-                                    agtype_value *id, agtype_value *properties);
+    agtype_value *id, agtype_value *properties, YbMekoDp meko); /* YB: tenant cols */
 TupleTableSlot *populate_edge_tts(
     TupleTableSlot *elemTupleSlot, agtype_value *id, agtype_value *startid,
-    agtype_value *endid, agtype_value *properties);
+    agtype_value *endid, agtype_value *properties, YbMekoDp meko); /* YB: tenant cols */
 
 ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name,
                                              char *label_name);

@@ -9,7 +9,6 @@ SET search_path TO mag_catalog;
 SELECT create_graph('basic');
 NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
-NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
 NOTICE:  graph "basic" has been created
  create_graph 
 --------------
@@ -22,15 +21,20 @@ SELECT name, namespace FROM ag_graph WHERE name = 'basic';
  basic | basic
 (1 row)
 
-SELECT * FROM cypher('basic', $$ CREATE (:person {name: 'Alice'}) $$) AS (a agtype);
-NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
-LINE 1: SELECT * FROM cypher('basic', $$ CREATE (:person {name: 'Ali...
-                                       ^
+-- meko_datapack_id, meko_user_id and meko_agent_id are NOT NULL on
+-- vertex/edge tables, so the cypher CREATE must supply them as properties.
+SELECT * FROM cypher('basic', $$ CREATE (:person {name: 'Alice',
+    meko_datapack_id: '00000000-0000-0000-0000-000000000001',
+    meko_user_id: '00000000-0000-0000-0000-000000000002',
+    meko_agent_id: 'agent-1'}) $$) AS (a agtype);
  a 
 ---
 (0 rows)
 
-SELECT * FROM cypher('basic', $$ CREATE (:person {name: 'Bob'}) $$) AS (a agtype);
+SELECT * FROM cypher('basic', $$ CREATE (:person {name: 'Bob',
+    meko_datapack_id: '00000000-0000-0000-0000-000000000001',
+    meko_user_id: '00000000-0000-0000-0000-000000000002',
+    meko_agent_id: 'agent-1'}) $$) AS (a agtype);
  a 
 ---
 (0 rows)
@@ -41,14 +45,94 @@ SELECT * FROM cypher('basic', $$ MATCH (n:person) RETURN count(n) $$) AS (cnt ag
  2
 (1 row)
 
+-- cypher CREATE without the required meko_* tenant properties errors out.
+SELECT * FROM cypher('basic', $$ CREATE (:person {name: 'NoTenant'}) $$) AS (a agtype);
+ERROR:  missing required tenant property "meko_datapack_id"
+-- SET cannot mutate meko_* tenant properties.
+SELECT * FROM cypher('basic', $$ MATCH (n:person {name: 'Alice'})
+    SET n.meko_user_id = '00000000-0000-0000-0000-000000000099' $$) AS (a agtype);
+ERROR:  tenant property "meko_user_id" cannot be modified by SET
+HINT:  Drop and recreate the vertex/edge to change its tenant identity.
+-- A full-map SET that targets meko_* keys is also rejected.
+SELECT * FROM cypher('basic', $$ MATCH (n:person {name: 'Alice'})
+    SET n = {name: 'Alice2',
+             meko_datapack_id: '00000000-0000-0000-0000-000000000099'} $$) AS (a agtype);
+ERROR:  tenant properties cannot be modified by SET
+HINT:  Drop and recreate the vertex/edge to change its tenant identity.
+-- A `+=` merge SET that targets meko_* keys is rejected too.
+SELECT * FROM cypher('basic', $$ MATCH (n:person {name: 'Alice'})
+    SET n += {meko_user_id: '00000000-0000-0000-0000-000000000099'} $$) AS (a agtype);
+ERROR:  tenant properties cannot be modified by SET
+HINT:  Drop and recreate the vertex/edge to change its tenant identity.
+-- A full-map SET that omits meko_* keys must NOT drop them from the JSON map,
+-- otherwise containment matches like {meko_user_id: ...} would miss the row.
+SELECT * FROM cypher('basic', $$ MATCH (n:person {name: 'Alice'})
+    SET n = {name: 'AliceRenamed'} $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('basic', $$ MATCH (n:person {meko_user_id:
+    '00000000-0000-0000-0000-000000000002'}) RETURN count(n) $$) AS (cnt agtype);
+ cnt 
+-----
+ 2
+(1 row)
+
+-- create_complete_graph and age_create_barbell_graph reach
+-- yb_insert_*_simple, which lacks tenant column support yet (#31338).
+-- Confirm they raise feature_not_supported rather than violating the
+-- meko_* NOT NULL constraints. The labels are pre-created so the test
+-- is independent of whether DDL inside a function rolls back on the
+-- ereport (release vs debug builds differ on this).
+SELECT create_vlabel('basic', 'gen_vertex');
+NOTICE:  VLabel "gen_vertex" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('basic', 'gen_edge');
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+NOTICE:  ELabel "gen_edge" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT create_complete_graph('basic', 3, 'gen_edge', 'gen_vertex');
+ERROR:  simple vertex insert is not supported on YugabyteDB yet (#31338)
+SELECT create_vlabel('basic', 'bb_vertex');
+NOTICE:  VLabel "bb_vertex" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('basic', 'bb_edge');
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+NOTICE:  substituting access method "lsm" for "btree" in YugabyteDB
+NOTICE:  ELabel "bb_edge" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT age_create_barbell_graph('basic', 3, 0, 'bb_vertex', NULL, 'bb_edge', NULL);
+ERROR:  simple vertex insert is not supported on YugabyteDB yet (#31338)
 RESET search_path;
 -- DROP EXTENSION must trigger ag_ProcessUtility_hook -> drop_age_extension,
 -- which cleans up the per-graph schema. The two count(*) queries below catch
 -- regressions in is_age_drop()'s extension-name match.
 DROP EXTENSION mage;
-NOTICE:  drop cascades to 3 other objects
+NOTICE:  drop cascades to 7 other objects
 DETAIL:  drop cascades to table basic._ag_label_edge
 drop cascades to table basic._ag_label_vertex
+drop cascades to table basic.bb_edge
+drop cascades to table basic.bb_vertex
+drop cascades to table basic.gen_edge
+drop cascades to table basic.gen_vertex
 drop cascades to table basic.person
 NOTICE:  graph "basic" has been dropped
 SELECT count(*) FROM pg_extension WHERE extname = 'mage';

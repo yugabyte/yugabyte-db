@@ -43,12 +43,6 @@ static bool json_validate(text *json);
 static Oid get_or_create_graph(const Name graph_name);
 static int32 get_or_create_label(Oid graph_oid, char *graph_name,
                                  char *label_name, char label_kind);
-static void yb_insert_edge_simple(Relation label_relation, graphid edge_id,
-                                  graphid start_id, graphid end_id,
-                                  agtype *edge_properties);
-static void yb_insert_vertex_simple(Relation label_relation, graphid vertex_id,
-                                    agtype *vertex_properties);
-
 agtype *create_empty_agtype(void)
 {
     agtype* out;
@@ -240,8 +234,7 @@ void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
                         graphid start_id, graphid end_id,
                         agtype *edge_properties)
 {
-
-    Datum values[6];
+    Datum values[4];
     bool nulls[4] = {false, false, false, false};
     Relation label_relation;
     HeapTuple tuple;
@@ -257,20 +250,17 @@ void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
     label_relation = table_open(get_label_relation(label_name, graph_oid),
                                 RowExclusiveLock);
 
+    if (IsYBRelation(label_relation))
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("simple edge insert is not supported on "
+                        "YugabyteDB yet (#31338)")));
+
     /* Form the tuple */
     values[0] = GRAPHID_GET_DATUM(edge_id);
     values[1] = GRAPHID_GET_DATUM(start_id);
     values[2] = GRAPHID_GET_DATUM(end_id);
     values[3] = AGTYPE_P_GET_DATUM((edge_properties));
-
-    if (IsYBRelation(label_relation))
-    {
-        yb_insert_edge_simple(label_relation, edge_id, start_id, end_id,
-                              edge_properties);
-        table_close(label_relation, RowExclusiveLock);
-        YbCommandCounterIncrement();
-        return;
-    }
 
     tuple = heap_form_tuple(RelationGetDescr(label_relation),
                             values, nulls);
@@ -319,13 +309,10 @@ void insert_vertex_simple(Oid graph_oid, char *label_name, graphid vertex_id,
                                 RowExclusiveLock);
 
     if (IsYBRelation(label_relation))
-    {
-        yb_insert_vertex_simple(label_relation, vertex_id,
-                                vertex_properties);
-        table_close(label_relation, RowExclusiveLock);
-        YbCommandCounterIncrement();
-        return;
-    }
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                 errmsg("simple vertex insert is not supported on "
+                        "YugabyteDB yet (#31338)")));
 
     /* Form the tuple */
     values[0] = GRAPHID_GET_DATUM(vertex_id);
@@ -505,65 +492,6 @@ Datum load_edges_from_file(PG_FUNCTION_ARGS)
     create_edges_from_csv_file(file_path_str, graph_name_str, graph_oid,
                                label_name_str, label_id, load_as_agtype);
     PG_RETURN_VOID();
-}
-
-static void yb_insert_edge_simple(Relation label_relation, graphid edge_id,
-                                  graphid start_id, graphid end_id,
-                                  agtype *edge_properties)
-{
-    EState *estate = CreateExecutorState();
-    ResultRelInfo *resultRelInfo = makeNode(ResultRelInfo);
-    TupleTableSlot *slot;
-
-    InitResultRelInfo(resultRelInfo, label_relation, 1, NULL,
-                      estate->es_instrument);
-    estate->es_result_relations = &resultRelInfo;
-
-    slot = MakeSingleTupleTableSlot(RelationGetDescr(label_relation),
-                                    &TTSOpsVirtual);
-    ExecClearTuple(slot);
-
-    slot->tts_values[0] = GRAPHID_GET_DATUM(edge_id);
-    slot->tts_isnull[0] = false;
-    slot->tts_values[1] = GRAPHID_GET_DATUM(start_id);
-    slot->tts_isnull[1] = false;
-    slot->tts_values[2] = GRAPHID_GET_DATUM(end_id);
-    slot->tts_isnull[2] = false;
-    slot->tts_values[3] = AGTYPE_P_GET_DATUM(edge_properties);
-    slot->tts_isnull[3] = false;
-
-    ExecStoreVirtualTuple(slot);
-    YBCHeapInsert(resultRelInfo, slot, NULL, estate, ONCONFLICT_NONE);
-
-    ExecDropSingleTupleTableSlot(slot);
-    FreeExecutorState(estate);
-}
-
-static void yb_insert_vertex_simple(Relation label_relation, graphid vertex_id,
-                                    agtype *vertex_properties)
-{
-    EState *estate = CreateExecutorState();
-    ResultRelInfo *resultRelInfo = makeNode(ResultRelInfo);
-    TupleTableSlot *slot;
-
-    InitResultRelInfo(resultRelInfo, label_relation, 1, NULL,
-                      estate->es_instrument);
-    estate->es_result_relations = &resultRelInfo;
-
-    slot = MakeSingleTupleTableSlot(RelationGetDescr(label_relation),
-                                    &TTSOpsVirtual);
-    ExecClearTuple(slot);
-
-    slot->tts_values[0] = GRAPHID_GET_DATUM(vertex_id);
-    slot->tts_isnull[0] = false;
-    slot->tts_values[1] = AGTYPE_P_GET_DATUM(vertex_properties);
-    slot->tts_isnull[1] = false;
-
-    ExecStoreVirtualTuple(slot);
-    YBCHeapInsert(resultRelInfo, slot, NULL, estate, ONCONFLICT_NONE);
-
-    ExecDropSingleTupleTableSlot(slot);
-    FreeExecutorState(estate);
 }
 
 /*
