@@ -55,13 +55,30 @@ You can set certain flags to increase performance using YugabyteDB in CI and CD 
 By default, YugabyteDB doesn't restrict DML and DDL concurrency. As a result, a DML statement can potentially operate using the old (prior to the DDL) or new schema; for example, an `ALTER TABLE <table> .. ADD COLUMN` DDL statement may add a new column while a `SELECT * from <table>` executes concurrently on the same relation. This can cause the following problems:
 
 - Errors such as `schema mismatch errors` or `catalog version mismatch`. The client should [retry such operations](https://www.yugabyte.com/blog/retry-mechanism-spring-boot-app/) whenever possible.
-- Inconsistencies. For example, cases such as alter tables that cause rewrites, or creating indexes nonconcurrently.
+- Inconsistencies. For example:
 
-To avoid this, you can manually enable [table-level locking](../../architecture/transactions/concurrency-control/#table-level-locks) {{<tags/feature/ea idea="1114">}}.
+    - A table rewrite like `ALTER TABLE ADD COLUMN c int DEFAULT random()` may create a rewritten table that does not include some concurrently written rows in the old table.
+    - `CREATE INDEX NONCONCURRENTLY` may create an index that does not include some concurrently written rows from the old table. For more information, see [Concurrent index creation](../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics).
+    - `ALTER TABLE ADD CONSTRAINT c NOT NULL` may still have some NULL entries for `c` if they were written concurrent to this DDL.
+    - Concurrent writes during `ALTER TABLE partition_parent ATTACH child` or `CREATE TABLE partition_child PARTITION OF parent` for the newly attached partition column range may end up in the default partition.
+
+To avoid this, you can:
+
+- manually pause writes during the DDL workload; or
+- enable {{<tags/feature/ea idea="1114">}}[table-level locking](../../architecture/transactions/concurrency-control/#table-level-locks).
+
+For specific DDLs, like `ALTER TABLE ADD CONSTRAINT`, an alternate workaround is to perform the action in two steps:
+
+```sql
+ALTER TABLE ADD CONSTRAINT ... INVALID
+ALTER TABLE ... VALIDATE CONSTRAINT
+```
+
+This should be safe to do even without table locking enabled.
+
+For `ALTER TABLE partition_parent ATTACH child`, you can first add `CHECK` constraints to the existing partitions that exclude the newly attached range of partition columns from the existing partitions. This can guarantee that no rows are present in or can be inserted for this range to the existing partitions before adding the new partition.
 
 Most DDL statements complete quickly, so this is typically not a significant issue in practice. However, [certain kinds of ALTER TABLE DDL statements](../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) involve making a full copy of the table(s) whose schema is being modified. For these operations, it is not recommended to run any concurrent DML statements on the table being modified by the `ALTER TABLE`, as the effect of such concurrent DML may not be reflected in the table copy.
-
-Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table; for more information, see [Concurrent index creation](../../api/ysql/the-sql-language/statements/ddl_create_index/#semantics).
 
 ## Concurrent DDL during a DDL operation
 
