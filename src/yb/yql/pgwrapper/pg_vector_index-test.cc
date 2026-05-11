@@ -27,6 +27,7 @@
 
 #include "yb/docdb/docdb_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -85,6 +86,8 @@ DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
@@ -179,6 +182,8 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     // (Auto-Analyze #28666)
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
     itest::SetupQuickSplit(1_KB);
+    // Most tests assume a stable tablet layout and perform manual splits explicitly.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = false;
 
     PgMiniTestBase::SetUp();
 
@@ -191,6 +196,47 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
 
   Result<PGConn> Connect() const override {
     return IsColocated() ? ConnectToDB("colocated_db") : PgMiniTestBase::Connect();
+  }
+
+  Status WaitForTabletSplit(const TableId& table_id, size_t num_splits = 1) {
+    auto active_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+    const auto orig_tablets_count = active_tablet_ids.size();
+
+    auto table = VERIFY_RESULT(client_->OpenTable(table_id));
+    auto partition_list_version = table->GetPartitionListVersion();
+    const auto orig_partition_list_version = partition_list_version;
+
+    LOG(INFO) << "Waiting for " << num_splits << " tablet split(s) on table " << table_id
+              << ", partition_list_version: " << partition_list_version
+              << ", orig_tablets_count: " << orig_tablets_count;
+
+    const auto deadline = CoarseMonoClock::Now() + 60s * kTimeMultiplier;
+    while (partition_list_version == orig_partition_list_version) {
+      if (CoarseMonoClock::Now() > deadline) {
+        return STATUS(TimedOut, "Timed out waiting for partition list version to change");
+      }
+      std::this_thread::sleep_for(250ms);
+      Synchronizer synchronizer;
+      table->RefreshPartitions(client_.get(), synchronizer.AsStdStatusCallback());
+      RETURN_NOT_OK(synchronizer.Wait());
+      partition_list_version = table->GetPartitionListVersion();
+    }
+
+    while (active_tablet_ids.size() < orig_tablets_count + num_splits) {
+      if (CoarseMonoClock::Now() > deadline) {
+        return STATUS(
+            TimedOut,
+            Format(
+                "Timed out waiting for tablet split, active_tablets_count: $0",
+                active_tablet_ids.size()));
+      }
+      std::this_thread::sleep_for(250ms);
+      active_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+    }
+
+    LOG(INFO) << "Tablet split completed, partition_list_version: " << partition_list_version
+              << ", active_tablets_count: " << active_tablet_ids.size();
+    return Status::OK();
   }
 
   Result<PGConn> MakeTable(size_t dimensions = 3) {
@@ -2836,6 +2882,21 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
     return output;
   }
 };
+
+TEST_F(PgVectorIndexUtilTest, AutomaticTabletSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = true;
+
+  constexpr size_t kNumRows = RegularBuildVsSanitizers(500, 64);
+  constexpr size_t kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  ASSERT_OK(WaitForTabletSplit(table_id));
+
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
 
 TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_skip_reverse_mapping_backfill) = true;
