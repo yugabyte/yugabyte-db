@@ -6276,4 +6276,115 @@ TEST_F_EX(
       "SELECT value FROM test_table WHERE key = 1")), "row_1");
 }
 
+// Fixture for the clone-with-multiple-colocation-parents repro. We need the
+// PG-side gflag `ysql_enable_colocated_tables_with_tablespaces` enabled (it
+// is NON_RUNTIME and defaults to false) on both master and tserver so that
+// `TABLESPACE ts_x` on a colocated table promotes the table into a distinct
+// implicit `colocation_<ts_x_oid>` tablegroup -- and therefore its own
+// colocated parent table -- rather than being lumped into the database's
+// single default colocated parent.
+class YbAdminCloneColocationTablespaceTest : public YbAdminSnapshotScheduleTestWithLBYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithLBYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_master_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
+    opts->extra_master_flags.emplace_back("--enable_db_clone=true");
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_colocated_tables_with_tablespaces=true");
+  }
+};
+
+// In a colocated YSQL database with
+// `ysql_enable_colocated_tables_with_tablespaces=true`, every distinct
+// tablespace that backs at least one colocated relation gets its own
+// implicit `colocation_<tablespace_oid>` tablegroup, and therefore its own
+// colocated parent table on the source side. This test ensures the import snapshot workflow can
+// handle multiple parent colocated tables.
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, ColocatedCloneWithMultipleTablespaces,
+    YbAdminCloneColocationTablespaceTest) {
+  const std::string kSourceDb = "src_db";
+  const std::string kClonedDb = "cloned_db";
+
+  ASSERT_OK(PrepareCommon());
+
+  // Add tservers in three zones so a tablespace with a 3-replica zone-pinned
+  // placement is satisfiable.
+  ASSERT_OK(AddTServerInZone("z1", 4));
+  ASSERT_OK(AddTServerInZone("z2", 5));
+  ASSERT_OK(AddTServerInZone("z3", 6));
+
+  auto conn = ASSERT_RESULT(PgConnect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = TRUE", kSourceDb));
+
+  auto src_conn = ASSERT_RESULT(PgConnect(kSourceDb));
+
+  // Two tablespaces backed by the same 3-zone placement. We just need the
+  // tablespace OIDs to differ so each gets its own implicit colocation
+  // tablegroup, the placements aren't important.
+  const std::string kPlacementBlocks =
+      "[{\"cloud\":\"c1\", \"region\":\"r1\", \"zone\":\"z1\", \"min_num_replicas\":1}, "
+      "{\"cloud\":\"c1\", \"region\":\"r1\", \"zone\":\"z2\", \"min_num_replicas\":1}, "
+      "{\"cloud\":\"c1\", \"region\":\"r1\", \"zone\":\"z3\", \"min_num_replicas\":1}]";
+  ASSERT_OK(src_conn.ExecuteFormat(
+      "CREATE TABLESPACE ts_a WITH (replica_placement="
+      "'{\"num_replicas\": 3, \"placement_blocks\": $0}')",
+      kPlacementBlocks));
+  ASSERT_OK(src_conn.ExecuteFormat(
+      "CREATE TABLESPACE ts_b WITH (replica_placement="
+      "'{\"num_replicas\": 3, \"placement_blocks\": $0}')",
+      kPlacementBlocks));
+
+  // Partition `customer` and put each partition in a different tablespace. With
+  // ysql_enable_colocated_tables_with_tablespaces on, each `TABLESPACE ts_x` clause on a partition
+  // forces creation of a distinct implicit colocation_<ts_x_oid> tablegroup, so the source DB ends
+  // up with three colocated parent tables (default + ts_a + ts_b).
+  ASSERT_OK(src_conn.Execute(
+      "CREATE TABLE customer (id INT, region INT, value TEXT, "
+      "PRIMARY KEY (id, region)) PARTITION BY LIST (region)"));
+  ASSERT_OK(src_conn.Execute(
+      "CREATE TABLE customer_default PARTITION OF customer DEFAULT"));
+  ASSERT_OK(src_conn.Execute(
+      "CREATE TABLE customer_a PARTITION OF customer "
+      "FOR VALUES IN (1, 2, 3) TABLESPACE ts_a"));
+  ASSERT_OK(src_conn.Execute(
+      "CREATE TABLE customer_b PARTITION OF customer "
+      "FOR VALUES IN (4, 5, 6) TABLESPACE ts_b"));
+  ASSERT_OK(src_conn.Execute(
+      "INSERT INTO customer "
+      "SELECT g, ((g - 1) % 7) + 0, 'v_' || g FROM generate_series(1, 60) g"));
+
+  // Sanity-check that the source really has more than one colocation parent.
+  // Each implicit tablegroup created above corresponds to one
+  // `*.colocation.parent.*` table in the master catalog.
+  ASSERT_GE(
+      ASSERT_RESULT(src_conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
+      2);
+
+  // Schedule must exist and cover restore_at for `clone_namespace` to work.
+  auto schedule_id = ASSERT_RESULT(CreateSnapshotScheduleAndWaitSnapshot(
+      "ysql." + kSourceDb, kInterval, kRetention));
+
+  Timestamp restore_at = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(CloneAndWait(
+      "ysql." + kSourceDb, kClonedDb, 2min /* timeout */,
+      restore_at.ToFormattedString()));
+
+  auto clone_conn = ASSERT_RESULT(PgConnect(kClonedDb));
+  ASSERT_EQ(ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM customer")), 60);
+  for (const auto& comparison_query :
+       {"SELECT COUNT(*) FROM customer WHERE region IN (1, 2, 3)",
+        "SELECT COUNT(*) FROM customer WHERE region IN (4, 5, 6)"}) {
+    auto actual = ASSERT_RESULT(clone_conn.FetchRow<int64_t>(comparison_query));
+    auto expected = ASSERT_RESULT(src_conn.FetchRow<int64_t>(comparison_query));
+    ASSERT_EQ(actual, expected);
+  }
+  // Sanity check that the target contains more than 1 colocation target.
+  ASSERT_GE(
+      ASSERT_RESULT(clone_conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
+      2);
+}
+
 }  // namespace yb::tools
