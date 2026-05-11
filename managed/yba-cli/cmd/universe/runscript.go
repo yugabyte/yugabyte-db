@@ -193,6 +193,13 @@ yba universe run-script --name <universe-name> \
 			util.FatalHTTPError(httpResponse, err, "Universe: Run Script", "Run")
 		}
 
+		ctx := formatter.Context{
+			Command: "run",
+			Output:  os.Stdout,
+			Format:  rsformatter.NewSummaryFormat(viper.GetString("output")),
+		}
+		rsformatter.WriteResponse(ctx, resp)
+
 		summary := resp.GetSummary()
 		if summary.GetAllSucceeded() {
 			logrus.Info(
@@ -213,13 +220,6 @@ yba universe run-script --name <universe-name> \
 				),
 			)
 		}
-
-		ctx := formatter.Context{
-			Command: "run",
-			Output:  os.Stdout,
-			Format:  rsformatter.NewSummaryFormat(viper.GetString("output")),
-		}
-		rsformatter.WriteResponse(ctx, resp)
 	},
 }
 
@@ -233,16 +233,16 @@ func init() {
 	runScriptCmd.Flags().Bool("skip-validations", false,
 		"[Optional] Skip validations before running the script. [default: false]")
 	runScriptCmd.Flags().String("script-content", "",
-		fmt.Sprintf("[Optional*] Inline script content to execute on nodes. %s",
+		fmt.Sprintf("[Optional] Inline script content to execute on nodes. %s",
 			formatter.Colorize(
-				"Mutually exclusive with --script-file.",
-				formatter.YellowColor,
+				"Mutually exclusive with script-file.",
+				formatter.GreenColor,
 			)))
 	runScriptCmd.Flags().String("script-file", "",
-		fmt.Sprintf("[Optional*] Path to a script file on the YBA node. %s",
+		fmt.Sprintf("[Optional] Path to a script file on the YBA node. %s",
 			formatter.Colorize(
-				"Mutually exclusive with --script-content.",
-				formatter.YellowColor,
+				"Mutually exclusive with script-content.",
+				formatter.GreenColor,
 			)))
 	runScriptCmd.MarkFlagsMutuallyExclusive("script-content", "script-file")
 
