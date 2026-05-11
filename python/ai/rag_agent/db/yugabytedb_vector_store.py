@@ -35,8 +35,8 @@ class YugabyteDBVectorStore:
         """Return a connection to the pool."""
         self.pool.return_connection(conn)
 
-    def _table_exists(self, conn, table_name):
-        """Check if the table exists using information_schema."""
+    def _table_exists(self, conn, table_name, table_schema):
+        """Check if the table exists in the given schema using information_schema."""
         cur = conn.cursor()
         try:
             # Query information_schema to check if table exists
@@ -44,10 +44,10 @@ class YugabyteDBVectorStore:
                 """
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.tables
-                    WHERE table_name = %s
+                    WHERE table_schema = %s AND table_name = %s
                 )
                 """,
-                (table_name,)
+                (table_schema, table_name)
             )
             result = cur.fetchone()[0]
             cur.close()
@@ -58,18 +58,18 @@ class YugabyteDBVectorStore:
             conn.rollback()  # Rollback explicitly on error
             raise
 
-    def _ensure_table_exists(self, table_name):
-        """Ensure the vector store table exists, creating it only if needed."""
+    def _ensure_table_exists(self, table_name, schema):
+        """Ensure the vector store table exists in the given schema."""
         conn = None
         try:
             conn = self._get_connection()
 
             # Check if table exists first
-            if self._table_exists(conn, table_name):
-                self.logger.info(f"Table '{table_name}' exists.")
+            if self._table_exists(conn, table_name, schema):
+                self.logger.info(f"Table '{schema}.{table_name}' exists.")
                 return True
 
-            self.logger.info(f"Table '{self.schema}.{table_name}' doesn't exist.")
+            self.logger.info(f"Table '{schema}.{table_name}' doesn't exist.")
             return False
 
         except Exception as e:
@@ -88,9 +88,10 @@ class YugabyteDBVectorStore:
         table_name,
         embedding_iterator,
         pipeline_id,
-        schema="public",
+        schema=None,
         metadata=None,
-        batch_size=100
+        batch_size=100,
+        tenant_id=None
     ):
         """
         Insert (chunk_text, embedding_vector) from iterable generator into the vector store.
@@ -99,11 +100,20 @@ class YugabyteDBVectorStore:
             document_id: UUID of the source document
             table_name: Name of the table to insert into
             embedding_iterator: Generator yielding (chunk_text, embedding_vector) tuples
+            pipeline_id: Pipeline tracking id
+            schema: Schema the backing vector table lives in. If None, falls back
+                to the schema this instance was constructed with (default 'public').
+                Resolved per-call so a single store instance can write to indexes
+                that live in different schemas.
             metadata: Optional metadata dictionary
             batch_size: Number of records to insert per batch
+            tenant_id: Optional UUID identifying the tenant. When None, the
+                row is written with SQL NULL (i.e. "no tenant").
         """
-        if not self._ensure_table_exists(table_name):
-            raise ValueError(f"Table '{self.schema}.{table_name}' doesn't exist.")
+        # Resolve schema per call (caller-supplied beats constructor default).
+        target_schema = schema or self.schema
+        if not self._ensure_table_exists(table_name, target_schema):
+            raise ValueError(f"Table '{target_schema}.{table_name}' doesn't exist.")
 
         conn = None
         try:
@@ -113,21 +123,26 @@ class YugabyteDBVectorStore:
             # Convert metadata to JSON string if it's a dict
             metadata_json = json.dumps(metadata) if metadata is not None else json.dumps({})
 
+            insert_stmt = sql.SQL(
+                "INSERT INTO {schema}.{table} "
+                "(chunk_text, embeddings, document_id, tenant_id, "
+                "metadata_filters) VALUES (%s, %s, %s, %s, %s)"
+            ).format(
+                schema=sql.Identifier(target_schema),
+                table=sql.Identifier(table_name),
+            )
+
             batch = []
             total_inserted = 0
             items_yielded = 0
             for chunk_text, embedding_vector in embedding_iterator:
                 items_yielded += 1
                 batch.append(
-                    (chunk_text, embedding_vector, document_id, metadata_json)
+                    (chunk_text, embedding_vector, document_id,
+                     tenant_id, metadata_json)
                 )
                 if len(batch) >= batch_size:
-                    cur.executemany(
-                        f"INSERT INTO {self.schema}.{table_name} "
-                        "(chunk_text, embeddings, document_id, "
-                        "metadata_filters) VALUES (%s, %s, %s, %s)",
-                        batch,
-                    )
+                    cur.executemany(insert_stmt, batch)
                     rows_inserted = cur.rowcount
                     total_inserted += rows_inserted
                     self.pipeline_tracking.update_embeddings_persisted(
@@ -136,7 +151,7 @@ class YugabyteDBVectorStore:
                     )
                     self.logger.info(
                         f"Inserted batch of {rows_inserted} rows into "
-                        f"{self.schema}.{table_name} (total so far: "
+                        f"{target_schema}.{table_name} (total so far: "
                         f"{total_inserted}, items yielded: {items_yielded})"
                     )
                     conn.commit()
@@ -144,12 +159,7 @@ class YugabyteDBVectorStore:
 
             # Insert any remaining items in the batch
             if batch:
-                cur.executemany(
-                    f"INSERT INTO {self.schema}.{table_name} "
-                    "(chunk_text, embeddings, document_id, "
-                    "metadata_filters) VALUES (%s, %s, %s, %s)",
-                    batch
-                )
+                cur.executemany(insert_stmt, batch)
                 rows_inserted = cur.rowcount
                 total_inserted += rows_inserted
                 self.pipeline_tracking.update_embeddings_persisted(
@@ -158,13 +168,13 @@ class YugabyteDBVectorStore:
                 )
                 self.logger.info(
                     f"Inserted final batch of {rows_inserted} rows into "
-                    f"{self.schema}.{table_name} (total: {total_inserted})"
+                    f"{target_schema}.{table_name} (total: {total_inserted})"
                 )
                 conn.commit()
 
             self.logger.info(
                 f"Completed inserting all {total_inserted} embeddings into "
-                f"{self.schema}.{table_name} (total items yielded by "
+                f"{target_schema}.{table_name} (total items yielded by "
                 f"generator: {items_yielded})"
             )
             cur.close()
@@ -183,27 +193,41 @@ class YugabyteDBVectorStore:
         self,
         table_name,
         distance_metric="vector_cosine_ops",
-        index_type="ybhnsw"
+        index_type="ybhnsw",
+        table_schema=None
     ):
         """
         Create an index on the embeddings column of the table.
+
+        Args:
+            table_name: Backing vector table to index.
+            distance_metric: pgvector ops class (e.g. vector_cosine_ops).
+            index_type: Index method (currently always ybhnsw).
+            table_schema: Schema the table lives in. If None, falls back to
+                the schema this instance was constructed with.
         """
+        target_schema = table_schema or self.schema
         conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
 
             # Try to create the index, ignore error if it already exists
-            sql_create_index = f"""
-                CREATE INDEX IF NOT EXISTS idx_{table_name}_embeddings
-                ON {self.schema}.{table_name}
-                USING ybhnsw (embeddings {distance_metric});
-            """
+            sql_create_index = sql.SQL(
+                "CREATE INDEX IF NOT EXISTS {idx_name} "
+                "ON {schema}.{table} "
+                "USING ybhnsw (embeddings {ops_class})"
+            ).format(
+                idx_name=sql.Identifier(f"idx_{table_name}_embeddings"),
+                schema=sql.Identifier(target_schema),
+                table=sql.Identifier(table_name),
+                ops_class=sql.SQL(distance_metric),
+            )
             cur.execute(sql_create_index)
 
             conn.commit()
             cur.close()
-            self.logger.info(f"Index created successfully on {self.schema}.{table_name}")
+            self.logger.info(f"Index created successfully on {target_schema}.{table_name}")
         except Exception as e:
             if conn:
                 conn.rollback()

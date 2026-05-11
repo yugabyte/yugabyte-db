@@ -41,8 +41,9 @@ class SourceDocumentTracking:
                     document_name,
                     document_uri,
                     document_checksum,
+                    document_type,
                     status
-                ) VALUES (%s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING document_id;
             """
 
@@ -50,12 +51,13 @@ class SourceDocumentTracking:
             document_name = document_metadata.document_name
             document_uri = document_metadata.document_uri
             document_checksum = document_metadata.document_checksum
+            document_type = document_metadata.document_type
             status = document_metadata.status
 
             cursor.execute(
                 query,
                 (source_id, document_name, document_uri,
-                 document_checksum, status)
+                 document_checksum, document_type, status)
             )
             document_id = cursor.fetchone()[0]
             connection.commit()

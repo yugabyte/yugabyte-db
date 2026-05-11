@@ -8,7 +8,7 @@ from unstructured.partition.pdf import partition_pdf
 from unstructured.partition.auto import partition
 from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_core.documents import Document
-from rag_pipeline.chunk import chunk_langchain_docs
+from rag_pipeline.chunk import chunk_langchain_docs, DEFAULT_SPLITTER, DEFAULT_ARGS
 
 
 class PDFProcessor:
@@ -214,14 +214,8 @@ class PDFProcessor:
         )
 
         # nikhil-todo: chunk args should be configured from the request chunk_embedding_kwargs.
-        # Use default splitter and args if not provided
-        splitter = chunk_args.get('splitter', 'recursive_character')
-        args = chunk_args.get(
-            'args', '{"chunk_size": 1000, "chunk_overlap": 100}'
-        )
-        logging.debug(
-            f"chunking paragraph: with splitter: {splitter} and args: {args}"
-        )
+        splitter = chunk_args.get('splitter', DEFAULT_SPLITTER)
+        args = chunk_args.get('args', DEFAULT_ARGS)
         chunked_docs = chunk_langchain_docs(splitter, langchain_docs_from_pdf, args)
         for chunked_text in chunked_docs:
             yield chunked_text

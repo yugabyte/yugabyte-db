@@ -1,6 +1,7 @@
 from db.active_pipeline_tracking import PipelineTracking
 from langchain_openai import OpenAIEmbeddings
 from pdf_processing import PDFProcessor
+from html_processing import HTMLProcessor
 import logging
 import psycopg
 import os
@@ -14,7 +15,8 @@ class EmbeddingsGenerator:
         self,
         embedding_model: str = "text-embedding-ada-002",
         llm_api_key: str = None,
-        embedding_model_params: dict = None
+        embedding_model_params: dict = None,
+        batch_size: int = 100
     ):
         """
         Initialize the EmbeddingsGenerator.
@@ -24,9 +26,12 @@ class EmbeddingsGenerator:
                 Defaults to "text-embedding-ada-002".
             llm_api_key (str, optional): OpenAI API key.
                 If None, uses environment variable.
+            batch_size (int): Number of chunks to embed in a single API call.
+                Defaults to 100. Max supported by OpenAI is 2048.
         """
         self.embedding_model = embedding_model
         self.embedding_dimensions = embedding_model_params.get('dimensions')
+        self.batch_size = batch_size
         # nikhil-todo: add support for other LLMs.
         self.llm_api_key = llm_api_key or os.getenv("OPENAI_API_KEY")
         self.embedder = OpenAIEmbeddings(
@@ -39,6 +44,7 @@ class EmbeddingsGenerator:
         #                         callbacks=[ConsoleCallbackHandler()])
 
         self.pdf_processor = PDFProcessor()
+        self.html_processor = HTMLProcessor()
         self.pipeline_tracking = PipelineTracking()
 
     def _generate_embeddings_for_text_files(
@@ -52,19 +58,29 @@ class EmbeddingsGenerator:
         yielded_count = 0
         chunk_count = 0
         empty_chunk_count = 0
+        batch_texts = []
+
         for chunk_text in stream_partition_and_chunk(
             pipeline_id, file_location, chunk_args
         ):
             chunk_count += 1
             if chunk_text.strip():
-                try:
-                    embedding_vector = self.embedder.embed_documents(
-                        [chunk_text]
-                    )[0]
-                    # Update the embeddings generated count for the pipeline
-                    yielded_count += 1
+                batch_texts.append(chunk_text)
 
-                    # Update the embedding progress for the pipeline
+                if len(batch_texts) >= self.batch_size:
+                    try:
+                        vectors = self.embedder.embed_documents(batch_texts)
+                        for text, vec in zip(batch_texts, vectors):
+                            yielded_count += 1
+                            yield text, vec
+                    except Exception as e:
+                        logging.error(
+                            f"Failed to generate embeddings for batch "
+                            f"ending at chunk {chunk_count} in file "
+                            f"{file_location}: {str(e)}"
+                        )
+                    batch_texts = []
+
                     try:
                         self.pipeline_tracking.update_chunks_processed(
                             pipeline_id=pipeline_id,
@@ -74,19 +90,21 @@ class EmbeddingsGenerator:
                         logging.error(
                             f"Failed to update embeddings generated: {str(e)}"
                         )
-
-                    yield chunk_text, embedding_vector
-                except Exception as e:
-                    logging.error(
-                        f"Failed to generate embedding for chunk "
-                        f"{chunk_count} in file {file_location}: {str(e)}"
-                    )
-                    # Continue to next chunk instead of stopping
-                    continue
             else:
                 empty_chunk_count += 1
 
-        # Update the embedding progress for the pipeline
+        if batch_texts:
+            try:
+                vectors = self.embedder.embed_documents(batch_texts)
+                for text, vec in zip(batch_texts, vectors):
+                    yielded_count += 1
+                    yield text, vec
+            except Exception as e:
+                logging.error(
+                    f"Failed to generate embeddings for final batch "
+                    f"in file {file_location}: {str(e)}"
+                )
+
         try:
             self.pipeline_tracking.update_chunks_processed(
                 pipeline_id=pipeline_id, chunks_count=chunk_count
@@ -109,26 +127,85 @@ class EmbeddingsGenerator:
         """Generate embeddings for PDF files."""
         yielded_count = 0
         chunk_count = 0
-        for chunk_text in self.pdf_processor.process_pdf_data(file_location):
+        batch_texts = []
+
+        for chunk_doc in self.pdf_processor.process_pdf_data(file_location):
             chunk_count += 1
-            embedding_vector = self.embedder.embed_documents(
-                [chunk_text.page_content]
-            )[0]
-            yielded_count += 1
+            batch_texts.append(chunk_doc.page_content)
 
-            # Update the embeddings generated count for the pipeline
-            try:
-                self.pipeline_tracking.update_chunks_processed(
-                    pipeline_id=pipeline_id, chunks_count=chunk_count
-                )
-            except Exception as e:
-                logging.error(
-                    f"Failed to update embeddings generated: {str(e)}"
-                )
+            if len(batch_texts) >= self.batch_size:
+                vectors = self.embedder.embed_documents(batch_texts)
+                for text, vec in zip(batch_texts, vectors):
+                    yielded_count += 1
+                    yield text, vec
+                batch_texts = []
 
-            yield chunk_text.page_content, embedding_vector
+                try:
+                    self.pipeline_tracking.update_chunks_processed(
+                        pipeline_id=pipeline_id, chunks_count=chunk_count
+                    )
+                except Exception as e:
+                    logging.error(
+                        f"Failed to update embeddings generated: {str(e)}"
+                    )
 
-        # Update the embedding progress for the pipeline
+        if batch_texts:
+            vectors = self.embedder.embed_documents(batch_texts)
+            for text, vec in zip(batch_texts, vectors):
+                yielded_count += 1
+                yield text, vec
+
+        try:
+            self.pipeline_tracking.update_chunks_processed(
+                pipeline_id=pipeline_id, chunks_count=chunk_count
+            )
+        except Exception as e:
+            logging.error(f"Failed to update embeddings generated: {str(e)}")
+
+        logging.info(
+            f"Finished generating embeddings for {file_location}: "
+            f"{chunk_count} total chunks, {yielded_count} embeddings yielded"
+        )
+
+    def _generate_embeddings_for_html_file(
+        self,
+        pipeline_id: int,
+        file_location: str,
+        chunk_args=None
+    ):
+        """Generate embeddings for HTML files using structure-aware partitioning."""
+        yielded_count = 0
+        chunk_count = 0
+        batch_texts = []
+
+        for chunk_doc in self.html_processor.process_html_data(
+            file_location, chunk_args or {}
+        ):
+            chunk_count += 1
+            batch_texts.append(chunk_doc.page_content)
+
+            if len(batch_texts) >= self.batch_size:
+                vectors = self.embedder.embed_documents(batch_texts)
+                for text, vec in zip(batch_texts, vectors):
+                    yielded_count += 1
+                    yield text, vec
+                batch_texts = []
+
+                try:
+                    self.pipeline_tracking.update_chunks_processed(
+                        pipeline_id=pipeline_id, chunks_count=chunk_count
+                    )
+                except Exception as e:
+                    logging.error(
+                        f"Failed to update embeddings generated: {str(e)}"
+                    )
+
+        if batch_texts:
+            vectors = self.embedder.embed_documents(batch_texts)
+            for text, vec in zip(batch_texts, vectors):
+                yielded_count += 1
+                yield text, vec
+
         try:
             self.pipeline_tracking.update_chunks_processed(
                 pipeline_id=pipeline_id, chunks_count=chunk_count
@@ -167,9 +244,24 @@ class EmbeddingsGenerator:
             f"for file: {file_location}"
         )
 
+        if file_location.startswith(("http://", "https://")):
+            return self._generate_embeddings_for_html_file(
+                pipeline_id, file_location, chunk_args
+            )
+
         file_type, _ = mimetypes.guess_type(file_location)
-        if file_type == 'text/plain' or file_type == 'application/json':
+        if file_type in (
+            'text/plain',
+            'application/json',
+            'text/markdown',
+            'text/csv',
+            'text/xml',
+        ):
             return self._generate_embeddings_for_text_files(
+                pipeline_id, file_location, chunk_args
+            )
+        elif file_type == 'text/html':
+            return self._generate_embeddings_for_html_file(
                 pipeline_id, file_location, chunk_args
             )
         elif file_type == 'application/pdf':
