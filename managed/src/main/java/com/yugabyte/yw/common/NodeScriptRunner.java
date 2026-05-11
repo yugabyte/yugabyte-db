@@ -7,7 +7,6 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -200,13 +199,14 @@ public class NodeScriptRunner {
             nodeUniverseManager.runScript(
                 node, universe, scriptParams.getScriptFile(), params, context);
       } else {
-        // Run inline script content - we construct the bash command ourselves
-        // to avoid the double-quoting issue in getBashCommand when script contains spaces
-        StringBuilder scriptCmd = new StringBuilder(scriptParams.getScriptContent());
+        List<String> cmd = new ArrayList<>();
+        cmd.add("bash");
+        cmd.add("-c");
+        cmd.add(scriptParams.getScriptContent());
         if (!params.isEmpty()) {
-          scriptCmd.append(" ").append(String.join(" ", params));
+          cmd.add("--"); // $0 placeholder required by bash -c for positional args to work
+          cmd.addAll(params); // become $1, $2, ...
         }
-        List<String> cmd = Arrays.asList("bash", "-c", scriptCmd.toString());
         response = nodeUniverseManager.runCommand(node, universe, cmd, context, false);
       }
 
