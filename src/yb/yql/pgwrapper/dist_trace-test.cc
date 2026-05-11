@@ -67,6 +67,8 @@ namespace otlp_resource = opentelemetry::proto::resource::v1;
 static constexpr auto kOtelBatchMaxQueueSize = 4096;
 static constexpr auto kOtelBatchMaxExportBatchSize = 512;
 static constexpr auto kOtelBatchScheduleDelayMs = 100;
+static constexpr auto kSharedMemoryPerformSpanName =
+    "shmem req yb.tserver.PgClientService.Perform";
 
 YB_DEFINE_ENUM(QueryExecMode, (kFetch)(kExecute));
 YB_STRONGLY_TYPED_BOOL(IsUtility);
@@ -183,6 +185,12 @@ class OtlpHttpCollector {
       "SetOp", "LockRows", "Limit",
   };
 
+  static bool ShouldIgnoreForQuerySpanComparison(const Span& span) {
+    return kExecutorNodeSpanNames.contains(span.op_name) ||
+           span.op_name.starts_with("shmem req ") ||
+           span.op_name.starts_with("rpc ");
+  }
+
  public:
   Status Start() {
     WebserverOptions opts;
@@ -211,16 +219,13 @@ class OtlpHttpCollector {
   }
 
   Status VerifySpansMatch(const Trace& actual, const Trace& expected) const {
-    // Filter out spans covered by dedicated tests before comparison. Executor node
-    // span counts vary with row cardinality, and RPC spans vary with the DocDB
-    // requests needed to execute a statement.
+    // Filter out auxiliary spans before comparing the core query trace. Executor node
+    // spans have variable row-count-dependent cardinality, and shared-memory request
+    // spans are covered by dedicated tests below.
     std::vector<Span> filtered_actual;
     std::copy_if(actual.spans.begin(), actual.spans.end(),
                  std::back_inserter(filtered_actual),
-                 [](const Span& s) {
-                   return !kExecutorNodeSpanNames.contains(s.op_name) &&
-                          !s.op_name.starts_with("rpc ");
-                 });
+                 [](const Span& span) { return !ShouldIgnoreForQuerySpanComparison(span); });
 
     SCHECK_EQ(filtered_actual.size(), expected.spans.size(), IllegalState,
         Format("Span count mismatch for query '$0': expected $1, got $2",
@@ -255,13 +260,10 @@ class OtlpHttpCollector {
           for (const auto& expected : expected_traces) {
             auto it = traces_.find(expected.trace_id);
             if (it == traces_.end()) return false;
-            auto non_exec_count = std::count_if(
+            auto comparable_count = std::count_if(
                 it->second.spans.begin(), it->second.spans.end(),
-                [](const Span& s) {
-                  return !kExecutorNodeSpanNames.contains(s.op_name) &&
-                         !s.op_name.starts_with("rpc ");
-                });
-            if (non_exec_count < static_cast<int64_t>(expected.spans.size())) {
+                [](const Span& span) { return !ShouldIgnoreForQuerySpanComparison(span); });
+            if (comparable_count < static_cast<int64_t>(expected.spans.size())) {
               return false;
             }
           }
@@ -384,11 +386,17 @@ class OtlpHttpCollector {
 
   std::optional<Span> FindRpcSpanWithTableName(
       const std::string& trace_id, std::string_view table_name) const EXCLUDES(mutex_) {
+    return FindSpanWithNamePrefixAndTableName(trace_id, "rpc ", table_name);
+  }
+
+  std::optional<Span> FindSpanWithNamePrefixAndTableName(
+      const std::string& trace_id, std::string_view span_name_prefix,
+      std::string_view table_name) const EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     auto it = traces_.find(trace_id);
     if (it == traces_.end()) return std::nullopt;
     for (const auto& span : it->second.spans) {
-      if (!span.op_name.starts_with("rpc ")) {
+      if (!span.op_name.starts_with(span_name_prefix)) {
         continue;
       }
       auto table_names_it = span.str_attrs.find("rpc.table_names");
@@ -720,6 +728,21 @@ class DistTraceTest : public LibPqTestBase {
     return Status::OK();
   }
 
+  Result<Span> WaitForSpanWithTableName(
+      const std::string& trace_id, std::string_view span_name_prefix,
+      std::string_view table_name) const {
+    std::optional<Span> span;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          span = collector_.FindSpanWithNamePrefixAndTableName(
+              trace_id, span_name_prefix, table_name);
+          return span.has_value();
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+        Format("$0 span with table name '$1' to appear", span_name_prefix, table_name)));
+    return *span;
+  }
+
   std::vector<std::string>& CaptureWarnings() {
     warnings_.clear();
     conn_->SetNoticeProcessor(
@@ -748,13 +771,6 @@ class DistTraceTest : public LibPqTestBase {
   std::vector<std::string> warnings_;
 };
 
-class DistTraceRpcTest : public DistTraceTest {
- protected:
-  bool UsePgClientSharedMemory() const override {
-    return false;
-  }
-};
-
 class DistTraceDisabledTest : public DistTraceTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -767,6 +783,13 @@ class DistTraceDisabledTest : public DistTraceTest {
 
   int GetNumTabletServers() const override {
     return 1;
+  }
+};
+
+class DistTraceRpcTest : public DistTraceTest {
+ protected:
+  bool UsePgClientSharedMemory() const override {
+    return false;
   }
 };
 
@@ -1357,6 +1380,47 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolGuc) {
            {SpanType::kExtSync, 1},
            {SpanType::kCommit, 1}}),
   }));
+}
+
+TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForRead) {
+  static constexpr auto kTableName = "shmem_read_test";
+  ASSERT_OK(CreateTable(kTableName, 5));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(conn_->FetchFormat("SELECT * FROM $0", kTableName));
+
+  auto span = ASSERT_RESULT(WaitForSpanWithTableName(
+      tp.trace_id, kSharedMemoryPerformSpanName, kTableName));
+  ASSERT_EQ(span.op_name, kSharedMemoryPerformSpanName);
+  ASSERT_TRUE(span.status_message.empty()) << span.status_message;
+  auto table_names_it = span.str_attrs.find("rpc.table_names");
+  ASSERT_NE(table_names_it, span.str_attrs.end())
+      << "rpc.table_names attribute missing on shared memory span";
+  ASSERT_STR_CONTAINS(table_names_it->second, kTableName);
+}
+
+TEST_F(DistTraceTest, TestSharedMemoryPerformSpanForWrite) {
+  static constexpr auto kTableName = "shmem_write_test";
+  ASSERT_OK(CreateTable(kTableName, 1));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (100, 'traced_insert')", kTableName));
+
+  auto span = ASSERT_RESULT(WaitForSpanWithTableName(
+      tp.trace_id, kSharedMemoryPerformSpanName, kTableName));
+  ASSERT_EQ(span.op_name, kSharedMemoryPerformSpanName);
+  ASSERT_TRUE(span.status_message.empty()) << span.status_message;
+  auto table_names_it = span.str_attrs.find("rpc.table_names");
+  ASSERT_NE(table_names_it, span.str_attrs.end())
+      << "rpc.table_names attribute missing on shared memory span";
+  ASSERT_STR_CONTAINS(table_names_it->second, kTableName);
 }
 
 TEST_F(DistTraceRpcTest, TestRpcSpans) {

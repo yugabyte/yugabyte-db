@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -39,13 +40,13 @@ bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context);
 // Returns true if distributed tracing is enabled and there is an active span in the OTEL context.
 bool HasActiveContext();
 nostd::shared_ptr<trace::Span> StartSpan(
-    const std::string& op_name,
+    std::string_view op_name,
     const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs,
     trace::StartSpanOptions options);
 nostd::shared_ptr<trace::Span> StartSpan(
-    const std::string& op_name,
+    std::string_view op_name,
     const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs);
-nostd::shared_ptr<trace::Span> StartSpan(const std::string& op_name);
+nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name);
 
 // Thread-local attribute buffer for the next RPC span. Producers (e.g. PgSession) add
 // attributes here; the OutboundCall constructor consumes them when starting a span.

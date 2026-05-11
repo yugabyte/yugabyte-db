@@ -236,22 +236,23 @@ bool HasActiveContext() {
 }
 
 nostd::shared_ptr<trace::Span> StartSpan(
-    const std::string& op_name,
+    std::string_view op_name,
     const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs,
     trace::StartSpanOptions options) {
   DCHECK(HasActiveContext());
 
-  return GetDistTracer()->StartSpan(op_name, attrs, options);
+  return GetDistTracer()->StartSpan(
+      nostd::string_view(op_name.data(), op_name.size()), attrs, options);
 }
 
 nostd::shared_ptr<trace::Span> StartSpan(
-    const std::string& op_name,
+    std::string_view op_name,
     const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>&
         attrs) {
   return StartSpan(op_name, attrs, {});
 }
 
-nostd::shared_ptr<trace::Span> StartSpan(const std::string& op_name) {
+nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name) {
   return StartSpan(op_name, {});
 }
 

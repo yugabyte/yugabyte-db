@@ -279,7 +279,6 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
 
-  // TODO(#31324): Add spans for shared memory communication too
   if (dist_trace::HasActiveContext()) {
     otel_span_ = dist_trace::StartSpan(
         Format("rpc $0", remote_method_.ToString()), dist_trace::GetPendingRpcAttrPairs());
