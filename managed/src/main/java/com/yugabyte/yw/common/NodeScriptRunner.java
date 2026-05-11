@@ -269,12 +269,17 @@ public class NodeScriptRunner {
               .collect(Collectors.toList());
     }
 
-    // Filter by role
+    // Filter by role. mastersOnly and tserversOnly are mutually exclusive; the API handler
+    // rejects both-true at the boundary, so this throw is a defensive guard for internal
+    // callers that build a NodeFilter directly.
     boolean mastersOnly = Boolean.TRUE.equals(nodeFilter.getMastersOnly());
     boolean tserversOnly = Boolean.TRUE.equals(nodeFilter.getTserversOnly());
-    if (mastersOnly && !tserversOnly) {
+    if (mastersOnly && tserversOnly) {
+      throw new IllegalArgumentException("masters_only and tservers_only cannot both be true");
+    }
+    if (mastersOnly) {
       nodes = nodes.stream().filter(n -> n.isMaster).collect(Collectors.toList());
-    } else if (tserversOnly && !mastersOnly) {
+    } else if (tserversOnly) {
       nodes = nodes.stream().filter(n -> n.isTserver).collect(Collectors.toList());
     }
 
