@@ -15,12 +15,16 @@
 #include "yb/client/client-test-util.h"
 
 #include "yb/common/ql_type.h"
+#include "yb/common/transaction.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/mini_master.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -30,7 +34,11 @@ DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(report_ysql_ddl_txn_status_to_master);
+DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 DECLARE_int32(TEST_ysql_ddl_atomicity_alter_table_request_delay_ms);
+DECLARE_double(TEST_ysql_ddl_verification_failure_probability);
+DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 
 namespace yb::pgwrapper {
 
@@ -249,6 +257,7 @@ class PgDdlTransactionMiniClusterTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 5;
     pgwrapper::PgMiniTestBase::SetUp();
   }
 };
@@ -305,6 +314,62 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestWaitForSchemaVersionAfterRollback) {
   }
 
   SyncPoint::GetInstance()->DisableProcessing();
+}
+
+TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedPeriodicRetrigger) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = -1;
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+
+  ASSERT_OK(conn.Execute("CREATE TABLE ddl_pp_failed_retrigger (id INT PRIMARY KEY)"));
+
+  // Fail verification task so that it ends up in kDdlPostProcessingFailed state.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_verification_failure_probability) = 1.0;
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE ddl_pp_failed_retrigger ADD COLUMN c INT"));
+
+  const auto table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, "ddl_pp_failed_retrigger"));
+  auto table_info = catalog_manager.GetTableInfo(table_id);
+  ASSERT_NE(table_info, nullptr);
+  const auto txn_id_pb = table_info->LockForRead()->pb_transaction_id();
+  ASSERT_FALSE(txn_id_pb.empty());
+  const auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_id_pb));
+
+  // Disable YSQL reporting the status to yb-master so that we fully rely on the background task
+  // and mimic the nemesis case when tserver - master communication breaks down.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  LOG(INFO) << "Reporting YSQL DDL transaction status to YB-Master is disabled";
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  LOG(INFO) << "Rolled back";
+
+  ASSERT_OK(WaitFor(
+      [&] {
+        const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+        return Result<bool>(
+            st.has_value() &&
+            *st == master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+      },
+      MonoDelta::FromSeconds(60),
+      "DDL verification should reach kDdlPostProcessingFailed"));
+
+  LOG(INFO) << "Done waiting for kDdlPostProcessingFailed state";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_verification_failure_probability) = 0.0;
+
+  ASSERT_OK(WaitFor(
+    [&] {
+      const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+      return Result<bool>(
+          !st.has_value() ||
+          *st != master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+    },
+    MonoDelta::FromSeconds(60),
+    "DDL verification task should have been re-triggered"));
 }
 
 class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,

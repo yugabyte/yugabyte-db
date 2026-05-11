@@ -37,6 +37,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -603,6 +604,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status TriggerDdlVerificationIfNeeded(const TransactionMetadata& txn, const LeaderEpoch& epoch);
   void ScheduleTriggerDdlVerificationIfNeeded(
     const TransactionMetadata& txn, const LeaderEpoch& epoch, int32_t delay_ms);
+
+  // Invokes TriggerDdlVerificationIfNeeded for each DDL transaction whose verification state is
+  // kDdlPostProcessingFailed.
+  void TriggerDdlVerificationForPostProcessingFailedTxns(const LeaderEpoch& epoch);
+
+  // Test-only: current YsqlDdlVerificationState for txn, or nullopt if not in the verifier map.
+  std::optional<YsqlDdlVerificationState> TEST_GetYsqlDdlVerificationState(
+      const TransactionId& txn_id) const EXCLUDES(ddl_txn_verifier_mutex_);
 
   // Get the information about the specified table.
   Status GetTableSchema(const GetTableSchemaRequestPB* req,
