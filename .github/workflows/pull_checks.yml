@@ -4,7 +4,7 @@ name: "yb-gh"
 # But then it won't be available from head commit if the PR is synchronized.
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited ]
     paths-ignore:
       - README.md
       - 'docs/**'
@@ -31,7 +31,6 @@ jobs:
             echo "::error ::  [BACKPORT 2045.1][#12345] area1,area2: Must have fix"
             exit 1
           fi
-
       - name: Check Backport title
         run: |
           BACKPORT_RE='^\[(BACKPORT )?([0-9]+(\.[0-9]+)+)\]'
@@ -56,11 +55,10 @@ jobs:
               exit 1
             fi
           fi
-
       - name: Check Backport refernces
         run: |
-          # Check for true backport, not just target branch in title.
           BACKPORT_RE='^\[BACKPORT ([0-9]+(\.[0-9]+)+)\]'
+          # Check for true backport, not just target branch in title.
           if [[ "${{ github.event.pull_request.title }}" =~ $BACKPORT_RE ]]; then
             COMMIT_RE='^Original commit: ([0-9a-f]+) / ([#D][0-9]+)'
             body="${{ github.event.pull_request.body }}"
@@ -73,6 +71,6 @@ jobs:
               echo "::error ::- 345def / #43555"
               exit 1
             fi
-    #original_commit_re = Regexp.new('^Original commit(s)?:')
-    #commit_sha_revision_re = Regexp.new('(^- )?([0-9a-f]+) / ([#D][0-9]+)')
+            # original_commit_re = Regexp.new('^Original commit(s)?:')
+            # commit_sha_revision_re = Regexp.new('(^- )?([0-9a-f]+) / ([#D][0-9]+)')
           fi
