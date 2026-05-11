@@ -1,4 +1,5 @@
 import logging
+from contextlib import nullcontext
 from work_queue.task_router import TaskProcessor
 from db.connection_pool import ConnectionPool
 from models.work_queue_task import WorkQueueTask
@@ -221,16 +222,36 @@ class DocumentPreprocessor(TaskProcessor):
         self.logger.info(f"Processing task: {task.id}")
         document_uri = task.task_details.get('document_uri')
         self.logger.debug(f"document_uri: {document_uri}")
-        LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY = self._resolve_langfuse_client(document_uri)
-        langfuse_client = Langfuse(
-            public_key=LANGFUSE_PUBLIC_KEY,
-            secret_key=LANGFUSE_SECRET_KEY
-        )
-        with _set_current_public_key(LANGFUSE_PUBLIC_KEY):
-            with langfuse_client.start_as_current_observation(
-                as_type="agent",
-                name="Process Task / DocumentPreprocessor"
-            ) as transform_span:
+        transform_span = None
+        langfuse_public_key = None
+        tracing_context = nullcontext()
+        observation_context = nullcontext()
+        resolved_keys = self._resolve_langfuse_client(document_uri)
+        if resolved_keys:
+            try:
+                langfuse_public_key, langfuse_secret_key = resolved_keys
+                langfuse_client = Langfuse(
+                    public_key=langfuse_public_key,
+                    secret_key=langfuse_secret_key
+                )
+                tracing_context = _set_current_public_key(langfuse_public_key)
+                observation_context = langfuse_client.start_as_current_observation(
+                    as_type="agent",
+                    name="Process Task / DocumentPreprocessor"
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"Langfuse initialization failed for task {task.id}; continuing without tracing: {str(e)}"
+                )
+                tracing_context = nullcontext()
+                observation_context = nullcontext()
+        else:
+            self.logger.info(
+                f"No Langfuse keys resolved for task {task.id}; continuing without tracing"
+            )
+        with (tracing_context or nullcontext()):
+            with (observation_context or nullcontext()) as active_span:
+                transform_span = active_span
                 document_id = None
                 span_output = {"status": "error", "task_id": str(task.id)}
 
@@ -398,4 +419,10 @@ class DocumentPreprocessor(TaskProcessor):
                         "error_message": str(e)
                     }
                 finally:
-                    transform_span.update(output=span_output)
+                    if transform_span:
+                        try:
+                            transform_span.update(output=span_output)
+                        except Exception as e:
+                            self.logger.warning(
+                                f"Failed to update Langfuse span for task {task.id}: {str(e)}"
+                            )
