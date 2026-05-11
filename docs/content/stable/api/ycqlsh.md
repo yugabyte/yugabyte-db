@@ -362,7 +362,7 @@ Example:
 ycqlsh> SOURCE '/home/yugabyte/commands.cql'
 ```
 
-For request tracing from the shell, see [`TRACING`](#tracing).
+For request tracing from the shell, see [TRACING](#tracing).
 
 ### TIMING
 

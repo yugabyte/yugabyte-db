@@ -171,7 +171,7 @@ ycqlsh> quit;
 
 ## Unsupported cqlsh commands
 
-Some Apache Cassandra `cqlsh` commands differ or are not applicable on YugabyteDB. Examples:
+Some Apache Cassandra cqlsh commands differ or are not applicable on YugabyteDB. This includes the following:
 
 | Command | Alternative / notes |
 | :------ | :------------------- |
