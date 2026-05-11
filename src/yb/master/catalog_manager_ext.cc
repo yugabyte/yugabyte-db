@@ -459,6 +459,8 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
   // TODO (mhaddad): GH-28290 Tracks the namespace anchoring issue.
   auto namespace_info = VERIFY_RESULT(FindNamespaceById(namespace_id));
   const bool ns_colocated = namespace_info->colocated();
+  // todo(zdrudi): there's potentially a bug here. colocation + tablespaces, w/ backup/restore might
+  // expose this.
   std::optional<TableId> colocation_parent_table_id;
 
   auto process_table = [&](const Slice& table_id_slice, const Slice& metadata_slice) -> Status {
@@ -1447,14 +1449,13 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
   // Stores SysTablesEntry and its SysTabletsEntries to order the tablets of each table by
   // partitions' start keys.
   std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
-  std::optional<std::string> colocation_parent_table_id;
-  bool found_colocated_user_table = false;
+  std::unordered_map<std::string, bool> colocated_parent_tables;
   docdb::DocRowwiseIterator tables_iter = docdb::DocRowwiseIterator(
       projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
   RETURN_NOT_OK(EnumerateSysCatalog(
       &tables_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLE,
-      [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id, &found_colocated_user_table](
+      [&source_ns_id, &tables_to_tablets, &colocated_parent_tables](
           const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
         // Skip including tables in PREPARING state, even though they are normally considered
@@ -1474,9 +1475,9 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
           const auto id_str = id.ToBuffer();
           if (pb.colocated()) {
             if (IsColocationParentTableId(id_str)) {
-              colocation_parent_table_id = id_str;
+              colocated_parent_tables.try_emplace(id_str, false);
             } else {
-              found_colocated_user_table = true;
+              colocated_parent_tables[pb.parent_table_id()] = true;
             }
           }
           // Tables and tablets will be added to backup entries at the end.
@@ -1529,14 +1530,14 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
         table_with_tablets.tablets_entries.size()});
   }
   // Populate the backup_entries with SysTablesEntry and SysTabletsEntry.
-  // Start with the colocation_parent_table_id if the database is colocated.
-  if (colocation_parent_table_id) {
-    // Only create the colocated parent table if there are colocated user tables.
-    if (found_colocated_user_table) {
-      tables_to_tablets[colocation_parent_table_id.value()].AddToBackupEntries(
-          colocation_parent_table_id.value(), backup_entries);
+  // Start with all colocated parent tables that have children.
+  // The import snapshot flow is broken if colocated children preceed their parents.
+  for (const auto& [parent_table_id, has_child] : colocated_parent_tables) {
+    if (has_child) {
+      tables_to_tablets[parent_table_id].AddToBackupEntries(
+          parent_table_id, backup_entries);
     }
-    tables_to_tablets.erase(colocation_parent_table_id.value());
+    tables_to_tablets.erase(parent_table_id);
   }
   for (auto& sys_table_entry : tables_to_tablets) {
     sys_table_entry.second.AddToBackupEntries(sys_table_entry.first, backup_entries);
