@@ -48,10 +48,10 @@ Each bar shows the state of connections, as follows.
 | DiskIO | DocDB tablet / RocksDB disk path. Tablet server storage I/O (for example WAL append/sync on TServers, tablet files, compaction-related disk waits). This is Disk IO / DocDB instrumentation, not Postgres-backend local **IO** (next row). |
 | IO | Postgres IO wait type. Filesystem I/O entirely inside the YSQL PostgreSQL backend's local files: WAL, catalog/mapping files, temp Buffile spills, COPY/stream reads or writes, logical decoding files, checkpoints, replication slot files, lock/datadir bookkeeping, and so on. Larger slices point to heavyweight temp files, DDL/catalog churn, WAL pressure on the Postgres data directory, _not_ primary tablet **DiskIO** (previous row). |
 | Lock | Waiting on heavyweight Lock (typically row/table), LWLock, or BufferPin class waits; PostgreSQL-visible lock contention. |
-| RPCWait | Blocked RPCWait / WaitingOnTServer on RPCs served by Yugabyte Tablet Servers (catalog/table/index access, transactional doc operations): YSQL backends waiting on the DocDB side to finish work. |
+| RPCWait | Blocked RPCWait / WaitingOnTServer on RPCs served by TServers (catalog/table/index access, transactional doc operations): YSQL backends waiting on the DocDB side to finish work. |
 | Timeout | Timeout waits: sleeps such as pg_sleep, transaction conflict backoff, vacuum pacing, replay/checkpoint throttles, and other deliberate delays; not waiting on Client I/O or lock contention (see the Lock row). |
-| TServerWait | TServerWait class, usually YSQL backend processes waiting while TServer/tablet-thread work progresses; stacks often inverse to CPU on active tablet handlers (see the note below). |
-| WaitOnCondition | Not doing CPU work; stalled inside YugabyteDB on timing or internal coordination (read/safe time, reactors, Raft, RocksDB scheduler, RPC completion handoff). That is, not categorized as **Lock**, **DiskIO/IO**, or **RPCWait**. Unusually tall bands imply synchronization or internal backpressure worth drilling down with fuller wait views. |
+| TServerWait | TServerWait class, usually YSQL backend processes waiting while TServer/tablet-thread work progresses; stacks often inverse to CPU on active tablet handlers. |
+| WaitOnCondition | Not doing CPU work. Stalled inside YugabyteDB on timing or internal coordination (read/safe time, reactors, Raft, RocksDB scheduler, RPC completion handoff). That is, not categorized as **Lock**, **DiskIO/IO**, or **RPCWait**. Unusually tall bands imply synchronization or internal backpressure worth drilling down with fuller wait views. |
 
 The colors in the load chart indicate where time is being spent, such as CPU, I/O, locks, or RPC wait. This provides a breakdown of what is contributing to the overall load.
 
