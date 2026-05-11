@@ -75,14 +75,14 @@ DECLARE_bool(openssl_require_fips);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
-DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
+DEFINE_NON_RUNTIME_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_validator(postmaster_cgroup,
     FLAG_DELAYED_COND_VALIDATOR(
         _value.empty() || !yb::tserver::TServerCgroupManagementEnabled(),
         "postmaster_cgroup cannot be set when tserver cgroup management is enabled "
         "(enable_qos)"));
 
-DEFINE_UNKNOWN_bool(pg_transactions_enabled, true,
+DEFINE_NON_RUNTIME_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
 DEFINE_NON_RUNTIME_string(yb_backend_oom_score_adj, "900",
               "oom_score_adj of postgres backends in linux environments");
@@ -90,9 +90,9 @@ DEFINE_NON_RUNTIME_string(yb_webserver_oom_score_adj, "900",
               "oom_score_adj of YSQL webserver in linux environments");
 DEFINE_NON_RUNTIME_bool(yb_pg_terminate_child_backend, false,
             "Terminate other active server processes when a backend is killed");
-DEFINE_UNKNOWN_bool(pg_verbose_error_log, false,
+DEFINE_NON_RUNTIME_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
-DEFINE_UNKNOWN_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
+DEFINE_NON_RUNTIME_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
 DEFINE_NON_RUNTIME_bool(yb_enable_valgrind, false,
             "True to run postgres under Valgrind. Must compile with --no-tcmalloc");
 
@@ -103,7 +103,7 @@ DEFINE_test_flag(bool, ysql_yb_query_diagnostics_race_condition, false,
                  "If true, enables race condition testing for query diagnostics.");
 
 // Default to 5MB
-DEFINE_UNKNOWN_string(
+DEFINE_NON_RUNTIME_string(
     pg_mem_tracker_tcmalloc_gc_release_bytes, std::to_string(5 * 1024 * 1024),
     "Overriding the gflag mem_tracker_tcmalloc_gc_release_bytes "
     "defined in mem_tracker.cc. The overriding value is specifically "
@@ -117,7 +117,7 @@ DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
 TAG_FLAG(pg_transactions_enabled, hidden);
 
-DEFINE_UNKNOWN_bool(pg_stat_statements_enabled, true,
+DEFINE_NON_RUNTIME_bool(pg_stat_statements_enabled, true,
             "True to enable statement stats in PostgreSQL server");
 TAG_FLAG(pg_stat_statements_enabled, advanced);
 TAG_FLAG(pg_stat_statements_enabled, hidden);

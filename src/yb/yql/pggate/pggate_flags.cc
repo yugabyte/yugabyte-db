@@ -27,11 +27,11 @@ DEPRECATE_FLAG(int32, pgsql_rpc_keepalive_time_ms, "02_2024");
 
 DEPRECATE_FLAG(int32, pggate_rpc_timeout_secs, "11_2025");
 
-DEFINE_UNKNOWN_int32(pggate_ybclient_reactor_threads, 2,
+DEFINE_NON_RUNTIME_int32(pggate_ybclient_reactor_threads, 2,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the PostgreSQL proxy server");
 
-DEFINE_UNKNOWN_string(pggate_master_addresses, "",
+DEFINE_NON_RUNTIME_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 
 DEFINE_NON_RUNTIME_string(pggate_cert_base_name, "",

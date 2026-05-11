@@ -137,38 +137,39 @@ DEPRECATE_FLAG(int32, tablet_server_svc_num_threads, "02_2024");
 DEPRECATE_FLAG(int32, ts_admin_svc_num_threads, "02_2024");
 DEPRECATE_FLAG(int32, ts_consensus_svc_num_threads, "02_2024");
 DEPRECATE_FLAG(int32, ts_remote_bootstrap_svc_num_threads, "02_2024");
-DEFINE_UNKNOWN_int32(tablet_server_svc_queue_length,
+DEFINE_NON_RUNTIME_int32(tablet_server_svc_queue_length,
     yb::tserver::TabletServer::kDefaultSvcQueueLength,
     "RPC queue length for the TS service.");
 TAG_FLAG(tablet_server_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(ts_admin_svc_queue_length, 50,
+DEFINE_NON_RUNTIME_int32(ts_admin_svc_queue_length, 50,
              "RPC queue length for the TS admin service");
 TAG_FLAG(ts_admin_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(ts_consensus_svc_queue_length,
+DEFINE_NON_RUNTIME_int32(ts_consensus_svc_queue_length,
     yb::tserver::TabletServer::kDefaultSvcQueueLength,
     "RPC queue length for the TS consensus service.");
 TAG_FLAG(ts_consensus_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(ts_remote_bootstrap_svc_queue_length, 50,
+DEFINE_NON_RUNTIME_int32(ts_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for the TS remote bootstrap service");
 TAG_FLAG(ts_remote_bootstrap_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(pg_client_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
+DEFINE_NON_RUNTIME_int32(pg_client_svc_queue_length,
+             yb::tserver::TabletServer::kDefaultSvcQueueLength,
              "RPC queue length for the Pg Client service.");
 TAG_FLAG(pg_client_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_bool(enable_direct_local_tablet_server_call,
+DEFINE_NON_RUNTIME_bool(enable_direct_local_tablet_server_call,
             true,
             "Enable direct call to local tablet server");
 TAG_FLAG(enable_direct_local_tablet_server_call, advanced);
 
-DEFINE_UNKNOWN_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
-DEFINE_UNKNOWN_int32(redis_proxy_webserver_port, 0, "Webserver port for redis proxy");
+DEFINE_NON_RUNTIME_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
+DEFINE_NON_RUNTIME_int32(redis_proxy_webserver_port, 0, "Webserver port for redis proxy");
 
-DEFINE_UNKNOWN_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
-DEFINE_UNKNOWN_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
+DEFINE_NON_RUNTIME_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
+DEFINE_NON_RUNTIME_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 
 DEFINE_NON_RUNTIME_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DECLARE_int32(pgsql_proxy_webserver_port);
@@ -180,9 +181,9 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr, false,
 DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_pools, 10000,
     "Max total pools supported in YSQL Connection Manager.");
 
-DEFINE_UNKNOWN_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
+DEFINE_NON_RUNTIME_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
-DEFINE_UNKNOWN_bool(tserver_enable_metrics_snapshotter, false,
+DEFINE_NON_RUNTIME_bool(tserver_enable_metrics_snapshotter, false,
     "Should metrics snapshotter be enabled");
 
 DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero");
@@ -202,11 +203,11 @@ DEFINE_test_flag(bool, select_all_status_tablets, false, "");
 
 DEPRECATE_FLAG(int32, ts_backup_svc_num_threads, "02_2024");
 
-DEFINE_UNKNOWN_int32(ts_backup_svc_queue_length, 50,
+DEFINE_NON_RUNTIME_int32(ts_backup_svc_queue_length, 50,
              "RPC queue length for the TS backup service");
 TAG_FLAG(ts_backup_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(xcluster_svc_queue_length, 5000,
+DEFINE_NON_RUNTIME_int32(xcluster_svc_queue_length, 5000,
              "RPC queue length for the xCluster service");
 TAG_FLAG(xcluster_svc_queue_length, advanced);
 
@@ -215,14 +216,14 @@ DEFINE_NON_RUNTIME_bool(allow_encryption_at_rest, true,
                         "flag does not turn on or off encryption at rest, but rather allows or "
                         "disallows a user from enabling it on in the future.");
 
-DEFINE_UNKNOWN_int32(
+DEFINE_NON_RUNTIME_int32(
     get_universe_key_registry_backoff_increment_ms, 100,
     "Number of milliseconds added to the delay between retries of fetching the full universe key "
     "registry from master leader. This delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(get_universe_key_registry_backoff_increment_ms, stable);
 TAG_FLAG(get_universe_key_registry_backoff_increment_ms, advanced);
 
-DEFINE_UNKNOWN_int32(
+DEFINE_NON_RUNTIME_int32(
     get_universe_key_registry_max_backoff_sec, 3,
     "Maximum number of seconds to delay between retries of fetching the full universe key registry "
     "from master leader. This delay is applied after the RPC reties have been exhausted.");

@@ -54,7 +54,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
-DEFINE_UNKNOWN_string(placement_uuid, "",
+DEFINE_NON_RUNTIME_string(placement_uuid, "",
               "The uuid of the tservers cluster/placement.");
 
 DEFINE_UNKNOWN_int32(master_discovery_timeout_ms, 3600000,
@@ -73,25 +73,26 @@ namespace server {
 using std::vector;
 using namespace std::literals;
 
-DEFINE_UNKNOWN_string(server_dump_info_path, "",
+DEFINE_NON_RUNTIME_string(server_dump_info_path, "",
               "Path into which the server information will be "
               "dumped after startup. The dumped data is described by "
               "ServerStatusPB in server_base.proto. The dump format is "
               "determined by --server_dump_info_format");
-DEFINE_UNKNOWN_string(server_dump_info_format, "json",
+DEFINE_NON_RUNTIME_string(server_dump_info_format, "json",
               "Format for --server_dump_info_path. This may be either "
               "'pb' or 'json'.");
 TAG_FLAG(server_dump_info_path, hidden);
 TAG_FLAG(server_dump_info_format, hidden);
 
-DEFINE_UNKNOWN_int32(metrics_log_interval_ms, 0,
+DEFINE_NON_RUNTIME_int32(metrics_log_interval_ms, 0,
              "Interval (in milliseconds) at which the server will dump its "
              "metrics to a local log file. The log files are located in the same "
              "directory as specified by the -log_dir flag. If this is not a positive "
              "value, then metrics logging will be disabled.");
 TAG_FLAG(metrics_log_interval_ms, advanced);
 
-DEFINE_UNKNOWN_string(server_broadcast_addresses, "", "Broadcast addresses for this server.");
+DEFINE_NON_RUNTIME_string(server_broadcast_addresses, "",
+              "Broadcast addresses for this server.");
 
 ServerBaseOptions::ServerBaseOptions(int default_port)
     : env(Env::Default()),
