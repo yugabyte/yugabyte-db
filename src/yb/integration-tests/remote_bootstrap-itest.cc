@@ -1821,8 +1821,20 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
 // the checkpoint creation takes longer than the RPC timeout, multiple
 // bootstrap attempts will be made (first one times out, others will error
 // with checkpoint lock contention, eventually first one finishes).
-// Without fix, this would create multiple stuck RBS RPC threads on the RBS source tserver.
-// With fix, this will create at most 2 RBS RPC threads on the RBS source tserver.
+//
+// Two source-side fixes together bound the resource footprint of these retries:
+//   1. RBS source uses TabletSnapshots::UseTryLock::kTrue on the per-tablet checkpoint lock, so
+//      subsequent retries fail fast with "Unable to acquire checkpoint lock" instead of queueing
+//      up RPC threads on the lock. Without this, we'd see one stuck RPC thread per retry.
+//   2. D52549 source-side prune in RemoteBootstrapServiceImpl::CreateRemoteSession evicts the
+//      prior (requestor_uuid, tablet_id) entry from sessions_ before inserting the new one.
+//      Without this, each retry would leave a stale RemoteBootstrapSession in sessions_ that's
+//      only reclaimed by the idle timer (FLAGS_remote_bootstrap_idle_timeout_ms), and those
+//      stale entries would pin checkpoint dirs + log anchors via their scoped_refptrs.
+//
+// Combined invariant: at most ~2 RBS RPC threads AND at most ~2 RBS sessions on the source
+// tserver at any given time during contention, regardless of how many retries the destination
+// makes.
 TEST_F(RemoteBootstrapITest, TestRBSWithCheckpointLockContention) {
   const auto kRBSSessionTimeoutMs = 5000;
 
@@ -1938,23 +1950,25 @@ TEST_F(RemoteBootstrapITest, TestRBSWithCheckpointLockContention) {
   } while (contention_errors < kMinExpectedContentionErrors);
 
   rpc_inbound_calls_alive = GetRPCInboundCallsAlive(leader_tserver);
-  auto prev_num_rbs_sessions = num_rbs_sessions;
   num_rbs_sessions = GetNumRBSessions(leader_tserver);
-  LOG(INFO) << "RBS sessions on leader (after timeout): " << num_rbs_sessions
-            << " rpc_inbound_calls_alive: " << rpc_inbound_calls_alive;
-  ASSERT_GE(num_rbs_sessions, prev_num_rbs_sessions + contention_errors);
-  // We should have at most 2 RPC threads doing RBS at any given time during this period.
-  // But with other inflight RPCs on the leader, and the current metric not differentiating
-  // between RBS and other RPCs, it may not be reliable to assert for that. Hence, a more relaxed
-  // assertion that the number of RPC threads is strictly less than the number of RBS sessions.
-  // Without fix, this would not hold true (it would be at least equal to the number of RBS sessions
-  // as each of them would be stuck waiting for the lock.).
-  ASSERT_LT(rpc_inbound_calls_alive, num_rbs_sessions);
+  LOG(INFO) << "RBS sessions on leader (after " << contention_errors << " contention errors): "
+            << num_rbs_sessions << " rpc_inbound_calls_alive: " << rpc_inbound_calls_alive;
+  // With both fixes in place we expect a bounded footprint regardless of how many contention
+  // retries the destination issued. The "+2" slack absorbs short-lived overlap with an unrelated
+  // RPC observation (e.g. heartbeat / tablet report) and the transient window inside
+  // CreateRemoteSession where a new entry is inserted but the previous one for the same
+  // (requestor, tablet) hasn't yet been pruned by the next retry.
+  ASSERT_LE(num_rbs_sessions, initial_num_rbs_sessions + 2)
+      << "Source-side prune (D52549) should keep sessions_ bounded across "
+      << contention_errors << " contention retries; got " << num_rbs_sessions
+      << " sessions (initial=" << initial_num_rbs_sessions << ").";
+  ASSERT_LE(rpc_inbound_calls_alive, initial_rpc_inbound_calls_alive + 2)
+      << "try_lock fix should keep RBS RPC threads from queuing on the checkpoint lock; got "
+      << rpc_inbound_calls_alive << " inbound calls alive (initial="
+      << initial_rpc_inbound_calls_alive << ").";
 
   // Reset the flag to release the checkpoint lock so the RBS can complete.
   ASSERT_OK(cluster_->SetFlag(leader_tserver, "TEST_pause_create_checkpoint", "false"));
-  // Set up a log waiter to detect when the first (timed out) RBS session expires.
-  LogWaiter session_expired_waiter(leader_tserver, "has expired. Terminating session");
 
   ASSERT_OK(WaitUntilTabletInState(follower_ts, tablet_id, tablet::RUNNING, kTimeout * 2));
 
@@ -1968,10 +1982,13 @@ TEST_F(RemoteBootstrapITest, TestRBSWithCheckpointLockContention) {
   ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(tablet_workload_info.table_name,
       ClusterVerifier::AT_LEAST, tablet_workload_info.rows_inserted));
 
-  // The first (timed out) RBS session's checkpoint may be around until expiry cleans it up.
-  // For this test (RBS idle timeout=10s, poll period=10s), worst case ~20s to expiry. But
-  // CheckCheckpointsCleared() waits only up to 10s, so teardowncan fail. Hence, the wait here.
-  ASSERT_OK(session_expired_waiter.WaitFor(kTimeout));
+  // Pre-D52549, the first (timed-out) RBS session sat in sessions_ until the idle timer reaped
+  // it (~20s with the test's settings), and the checkpoint dir leaked alongside it. With the
+  // source-side prune, that first session is evicted from sessions_ the moment the next retry
+  // arrives; the session object then goes out of scope as soon as the first RPC handler returns
+  // (after the pause flag is cleared) and the destructor cleans up the checkpoint dir. No
+  // explicit wait for expiration is necessary -- CheckCheckpointsCleared() in teardown finds the
+  // dir already gone.
 }
 
 TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFromClosestPeer) {

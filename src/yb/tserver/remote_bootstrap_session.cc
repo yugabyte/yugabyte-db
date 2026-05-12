@@ -96,7 +96,6 @@ RemoteBootstrapSession::RemoteBootstrapSession(
     : tablet_peer_(tablet_peer),
       session_id_(std::move(session_id)),
       requestor_uuid_(std::move(requestor_uuid)),
-      succeeded_(false),
       nsessions_(nsessions),
       rbs_anchor_client_(rbs_anchor_client) {
   AddSource<RemoteBootstrapSnapshotsSource>();
@@ -691,16 +690,11 @@ Status RemoteBootstrapSession::UnregisterAnchorIfNeededUnlocked() {
 
 void RemoteBootstrapSession::SetSuccess() {
   std::lock_guard lock(mutex_);
-  succeeded_ = true;
+  succeeded_.store(true);
   // Can early clear the checkpoints dir since the session already succeeded (data sent to client),
   // and we don't need the snapshot anymore. In case of failure, the session is removed right away
   // which would anyways clear the checkpoints dir.
   RemoveCheckpointDir();
-}
-
-bool RemoteBootstrapSession::Succeeded() {
-  std::lock_guard lock(mutex_);
-  return succeeded_;
 }
 
 void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {
@@ -746,7 +740,7 @@ Status RemoteBootstrapSession::RegisterRemoteLogAnchorUnlocked() {
   if (rbs_anchor_client_) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "index=" << remote_log_anchor_index_;
     RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(
-        tablet_peer_->tablet_id(), remote_log_anchor_index_, succeeded_));
+        tablet_peer_->tablet_id(), remote_log_anchor_index_, Succeeded()));
     rbs_anchor_session_created_ = true;
   }
   return Status::OK();
@@ -755,7 +749,7 @@ Status RemoteBootstrapSession::RegisterRemoteLogAnchorUnlocked() {
 Status RemoteBootstrapSession::UpdateRemoteLogAnchorUnlocked() {
   if (rbs_anchor_client_) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "index=" << remote_log_anchor_index_;
-    RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(remote_log_anchor_index_, succeeded_));
+    RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(remote_log_anchor_index_, Succeeded()));
   }
   return Status::OK();
 }

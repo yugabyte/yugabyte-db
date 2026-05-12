@@ -32,6 +32,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -140,7 +141,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   void SetSuccess() EXCLUDES(mutex_);
 
-  bool Succeeded() EXCLUDES(mutex_);
+  // Lock-free read; writers always update succeeded_ under mutex_ (full barrier).
+  bool Succeeded() const { return succeeded_.load(); }
 
   void InitRateLimiter();
 
@@ -255,9 +257,9 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // leader peer needs to anchor its log at.
   int64_t remote_log_anchor_index_ GUARDED_BY(mutex_) = 0;
 
-  // We need to know whether this ended succesfully before changing the peer's member type from
-  // PRE_VOTER to VOTER.
-  bool succeeded_ GUARDED_BY(mutex_) = false;
+  // Monotonic false -> true, only written in SetSuccess() under mutex_. Atomic for lock-free
+  // Succeeded() reads (e.g. prune while InitBootstrapSession holds mutex_).
+  std::atomic<bool> succeeded_{false};
 
   // Directory where the checkpoint files are stored for this session (only for rocksdb).
   std::string checkpoint_dir_;
