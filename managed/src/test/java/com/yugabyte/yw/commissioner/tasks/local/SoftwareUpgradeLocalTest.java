@@ -8,6 +8,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -368,6 +369,11 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    UniverseDefinitionTaskParams dAfterMasterPause = universe.getUniverseDetails();
+    assertTrue(dAfterMasterPause.updateSucceeded);
+    assertNull(dAfterMasterPause.updatingTaskUUID);
+    assertNull(dAfterMasterPause.updatingTask);
+    assertEquals(taskUuid, dAfterMasterPause.placementModificationTaskUuid);
     PrevYBSoftwareConfig prev = universe.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue(allMasterAzsCompleted(prev));
@@ -399,6 +405,11 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    UniverseDefinitionTaskParams dAfterAzPause = universe.getUniverseDetails();
+    assertTrue(dAfterAzPause.updateSucceeded);
+    assertNull(dAfterAzPause.updatingTaskUUID);
+    assertNull(dAfterAzPause.updatingTask);
+    assertEquals(resumedUuid, dAfterAzPause.placementModificationTaskUuid);
     prev = universe.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue(
@@ -416,12 +427,37 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(
         SoftwareUpgradeState.PreFinalize, universe.getUniverseDetails().softwareUpgradeState);
+    UniverseDefinitionTaskParams dPreFinalize = universe.getUniverseDetails();
+    assertNull(dPreFinalize.placementModificationTaskUuid);
+    assertNull(dPreFinalize.updatingTaskUUID);
+    assertNull(dPreFinalize.updatingTask);
 
-    Optional<ObjectNode> finalStatus = getTaskStatus(finalTask.getUuid());
-    assertTrue(finalStatus.isPresent());
+    assertTaskStatusSoftwareUpgradeProgressMatchesUniverse(finalTask.getUuid(), universe);
+
+    FinalizeUpgradeParams finalizeUpgradeParams = new FinalizeUpgradeParams();
+    finalizeUpgradeParams.setUniverseUUID(universe.getUniverseUUID());
+    finalizeUpgradeParams.expectedUniverseVersion = -1;
+    TaskInfo finalizeTaskInfo =
+        waitForTask(
+            upgradeUniverseHandler.finalizeUpgrade(
+                finalizeUpgradeParams,
+                customer,
+                Universe.getOrBadRequest(universe.getUniverseUUID())));
+    assertEquals(Success, finalizeTaskInfo.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Ready, universe.getUniverseDetails().softwareUpgradeState);
+    assertFalse(universe.getUniverseDetails().isSoftwareRollbackAllowed);
+    UniverseDefinitionTaskParams dReady = universe.getUniverseDetails();
+    assertNull(dReady.updatingTaskUUID);
+    assertNull(dReady.placementModificationTaskUuid);
+    assertNull(dReady.updatingTask);
+
+    Optional<ObjectNode> statusAfterFinalize = getTaskStatus(finalTask.getUuid());
+    assertTrue(statusAfterFinalize.isPresent());
     assertFalse(
-        "Task status should omit softwareUpgradeProgress after software upgrade phase completes",
-        finalStatus.get().has("softwareUpgradeProgress"));
+        "Task status should omit softwareUpgradeProgress after finalize completes",
+        statusAfterFinalize.get().has("softwareUpgradeProgress"));
   }
 
   /**
@@ -504,6 +540,64 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         OLD_VERSION_WITH_ROLLBACK,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     verifyPayload();
+  }
+
+  @Test
+  public void testScaleUpBlockedDuringCanaryPauseAllowedAfterPreFinalize()
+      throws InterruptedException {
+    Universe universe = createUniversePausedAfterCanaryMasterPhase();
+    int originalNumNodes = universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes;
+    UUID pausedTaskUuid = universe.getUniverseDetails().placementModificationTaskUuid;
+    assertNotNull(pausedTaskUuid);
+
+    changeNumberOfNodesInPrimary(universe, 1);
+    final Universe universeForEdit = universe;
+    PlatformServiceException editWhilePaused =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                universeCRUDHandler.update(
+                    customer,
+                    Universe.getOrBadRequest(universeForEdit.getUniverseUUID()),
+                    universeForEdit.getUniverseDetails()));
+    assertThat(editWhilePaused.getMessage(), containsString("paused canary software upgrade"));
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    assertEquals(pausedTaskUuid, universe.getUniverseDetails().placementModificationTaskUuid);
+    assertFalse(universe.getUniverseDetails().updateInProgress);
+    assertEquals(
+        originalNumNodes, universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes);
+
+    UUID resumedUuid =
+        upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
+            customer.getUuid(), universe.getUniverseUUID(), pausedTaskUuid);
+    TaskInfo resumeTask = waitForTask(resumedUuid, 500, 3600);
+    assertEquals(Success, resumeTask.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.PreFinalize, universe.getUniverseDetails().softwareUpgradeState);
+    UniverseDefinitionTaskParams dPreFinalize = universe.getUniverseDetails();
+    assertNull(dPreFinalize.placementModificationTaskUuid);
+    assertNull(dPreFinalize.updatingTaskUUID);
+    assertNull(dPreFinalize.updatingTask);
+
+    Universe fresh = Universe.getOrBadRequest(universe.getUniverseUUID());
+    changeNumberOfNodesInPrimary(fresh, 1);
+    UUID editTaskUuid =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(fresh.getUniverseUUID()),
+            fresh.getUniverseDetails());
+    TaskInfo editInfo = waitForTask(editTaskUuid, fresh);
+    assertEquals(Success, editInfo.getTaskState());
+
+    Universe afterEdit = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        originalNumNodes + 1,
+        afterEdit.getUniverseDetails().getPrimaryCluster().userIntent.numNodes);
+    verifyUniverseState(afterEdit);
   }
 
   @Test

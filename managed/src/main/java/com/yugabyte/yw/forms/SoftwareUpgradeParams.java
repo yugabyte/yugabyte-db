@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -106,10 +107,10 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     if (canaryUpgradeConfig != null) {
       if (softwareUpgradeState == SoftwareUpgradeState.Paused) {
         UUID previousTaskUUID = getPreviousTaskUUID();
-        UUID updatingTaskUUID = universe.getUniverseDetails().updatingTaskUUID;
-        if (previousTaskUUID == null
-            || updatingTaskUUID == null
-            || !previousTaskUUID.equals(updatingTaskUUID)) {
+        UUID placementTaskUUID = universe.getUniverseDetails().placementModificationTaskUuid;
+        boolean matchesPaused =
+            previousTaskUUID != null && Objects.equals(previousTaskUUID, placementTaskUUID);
+        if (!matchesPaused) {
           throw new PlatformServiceException(
               BAD_REQUEST,
               "Universe has a paused canary software upgrade. Submit a resume or rollback instead"

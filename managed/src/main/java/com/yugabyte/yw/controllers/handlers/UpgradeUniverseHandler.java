@@ -1165,9 +1165,12 @@ public class UpgradeUniverseHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe is not in Paused software upgrade state.");
     }
-    if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    if (!taskUUID.equals(details.placementModificationTaskUuid)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Task does not match the universe's updating task.");
+          BAD_REQUEST,
+          "Task does not match the universe's paused canary upgrade"
+              + " (placementModificationTaskUuid).");
     }
     params.setPreviousTaskUUID(taskUUID);
     params.expectedUniverseVersion = -1;

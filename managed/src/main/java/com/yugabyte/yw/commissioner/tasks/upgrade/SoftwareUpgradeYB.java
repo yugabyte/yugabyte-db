@@ -1287,7 +1287,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         != UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused) {
       return false;
     }
-    if (!getUserTaskUUID().equals(universe.getUniverseDetails().updatingTaskUUID)) {
+    UniverseDefinitionTaskParams d = universe.getUniverseDetails();
+    if (!getUserTaskUUID().equals(d.placementModificationTaskUuid)) {
       return false;
     }
     List<TaskInfo> subtasks = TaskInfo.getOrBadRequest(getUserTaskUUID()).getSubTasks();

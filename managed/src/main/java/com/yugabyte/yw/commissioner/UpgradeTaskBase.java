@@ -384,6 +384,16 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           setTaskQueueAndRun(
               () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
         }
+        if (error == null && isPauseRequested) {
+          // A canary pause is intentional; mark update as succeeded so the universe is not
+          // surfaced as failed/broken while paused. The unlock updater that follows reads it.
+          saveUniverseDetails(
+              universe -> {
+                UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+                details.updateSucceeded = true;
+                universe.setUniverseDetails(details);
+              });
+        }
       } finally {
         try {
           unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);

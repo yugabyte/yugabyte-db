@@ -1241,7 +1241,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertEquals(
         SoftwareUpgradeState.Paused, defaultUniverse.getUniverseDetails().softwareUpgradeState);
-    assertEquals(taskUUID, defaultUniverse.getUniverseDetails().updatingTaskUUID);
+    assertCanaryPauseUniverseTaskFields(defaultUniverse, taskUUID);
     PrevYBSoftwareConfig prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue("Masters phase should be completed before pause", allMasterAzsCompleted(prev));
@@ -1260,6 +1260,31 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(
         SoftwareUpgradeState.PreFinalize,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertPreFinalizeClearsSoftwareUpgradeTaskTracking(defaultUniverse);
+  }
+
+  /**
+   * After a successful canary run that ends in PreFinalize, unlock should clear task tracking
+   * fields (including on resume when FreezeUniverse subtask is skipped).
+   */
+  private void assertPreFinalizeClearsSoftwareUpgradeTaskTracking(Universe universe) {
+    UniverseDefinitionTaskParams d = universe.getUniverseDetails();
+    assertNull(d.placementModificationTaskUuid);
+    assertNull(d.updatingTaskUUID);
+    assertNull(d.updatingTask);
+  }
+
+  /** Universe fields expected while a canary software upgrade is paused (between pause points). */
+  private void assertCanaryPauseUniverseTaskFields(Universe universe, UUID expectedTaskUuid) {
+    UniverseDefinitionTaskParams d = universe.getUniverseDetails();
+    assertTrue("Canary pause should not surface as updateSucceeded=false", d.updateSucceeded);
+    assertNull("updatingTaskUUID should be cleared at canary pause", d.updatingTaskUUID);
+    assertNull("updatingTask should be cleared at canary pause", d.updatingTask);
+    assertEquals(
+        "placementModificationTaskUuid is the marker for the paused upgrade",
+        expectedTaskUuid,
+        d.placementModificationTaskUuid);
+    assertEquals(SoftwareUpgradeState.Paused, d.softwareUpgradeState);
   }
 
   /**
@@ -1323,6 +1348,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertEquals(
         SoftwareUpgradeState.Paused, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertCanaryPauseUniverseTaskFields(defaultUniverse, taskUUID);
     PrevYBSoftwareConfig prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue(allMasterAzsCompleted(prev));
@@ -1368,6 +1394,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertEquals(
         SoftwareUpgradeState.Paused, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertCanaryPauseUniverseTaskFields(defaultUniverse, taskUUID);
     PrevYBSoftwareConfig prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue(allMasterAzsCompleted(prev));
@@ -1417,6 +1444,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertCanaryPauseUniverseTaskFields(defaultUniverse, taskUUID);
     PrevYBSoftwareConfig prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue(primaryTserverAzCompleted(prev, defaultUniverse, az1.getUuid()));
@@ -1434,6 +1462,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertCanaryPauseUniverseTaskFields(defaultUniverse, resumedUUID);
     prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue(
@@ -1459,6 +1488,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(
         SoftwareUpgradeState.PreFinalize,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertPreFinalizeClearsSoftwareUpgradeTaskTracking(defaultUniverse);
   }
 
   @Test
@@ -1504,6 +1534,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertCanaryPauseUniverseTaskFields(defaultUniverse, taskUUID);
     PrevYBSoftwareConfig prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue("Masters should be completed", allMasterAzsCompleted(prev));
@@ -1523,6 +1554,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(TaskInfo.State.Paused, taskInfo.getTaskState());
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertCanaryPauseUniverseTaskFields(defaultUniverse, resumedUUID);
     prev = defaultUniverse.getUniverseDetails().prevYBSoftwareConfig;
     assertNotNull(prev);
     assertTrue(primaryTserverAzCompleted(prev, defaultUniverse, az1.getUuid()));
@@ -1542,6 +1574,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(
         SoftwareUpgradeState.PreFinalize,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertPreFinalizeClearsSoftwareUpgradeTaskTracking(defaultUniverse);
   }
 
   @Test
